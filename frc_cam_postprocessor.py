@@ -1,0 +1,355 @@
+#!/usr/bin/env python3
+"""
+FRC Robotics CAM Post-Processor
+Generates G-code from DXF files with predefined operations for:
+- #10 screw holes
+- 1.125" bearing holes
+- Pockets
+- Perimeter with tabs
+"""
+
+import ezdxf
+from shapely.geometry import Point, Polygon, LineString, MultiPolygon
+from shapely.ops import unary_union
+import math
+from typing import List, Tuple
+import argparse
+
+
+class FRCPostProcessor:
+    def __init__(self, material_thickness: float, units: str = "inch"):
+        """
+        Initialize the post-processor
+        
+        Args:
+            material_thickness: Thickness of material in inches
+            units: "inch" or "mm"
+        """
+        self.material_thickness = material_thickness
+        self.units = units
+        self.tolerance = 0.02  # Tolerance for hole detection (inches)
+        
+        # Hole diameters
+        self.screw_hole_diameter = 0.19  # #10 screw
+        self.bearing_hole_diameter = 1.125  # Bearing hole
+        
+        # Cutting parameters (you can adjust these)
+        self.feed_rate = 30.0  # inches per minute
+        self.plunge_rate = 10.0  # inches per minute
+        self.safe_height = 0.1  # Height above material
+        self.cut_depth = -material_thickness  # Full thickness
+        
+        # Tab parameters
+        self.tab_width = 0.25  # Width of tabs (inches)
+        self.tab_height = 0.03  # How much material to leave in tab (inches)
+        self.num_tabs = 4  # Number of tabs around perimeter
+        
+    def load_dxf(self, filename: str):
+        """Load DXF file and extract geometry"""
+        print(f"Loading {filename}...")
+        doc = ezdxf.readfile(filename)
+        msp = doc.modelspace()
+        
+        # Extract circles (holes)
+        self.circles = []
+        for entity in msp.query('CIRCLE'):
+            center = (entity.dxf.center.x, entity.dxf.center.y)
+            radius = entity.dxf.radius
+            self.circles.append({'center': center, 'radius': radius, 'diameter': radius * 2})
+        
+        # Extract polylines and lines (boundaries/pockets)
+        self.polylines = []
+        for entity in msp.query('LWPOLYLINE'):
+            points = [(p[0], p[1]) for p in entity.get_points('xy')]
+            if entity.closed and len(points) > 2:
+                self.polylines.append(points)
+        
+        # Also check for POLYLINE entities
+        for entity in msp.query('POLYLINE'):
+            if entity.is_2d_polyline:
+                points = [(v.dxf.location.x, v.dxf.location.y) for v in entity.vertices]
+                if entity.is_closed and len(points) > 2:
+                    self.polylines.append(points)
+        
+        print(f"Found {len(self.circles)} circles and {len(self.polylines)} polylines")
+        
+    def classify_holes(self):
+        """Classify holes by diameter"""
+        self.screw_holes = []
+        self.bearing_holes = []
+        self.other_holes = []
+        
+        for circle in self.circles:
+            diameter = circle['diameter']
+            center = circle['center']
+            
+            # Check if it's a screw hole
+            if abs(diameter - self.screw_hole_diameter) < self.tolerance:
+                self.screw_holes.append(center)
+                print(f"  Screw hole at ({center[0]:.3f}, {center[1]:.3f})")
+            # Check if it's a bearing hole
+            elif abs(diameter - self.bearing_hole_diameter) < self.tolerance:
+                self.bearing_holes.append(center)
+                print(f"  Bearing hole at ({center[0]:.3f}, {center[1]:.3f})")
+            else:
+                self.other_holes.append({'center': center, 'diameter': diameter})
+                print(f"  Unknown hole (d={diameter:.3f}) at ({center[0]:.3f}, {center[1]:.3f})")
+        
+        print(f"\nClassified: {len(self.screw_holes)} screw holes, "
+              f"{len(self.bearing_holes)} bearing holes, "
+              f"{len(self.other_holes)} other holes")
+    
+    def identify_perimeter_and_pockets(self):
+        """Identify the outer perimeter and any inner pockets"""
+        if not self.polylines:
+            self.perimeter = None
+            self.pockets = []
+            return
+        
+        # Convert to Shapely polygons
+        polygons = []
+        for points in self.polylines:
+            try:
+                poly = Polygon(points)
+                if poly.is_valid:
+                    polygons.append((poly, points))
+            except:
+                pass
+        
+        if not polygons:
+            self.perimeter = None
+            self.pockets = []
+            return
+        
+        # Find the largest polygon (perimeter)
+        polygons.sort(key=lambda x: x[0].area, reverse=True)
+        self.perimeter = polygons[0][1]  # Get the original points
+        self.pockets = [p[1] for p in polygons[1:]]
+        
+        print(f"\nIdentified perimeter and {len(self.pockets)} pockets")
+    
+    def generate_gcode(self, output_file: str):
+        """Generate complete G-code file"""
+        gcode = []
+        
+        # Header
+        gcode.append("(FRC Robotics CAM Post-Processor)")
+        gcode.append(f"(Material thickness: {self.material_thickness}\")")
+        gcode.append("(Generated by frc_cam_postprocessor.py)")
+        gcode.append("")
+        
+        # Setup
+        if self.units == "inch":
+            gcode.append("G20  ; Inches")
+        else:
+            gcode.append("G21  ; Millimeters")
+        
+        gcode.append("G90  ; Absolute positioning")
+        gcode.append("G17  ; XY plane")
+        gcode.append(f"F{self.feed_rate}  ; Set feed rate")
+        gcode.append("")
+        
+        # Spindle on
+        gcode.append("M3 S18000  ; Spindle on at 18000 RPM")
+        gcode.append("G4 P2  ; Wait 2 seconds for spindle to reach speed")
+        gcode.append("")
+        
+        # Move to safe height
+        gcode.append(f"G0 Z{self.safe_height}  ; Move to safe height")
+        gcode.append("")
+        
+        # Screw holes
+        if self.screw_holes:
+            gcode.append("(===== SCREW HOLES =====)")
+            for i, (x, y) in enumerate(self.screw_holes, 1):
+                gcode.append(f"(Screw hole {i})")
+                gcode.append(f"G0 X{x:.4f} Y{y:.4f}  ; Position over hole")
+                gcode.append(f"G0 Z{self.safe_height}")
+                gcode.append(f"G1 Z{self.cut_depth} F{self.plunge_rate}  ; Plunge")
+                gcode.append(f"G1 Z{self.safe_height} F{self.plunge_rate}  ; Retract")
+                gcode.append("")
+        
+        # Bearing holes (spiral out from center)
+        if self.bearing_holes:
+            gcode.append("(===== BEARING HOLES =====)")
+            for i, (x, y) in enumerate(self.bearing_holes, 1):
+                gcode.append(f"(Bearing hole {i})")
+                gcode.extend(self._generate_bearing_hole_gcode(x, y))
+                gcode.append("")
+        
+        # Pockets
+        if self.pockets:
+            gcode.append("(===== POCKETS =====)")
+            for i, pocket in enumerate(self.pockets, 1):
+                gcode.append(f"(Pocket {i})")
+                gcode.extend(self._generate_pocket_gcode(pocket))
+                gcode.append("")
+        
+        # Perimeter with tabs
+        if self.perimeter:
+            gcode.append("(===== PERIMETER WITH TABS =====)")
+            gcode.extend(self._generate_perimeter_gcode(self.perimeter))
+            gcode.append("")
+        
+        # Footer
+        gcode.append("(===== FINISH =====)")
+        gcode.append(f"G0 Z{self.safe_height}  ; Move to safe height")
+        gcode.append("M5  ; Spindle off")
+        gcode.append("G0 X0 Y0  ; Return to origin")
+        gcode.append("M30  ; Program end")
+        
+        # Write to file
+        with open(output_file, 'w') as f:
+            f.write('\n'.join(gcode))
+        
+        print(f"\nG-code written to {output_file}")
+        print(f"Total lines: {len(gcode)}")
+    
+    def _generate_bearing_hole_gcode(self, cx: float, cy: float) -> List[str]:
+        """Generate G-code for a bearing hole using helical interpolation"""
+        gcode = []
+        radius = self.bearing_hole_diameter / 2
+        
+        # Position at edge of hole
+        start_x = cx + radius
+        start_y = cy
+        
+        gcode.append(f"G0 X{start_x:.4f} Y{start_y:.4f}  ; Position at hole edge")
+        gcode.append(f"G0 Z{self.safe_height}")
+        
+        # Helical plunge using G2 (clockwise circular interpolation)
+        gcode.append(f"G1 Z0 F{self.plunge_rate}  ; Rapid to surface")
+        gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-radius:.4f} J0 Z{self.cut_depth} F{self.plunge_rate}  ; Helical plunge")
+        
+        # Clean up pass at depth
+        gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-radius:.4f} J0 F{self.feed_rate}  ; Clean up pass")
+        
+        # Retract
+        gcode.append(f"G0 Z{self.safe_height}  ; Retract")
+        
+        return gcode
+    
+    def _generate_pocket_gcode(self, pocket_points: List[Tuple[float, float]]) -> List[str]:
+        """Generate G-code for a pocket (simple boundary cut for now)"""
+        gcode = []
+        
+        # Move to start
+        start = pocket_points[0]
+        gcode.append(f"G0 X{start[0]:.4f} Y{start[1]:.4f}  ; Move to pocket start")
+        gcode.append(f"G0 Z{self.safe_height}")
+        gcode.append(f"G1 Z{self.cut_depth} F{self.plunge_rate}  ; Plunge")
+        
+        # Cut around pocket boundary
+        for point in pocket_points[1:]:
+            gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
+        
+        # Close the loop
+        gcode.append(f"G1 X{start[0]:.4f} Y{start[1]:.4f} F{self.feed_rate}  ; Close loop")
+        
+        # Retract
+        gcode.append(f"G0 Z{self.safe_height}  ; Retract")
+        
+        return gcode
+    
+    def _generate_perimeter_gcode(self, perimeter_points: List[Tuple[float, float]]) -> List[str]:
+        """Generate G-code for perimeter with tabs"""
+        gcode = []
+        
+        # Calculate perimeter length and tab positions
+        perimeter_length = 0
+        segment_lengths = []
+        for i in range(len(perimeter_points)):
+            p1 = perimeter_points[i]
+            p2 = perimeter_points[(i + 1) % len(perimeter_points)]
+            length = math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
+            segment_lengths.append(length)
+            perimeter_length += length
+        
+        # Calculate tab positions (evenly spaced)
+        tab_spacing = perimeter_length / self.num_tabs
+        tab_positions = [i * tab_spacing for i in range(self.num_tabs)]
+        
+        # Move to start
+        start = perimeter_points[0]
+        gcode.append(f"G0 X{start[0]:.4f} Y{start[1]:.4f}  ; Move to perimeter start")
+        gcode.append(f"G0 Z{self.safe_height}")
+        gcode.append(f"G1 Z{self.cut_depth} F{self.plunge_rate}  ; Plunge to cut depth")
+        
+        # Cut around perimeter with tabs
+        current_distance = 0
+        tab_index = 0
+        
+        for i, point in enumerate(perimeter_points[1:] + [perimeter_points[0]], 1):
+            segment_start_dist = current_distance
+            segment_end_dist = current_distance + segment_lengths[i - 1]
+            
+            # Check if any tabs are in this segment
+            while tab_index < len(tab_positions) and tab_positions[tab_index] < segment_end_dist:
+                tab_dist = tab_positions[tab_index]
+                
+                if tab_dist >= segment_start_dist:
+                    # Calculate tab position along segment
+                    t = (tab_dist - segment_start_dist) / segment_lengths[i - 1]
+                    prev_point = perimeter_points[i - 1]
+                    
+                    # Tab start
+                    tab_start_x = prev_point[0] + t * (point[0] - prev_point[0]) - self.tab_width / 2 * (point[0] - prev_point[0]) / segment_lengths[i - 1]
+                    tab_start_y = prev_point[1] + t * (point[1] - prev_point[1]) - self.tab_width / 2 * (point[1] - prev_point[1]) / segment_lengths[i - 1]
+                    
+                    # Move to tab start
+                    gcode.append(f"G1 X{tab_start_x:.4f} Y{tab_start_y:.4f} F{self.feed_rate}")
+                    
+                    # Raise for tab
+                    tab_z = self.cut_depth + self.tab_height
+                    gcode.append(f"G1 Z{tab_z:.4f} F{self.plunge_rate}  ; Tab {tab_index + 1}")
+                    
+                    # Tab end
+                    tab_end_x = prev_point[0] + t * (point[0] - prev_point[0]) + self.tab_width / 2 * (point[0] - prev_point[0]) / segment_lengths[i - 1]
+                    tab_end_y = prev_point[1] + t * (point[1] - prev_point[1]) + self.tab_width / 2 * (point[1] - prev_point[1]) / segment_lengths[i - 1]
+                    
+                    # Move across tab
+                    gcode.append(f"G1 X{tab_end_x:.4f} Y{tab_end_y:.4f} F{self.feed_rate}")
+                    
+                    # Lower back to cut depth
+                    gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.plunge_rate}")
+                
+                tab_index += 1
+            
+            # Continue to next point
+            gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
+            current_distance = segment_end_dist
+        
+        # Retract
+        gcode.append(f"G0 Z{self.safe_height}  ; Retract")
+        
+        return gcode
+
+
+def main():
+    parser = argparse.ArgumentParser(description='FRC Robotics CAM Post-Processor')
+    parser.add_argument('input_dxf', help='Input DXF file from OnShape')
+    parser.add_argument('output_gcode', help='Output G-code file')
+    parser.add_argument('--thickness', type=float, default=0.25, 
+                       help='Material thickness in inches (default: 0.25)')
+    parser.add_argument('--units', choices=['inch', 'mm'], default='inch',
+                       help='Units (default: inch)')
+    parser.add_argument('--tabs', type=int, default=4,
+                       help='Number of tabs on perimeter (default: 4)')
+    
+    args = parser.parse_args()
+    
+    # Create post-processor
+    pp = FRCPostProcessor(material_thickness=args.thickness, units=args.units)
+    pp.num_tabs = args.tabs
+    
+    # Process file
+    pp.load_dxf(args.input_dxf)
+    pp.classify_holes()
+    pp.identify_perimeter_and_pockets()
+    pp.generate_gcode(args.output_gcode)
+    
+    print("\nDone! Review the G-code file before running on your machine.")
+
+
+if __name__ == '__main__':
+    main()
