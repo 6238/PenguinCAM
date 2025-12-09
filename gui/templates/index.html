@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FRC CAM Post-Processor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #FF4500;
+            --primary-dark: #CC3700;
+            --secondary: #2C3E50;
+            --bg: #0A0E14;
+            --surface: #151B24;
+            --surface-light: #1E2632;
+            --text: #E6EDF3;
+            --text-dim: #8B949E;
+            --border: #30363D;
+            --success: #2EA043;
+            --warning: #D29922;
+            --error: #DA3633;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        header {
+            background: var(--surface);
+            border-bottom: 2px solid var(--primary);
+            padding: 1.5rem 2rem;
+        }
+
+        h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        h1 .accent {
+            color: var(--primary);
+        }
+
+        .subtitle {
+            color: var(--text-dim);
+            font-size: 0.9rem;
+            margin-top: 0.25rem;
+        }
+
+        main {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .workflow {
+            display: grid;
+            grid-template-columns: 450px 1fr;
+            gap: 2rem;
+            align-items: start;
+        }
+
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .step-number {
+            background: var(--primary);
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+
+        .panel-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        /* File Upload */
+        .drop-zone {
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+            padding: 3rem 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: var(--bg);
+        }
+
+        .drop-zone:hover {
+            border-color: var(--primary);
+            background: var(--surface-light);
+        }
+
+        .drop-zone.dragover {
+            border-color: var(--primary);
+            background: var(--surface-light);
+            transform: scale(1.02);
+        }
+
+        .drop-zone-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .drop-zone-text {
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .drop-zone-hint {
+            color: var(--text-dim);
+            font-size: 0.9rem;
+        }
+
+        .file-info {
+            background: var(--surface-light);
+            border-radius: 6px;
+            padding: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .file-info-icon {
+            font-size: 2rem;
+        }
+
+        .file-info-details {
+            flex: 1;
+        }
+
+        .file-info-name {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .file-info-size {
+            color: var(--text-dim);
+            font-size: 0.85rem;
+        }
+
+        /* Parameters */
+        .param-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .param-group:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: var(--text);
+        }
+
+        .label-hint {
+            color: var(--text-dim);
+            font-weight: 400;
+            font-size: 0.85rem;
+            margin-left: 0.5rem;
+        }
+
+        input[type="number"] {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.75rem;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-family: 'Monaco', 'Courier New', monospace;
+            transition: all 0.2s ease;
+        }
+
+        input[type="number"]:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(255, 69, 0, 0.1);
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem;
+            background: var(--bg);
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .checkbox-group:hover {
+            background: var(--surface-light);
+        }
+
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: var(--primary);
+        }
+
+        .checkbox-label {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        /* Buttons */
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            width: 100%;
+        }
+
+        button:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(255, 69, 0, 0.3);
+        }
+
+        button:disabled {
+            background: var(--border);
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        button.secondary {
+            background: var(--secondary);
+        }
+
+        button.secondary:hover {
+            background: #34495E;
+        }
+
+        /* Visualization */
+        .visualizer {
+            position: sticky;
+            top: 2rem;
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 600px;
+            background: var(--bg);
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .empty-state {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: var(--text-dim);
+        }
+
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            opacity: 0.3;
+        }
+
+        /* Results */
+        .results {
+            margin-top: 1.5rem;
+            padding: 1.5rem;
+            background: var(--surface-light);
+            border-radius: 6px;
+            border-left: 4px solid var(--success);
+            display: none;
+        }
+
+        .results.show {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .results-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        .results-title {
+            font-weight: 600;
+            color: var(--success);
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .stat {
+            background: var(--bg);
+            padding: 1rem;
+            border-radius: 4px;
+        }
+
+        .stat-label {
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-family: 'Monaco', 'Courier New', monospace;
+            color: var(--primary);
+        }
+
+        .console-output {
+            background: var(--bg);
+            padding: 1rem;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            margin-top: 1rem;
+        }
+
+        /* Loading */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid var(--border);
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Alerts */
+        .alert {
+            padding: 1rem;
+            border-radius: 6px;
+            margin-top: 1rem;
+            display: none;
+        }
+
+        .alert.show {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+
+        .alert.error {
+            background: rgba(218, 54, 51, 0.1);
+            border: 1px solid var(--error);
+            color: var(--error);
+        }
+
+        .alert-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Controls */
+        .controls {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: var(--surface-light);
+            border-radius: 6px;
+            display: flex;
+            gap: 1rem;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .controls-label {
+            font-size: 0.9rem;
+            color: var(--text-dim);
+        }
+
+        .icon-button {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            width: auto;
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+        }
+
+        .icon-button:hover {
+            background: var(--surface);
+            border-color: var(--primary);
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .workflow {
+                grid-template-columns: 1fr;
+            }
+
+            .visualizer {
+                position: static;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>FRC CAM <span class="accent">Post-Processor</span></h1>
+        <p class="subtitle">Generate G-code from OnShape DXF exports for your FRC robotics CNC</p>
+    </header>
+
+    <main>
+        <div class="workflow">
+            <!-- Left Panel: Input & Parameters -->
+            <div>
+                <!-- Step 1: File Upload -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="step-number">1</div>
+                        <div class="panel-title">Upload DXF File</div>
+                    </div>
+
+                    <div class="drop-zone" id="dropZone">
+                        <div class="drop-zone-icon">📄</div>
+                        <div class="drop-zone-text">Drag & drop your DXF file here</div>
+                        <div class="drop-zone-hint">or click to browse</div>
+                        <input type="file" id="fileInput" accept=".dxf" style="display: none;">
+                    </div>
+
+                    <div id="fileInfo" style="display: none;" class="file-info">
+                        <div class="file-info-icon">📄</div>
+                        <div class="file-info-details">
+                            <div class="file-info-name" id="fileName"></div>
+                            <div class="file-info-size" id="fileSize"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Parameters -->
+                <div class="panel" style="margin-top: 1.5rem;">
+                    <div class="panel-header">
+                        <div class="step-number">2</div>
+                        <div class="panel-title">Set Parameters</div>
+                    </div>
+
+                    <form id="paramForm">
+                        <div class="param-group">
+                            <label>
+                                Material Thickness (inches)
+                                <span class="label-hint">1/4" = 0.25</span>
+                            </label>
+                            <input type="number" id="thickness" step="0.001" value="0.25" min="0.01" required>
+                        </div>
+
+                        <div class="param-group">
+                            <label>
+                                Tool Diameter (inches)
+                                <span class="label-hint">4mm = 0.157"</span>
+                            </label>
+                            <input type="number" id="toolDiameter" step="0.001" value="0.157" min="0.01" required>
+                        </div>
+
+                        <div class="param-group">
+                            <label>
+                                Sacrifice Board Depth (inches)
+                                <span class="label-hint">Overcut depth</span>
+                            </label>
+                            <input type="number" id="sacrificeDepth" step="0.001" value="0.02" min="0.001" required>
+                        </div>
+
+                        <div class="param-group">
+                            <label>
+                                Number of Tabs
+                                <span class="label-hint">Holding tabs on perimeter</span>
+                            </label>
+                            <input type="number" id="tabs" step="1" value="4" min="0" max="20" required>
+                        </div>
+
+                        <div class="param-group">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="drillScrews">
+                                <label for="drillScrews" class="checkbox-label">
+                                    Center drill screw holes (faster)
+                                </label>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Step 3: Generate -->
+                <div class="panel" style="margin-top: 1.5rem;">
+                    <div class="panel-header">
+                        <div class="step-number">3</div>
+                        <div class="panel-title">Generate G-code</div>
+                    </div>
+
+                    <button id="generateBtn" disabled>
+                        Upload a file to continue
+                    </button>
+
+                    <div class="loading" id="loading">
+                        <div class="spinner"></div>
+                        <div>Processing your file...</div>
+                    </div>
+
+                    <div class="alert error" id="errorAlert">
+                        <div class="alert-title">Error</div>
+                        <div id="errorMessage"></div>
+                    </div>
+
+                    <div class="results" id="results">
+                        <div class="results-header">
+                            <div class="results-title">✓ G-code Generated Successfully</div>
+                        </div>
+                        <div class="stats" id="stats"></div>
+                        <details style="margin-top: 1rem;">
+                            <summary style="cursor: pointer; color: var(--text-dim); user-select: none;">
+                                Show console output
+                            </summary>
+                            <div class="console-output" id="consoleOutput"></div>
+                        </details>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Visualization -->
+            <div class="visualizer">
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="step-number">4</div>
+                        <div class="panel-title">Preview & Download</div>
+                    </div>
+
+                    <div id="canvas-container">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🔧</div>
+                            <div>G-code preview will appear here</div>
+                        </div>
+                        <canvas id="gcodeCanvas"></canvas>
+                    </div>
+
+                    <div class="controls">
+                        <div class="controls-label">
+                            Origin (0,0,0) = Lower-left corner, sacrifice board • Use mouse to rotate • Scroll to zoom
+                        </div>
+                        <button class="icon-button" id="resetView">Reset View</button>
+                    </div>
+
+                    <button id="downloadBtn" class="secondary" style="margin-top: 1rem;" disabled>
+                        Download G-code File
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Global state
+        let uploadedFile = null;
+        let gcodeContent = null;
+        let outputFilename = null;
+        let scene, camera, renderer, controls;
+        let optimalCameraPosition = { x: 10, y: 10, z: 10 };
+        let optimalLookAtPosition = { x: 0, y: 0, z: 0 };
+
+        // DOM elements
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const generateBtn = document.getElementById('generateBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const loading = document.getElementById('loading');
+        const results = document.getElementById('results');
+        const errorAlert = document.getElementById('errorAlert');
+        const errorMessage = document.getElementById('errorMessage');
+        const stats = document.getElementById('stats');
+        const consoleOutput = document.getElementById('consoleOutput');
+
+        // File upload handling
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        function handleFile(file) {
+            if (!file.name.toLowerCase().endsWith('.dxf')) {
+                showError('Invalid file type', 'Please upload a DXF file.');
+                return;
+            }
+
+            uploadedFile = file;
+            fileName.textContent = file.name;
+            fileSize.textContent = formatFileSize(file.size);
+            fileInfo.style.display = 'flex';
+            generateBtn.disabled = false;
+            generateBtn.textContent = '🚀 Generate G-code';
+            hideError();
+            hideResults();
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' bytes';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        // Generate G-code
+        generateBtn.addEventListener('click', async () => {
+            if (!uploadedFile) return;
+
+            const formData = new FormData();
+            formData.append('file', uploadedFile);
+            formData.append('thickness', document.getElementById('thickness').value);
+            formData.append('tool_diameter', document.getElementById('toolDiameter').value);
+            formData.append('sacrifice_depth', document.getElementById('sacrificeDepth').value);
+            formData.append('tabs', document.getElementById('tabs').value);
+            formData.append('drill_screws', document.getElementById('drillScrews').checked);
+
+            showLoading();
+            hideError();
+            hideResults();
+
+            try {
+                const response = await fetch('/process', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Unknown error');
+                }
+
+                gcodeContent = data.gcode;
+                outputFilename = data.filename;
+
+                // Show results
+                showResults(data);
+
+                // Visualize G-code
+                visualizeGcode(data.gcode);
+
+                // Enable download
+                downloadBtn.disabled = false;
+
+            } catch (error) {
+                showError('Generation Failed', error.message);
+            } finally {
+                hideLoading();
+            }
+        });
+
+        // Download G-code
+        downloadBtn.addEventListener('click', () => {
+            if (!outputFilename) return;
+            window.location.href = `/download/${outputFilename}`;
+        });
+
+        // UI helpers
+        function showLoading() {
+            loading.classList.add('show');
+            generateBtn.disabled = true;
+        }
+
+        function hideLoading() {
+            loading.classList.remove('show');
+            generateBtn.disabled = false;
+        }
+
+        function showError(title, message) {
+            errorAlert.classList.add('show');
+            errorMessage.innerHTML = `<strong>${title}:</strong> ${message}`;
+        }
+
+        function hideError() {
+            errorAlert.classList.remove('show');
+        }
+
+        function showResults(data) {
+            results.classList.add('show');
+            consoleOutput.textContent = data.console;
+
+            // Parse statistics from console
+            const lines = data.console.split('\n');
+            const statsHtml = [];
+            
+            // Extract key info
+            const screwMatch = data.console.match(/(\d+) screw holes/);
+            const bearingMatch = data.console.match(/(\d+) bearing holes/);
+            const linesMatch = data.console.match(/Total lines: (\d+)/);
+
+            if (screwMatch) {
+                statsHtml.push(`<div class="stat"><div class="stat-label">Screw Holes</div><div class="stat-value">${screwMatch[1]}</div></div>`);
+            }
+            if (bearingMatch) {
+                statsHtml.push(`<div class="stat"><div class="stat-label">Bearing Holes</div><div class="stat-value">${bearingMatch[1]}</div></div>`);
+            }
+            if (linesMatch) {
+                statsHtml.push(`<div class="stat"><div class="stat-label">G-code Lines</div><div class="stat-value">${linesMatch[1]}</div></div>`);
+            }
+
+            stats.innerHTML = statsHtml.join('');
+        }
+
+        function hideResults() {
+            results.classList.remove('show');
+        }
+
+        // G-code visualization
+        function initVisualization() {
+            const container = document.getElementById('canvas-container');
+            const canvas = document.getElementById('gcodeCanvas');
+
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0A0E14);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(10, 10, 10);
+            camera.lookAt(0, 0, 0);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 10, 7.5);
+            scene.add(directionalLight);
+
+            // Grid at Z=0 (sacrifice board surface)
+            // Grid is in XY plane, positioned at Z=0
+            const gridSize = 20;
+            const gridDivisions = 20;
+            const gridHelper = new THREE.GridHelper(gridSize, gridDivisions, 0x30363D, 0x1E2632);
+            gridHelper.rotation.x = 0; // Grid in XY plane
+            gridHelper.position.y = 0; // At Z=0 (sacrifice board)
+            scene.add(gridHelper);
+
+            // Axes at origin (lower-left corner, sacrifice board)
+            // X = Red (right), Y = Green (up/away), Z = Blue (up from board)
+            const axesHelper = new THREE.AxesHelper(3);
+            axesHelper.position.set(0, 0, 0);
+            scene.add(axesHelper);
+
+            // Add labels for clarity
+            addAxisLabels();
+
+            // Mouse controls
+            addMouseControls();
+
+            // Animate
+            animate();
+        }
+
+        function addAxisLabels() {
+            // Create small colored boxes to mark the origin
+            const originMarker = new THREE.Mesh(
+                new THREE.SphereGeometry(0.1, 16, 16),
+                new THREE.MeshBasicMaterial({ color: 0xFFFFFF })
+            );
+            originMarker.position.set(0, 0, 0);
+            scene.add(originMarker);
+        }
+
+        function addMouseControls() {
+            const canvas = document.getElementById('gcodeCanvas');
+            let isDragging = false;
+            let previousMousePosition = { x: 0, y: 0 };
+
+            canvas.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+
+            canvas.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+
+                // Rotate camera
+                const rotationSpeed = 0.005;
+                camera.position.x = camera.position.x * Math.cos(deltaX * rotationSpeed) - camera.position.z * Math.sin(deltaX * rotationSpeed);
+                camera.position.z = camera.position.x * Math.sin(deltaX * rotationSpeed) + camera.position.z * Math.cos(deltaX * rotationSpeed);
+                camera.position.y += deltaY * rotationSpeed * 5;
+
+                camera.lookAt(0, 0, 0);
+
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+
+            canvas.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+
+            canvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const zoomSpeed = 0.1;
+                const distance = camera.position.length();
+                const newDistance = distance * (1 + e.deltaY * zoomSpeed * 0.01);
+                camera.position.multiplyScalar(newDistance / distance);
+            });
+
+            // Reset view button
+            document.getElementById('resetView').addEventListener('click', () => {
+                camera.position.set(
+                    optimalCameraPosition.x,
+                    optimalCameraPosition.y,
+                    optimalCameraPosition.z
+                );
+                camera.lookAt(
+                    optimalLookAtPosition.x,
+                    optimalLookAtPosition.y,
+                    optimalLookAtPosition.z
+                );
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+
+        function visualizeGcode(gcode) {
+            // Clear previous visualization
+            scene.children = scene.children.filter(child => 
+                child instanceof THREE.AmbientLight || 
+                child instanceof THREE.DirectionalLight ||
+                child instanceof THREE.GridHelper ||
+                child instanceof THREE.AxesHelper ||
+                child instanceof THREE.Mesh // Keep origin marker
+            );
+
+            // Parse G-code
+            const lines = gcode.split('\n');
+            const points = [];
+            let currentX = 0, currentY = 0, currentZ = 0;
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+            let minZ = Infinity, maxZ = -Infinity;
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed.startsWith('(') || trimmed.startsWith(';') || !trimmed) continue;
+
+                const gMatch = trimmed.match(/^(G[0-3])/);
+                if (!gMatch) continue;
+
+                const xMatch = trimmed.match(/X([-\d.]+)/);
+                const yMatch = trimmed.match(/Y([-\d.]+)/);
+                const zMatch = trimmed.match(/Z([-\d.]+)/);
+
+                if (xMatch) currentX = parseFloat(xMatch[1]);
+                if (yMatch) currentY = parseFloat(yMatch[1]);
+                if (zMatch) currentZ = parseFloat(zMatch[1]);
+
+                // Track bounds
+                minX = Math.min(minX, currentX);
+                maxX = Math.max(maxX, currentX);
+                minY = Math.min(minY, currentY);
+                maxY = Math.max(maxY, currentY);
+                minZ = Math.min(minZ, currentZ);
+                maxZ = Math.max(maxZ, currentZ);
+
+                // Store point in actual machine coordinates
+                // X = X, Y = -Z (flip for Three.js), Z = Y (up in Three.js)
+                points.push(new THREE.Vector3(currentX, currentZ, -currentY));
+            }
+
+            if (points.length === 0) return;
+
+            // Create toolpath line
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const material = new THREE.LineBasicMaterial({ 
+                color: 0xFF4500,
+                linewidth: 2
+            });
+            const line = new THREE.Line(geometry, material);
+            scene.add(line);
+
+            // Add material boundary box for reference
+            const materialThickness = maxZ - minZ;
+            if (materialThickness > 0) {
+                // Show material outline at Z=maxZ (material top)
+                const materialOutline = new THREE.Line(
+                    new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(minX, maxZ, -minY),
+                        new THREE.Vector3(maxX, maxZ, -minY),
+                        new THREE.Vector3(maxX, maxZ, -maxY),
+                        new THREE.Vector3(minX, maxZ, -maxY),
+                        new THREE.Vector3(minX, maxZ, -minY)
+                    ]),
+                    new THREE.LineBasicMaterial({ color: 0x8B949E, linewidth: 1, opacity: 0.5, transparent: true })
+                );
+                scene.add(materialOutline);
+
+                // Show material bottom outline at Z=0 (sacrifice board)
+                const sacrificeOutline = new THREE.Line(
+                    new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(minX, 0, -minY),
+                        new THREE.Vector3(maxX, 0, -minY),
+                        new THREE.Vector3(maxX, 0, -maxY),
+                        new THREE.Vector3(minX, 0, -maxY),
+                        new THREE.Vector3(minX, 0, -minY)
+                    ]),
+                    new THREE.LineBasicMaterial({ color: 0x8B949E, linewidth: 1, opacity: 0.3, transparent: true })
+                );
+                scene.add(sacrificeOutline);
+            }
+
+            // Position camera to see both origin (0,0,0) and the part
+            const centerX = (minX + maxX) / 2;
+            const centerY = (minY + maxY) / 2;
+            const centerZ = (minZ + maxZ) / 2;
+            
+            const sizeX = maxX - minX;
+            const sizeY = maxY - minY;
+            const sizeZ = maxZ - minZ;
+            const maxDim = Math.max(sizeX, sizeY, sizeZ, 5); // Min 5 units
+
+            // Camera looks at a point between origin and part center
+            const lookAtX = centerX * 0.3; // Weighted toward part
+            const lookAtY = centerZ * 0.3;
+            const lookAtZ = -centerY * 0.3;
+
+            // Position camera to see everything
+            const camX = centerX + maxDim * 1.5;
+            const camY = centerZ + maxDim * 1.5;
+            const camZ = -centerY + maxDim * 1.5;
+            
+            camera.position.set(camX, camY, camZ);
+            camera.lookAt(lookAtX, lookAtY, lookAtZ);
+
+            // Save optimal view for reset button
+            optimalCameraPosition = { x: camX, y: camY, z: camZ };
+            optimalLookAtPosition = { x: lookAtX, y: lookAtY, z: lookAtZ };
+
+            // Hide empty state
+            document.querySelector('.empty-state').style.display = 'none';
+        }
+
+        // Initialize on load
+        window.addEventListener('load', () => {
+            initVisualization();
+        });
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            const container = document.getElementById('canvas-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+    </script>
+</body>
+</html>
