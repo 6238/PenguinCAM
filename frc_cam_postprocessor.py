@@ -407,7 +407,31 @@ class FRCPostProcessor:
         self.perimeter = polygons[0][1]  # Get the original points
         self.pockets = [p[1] for p in polygons[1:]]
         
+        # Add "other holes" (non-screw, non-bearing circles) as circular pockets
+        # These need to be milled out
+        for hole in self.other_holes:
+            center = hole['center']
+            diameter = hole['diameter']
+            radius = diameter / 2.0
+            
+            # Create a circular pocket with 32 points
+            num_points = 32
+            circle_points = []
+            for i in range(num_points):
+                angle = 2 * math.pi * i / num_points
+                x = center[0] + radius * math.cos(angle)
+                y = center[1] + radius * math.sin(angle)
+                circle_points.append((x, y))
+            
+            # Close the circle
+            circle_points.append(circle_points[0])
+            
+            # Add to pockets
+            self.pockets.append(circle_points)
+        
         print(f"\nIdentified perimeter and {len(self.pockets)} pockets")
+        if len(self.other_holes) > 0:
+            print(f"  (includes {len(self.other_holes)} circular pockets from non-standard holes)")
     
     def generate_gcode(self, output_file: str):
         """Generate complete G-code file"""
