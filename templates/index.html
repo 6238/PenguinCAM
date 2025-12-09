@@ -614,9 +614,16 @@
                         <button class="icon-button" id="resetView">Reset View</button>
                     </div>
 
-                    <button id="downloadBtn" class="secondary" style="margin-top: 1rem;" disabled>
-                        Download G-code File
-                    </button>
+                    <div class="button-group" style="margin-top: 1rem; display: flex; gap: 1rem;">
+                        <button id="downloadBtn" class="secondary" disabled>
+                            📥 Download G-code
+                        </button>
+                        <button id="driveBtn" class="primary" disabled style="display: none;">
+                            💾 Save to Google Drive
+                        </button>
+                    </div>
+                    
+                    <div id="driveStatus" style="margin-top: 0.5rem; font-size: 0.9rem; display: none;"></div>
                 </div>
             </div>
         </div>
@@ -640,12 +647,36 @@
         const fileSize = document.getElementById('fileSize');
         const generateBtn = document.getElementById('generateBtn');
         const downloadBtn = document.getElementById('downloadBtn');
+        const driveBtn = document.getElementById('driveBtn');
+        const driveStatus = document.getElementById('driveStatus');
         const loading = document.getElementById('loading');
         const results = document.getElementById('results');
         const errorAlert = document.getElementById('errorAlert');
         const errorMessage = document.getElementById('errorMessage');
         const stats = document.getElementById('stats');
         const consoleOutput = document.getElementById('consoleOutput');
+
+        // Check Google Drive availability
+        let driveAvailable = false;
+        async function checkDriveStatus() {
+            try {
+                const response = await fetch('/drive/status');
+                const data = await response.json();
+                
+                if (data.available && data.configured) {
+                    driveAvailable = true;
+                    driveBtn.style.display = 'inline-block';
+                } else if (data.available && !data.configured) {
+                    driveStatus.textContent = '⚠️ Google Drive not configured - see GOOGLE_DRIVE_SETUP.md';
+                    driveStatus.style.display = 'block';
+                    driveStatus.style.color = '#FFA500';
+                }
+            } catch (error) {
+                // Drive integration not available - that's okay
+                console.log('Google Drive integration not available');
+            }
+        }
+        checkDriveStatus();
 
         // File upload handling
         dropZone.addEventListener('click', () => fileInput.click());
@@ -733,8 +764,11 @@
                 // Visualize G-code
                 visualizeGcode(data.gcode);
 
-                // Enable download
+                // Enable download and drive buttons
                 downloadBtn.disabled = false;
+                if (driveAvailable) {
+                    driveBtn.disabled = false;
+                }
 
             } catch (error) {
                 showError('Generation Failed', error.message);
@@ -747,6 +781,46 @@
         downloadBtn.addEventListener('click', () => {
             if (!outputFilename) return;
             window.location.href = `/download/${outputFilename}`;
+        });
+
+        // Upload to Google Drive
+        driveBtn.addEventListener('click', async () => {
+            if (!outputFilename) return;
+            
+            driveBtn.disabled = true;
+            driveBtn.textContent = '⏳ Uploading...';
+            driveStatus.style.display = 'none';
+            
+            try {
+                const response = await fetch(`/drive/upload/${outputFilename}`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    driveStatus.textContent = data.message;
+                    driveStatus.style.color = '#00D26A';
+                    driveStatus.style.display = 'block';
+                    driveBtn.textContent = '✅ Saved!';
+                    setTimeout(() => {
+                        driveBtn.textContent = '💾 Save to Google Drive';
+                        driveBtn.disabled = false;
+                    }, 3000);
+                } else {
+                    driveStatus.textContent = '❌ ' + data.message;
+                    driveStatus.style.color = '#FF4500';
+                    driveStatus.style.display = 'block';
+                    driveBtn.textContent = '💾 Save to Google Drive';
+                    driveBtn.disabled = false;
+                }
+            } catch (error) {
+                driveStatus.textContent = '❌ Upload failed: ' + error.message;
+                driveStatus.style.color = '#FF4500';
+                driveStatus.style.display = 'block';
+                driveBtn.textContent = '💾 Save to Google Drive';
+                driveBtn.disabled = false;
+            }
         });
 
         // UI helpers
@@ -826,23 +900,8 @@
             directionalLight.position.set(5, 10, 7.5);
             scene.add(directionalLight);
 
-            // Grid at Z=0 (sacrifice board surface)
-            // Grid is in XY plane, positioned at Z=0
-            const gridSize = 20;
-            const gridDivisions = 20;
-            const gridHelper = new THREE.GridHelper(gridSize, gridDivisions, 0x30363D, 0x1E2632);
-            gridHelper.rotation.x = 0; // Grid in XY plane
-            gridHelper.position.y = 0; // At Z=0 (sacrifice board)
-            scene.add(gridHelper);
-
-            // Axes at origin (lower-left corner, sacrifice board)
-            // X = Red (right), Y = Green (up/away), Z = Blue (up from board)
-            const axesHelper = new THREE.AxesHelper(3);
-            axesHelper.position.set(0, 0, 0);
-            scene.add(axesHelper);
-
-            // Add labels for clarity
-            addAxisLabels();
+            // Grid, axes, and origin marker will be added when G-code is loaded
+            // (sized appropriately for the part)
 
             // Mouse controls
             addMouseControls();
@@ -852,13 +911,7 @@
         }
 
         function addAxisLabels() {
-            // Create small colored boxes to mark the origin
-            const originMarker = new THREE.Mesh(
-                new THREE.SphereGeometry(0.1, 16, 16),
-                new THREE.MeshBasicMaterial({ color: 0xFFFFFF })
-            );
-            originMarker.position.set(0, 0, 0);
-            scene.add(originMarker);
+            // Not needed - origin marker added in visualizeGcode with proper sizing
         }
 
         function addMouseControls() {
@@ -921,16 +974,7 @@
         }
 
         function visualizeGcode(gcode) {
-            // Clear previous visualization
-            scene.children = scene.children.filter(child => 
-                child instanceof THREE.AmbientLight || 
-                child instanceof THREE.DirectionalLight ||
-                child instanceof THREE.GridHelper ||
-                child instanceof THREE.AxesHelper ||
-                child instanceof THREE.Mesh // Keep origin marker
-            );
-
-            // Parse G-code
+            // Parse G-code first to get dimensions
             const lines = gcode.split('\n');
             const points = [];
             let currentX = 0, currentY = 0, currentZ = 0;
@@ -953,7 +997,6 @@
                 if (yMatch) currentY = parseFloat(yMatch[1]);
                 if (zMatch) currentZ = parseFloat(zMatch[1]);
 
-                // Track bounds
                 minX = Math.min(minX, currentX);
                 maxX = Math.max(maxX, currentX);
                 minY = Math.min(minY, currentY);
@@ -961,80 +1004,92 @@
                 minZ = Math.min(minZ, currentZ);
                 maxZ = Math.max(maxZ, currentZ);
 
-                // Store point in actual machine coordinates
-                // X = X, Y = -Z (flip for Three.js), Z = Y (up in Three.js)
                 points.push(new THREE.Vector3(currentX, currentZ, -currentY));
             }
 
             if (points.length === 0) return;
 
-            // Create toolpath line
-            const geometry = new THREE.BufferGeometry().setFromPoints(points);
-            const material = new THREE.LineBasicMaterial({ 
-                color: 0xFF4500,
-                linewidth: 2
+            // Clear old visualization
+            const toRemove = [];
+            scene.children.forEach(child => {
+                if (!(child instanceof THREE.AmbientLight) && !(child instanceof THREE.DirectionalLight)) {
+                    toRemove.push(child);
+                }
             });
+            toRemove.forEach(child => scene.remove(child));
+
+            // Now add properly sized grid and axes
+            const maxDimension = Math.max(maxX, maxY, maxZ);
+            
+            // Grid - larger and positioned to show origin at corner
+            const gridSize = Math.max(maxX * 1.3, maxY * 1.3, 15);
+            const gridHelper = new THREE.GridHelper(gridSize, Math.ceil(gridSize), 0x30363D, 0x1E2632);
+            gridHelper.position.set(gridSize / 3, 0, -gridSize / 3); // Shift so origin is near corner
+            scene.add(gridHelper);
+
+            // Axes - long enough to extend beyond part
+            const axisLength = Math.max(maxDimension, 5) * 1.2;
+            const axesHelper = new THREE.AxesHelper(axisLength);
+            axesHelper.position.set(0, 0, 0);
+            scene.add(axesHelper);
+
+            // Origin marker - size based on part dimensions
+            const markerSize = Math.max(0.15, maxDimension * 0.02);
+            const originMarker = new THREE.Mesh(
+                new THREE.SphereGeometry(markerSize, 16, 16),
+                new THREE.MeshBasicMaterial({ color: 0xFFFFFF, emissive: 0xFFFFFF })
+            );
+            originMarker.position.set(0, 0, 0);
+            scene.add(originMarker);
+
+            // Add origin corner visual guides
+            const cornerGuideGeometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(minX * 0.3, 0, 0),
+            ]);
+            const cornerGuide = new THREE.Line(cornerGuideGeometry, 
+                new THREE.LineBasicMaterial({ color: 0xFFFFFF, linewidth: 2, opacity: 0.7, transparent: true }));
+            scene.add(cornerGuide);
+
+            // Toolpath
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const material = new THREE.LineBasicMaterial({ color: 0xFF4500, linewidth: 2 });
             const line = new THREE.Line(geometry, material);
             scene.add(line);
 
-            // Add material boundary box for reference
-            const materialThickness = maxZ - minZ;
-            if (materialThickness > 0) {
-                // Show material outline at Z=maxZ (material top)
-                const materialOutline = new THREE.Line(
-                    new THREE.BufferGeometry().setFromPoints([
-                        new THREE.Vector3(minX, maxZ, -minY),
-                        new THREE.Vector3(maxX, maxZ, -minY),
-                        new THREE.Vector3(maxX, maxZ, -maxY),
-                        new THREE.Vector3(minX, maxZ, -maxY),
-                        new THREE.Vector3(minX, maxZ, -minY)
-                    ]),
-                    new THREE.LineBasicMaterial({ color: 0x8B949E, linewidth: 1, opacity: 0.5, transparent: true })
-                );
-                scene.add(materialOutline);
+            // Material boundaries
+            const materialOutline = new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(minX, maxZ, -minY),
+                    new THREE.Vector3(maxX, maxZ, -minY),
+                    new THREE.Vector3(maxX, maxZ, -maxY),
+                    new THREE.Vector3(minX, maxZ, -maxY),
+                    new THREE.Vector3(minX, maxZ, -minY)
+                ]),
+                new THREE.LineBasicMaterial({ color: 0x8B949E, linewidth: 1, opacity: 0.5, transparent: true })
+            );
+            scene.add(materialOutline);
 
-                // Show material bottom outline at Z=0 (sacrifice board)
-                const sacrificeOutline = new THREE.Line(
-                    new THREE.BufferGeometry().setFromPoints([
-                        new THREE.Vector3(minX, 0, -minY),
-                        new THREE.Vector3(maxX, 0, -minY),
-                        new THREE.Vector3(maxX, 0, -maxY),
-                        new THREE.Vector3(minX, 0, -maxY),
-                        new THREE.Vector3(minX, 0, -minY)
-                    ]),
-                    new THREE.LineBasicMaterial({ color: 0x8B949E, linewidth: 1, opacity: 0.3, transparent: true })
-                );
-                scene.add(sacrificeOutline);
-            }
+            const sacrificeOutline = new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(minX, 0, -minY),
+                    new THREE.Vector3(maxX, 0, -minY),
+                    new THREE.Vector3(maxX, 0, -maxY),
+                    new THREE.Vector3(minX, 0, -maxY),
+                    new THREE.Vector3(minX, 0, -minY)
+                ]),
+                new THREE.LineBasicMaterial({ color: 0x8B949E, linewidth: 1, opacity: 0.3, transparent: true })
+            );
+            scene.add(sacrificeOutline);
 
-            // Position camera to see both origin (0,0,0) and the part
-            const centerX = (minX + maxX) / 2;
-            const centerY = (minY + maxY) / 2;
-            const centerZ = (minZ + maxZ) / 2;
-            
-            const sizeX = maxX - minX;
-            const sizeY = maxY - minY;
-            const sizeZ = maxZ - minZ;
-            const maxDim = Math.max(sizeX, sizeY, sizeZ, 5); // Min 5 units
+            // Camera positioning - show origin and part
+            const viewDist = Math.max(maxX, maxY, maxZ) * 2;
+            camera.position.set(viewDist * 0.7, viewDist * 0.7, viewDist * 0.7);
+            camera.lookAt(maxX / 3, maxZ / 3, -maxY / 3);
 
-            // Camera looks at a point between origin and part center
-            const lookAtX = centerX * 0.3; // Weighted toward part
-            const lookAtY = centerZ * 0.3;
-            const lookAtZ = -centerY * 0.3;
+            optimalCameraPosition = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+            optimalLookAtPosition = { x: maxX / 3, y: maxZ / 3, z: -maxY / 3 };
 
-            // Position camera to see everything
-            const camX = centerX + maxDim * 1.5;
-            const camY = centerZ + maxDim * 1.5;
-            const camZ = -centerY + maxDim * 1.5;
-            
-            camera.position.set(camX, camY, camZ);
-            camera.lookAt(lookAtX, lookAtY, lookAtZ);
-
-            // Save optimal view for reset button
-            optimalCameraPosition = { x: camX, y: camY, z: camZ };
-            optimalLookAtPosition = { x: lookAtX, y: lookAtY, z: lookAtZ };
-
-            // Hide empty state
             document.querySelector('.empty-state').style.display = 'none';
         }
 

@@ -175,12 +175,12 @@ Should show both files.
 
 Check that the server started without errors. Look for:
 ```
-* Running on http://0.0.0.0:6238
+* Running on http://0.0.0.0:5000
 ```
 
-If port 6238 is in use, edit `frc_cam_gui_app.py` and change:
+If port 5000 is in use, edit `frc_cam_gui_app.py` and change:
 ```python
-app.run(debug=True, host='0.0.0.0', port=6238)  # Change 6238 to another port
+app.run(debug=True, host='0.0.0.0', port=5000)  # Change 5000 to another port
 ```
 
 ### "File upload failed"
@@ -211,9 +211,9 @@ To access from another computer on your network:
 1. Find your computer's IP address:
    - Windows: `ipconfig`
    - Mac/Linux: `ifconfig` or `ip addr`
-2. On the other computer, browse to: `http://YOUR_IP:6238`
+2. On the other computer, browse to: `http://YOUR_IP:5000`
 
-Example: `http://192.168.1.100:6238`
+Example: `http://192.168.1.100:5000`
 
 ### Production Deployment
 
@@ -222,7 +222,7 @@ For team-wide deployment on a dedicated server:
 1. **Use a production WSGI server:**
 ```bash
 pip install gunicorn
-gunicorn -w 4 -b 0.0.0.0:6238 frc_cam_gui_app:app
+gunicorn -w 4 -b 0.0.0.0:5000 frc_cam_gui_app:app
 ```
 
 2. **Add authentication** (if needed):
