@@ -48,8 +48,10 @@ pip install ezdxf shapely
 
 ### Step 2: Run the post-processor
 ```bash
-python frc_cam_postprocessor.py robot_plate.dxf output.gcode --thickness 0.25
+python frc_cam_postprocessor.py robot_plate.dxf output.gcode --thickness 0.25 --tool-diameter 0.157
 ```
+
+**IMPORTANT:** Always specify your tool diameter! Without it, your parts will be the wrong size.
 
 ### Command-line options:
 ```
@@ -61,25 +63,33 @@ Required:
 
 Options:
   --thickness FLOAT   Material thickness in inches (default: 0.25)
+  --tool-diameter FLOAT  Tool diameter in inches (default: 0.157" = 4mm)
   --units inch/mm     Units to use (default: inch)
   --tabs INT          Number of tabs on perimeter (default: 4)
+  --drill-screws      Center drill screw holes instead of milling (faster)
 ```
+
+**Tool diameter is critical!** Common sizes:
+- 4mm = 0.157" (default)
+- 1/8" = 0.125"
+- 6mm = 0.236"
+- 1/4" = 0.250"
 
 ### Examples:
 
-**1/4" aluminum plate:**
+**1/4" aluminum plate with 4mm tool:**
 ```bash
-python frc_cam_postprocessor.py plate.dxf plate.gcode --thickness 0.25
+python frc_cam_postprocessor.py plate.dxf plate.gcode --thickness 0.25 --tool-diameter 0.157
 ```
 
-**1/8" polycarbonate with 6 tabs:**
+**1/8" polycarbonate with 6 tabs and 1/8" tool:**
 ```bash
-python frc_cam_postprocessor.py shield.dxf shield.gcode --thickness 0.125 --tabs 6
+python frc_cam_postprocessor.py shield.dxf shield.gcode --thickness 0.125 --tool-diameter 0.125 --tabs 6
 ```
 
-**1/2" plywood:**
+**1/2" plywood with 1/4" tool and faster drilling:**
 ```bash
-python frc_cam_postprocessor.py base.dxf base.gcode --thickness 0.5
+python frc_cam_postprocessor.py base.dxf base.gcode --thickness 0.5 --tool-diameter 0.25 --drill-screws
 ```
 
 ## What It Does
@@ -88,22 +98,40 @@ The script automatically:
 
 1. **Loads your DXF file** and extracts all geometry
 2. **Classifies circles by diameter:**
-   - ~0.19" diameter → Screw hole (drill operation)
+   - ~0.19" diameter → Screw hole (drill or mill operation)
    - ~1.125" diameter → Bearing hole (helical bore)
 3. **Identifies closed polylines:**
    - Largest boundary → Perimeter (cut with tabs)
    - Smaller inner boundaries → Pockets (full depth cut)
-4. **Generates G-code** with proper:
+4. **Applies tool compensation:**
+   - Perimeter: Offset OUTWARD by tool radius (so final part matches CAD)
+   - Pockets: Offset INWARD by tool radius
+   - Holes: Reduced radius for proper final size
+5. **Generates G-code** with proper:
    - Feed rates and plunge rates
    - Safe heights and rapid moves
    - Spindle control
    - Tab placement on perimeter
+
+### Critical: Tool Compensation
+
+**Your parts will be the wrong size without correct tool diameter!**
+
+The script automatically compensates for tool width:
+- If CAD says 6" square, final part will be 6" (not 5.843")
+- If CAD says 1.125" hole, final hole will be 1.125" (not 1.282")
+
+See [TOOL_COMPENSATION_GUIDE.md](TOOL_COMPENSATION_GUIDE.md) for complete details.
 
 ## Customizing Parameters
 
 Open `frc_cam_postprocessor.py` and modify these values in the `__init__` method:
 
 ```python
+# Tool settings (also via --tool-diameter)
+self.tool_diameter = 0.157   # 4mm end mill
+self.tool_radius = tool_diameter / 2
+
 # Feed rates (inches per minute)
 self.feed_rate = 30.0        # Cutting feed rate
 self.plunge_rate = 10.0      # Plunge/retract rate
@@ -118,6 +146,9 @@ self.num_tabs = 4            # Number of tabs (also via --tabs)
 
 # Hole detection tolerance
 self.tolerance = 0.02        # +/- tolerance for hole matching
+
+# Screw hole strategy
+self.drill_screw_holes = True  # True = center drill, False = mill out
 ```
 
 ## Material-Specific Settings

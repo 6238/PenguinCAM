@@ -15,8 +15,10 @@ pip install ezdxf shapely
 
 ### 3. Run the script
 ```bash
-python frc_cam_postprocessor.py my_part.dxf output.gcode --thickness 0.25
+python frc_cam_postprocessor.py my_part.dxf output.gcode --thickness 0.25 --tool-diameter 0.157
 ```
+
+**⚠️ IMPORTANT:** Always specify `--tool-diameter`! Your parts will be the wrong size without it.
 
 ### 4. Review and run
 - Open `output.gcode` in a text editor to review
@@ -25,14 +27,19 @@ python frc_cam_postprocessor.py my_part.dxf output.gcode --thickness 0.25
 
 ## Common Commands
 
-**1/4" aluminum plate:**
+**1/4" aluminum plate with 4mm tool:**
 ```bash
-python frc_cam_postprocessor.py part.dxf part.gcode --thickness 0.25
+python frc_cam_postprocessor.py part.dxf part.gcode --thickness 0.25 --tool-diameter 0.157
 ```
 
-**1/8" polycarbonate with more tabs:**
+**1/8" polycarbonate with 1/8" tool and more tabs:**
 ```bash
-python frc_cam_postprocessor.py part.dxf part.gcode --thickness 0.125 --tabs 6
+python frc_cam_postprocessor.py part.dxf part.gcode --thickness 0.125 --tool-diameter 0.125 --tabs 6
+```
+
+**Fast drilling mode for screw holes:**
+```bash
+python frc_cam_postprocessor.py part.dxf part.gcode --thickness 0.25 --tool-diameter 0.157 --drill-screws
 ```
 
 ## What Gets Detected Automatically
@@ -41,6 +48,16 @@ python frc_cam_postprocessor.py part.dxf part.gcode --thickness 0.125 --tabs 6
 ✅ **Bearing holes:** 1.125" diameter  
 ✅ **Pockets:** Any closed inner boundary
 ✅ **Perimeter:** Outer boundary (with tabs)
+
+## Tool Sizes Reference
+
+**Common end mill sizes:**
+- **4mm = 0.157"** (default, good all-around)
+- 1/8" = 0.125" (smaller features, slower)
+- 6mm = 0.236" (faster, larger features only)
+- 1/4" = 0.250" (fast perimeter cuts)
+
+**⚠️ Measure your actual tool with calipers!** Nominal sizes may vary.
 
 ## Customizing Feed Rates
 
