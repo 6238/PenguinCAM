@@ -15,8 +15,19 @@ A simple, no-fuss CAM post-processor designed specifically for FRC robotics team
 
 ✅ **Perimeter with tabs:**
 - Cuts outer perimeter with holding tabs
+- **Smart tab placement** - tabs only on straight sections (avoids curves)
 - Configurable tab count, width, and height
 - Prevents parts from flying away during cutting
+
+✅ **OnShape DXF compatibility:**
+- Handles LINE, ARC, and SPLINE entities
+- Automatically connects segments into closed paths
+- Works with complex curved geometry
+
+✅ **Tool compensation:**
+- Perimeter offset OUTWARD for correct part size
+- Pockets offset INWARD  
+- Holes compensated for exact diameter
 
 ✅ **Pre-configured for FRC:**
 - Material thickness: 1/8" to 1/2"
@@ -53,6 +64,8 @@ python frc_cam_postprocessor.py robot_plate.dxf output.gcode --thickness 0.25 --
 
 **IMPORTANT:** Always specify your tool diameter! Without it, your parts will be the wrong size.
 
+**Z-AXIS NOTE:** The post-processor uses **Z=0 at the sacrifice board (bottom)**. Always zero your Z-axis to the sacrifice board surface, not the material top. This ensures consistent setup and guaranteed cut-through. See [Z_COORDINATE_SYSTEM.md](Z_COORDINATE_SYSTEM.md) for details.
+
 ### Command-line options:
 ```
 python frc_cam_postprocessor.py INPUT.dxf OUTPUT.gcode [OPTIONS]
@@ -62,11 +75,12 @@ Required:
   OUTPUT.gcode        Output G-code file
 
 Options:
-  --thickness FLOAT   Material thickness in inches (default: 0.25)
-  --tool-diameter FLOAT  Tool diameter in inches (default: 0.157" = 4mm)
-  --units inch/mm     Units to use (default: inch)
-  --tabs INT          Number of tabs on perimeter (default: 4)
-  --drill-screws      Center drill screw holes instead of milling (faster)
+  --thickness FLOAT        Material thickness in inches (default: 0.25)
+  --tool-diameter FLOAT    Tool diameter in inches (default: 0.157" = 4mm)
+  --sacrifice-depth FLOAT  Cut depth into sacrifice board (default: 0.02")
+  --units inch/mm          Units to use (default: inch)
+  --tabs INT               Number of tabs on perimeter (default: 4)
+  --drill-screws           Center drill screw holes instead of milling (faster)
 ```
 
 **Tool diameter is critical!** Common sizes:
@@ -74,6 +88,11 @@ Options:
 - 1/8" = 0.125"
 - 6mm = 0.236"
 - 1/4" = 0.250"
+
+**Z-axis setup:** Z=0 is at the **sacrifice board (bottom)**, not the material top.
+- Always zero to the sacrifice board surface
+- Default overcut: 0.02" into sacrifice board
+- Increase to 0.03" for flex materials or if cuts aren't complete
 
 ### Examples:
 
@@ -183,9 +202,11 @@ The generated G-code includes:
 - Make sure your DXF has actual CIRCLE entities, not arcs
 - Check that holes aren't grouped or blocked
 
-**"No polylines found"**
-- Ensure your perimeter/pockets are closed polylines
-- In OnShape, use "Export as polylines" if available
+**"No polylines found" or "Found 0 closed paths"**
+- OnShape exports individual LINE/ARC/SPLINE entities instead of polylines
+- The post-processor automatically connects them - see [ONSHAPE_DXF_FIX.md](ONSHAPE_DXF_FIX.md)
+- If you see "Created convex hull (APPROXIMATE)", your geometry has gaps
+- Check that all perimeter segments connect in your CAD
 
 **Wrong holes detected**
 - Adjust `self.tolerance` value if your holes are slightly off-size

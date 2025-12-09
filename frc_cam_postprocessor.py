@@ -616,19 +616,131 @@ class FRCPostProcessor:
             gcode.append("(WARNING: Perimeter offset resulted in invalid geometry)")
             return gcode
         
-        # Calculate perimeter length and tab positions
-        perimeter_length = 0
+        # Calculate segment lengths and identify straight vs curved sections
         segment_lengths = []
+        segment_angles = []
+        is_straight = []
+        
         for i in range(len(offset_points)):
             p1 = offset_points[i]
             p2 = offset_points[(i + 1) % len(offset_points)]
+            p0 = offset_points[(i - 1) % len(offset_points)]
+            
+            # Segment length
             length = math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
             segment_lengths.append(length)
-            perimeter_length += length
+            
+            # Calculate angle change to detect curves
+            # Vector from p0 to p1
+            v1 = (p1[0] - p0[0], p1[1] - p0[1])
+            v1_len = math.sqrt(v1[0]**2 + v1[1]**2)
+            
+            # Vector from p1 to p2
+            v2 = (p2[0] - p1[0], p2[1] - p1[1])
+            v2_len = math.sqrt(v2[0]**2 + v2[1]**2)
+            
+            if v1_len > 0.001 and v2_len > 0.001:
+                # Normalize vectors
+                v1_norm = (v1[0] / v1_len, v1[1] / v1_len)
+                v2_norm = (v2[0] / v2_len, v2[1] / v2_len)
+                
+                # Dot product to get angle
+                dot_product = v1_norm[0] * v2_norm[0] + v1_norm[1] * v2_norm[1]
+                dot_product = max(-1.0, min(1.0, dot_product))  # Clamp to [-1, 1]
+                angle = math.acos(dot_product)
+                segment_angles.append(angle)
+                
+                # If angle change is small (< 5 degrees), consider it straight
+                angle_threshold = math.radians(5)  # 5 degrees
+                is_straight.append(angle < angle_threshold)
+            else:
+                segment_angles.append(0)
+                is_straight.append(True)  # Very short segments treated as straight
         
-        # Calculate tab positions (evenly spaced)
-        tab_spacing = perimeter_length / self.num_tabs
-        tab_positions = [i * tab_spacing for i in range(self.num_tabs)]
+        # Calculate total perimeter length
+        perimeter_length = sum(segment_lengths)
+        
+        # Find straight sections and their lengths
+        straight_sections = []
+        current_section_start = 0
+        current_section_length = 0
+        in_straight_section = False
+        
+        for i in range(len(offset_points)):
+            if is_straight[i]:
+                if not in_straight_section:
+                    # Start of new straight section
+                    current_section_start = sum(segment_lengths[:i])
+                    current_section_length = 0
+                    in_straight_section = True
+                current_section_length += segment_lengths[i]
+            else:
+                if in_straight_section:
+                    # End of straight section
+                    straight_sections.append({
+                        'start': current_section_start,
+                        'length': current_section_length,
+                        'end': current_section_start + current_section_length
+                    })
+                    in_straight_section = False
+        
+        # Close the last section if needed
+        if in_straight_section:
+            straight_sections.append({
+                'start': current_section_start,
+                'length': current_section_length,
+                'end': current_section_start + current_section_length
+            })
+        
+        # Calculate tab positions - distribute evenly among straight sections
+        tab_positions = []
+        
+        if len(straight_sections) == 0:
+            # No straight sections found - fall back to evenly spaced tabs
+            gcode.append("(WARNING: No straight sections found for tabs - using evenly spaced tabs)")
+            tab_spacing = perimeter_length / self.num_tabs
+            tab_positions = [i * tab_spacing for i in range(self.num_tabs)]
+        else:
+            # Place tabs in straight sections
+            # Distribute tabs proportionally based on straight section lengths
+            total_straight_length = sum(s['length'] for s in straight_sections)
+            
+            # How many tabs per straight section?
+            tabs_placed = 0
+            for section in straight_sections:
+                # Proportional number of tabs for this section
+                section_tabs = max(1, round(self.num_tabs * section['length'] / total_straight_length))
+                
+                # Don't exceed total tabs
+                if tabs_placed + section_tabs > self.num_tabs:
+                    section_tabs = self.num_tabs - tabs_placed
+                
+                if section_tabs > 0 and section['length'] > self.tab_width * 2:
+                    # Place tabs evenly within this section
+                    if section_tabs == 1:
+                        # Single tab in center of section
+                        tab_positions.append(section['start'] + section['length'] / 2)
+                    else:
+                        # Multiple tabs evenly spaced
+                        tab_spacing = section['length'] / (section_tabs + 1)
+                        for i in range(1, section_tabs + 1):
+                            tab_positions.append(section['start'] + i * tab_spacing)
+                    
+                    tabs_placed += section_tabs
+                
+                if tabs_placed >= self.num_tabs:
+                    break
+            
+            # If we didn't place enough tabs, add more to longest straight section
+            if tabs_placed < self.num_tabs and straight_sections:
+                longest_section = max(straight_sections, key=lambda s: s['length'])
+                remaining_tabs = self.num_tabs - tabs_placed
+                for i in range(remaining_tabs):
+                    # Spread remaining tabs in longest section
+                    position = longest_section['start'] + (i + 1) * longest_section['length'] / (remaining_tabs + 1)
+                    tab_positions.append(position)
+        
+        gcode.append(f"(Tabs placed: {len(tab_positions)} on straight sections)")
         
         # Move to start
         start = offset_points[0]
@@ -648,7 +760,7 @@ class FRCPostProcessor:
             while tab_index < len(tab_positions) and tab_positions[tab_index] < segment_end_dist:
                 tab_dist = tab_positions[tab_index]
                 
-                if tab_dist >= segment_start_dist:
+                if tab_dist >= segment_start_dist and segment_lengths[i - 1] > 0:
                     # Calculate tab position along segment
                     t = (tab_dist - segment_start_dist) / segment_lengths[i - 1]
                     prev_point = offset_points[i - 1]

@@ -18,10 +18,13 @@ pip install ezdxf shapely
 python frc_cam_postprocessor.py my_part.dxf output.gcode --thickness 0.25 --tool-diameter 0.157
 ```
 
-**⚠️ IMPORTANT:** Always specify `--tool-diameter`! Your parts will be the wrong size without it.
+**⚠️ IMPORTANT:** 
+- Always specify `--tool-diameter`! Your parts will be the wrong size without it.
+- **Z=0 is at the sacrifice board (bottom)**, not material top. Always zero to sacrifice board!
 
-### 4. Review and run
+### 4. Setup and run
 - Open `output.gcode` in a text editor to review
+- **Zero your Z-axis to the SACRIFICE BOARD surface** (not material top!)
 - Load into your CNC controller
 - Do a dry run first!
 
