@@ -86,19 +86,25 @@ echo.
 echo Starting server...
 echo The browser will open automatically
 echo.
-echo Press Ctrl+C to stop the server
+echo Close this window to stop the server
 echo.
 echo ==========================================
 echo.
 
-REM Start the server
-start /B python frc_cam_gui_app.py
+REM Start the server (not in background, so it can be killed properly)
+start "PenguinCAM Server" python frc_cam_gui_app.py
 
 REM Wait a moment for server to start
-timeout /t 2 /nobreak >nul
+timeout /t 3 /nobreak >nul
 
 REM Open browser
 start http://localhost:6238
 
-REM Keep window open
+REM Instructions
+echo.
+echo Server is running in a separate window
+echo Close the "PenguinCAM Server" window to stop
+echo.
+echo You can close THIS window safely now.
+echo.
 pause

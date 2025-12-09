@@ -83,7 +83,34 @@ echo ""
 echo "=========================================="
 echo ""
 
-# Start the server and open browser
+# Function to cleanup on exit
+cleanup() {
+    echo ""
+    echo "🛑 Stopping server..."
+    
+    # Kill the Flask server process and all its children
+    if [ ! -z "$SERVER_PID" ]; then
+        # Kill the process group (Flask spawns child processes in debug mode)
+        pkill -P $SERVER_PID 2>/dev/null
+        kill $SERVER_PID 2>/dev/null
+        
+        # Wait a moment for graceful shutdown
+        sleep 1
+        
+        # Force kill if still running
+        kill -9 $SERVER_PID 2>/dev/null
+        pkill -9 -f "frc_cam_gui_app.py" 2>/dev/null
+    fi
+    
+    echo "✓ Server stopped"
+    echo "✓ Port 6238 released"
+    exit 0
+}
+
+# Set up trap to catch Ctrl+C and other termination signals
+trap cleanup SIGINT SIGTERM EXIT
+
+# Start the server in background
 python3 frc_cam_gui_app.py &
 SERVER_PID=$!
 
@@ -99,5 +126,8 @@ elif command -v xdg-open &> /dev/null; then
     xdg-open http://localhost:6238
 fi
 
-# Wait for server process
+echo "Server PID: $SERVER_PID"
+echo ""
+
+# Wait for server process (will be interrupted by Ctrl+C)
 wait $SERVER_PID

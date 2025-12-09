@@ -1,0 +1,12 @@
+{
+  "enabled": false,
+  "google_client_id": null,
+  "allowed_domains": [
+    "example.com"
+  ],
+  "allowed_emails": [
+    "user@example.com"
+  ],
+  "require_domain": true,
+  "session_timeout": 86400
+}
