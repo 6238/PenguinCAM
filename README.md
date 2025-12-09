@@ -64,7 +64,9 @@ python frc_cam_postprocessor.py robot_plate.dxf output.gcode --thickness 0.25 --
 
 **IMPORTANT:** Always specify your tool diameter! Without it, your parts will be the wrong size.
 
-**Z-AXIS NOTE:** The post-processor uses **Z=0 at the sacrifice board (bottom)**. Always zero your Z-axis to the sacrifice board surface, not the material top. This ensures consistent setup and guaranteed cut-through. See [Z_COORDINATE_SYSTEM.md](Z_COORDINATE_SYSTEM.md) for details.
+**MACHINE SETUP:**
+- **X/Y Zero:** Clamp your material to the sacrifice board, then set X=0 Y=0 at the **lower-left corner** of your material. This matches the origin point in your CAD file.
+- **Z Zero:** Set Z=0 at the **sacrifice board surface** (bottom), not the material top. This ensures consistent setup and guaranteed cut-through with the overcut. See [Z_COORDINATE_SYSTEM.md](Z_COORDINATE_SYSTEM.md) for details.
 
 ### Command-line options:
 ```

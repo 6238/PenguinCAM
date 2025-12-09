@@ -82,12 +82,18 @@ python frc_cam_postprocessor.py part.dxf output.gcode --thickness 0.25 --sacrifi
 2. Clamp or tape down securely
 3. Material thickness doesn't need to be exact
 
-### Step 2: Zero Z-Axis
+### Step 2: Zero X and Y Axes
+1. Position tool at the **lower-left corner** of your material
+2. This should align with the origin (0,0) in your CAD file
+3. Set X=0 and Y=0 in your controller
+4. This is your X/Y reference point for the entire job
+
+### Step 3: Zero Z-Axis
 1. **Touch off to SACRIFICE BOARD surface**
 2. Set this as Z=0 in your controller
 3. DON'T touch off to material top!
 
-### Step 3: Run Program
+### Step 4: Run Program
 1. Load G-code
 2. Start cycle
 3. Tool will:

@@ -24,7 +24,9 @@ python frc_cam_postprocessor.py my_part.dxf output.gcode --thickness 0.25 --tool
 
 ### 4. Setup and run
 - Open `output.gcode` in a text editor to review
-- **Zero your Z-axis to the SACRIFICE BOARD surface** (not material top!)
+- **Clamp your material** to the sacrifice board securely
+- **Zero X/Y:** Set X=0 Y=0 at the **lower-left corner** of your material
+- **Zero Z:** Set Z=0 at the **sacrifice board surface** (not material top!)
 - Load into your CNC controller
 - Do a dry run first!
 
