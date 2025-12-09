@@ -65,19 +65,286 @@ class FRCPostProcessor:
         
         # Extract polylines and lines (boundaries/pockets)
         self.polylines = []
+        
+        # Method 1: Look for LWPOLYLINE entities
         for entity in msp.query('LWPOLYLINE'):
             points = [(p[0], p[1]) for p in entity.get_points('xy')]
             if entity.closed and len(points) > 2:
                 self.polylines.append(points)
         
-        # Also check for POLYLINE entities
+        # Method 2: Look for POLYLINE entities
         for entity in msp.query('POLYLINE'):
             if entity.is_2d_polyline:
                 points = [(v.dxf.location.x, v.dxf.location.y) for v in entity.vertices]
                 if entity.is_closed and len(points) > 2:
                     self.polylines.append(points)
         
-        print(f"Found {len(self.circles)} circles and {len(self.polylines)} polylines")
+        # Method 3: Collect individual LINE, ARC, SPLINE entities and try to form closed paths
+        # This is needed for OnShape exports which use individual entities
+        lines = list(msp.query('LINE'))
+        arcs = list(msp.query('ARC'))
+        splines = list(msp.query('SPLINE'))
+        
+        if lines or arcs or splines:
+            print(f"Found {len(lines)} lines, {len(arcs)} arcs, {len(splines)} splines - attempting to form closed paths...")
+            closed_paths = self._chain_entities_to_paths(lines, arcs, splines)
+            self.polylines.extend(closed_paths)
+        
+        print(f"Found {len(self.circles)} circles and {len(self.polylines)} closed paths")
+    
+    def _chain_entities_to_paths(self, lines, arcs, splines):
+        """
+        Chain individual LINE, ARC, and SPLINE entities into closed paths.
+        This handles DXF exports from OnShape and other CAD programs that don't use polylines.
+        """
+        from shapely.geometry import LineString, Point, Polygon
+        from shapely.ops import linemerge, unary_union
+        import math
+        
+        # First, try the graph-based approach for exact geometry
+        print("  Attempting to connect segments into exact paths...")
+        exact_paths = self._connect_segments_graph_based(lines, arcs, splines)
+        if exact_paths:
+            return exact_paths
+        
+        # Fallback: Convert all entities to linestrings and try merge
+        print("  Falling back to linestring merge...")
+        all_linestrings = []
+        
+        # Add LINE entities
+        for line in lines:
+            start = (line.dxf.start.x, line.dxf.start.y)
+            end = (line.dxf.end.x, line.dxf.end.y)
+            all_linestrings.append(LineString([start, end]))
+        
+        # Add ARC entities (sample them into line segments)
+        for arc in arcs:
+            points = self._sample_arc(arc, num_points=20)
+            if len(points) >= 2:
+                all_linestrings.append(LineString(points))
+        
+        # Add SPLINE entities (sample them into line segments)
+        for spline in splines:
+            points = self._sample_spline(spline, num_points=30)
+            if len(points) >= 2:
+                all_linestrings.append(LineString(points))
+        
+        if not all_linestrings:
+            return []
+        
+        try:
+            # Merge connected line segments
+            merged = linemerge(all_linestrings)
+            
+            # Extract closed paths
+            closed_paths = []
+            tolerance = 0.1  # 0.1" tolerance for "almost closed"
+            
+            # Check if we got a single geometry or multiple
+            geoms_to_check = []
+            if hasattr(merged, 'geoms'):
+                geoms_to_check = list(merged.geoms)
+            else:
+                geoms_to_check = [merged]
+            
+            for geom in geoms_to_check:
+                coords = list(geom.coords)
+                if len(coords) < 3:
+                    continue
+                
+                # Check if path is closed or nearly closed
+                start = Point(coords[0])
+                end = Point(coords[-1])
+                distance = start.distance(end)
+                
+                is_closed = (coords[0] == coords[-1]) or distance < tolerance
+                
+                if is_closed:
+                    # Remove duplicate closing point if present
+                    if coords[0] == coords[-1]:
+                        coords = coords[:-1]
+                    
+                    if len(coords) > 2:
+                        closed_paths.append(coords)
+                        print(f"  Found closed path with {len(coords)} points (gap: {distance:.4f}\")")
+            
+            # If we still didn't find closed paths, try creating convex hull (last resort)
+            if not closed_paths and all_linestrings:
+                print("  Attempting to form polygon from all segments (APPROXIMATE)...")
+                try:
+                    union = unary_union(all_linestrings)
+                    if hasattr(union, 'convex_hull'):
+                        hull = union.convex_hull
+                        if isinstance(hull, Polygon) and len(hull.exterior.coords) > 3:
+                            coords = list(hull.exterior.coords)[:-1]
+                            closed_paths.append(coords)
+                            print(f"  ⚠️  Created convex hull with {len(coords)} points (LOSES DETAIL!)")
+                            print(f"  ⚠️  This is approximate - concave features will be lost!")
+                except Exception as e:
+                    print(f"  Could not create polygon: {e}")
+            
+            return closed_paths
+            
+        except Exception as e:
+            print(f"Warning: Could not automatically chain entities into paths: {e}")
+            return []
+    
+    def _connect_segments_graph_based(self, lines, arcs, splines):
+        """
+        Build a connectivity graph and find closed cycles.
+        This preserves exact geometry including curves.
+        """
+        from collections import defaultdict
+        import math
+        
+        # Build list of all segments with their endpoints
+        segments = []
+        
+        # Add lines
+        for line in lines:
+            start = (line.dxf.start.x, line.dxf.start.y)
+            end = (line.dxf.end.x, line.dxf.end.y)
+            points = [start, end]
+            segments.append({'type': 'line', 'points': points, 'start': start, 'end': end})
+        
+        # Add arcs (sampled)
+        for arc in arcs:
+            points = self._sample_arc(arc, num_points=20)
+            if len(points) >= 2:
+                segments.append({'type': 'arc', 'points': points, 'start': points[0], 'end': points[-1]})
+        
+        # Add splines (sampled)
+        for spline in splines:
+            points = self._sample_spline(spline, num_points=30)
+            if len(points) >= 2:
+                segments.append({'type': 'spline', 'points': points, 'start': points[0], 'end': points[-1]})
+        
+        if not segments:
+            return []
+        
+        # Build adjacency graph
+        tolerance = 0.01  # 0.01" tolerance for matching endpoints
+        
+        def points_match(p1, p2, tol=tolerance):
+            return math.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2) < tol
+        
+        # Find which segments connect to which
+        graph = defaultdict(list)  # endpoint -> list of (segment_idx, is_start)
+        
+        for idx, seg in enumerate(segments):
+            # Add connections for start point
+            start_key = self._round_point(seg['start'], 3)
+            graph[start_key].append((idx, True))
+            
+            # Add connections for end point
+            end_key = self._round_point(seg['end'], 3)
+            graph[end_key].append((idx, False))
+        
+        # Find closed cycles
+        visited = set()
+        closed_paths = []
+        
+        for start_idx in range(len(segments)):
+            if start_idx in visited:
+                continue
+            
+            # Try to build a path starting from this segment
+            path_segments = []
+            path_points = []
+            current_idx = start_idx
+            current_end = segments[start_idx]['end']
+            
+            # Add first segment
+            path_segments.append(current_idx)
+            path_points.extend(segments[current_idx]['points'][:-1])  # Don't duplicate endpoints
+            visited.add(current_idx)
+            
+            # Try to find next segments
+            max_iterations = len(segments)
+            for _ in range(max_iterations):
+                # Look for a segment that starts where we ended
+                end_key = self._round_point(current_end, 3)
+                
+                next_found = False
+                for next_idx, is_start in graph[end_key]:
+                    if next_idx == current_idx or next_idx in path_segments:
+                        continue
+                    
+                    # Found a connection!
+                    seg = segments[next_idx]
+                    
+                    if is_start:
+                        # Segment starts where we ended - add it forward
+                        path_segments.append(next_idx)
+                        path_points.extend(seg['points'][:-1])
+                        current_end = seg['end']
+                    else:
+                        # Segment ends where we ended - add it reversed
+                        path_segments.append(next_idx)
+                        reversed_points = list(reversed(seg['points']))
+                        path_points.extend(reversed_points[:-1])
+                        current_end = seg['start']
+                    
+                    visited.add(next_idx)
+                    next_found = True
+                    break
+                
+                if not next_found:
+                    break
+                
+                # Check if we've closed the loop
+                start_point = segments[start_idx]['start']
+                if points_match(current_end, start_point):
+                    # Closed path found!
+                    if len(path_points) > 3:
+                        closed_paths.append(path_points)
+                        print(f"  Found exact closed path with {len(path_points)} points using {len(path_segments)} segments")
+                    break
+        
+        return closed_paths
+    
+    def _round_point(self, point, decimals=3):
+        """Round a point to create a hashable key for graph"""
+        return (round(point[0], decimals), round(point[1], decimals))
+    
+    def _sample_arc(self, arc, num_points=20):
+        """Sample an ARC entity into a series of points"""
+        import math
+        
+        center = (arc.dxf.center.x, arc.dxf.center.y)
+        radius = arc.dxf.radius
+        start_angle = math.radians(arc.dxf.start_angle)
+        end_angle = math.radians(arc.dxf.end_angle)
+        
+        # Handle angle wrapping
+        if end_angle < start_angle:
+            end_angle += 2 * math.pi
+        
+        points = []
+        for i in range(num_points + 1):
+            t = i / num_points
+            angle = start_angle + t * (end_angle - start_angle)
+            x = center[0] + radius * math.cos(angle)
+            y = center[1] + radius * math.sin(angle)
+            points.append((x, y))
+        
+        return points
+    
+    def _sample_spline(self, spline, num_points=30):
+        """Sample a SPLINE entity into a series of points"""
+        try:
+            # Use ezdxf's built-in spline sampling
+            points = []
+            for point in spline.flattening(distance=0.01):
+                points.append((point[0], point[1]))
+            return points if points else []
+        except:
+            # Fallback: use control points
+            try:
+                control_points = [(p[0], p[1]) for p in spline.control_points]
+                return control_points if len(control_points) > 1 else []
+            except:
+                return []
         
     def classify_holes(self):
         """Classify holes by diameter"""
