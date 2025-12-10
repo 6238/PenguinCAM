@@ -26,22 +26,40 @@ class PenguinCAMAuth:
         self._register_routes()
     
     def _load_config(self):
-        """Load authentication configuration"""
+        """Load authentication configuration, prioritizing environment variables"""
         config_file = 'auth_config.json'
+        config = {}
         
+        # Try to load from file
         if os.path.exists(config_file):
             with open(config_file, 'r') as f:
-                return json.load(f)
+                config = json.load(f)
         
-        # Default config
-        return {
-            'enabled': False,  # Set to True to enable auth
-            'google_client_id': None,  # Your OAuth client ID
-            'allowed_domains': [],  # e.g., ["team6238.org", "gmail.com"]
-            'allowed_emails': [],  # Specific allowed emails
-            'require_domain': True,  # Require domain match
-            'session_timeout': 86400  # 24 hours in seconds
-        }
+        # Override with environment variables (these take precedence)
+        config['enabled'] = os.environ.get('AUTH_ENABLED', str(config.get('enabled', 'false'))).lower() == 'true'
+        config['google_client_id'] = os.environ.get('GOOGLE_CLIENT_ID', config.get('google_client_id'))
+        
+        # Allowed domains (comma-separated in env var)
+        env_domains = os.environ.get('ALLOWED_DOMAINS', '')
+        if env_domains:
+            config['allowed_domains'] = [d.strip() for d in env_domains.split(',')]
+        elif 'allowed_domains' not in config:
+            config['allowed_domains'] = []
+        
+        # Allowed emails (comma-separated in env var)
+        env_emails = os.environ.get('ALLOWED_EMAILS', '')
+        if env_emails:
+            config['allowed_emails'] = [e.strip() for e in env_emails.split(',')]
+        elif 'allowed_emails' not in config:
+            config['allowed_emails'] = []
+        
+        # Set defaults
+        if 'require_domain' not in config:
+            config['require_domain'] = True
+        if 'session_timeout' not in config:
+            config['session_timeout'] = 86400  # 24 hours
+        
+        return config
     
     def _save_config(self):
         """Save configuration"""
