@@ -619,14 +619,19 @@ import atexit
 atexit.register(cleanup)
 
 if __name__ == '__main__':
+    # Get port from environment variable (Railway) or default to 6238 for local dev
+    port = int(os.environ.get('PORT', 6238))
+    
     print("="*70)
     print("FRC CAM Post-Processor - Web GUI")
     print("="*70)
     print(f"\nPost-processor script: {POST_PROCESSOR}")
     print(f"Temporary directory: {TEMP_DIR}")
     print("\n🚀 Starting server...")
-    print("📂 Open your browser to: http://localhost:6238")
+    print(f"📂 Server will run on port: {port}")
     print("\n⚠️  Press Ctrl+C to stop the server\n")
     print("="*70)
     
-    app.run(debug=True, host='0.0.0.0', port=6238)
+    # Disable debug mode in production
+    debug_mode = os.environ.get('FLASK_ENV') != 'production'
+    app.run(debug=debug_mode, host='0.0.0.0', port=port)
