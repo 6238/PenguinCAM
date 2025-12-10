@@ -23,20 +23,29 @@ class OnShapeClient:
         self.token_expires = None
     
     def _load_config(self):
-        """Load OnShape OAuth configuration"""
+        """Load OnShape OAuth configuration, prioritizing environment variables"""
+        # Try to load from file first
         config_file = 'onshape_config.json'
+        config = {}
         
         if os.path.exists(config_file):
             with open(config_file, 'r') as f:
-                return json.load(f)
+                config = json.load(f)
         
-        # Default config
-        return {
-            'client_id': 'VKDKRMPYLAC3PE6YNHRWFGRTW37ZFWTG2IDE5UI=',
-            'client_secret': None,  # User must add this
-            'redirect_uri': 'http://localhost:6238/onshape/oauth/callback',
-            'scopes': 'OAuth2Read OAuth2ReadPII'
-        }
+        # Override with environment variables (these take precedence)
+        config['client_id'] = os.environ.get('ONSHAPE_CLIENT_ID', config.get('client_id', 'VKDKRMPYLAC3PE6YNHRWFGRTW37ZFWTG2IDE5UI='))
+        config['client_secret'] = os.environ.get('ONSHAPE_CLIENT_SECRET', config.get('client_secret'))
+        
+        # Set defaults for other fields if not present
+        if 'redirect_uri' not in config:
+            # Determine base URL from environment or default to localhost
+            base_url = os.environ.get('BASE_URL', 'http://localhost:6238')
+            config['redirect_uri'] = f"{base_url}/onshape/oauth/callback"
+        
+        if 'scopes' not in config:
+            config['scopes'] = 'OAuth2Read OAuth2ReadPII'
+        
+        return config
     
     def _save_config(self):
         """Save configuration"""
