@@ -5,6 +5,7 @@ A Flask-based web interface for generating G-code from DXF files
 """
 
 from flask import Flask, render_template, request, jsonify, send_file
+from werkzeug.middleware.proxy_fix import ProxyFix
 import os
 import sys
 import subprocess
@@ -41,6 +42,10 @@ except ImportError:
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
+
+# Trust proxy headers (Railway, nginx, etc.)
+# This tells Flask it's behind HTTPS even if internal requests are HTTP
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # Set secret key for session management (required by auth and OnShape integration)
 if not app.secret_key:
