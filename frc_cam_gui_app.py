@@ -193,19 +193,27 @@ def drive_status():
             'message': 'Google Drive dependencies not installed'
         })
     
-    try:
-        uploader = GoogleDriveUploader()
-        configured, message = uploader.is_configured()
+    # Check if user is authenticated and has Drive access
+    if AUTH_AVAILABLE and auth.is_enabled():
+        creds = auth.get_credentials()
+        if not creds:
+            return jsonify({
+                'available': True,
+                'configured': False,
+                'message': 'Please log in to connect Google Drive'
+            })
+        
         return jsonify({
             'available': True,
-            'configured': configured,
-            'message': message
+            'configured': True,
+            'message': 'Google Drive connected'
         })
-    except Exception as e:
+    else:
+        # Auth disabled, Drive not available
         return jsonify({
             'available': True,
             'configured': False,
-            'message': f'Error: {str(e)}'
+            'message': 'Google Drive not configured - see GOOGLE_DRIVE_SETUP.md'
         })
 
 @app.route('/drive/upload/<filename>', methods=['POST'])
@@ -226,13 +234,40 @@ def upload_to_drive(filename):
                 'message': 'File not found'
             }), 404
         
-        # Upload to Drive
-        result = upload_gcode_to_drive(file_path, filename)
+        # Get credentials from session
+        creds = None
+        if AUTH_AVAILABLE and auth.is_enabled():
+            creds = auth.get_credentials()
+            if not creds:
+                return jsonify({
+                    'success': False,
+                    'message': 'Not authenticated with Google Drive'
+                }), 401
         
-        if result['success']:
-            return jsonify(result)
+        # Create uploader with credentials
+        uploader = GoogleDriveUploader(credentials=creds)
+        
+        if not uploader.authenticate():
+            return jsonify({
+                'success': False,
+                'message': 'Failed to authenticate with Google Drive'
+            }), 500
+        
+        # Upload the file
+        result = uploader.upload_file(file_path, filename)
+        
+        if result:
+            return jsonify({
+                'success': True,
+                'message': 'File uploaded to Google Drive',
+                'file_id': result.get('id'),
+                'web_view_link': result.get('webViewLink')
+            })
         else:
-            return jsonify(result), 500
+            return jsonify({
+                'success': False,
+                'message': 'Upload failed'
+            }), 500
             
     except Exception as e:
         return jsonify({

@@ -24,9 +24,16 @@ TOKEN_FILE = 'token.pickle'  # Auto-generated after first auth
 class GoogleDriveUploader:
     """Handles uploading files to Google Drive"""
     
-    def __init__(self):
+    def __init__(self, credentials=None):
+        """
+        Initialize with credentials from session
+        
+        Args:
+            credentials: Google OAuth2 credentials object
+        """
         self.service = None
         self.config = self._load_config()
+        self.credentials = credentials
         
     def _load_config(self):
         """Load drive configuration (folder IDs, etc.)"""
@@ -34,10 +41,12 @@ class GoogleDriveUploader:
         if os.path.exists(config_file):
             with open(config_file, 'r') as f:
                 return json.load(f)
+        
+        # Environment variables override
         return {
-            'shared_drive_name': 'Popcorn Penguins',
-            'folder_path': 'CNC/G-code',  # Path within the shared drive
-            'folder_id': None  # Will be found automatically
+            'shared_drive_name': os.environ.get('DRIVE_NAME', 'Popcorn Penguins'),
+            'folder_path': os.environ.get('DRIVE_FOLDER', 'CNC/G-code'),
+            'folder_id': os.environ.get('DRIVE_FOLDER_ID')
         }
     
     def _save_config(self):
@@ -46,36 +55,19 @@ class GoogleDriveUploader:
             json.dump(self.config, f, indent=2)
     
     def authenticate(self):
-        """Authenticate with Google Drive"""
-        creds = None
+        """
+        Use provided credentials to build Drive service
+        Returns True if successful
+        """
+        if not self.credentials:
+            return False
         
-        # Token file stores user's access and refresh tokens
-        if os.path.exists(TOKEN_FILE):
-            with open(TOKEN_FILE, 'rb') as token:
-                creds = pickle.load(token)
-        
-        # If no valid credentials, let user log in
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                if not os.path.exists(CREDENTIALS_FILE):
-                    raise FileNotFoundError(
-                        f"Missing {CREDENTIALS_FILE}. "
-                        "Please download from Google Cloud Console. "
-                        "See GOOGLE_DRIVE_SETUP.md for instructions."
-                    )
-                
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    CREDENTIALS_FILE, SCOPES)
-                creds = flow.run_local_server(port=0)
-            
-            # Save credentials for next time
-            with open(TOKEN_FILE, 'wb') as token:
-                pickle.dump(creds, token)
-        
-        self.service = build('drive', 'v3', credentials=creds)
-        return True
+        try:
+            self.service = build('drive', 'v3', credentials=self.credentials)
+            return True
+        except Exception as e:
+            print(f"Drive authentication error: {e}")
+            return False
     
     def find_shared_drive(self, drive_name):
         """Find a shared drive by name"""

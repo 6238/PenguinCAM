@@ -1,18 +1,28 @@
 """
-PenguinCAM Authentication Module
-Google OAuth integration for restricting access to team members
+PenguinCAM Authentication Module V2
+Google OAuth 2.0 with Drive API access
 """
 
 import os
 import json
 from functools import wraps
 from flask import session, redirect, url_for, request, jsonify
-from google.oauth2 import id_token
-from google.auth.transport import requests as google_requests
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import Flow
+from google.auth.transport.requests import Request as GoogleRequest
+from googleapiclient.discovery import build
 import secrets
 
 class PenguinCAMAuth:
-    """Handles Google OAuth authentication for PenguinCAM"""
+    """Handles Google OAuth authentication with Drive API access"""
+    
+    # Scopes we need
+    SCOPES = [
+        'openid',
+        'https://www.googleapis.com/auth/userinfo.email',
+        'https://www.googleapis.com/auth/userinfo.profile',
+        'https://www.googleapis.com/auth/drive.file'
+    ]
     
     def __init__(self, app):
         self.app = app
@@ -26,56 +36,120 @@ class PenguinCAMAuth:
         self._register_routes()
     
     def _load_config(self):
-        """Load authentication configuration, prioritizing environment variables"""
-        config_file = 'auth_config.json'
+        """Load authentication configuration from environment variables"""
         config = {}
         
-        # Try to load from file
-        if os.path.exists(config_file):
-            with open(config_file, 'r') as f:
-                config = json.load(f)
+        # Required settings
+        config['enabled'] = os.environ.get('AUTH_ENABLED', 'false').lower() == 'true'
+        config['google_client_id'] = os.environ.get('GOOGLE_CLIENT_ID')
+        config['google_client_secret'] = os.environ.get('GOOGLE_CLIENT_SECRET')
         
-        # Override with environment variables (these take precedence)
-        config['enabled'] = os.environ.get('AUTH_ENABLED', str(config.get('enabled', 'false'))).lower() == 'true'
-        config['google_client_id'] = os.environ.get('GOOGLE_CLIENT_ID', config.get('google_client_id'))
+        # Base URL for redirects
+        config['base_url'] = os.environ.get('BASE_URL', 'http://localhost:6238')
         
-        # Allowed domains (comma-separated in env var)
+        # Allowed domains/emails
         env_domains = os.environ.get('ALLOWED_DOMAINS', '')
-        if env_domains:
-            config['allowed_domains'] = [d.strip() for d in env_domains.split(',')]
-        elif 'allowed_domains' not in config:
-            config['allowed_domains'] = []
+        config['allowed_domains'] = [d.strip() for d in env_domains.split(',') if d.strip()]
         
-        # Allowed emails (comma-separated in env var)
         env_emails = os.environ.get('ALLOWED_EMAILS', '')
-        if env_emails:
-            config['allowed_emails'] = [e.strip() for e in env_emails.split(',')]
-        elif 'allowed_emails' not in config:
-            config['allowed_emails'] = []
+        config['allowed_emails'] = [e.strip() for e in env_emails.split(',') if e.strip()]
         
-        # Set defaults
-        if 'require_domain' not in config:
-            config['require_domain'] = True
-        if 'session_timeout' not in config:
-            config['session_timeout'] = 86400  # 24 hours
+        config['require_domain'] = True
+        config['session_timeout'] = 86400  # 24 hours
         
         return config
-    
-    def _save_config(self):
-        """Save configuration"""
-        with open('auth_config.json', 'w') as f:
-            json.dump(self.config, f, indent=2)
     
     def is_enabled(self):
         """Check if authentication is enabled"""
         return self.config.get('enabled', False)
+    
+    def is_authenticated(self):
+        """Check if user is authenticated"""
+        if not self.is_enabled():
+            return True  # If auth disabled, everyone is "authenticated"
+        
+        return session.get('authenticated', False)
+    
+    def get_credentials(self):
+        """Get Google API credentials from session"""
+        if not self.is_authenticated():
+            return None
+        
+        creds_data = session.get('google_credentials')
+        if not creds_data:
+            return None
+        
+        # Reconstruct credentials from session
+        creds = Credentials(
+            token=creds_data['token'],
+            refresh_token=creds_data.get('refresh_token'),
+            token_uri=creds_data.get('token_uri'),
+            client_id=creds_data.get('client_id'),
+            client_secret=creds_data.get('client_secret'),
+            scopes=creds_data.get('scopes')
+        )
+        
+        # Refresh if expired
+        if creds.expired and creds.refresh_token:
+            creds.refresh(GoogleRequest())
+            # Update session
+            self._save_credentials(creds)
+        
+        return creds
+    
+    def _save_credentials(self, creds):
+        """Save credentials to session"""
+        session['google_credentials'] = {
+            'token': creds.token,
+            'refresh_token': creds.refresh_token,
+            'token_uri': creds.token_uri,
+            'client_id': creds.client_id,
+            'client_secret': creds.client_secret,
+            'scopes': creds.scopes
+        }
+    
+    def _create_flow(self):
+        """Create OAuth flow"""
+        client_config = {
+            "web": {
+                "client_id": self.config['google_client_id'],
+                "client_secret": self.config['google_client_secret'],
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [f"{self.config['base_url']}/auth/callback"]
+            }
+        }
+        
+        flow = Flow.from_client_config(
+            client_config,
+            scopes=self.SCOPES,
+            redirect_uri=f"{self.config['base_url']}/auth/callback"
+        )
+        
+        return flow
+    
+    def _check_authorization(self, email, domain):
+        """Check if user is authorized"""
+        # Check specific emails
+        if email in self.config.get('allowed_emails', []):
+            return True
+        
+        # Check domain
+        if self.config.get('require_domain', True):
+            allowed_domains = self.config.get('allowed_domains', [])
+            if not allowed_domains:
+                return False  # No domains configured = no one allowed
+            
+            return domain in allowed_domains
+        
+        return True  # If not requiring domain and not in specific list, allow
     
     def _register_routes(self):
         """Register authentication routes"""
         
         @self.app.route('/auth/login')
         def auth_login():
-            """Login page"""
+            """Initiate OAuth flow"""
             if not self.is_enabled():
                 return redirect('/')
             
@@ -83,73 +157,80 @@ class PenguinCAMAuth:
             if self.is_authenticated():
                 return redirect('/')
             
-            # Serve login page
-            return self._render_login_page()
+            # Create OAuth flow
+            flow = self._create_flow()
+            
+            # Generate authorization URL
+            authorization_url, state = flow.authorization_url(
+                access_type='offline',
+                include_granted_scopes='true',
+                prompt='consent'  # Force consent to get refresh token
+            )
+            
+            # Store state in session for CSRF protection
+            session['oauth_state'] = state
+            
+            # Redirect to Google
+            return redirect(authorization_url)
         
-        @self.app.route('/auth/callback', methods=['POST'])
+        @self.app.route('/auth/callback')
         def auth_callback():
-            """Handle Google Sign-In callback"""
+            """Handle OAuth callback from Google"""
             if not self.is_enabled():
-                return jsonify({'error': 'Authentication not enabled'}), 400
+                return redirect('/')
             
-            # Get the ID token from the request
-            token = request.json.get('credential')
-            
-            if not token:
-                return jsonify({'error': 'No credential provided'}), 400
+            # Verify state for CSRF protection
+            if request.args.get('state') != session.get('oauth_state'):
+                return 'Invalid state parameter', 400
             
             try:
-                # Verify the token
-                client_id = self.config.get('google_client_id')
-                if not client_id:
-                    return jsonify({'error': 'Google Client ID not configured'}), 500
+                # Exchange authorization code for tokens
+                flow = self._create_flow()
+                flow.fetch_token(authorization_response=request.url)
                 
-                idinfo = id_token.verify_oauth2_token(
-                    token, 
-                    google_requests.Request(), 
-                    client_id
-                )
+                # Get credentials
+                creds = flow.credentials
                 
                 # Get user info
-                email = idinfo.get('email')
-                email_verified = idinfo.get('email_verified')
+                user_info_service = build('oauth2', 'v2', credentials=creds)
+                user_info = user_info_service.userinfo().get().execute()
+                
+                email = user_info.get('email')
                 domain = email.split('@')[1] if '@' in email else None
                 
-                # Check if email is verified
-                if not email_verified:
-                    return jsonify({'error': 'Email not verified'}), 403
-                
                 # Check authorization
-                authorized = self._check_authorization(email, domain)
+                if not self._check_authorization(email, domain):
+                    return self._render_error_page(
+                        'Access Denied',
+                        f'Your account ({email}) is not authorized to access PenguinCAM.'
+                    )
                 
-                if not authorized:
-                    return jsonify({
-                        'error': 'Access denied',
-                        'message': 'Your account is not authorized to access PenguinCAM'
-                    }), 403
+                # Save credentials to session
+                self._save_credentials(creds)
                 
                 # Create session
                 session['authenticated'] = True
                 session['user_email'] = email
-                session['user_name'] = idinfo.get('name')
-                session['user_picture'] = idinfo.get('picture')
+                session['user_name'] = user_info.get('name')
+                session['user_picture'] = user_info.get('picture')
                 session.permanent = True
                 
-                return jsonify({
-                    'success': True,
-                    'redirect': '/'
-                })
+                # Clear OAuth state
+                session.pop('oauth_state', None)
                 
-            except ValueError as e:
-                return jsonify({'error': f'Invalid token: {str(e)}'}), 401
+                return redirect('/')
+                
             except Exception as e:
-                return jsonify({'error': f'Authentication error: {str(e)}'}), 500
+                return self._render_error_page(
+                    'Authentication Error',
+                    f'Failed to authenticate: {str(e)}'
+                )
         
         @self.app.route('/auth/logout')
         def auth_logout():
             """Logout endpoint"""
             session.clear()
-            return redirect('/auth/login')
+            return redirect('/auth/login' if self.is_enabled() else '/')
         
         @self.app.route('/auth/status')
         def auth_status():
@@ -160,6 +241,7 @@ class PenguinCAMAuth:
             return jsonify({
                 'enabled': True,
                 'authenticated': self.is_authenticated(),
+                'drive_connected': session.get('google_credentials') is not None,
                 'user': {
                     'email': session.get('user_email'),
                     'name': session.get('user_name'),
@@ -167,37 +249,8 @@ class PenguinCAMAuth:
                 } if self.is_authenticated() else None
             })
     
-    def _check_authorization(self, email, domain):
-        """Check if user is authorized"""
-        # Check allowed emails list
-        allowed_emails = self.config.get('allowed_emails', [])
-        if email in allowed_emails:
-            return True
-        
-        # Check allowed domains
-        require_domain = self.config.get('require_domain', True)
-        if require_domain and domain:
-            allowed_domains = self.config.get('allowed_domains', [])
-            if domain in allowed_domains:
-                return True
-        
-        # If no restrictions set, deny by default
-        if not allowed_emails and not self.config.get('allowed_domains'):
-            # No restrictions configured - allow all (for initial setup)
-            # In production, you should configure restrictions
-            return True
-        
-        return False
-    
-    def is_authenticated(self):
-        """Check if current user is authenticated"""
-        if not self.is_enabled():
-            return True  # No auth required
-        
-        return session.get('authenticated', False)
-    
     def require_auth(self, f):
-        """Decorator to require authentication for a route"""
+        """Decorator to require authentication"""
         @wraps(f)
         def decorated_function(*args, **kwargs):
             if not self.is_enabled():
@@ -223,23 +276,14 @@ class PenguinCAMAuth:
             'picture': session.get('user_picture')
         }
     
-    def _render_login_page(self):
-        """Render the login page HTML"""
-        client_id = self.config.get('google_client_id', 'YOUR_CLIENT_ID')
-        
+    def _render_error_page(self, title, message):
+        """Render an error page"""
         html = f'''<!DOCTYPE html>
 <html>
 <head>
-    <title>PenguinCAM - Login</title>
+    <title>{title} - PenguinCAM</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }}
-        
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             background: linear-gradient(135deg, #0A0E14 0%, #1a1f2e 100%);
@@ -248,151 +292,62 @@ class PenguinCAMAuth:
             align-items: center;
             justify-content: center;
             color: #fff;
+            margin: 0;
+            padding: 20px;
         }}
         
-        .login-container {{
+        .error-container {{
             background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 69, 0, 0.3);
             border-radius: 20px;
             padding: 3rem;
-            max-width: 400px;
-            width: 90%;
+            max-width: 500px;
             text-align: center;
-            backdrop-filter: blur(10px);
         }}
         
-        .logo {{
-            font-size: 3rem;
+        .icon {{
+            font-size: 4rem;
             margin-bottom: 1rem;
         }}
         
         h1 {{
-            font-size: 2rem;
-            margin-bottom: 0.5rem;
             color: #FF4500;
+            margin-bottom: 1rem;
         }}
         
-        .subtitle {{
-            color: #8B949E;
-            margin-bottom: 2rem;
-        }}
-        
-        .team-info {{
-            background: rgba(255, 69, 0, 0.1);
-            border: 1px solid rgba(255, 69, 0, 0.3);
-            border-radius: 10px;
-            padding: 1rem;
-            margin-bottom: 2rem;
-        }}
-        
-        .team-info h2 {{
-            font-size: 1.2rem;
-            color: #FF4500;
-            margin-bottom: 0.5rem;
-        }}
-        
-        .team-info p {{
+        p {{
             color: #C9D1D9;
-            font-size: 0.9rem;
+            margin-bottom: 2rem;
+            line-height: 1.6;
         }}
         
-        #google-signin-button {{
-            margin: 2rem auto;
+        a {{
+            display: inline-block;
+            background: #FF4500;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 500;
         }}
         
-        .error {{
-            background: rgba(255, 69, 0, 0.2);
-            border: 1px solid #FF4500;
-            color: #fff;
-            padding: 1rem;
-            border-radius: 10px;
-            margin-top: 1rem;
-            display: none;
-        }}
-        
-        .footer {{
-            margin-top: 2rem;
-            color: #8B949E;
-            font-size: 0.85rem;
+        a:hover {{
+            background: #E63E00;
         }}
     </style>
 </head>
 <body>
-    <div class="login-container">
-        <div class="logo">🐧</div>
-        <h1>PenguinCAM</h1>
-        <p class="subtitle">FRC Team 6238 CAM Tool</p>
-        
-        <div class="team-info">
-            <h2>Popcorn Penguins</h2>
-            <p>Sign in with your team Google account</p>
-        </div>
-        
-        <div id="google-signin-button"></div>
-        
-        <div id="error-message" class="error"></div>
-        
-        <div class="footer">
-            Secure authentication via Google
-        </div>
+    <div class="error-container">
+        <div class="icon">⚠️</div>
+        <h1>{title}</h1>
+        <p>{message}</p>
+        <a href="/auth/login">Try Again</a>
     </div>
-    
-    <script>
-        function handleCredentialResponse(response) {{
-            // Send the credential to our server
-            fetch('/auth/callback', {{
-                method: 'POST',
-                headers: {{
-                    'Content-Type': 'application/json',
-                }},
-                body: JSON.stringify({{
-                    credential: response.credential
-                }})
-            }})
-            .then(res => res.json())
-            .then(data => {{
-                if (data.success) {{
-                    window.location.href = data.redirect;
-                }} else {{
-                    showError(data.message || data.error || 'Authentication failed');
-                }}
-            }})
-            .catch(error => {{
-                showError('Network error: ' + error.message);
-            }});
-        }}
-        
-        function showError(message) {{
-            const errorDiv = document.getElementById('error-message');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-        }}
-        
-        window.onload = function() {{
-            google.accounts.id.initialize({{
-                client_id: '{client_id}',
-                callback: handleCredentialResponse
-            }});
-            
-            google.accounts.id.renderButton(
-                document.getElementById('google-signin-button'),
-                {{
-                    theme: 'filled_black',
-                    size: 'large',
-                    text: 'signin_with',
-                    shape: 'pill',
-                    width: 280
-                }}
-            );
-        }};
-    </script>
 </body>
 </html>'''
-        
         return html
 
 
-# Helper function for use in Flask routes
 def init_auth(app):
     """Initialize authentication for the Flask app"""
     return PenguinCAMAuth(app)
