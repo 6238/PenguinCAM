@@ -1,0 +1,7 @@
+{
+  "client_id": "M5JGK42FQJ4SHRSNZGF4PNPLT6G3KI4T6VMCUOY=",
+  "client_secret": "",
+  "dev_redirect_uri": "http://localhost:6238/onshape/oauth/callback",
+  "redirect_uri": "https://penguincam.popcornpenguins.com/onshape/oauth/callback",
+  "scopes": "OAuth2Read OAuth2ReadPII"
+}
