@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FRC CAM Post-Processor</title>
+    <title>PenguinCAM - Team 6238</title>
     <style>
         * {
             margin: 0;
@@ -12,8 +12,8 @@
         }
 
         :root {
-            --primary: #FF4500;
-            --primary-dark: #CC3700;
+            --primary: #FDB515;
+            --primary-dark: #D99F12;
             --secondary: #2C3E50;
             --bg: #0A0E14;
             --surface: #151B24;
@@ -38,6 +38,19 @@
             background: var(--surface);
             border-bottom: 2px solid var(--primary);
             padding: 1.5rem 2rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo {
+            width: 50px;
+            height: 50px;
+            flex-shrink: 0;
+        }
+
+        .header-content {
+            flex: 1;
         }
 
         h1 {
@@ -87,7 +100,7 @@
 
         .step-number {
             background: var(--primary);
-            color: white;
+            color: #000;
             width: 32px;
             height: 32px;
             border-radius: 50%;
@@ -239,7 +252,7 @@
         /* Buttons */
         button {
             background: var(--primary);
-            color: white;
+            color: #000;
             border: none;
             padding: 1rem 2rem;
             border-radius: 6px;
@@ -253,7 +266,7 @@
         button:hover {
             background: var(--primary-dark);
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(255, 69, 0, 0.3);
+            box-shadow: 0 4px 12px rgba(253, 181, 21, 0.4);
         }
 
         button:disabled {
@@ -473,8 +486,39 @@
 </head>
 <body>
     <header>
-        <h1>FRC CAM <span class="accent">Post-Processor</span></h1>
-        <p class="subtitle">Generate G-code from OnShape DXF exports for your FRC robotics CNC</p>
+        <svg class="logo" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <!-- Penguin body -->
+            <ellipse cx="50" cy="60" rx="28" ry="35" fill="#FDB515"/>
+            <!-- Penguin belly -->
+            <ellipse cx="50" cy="65" rx="18" ry="25" fill="#fff"/>
+            <!-- Head -->
+            <circle cx="50" cy="30" r="20" fill="#FDB515"/>
+            <!-- Eyes -->
+            <circle cx="43" cy="28" r="4" fill="#000"/>
+            <circle cx="57" cy="28" r="4" fill="#000"/>
+            <circle cx="44" cy="27" r="2" fill="#fff"/>
+            <circle cx="58" cy="27" r="2" fill="#fff"/>
+            <!-- Beak -->
+            <polygon points="50,32 46,36 54,36" fill="#333"/>
+            <!-- Wings -->
+            <ellipse cx="28" cy="55" rx="8" ry="20" fill="#FDB515"/>
+            <ellipse cx="72" cy="55" rx="8" ry="20" fill="#FDB515"/>
+            <!-- Feet -->
+            <ellipse cx="42" cy="92" rx="6" ry="4" fill="#E63E00"/>
+            <ellipse cx="58" cy="92" rx="6" ry="4" fill="#E63E00"/>
+            <!-- Gear accent (for CAM) -->
+            <g transform="translate(70, 25)">
+                <circle cx="0" cy="0" r="8" fill="none" stroke="#30363D" stroke-width="2"/>
+                <circle cx="0" cy="-6" r="2" fill="#30363D"/>
+                <circle cx="0" cy="6" r="2" fill="#30363D"/>
+                <circle cx="-6" cy="0" r="2" fill="#30363D"/>
+                <circle cx="6" cy="0" r="2" fill="#30363D"/>
+            </g>
+        </svg>
+        <div class="header-content">
+            <h1><span class="accent">Penguin</span>CAM</h1>
+            <p class="subtitle">FRC Team 6238 • Generate G-code from OnShape for CNC machining</p>
+        </div>
     </header>
 
     <main>
@@ -809,14 +853,14 @@
                     }, 3000);
                 } else {
                     driveStatus.textContent = '❌ ' + data.message;
-                    driveStatus.style.color = '#FF4500';
+                    driveStatus.style.color = 'var(--error)';
                     driveStatus.style.display = 'block';
                     driveBtn.textContent = '💾 Save to Google Drive';
                     driveBtn.disabled = false;
                 }
             } catch (error) {
                 driveStatus.textContent = '❌ Upload failed: ' + error.message;
-                driveStatus.style.color = '#FF4500';
+                driveStatus.style.color = 'var(--error)';
                 driveStatus.style.display = 'block';
                 driveBtn.textContent = '💾 Save to Google Drive';
                 driveBtn.disabled = false;

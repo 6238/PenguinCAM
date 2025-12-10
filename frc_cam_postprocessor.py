@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-FRC Robotics CAM Post-Processor
+PenguinCAM - FRC Team 6238 CAM Post-Processor
 Generates G-code from DXF files with predefined operations for:
 - #10 screw holes
 - 1.125" bearing holes
@@ -438,7 +438,7 @@ class FRCPostProcessor:
         gcode = []
         
         # Header
-        gcode.append("(FRC Robotics CAM Post-Processor)")
+        gcode.append("(PenguinCAM - Team 6238)")
         gcode.append(f"(Material thickness: {self.material_thickness}\")")
         gcode.append(f"(Tool diameter: {self.tool_diameter}\" = {self.tool_diameter * 25.4:.2f}mm)")
         gcode.append(f"(Tool compensation: Perimeter +{self.tool_radius:.4f}\", Pockets -{self.tool_radius:.4f}\")")
@@ -823,7 +823,7 @@ class FRCPostProcessor:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='FRC Robotics CAM Post-Processor')
+    parser = argparse.ArgumentParser(description='PenguinCAM - Team 6238 Post-Processor')
     parser.add_argument('input_dxf', help='Input DXF file from OnShape')
     parser.add_argument('output_gcode', help='Output G-code file')
     parser.add_argument('--thickness', type=float, default=0.25, 

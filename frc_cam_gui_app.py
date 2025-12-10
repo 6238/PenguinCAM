@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-FRC CAM Post-Processor - Web GUI
+PenguinCAM - FRC Team 6238 CAM Tool
 A Flask-based web interface for generating G-code from DXF files
 """
 
@@ -663,7 +663,7 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 6238))
     
     print("="*70)
-    print("FRC CAM Post-Processor - Web GUI")
+    print("PenguinCAM - FRC Team 6238")
     print("="*70)
     print(f"\nPost-processor script: {POST_PROCESSOR}")
     print(f"Temporary directory: {TEMP_DIR}")

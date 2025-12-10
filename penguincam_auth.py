@@ -311,7 +311,7 @@ class PenguinCAMAuth:
         }}
         
         h1 {{
-            color: #FF4500;
+            color: #FDB515;
             margin-bottom: 1rem;
         }}
         
@@ -323,8 +323,8 @@ class PenguinCAMAuth:
         
         a {{
             display: inline-block;
-            background: #FF4500;
-            color: white;
+            background: #FDB515;
+            color: #000;
             padding: 12px 24px;
             border-radius: 8px;
             text-decoration: none;
@@ -332,7 +332,7 @@ class PenguinCAMAuth:
         }}
         
         a:hover {{
-            background: #E63E00;
+            background: #D99F12;
         }}
     </style>
 </head>
