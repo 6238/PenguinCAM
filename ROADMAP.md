@@ -36,30 +36,7 @@ The OnShape browser extension is configured but not appearing in the UI. We've o
 
 ## 🚀 Future Enhancements
 
-### #1: Improved G-code Visualization
-
-**Priority:** Medium  
-**Effort:** High
-
-**Goal:** Add animated tool path playback like Fusion 360 and OnShape CAM simulators.
-
-**Current state:** Static 3D preview of final toolpaths
-
-**Planned features:**
-- 🎬 Animated tool movement over time
-- ⏯️ Playback controls (play/pause/step)
-- 🎚️ Timeline scrubber to jump to specific operations
-- ⚡ Speed control (1x, 2x, 5x, etc.)
-- 📊 Operation indicators (which cut is currently shown)
-
-**Benefits:**
-- Better understanding of machining sequence
-- Easier debugging of toolpath issues
-- More confidence before running on CNC
-
----
-
-### #2: G-code Validation & Testing
+### #1: G-code Validation & Testing
 
 **Priority:** High  
 **Effort:** Medium-High
@@ -84,7 +61,7 @@ The OnShape browser extension is configured but not appearing in the UI. We've o
 
 ---
 
-### #3: Origin Selection & Rotation Control
+### #2: Origin Selection & Rotation Control
 
 **Priority:** Medium  
 **Effort:** Medium-High
