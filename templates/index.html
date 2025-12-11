@@ -865,14 +865,14 @@
                         <input type="range" id="toolpathScrubber" class="toolpath-scrubber" min="0" max="100" value="0" step="1">
                     </div>
 
-                    <div class="controls">
+                    <div class="controls" id="previewControls" style="display: none;">
                         <div class="controls-label">
                             Origin (0,0,0) = Lower-left corner, sacrifice board • Semi-transparent box = stock material • Use mouse to rotate • Scroll to zoom
                         </div>
                         <button class="icon-button" id="resetView">Reset View</button>
                     </div>
 
-                    <div class="button-group" style="margin-top: 1rem; display: flex; gap: 1rem;">
+                    <div class="button-group" id="gcodeButtons" style="margin-top: 1rem; display: none; gap: 1rem;">
                         <button id="downloadBtn" class="secondary" disabled>
                             📥 Download G-code
                         </button>
@@ -1163,17 +1163,23 @@
             const setupContainer = document.getElementById('dxf-setup-container');
             const previewContainer = document.getElementById('canvas-container');
             const scrubberContainer = document.getElementById('scrubberContainer');
+            const previewControls = document.getElementById('previewControls');
+            const gcodeButtons = document.getElementById('gcodeButtons');
             
             if (mode === 'setup') {
                 setupContainer.style.display = 'block';
                 previewContainer.style.display = 'none';
                 scrubberContainer.style.display = 'none';
+                previewControls.style.display = 'none';
+                gcodeButtons.style.display = 'none';
                 if (dxfGeometry) {
                     renderDxfSetup();
                 }
             } else {
                 setupContainer.style.display = 'none';
                 previewContainer.style.display = 'block';
+                previewControls.style.display = 'flex';
+                gcodeButtons.style.display = 'flex';
                 // Scrubber visibility handled by visualizeGcode
             }
         }
@@ -1210,30 +1216,104 @@
             });
         }
 
-        // Parse DXF geometry from file (simplified - extracts bounds and key features)
+        // Parse DXF geometry from file (extracts bounds and basic shapes)
         function parseDxfForSetup(dxfContent) {
-            // This is a simplified parser - just gets bounding box
-            // Real DXF parsing happens in Python backend
+            // Extract geometry for visualization
             const lines = dxfContent.split('\n');
             let minX = Infinity, maxX = -Infinity;
             let minY = Infinity, maxY = -Infinity;
             
-            // Extract coordinate values (simplified)
+            const circles = [];
+            const lineSegments = [];
+            
+            // Simple DXF parser - extract CIRCLE and LINE entities
+            let currentEntity = null;
+            let entityData = {};
+            
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
+                
+                // Detect entity type
+                if (line === 'CIRCLE') {
+                    if (currentEntity && entityData.centerX !== undefined && entityData.radius !== undefined) {
+                        circles.push({
+                            x: entityData.centerX,
+                            y: entityData.centerY,
+                            r: entityData.radius
+                        });
+                    }
+                    currentEntity = 'CIRCLE';
+                    entityData = {};
+                } else if (line === 'LINE') {
+                    if (currentEntity === 'LINE' && entityData.x1 !== undefined && entityData.x2 !== undefined) {
+                        lineSegments.push({
+                            x1: entityData.x1,
+                            y1: entityData.y1,
+                            x2: entityData.x2,
+                            y2: entityData.y2
+                        });
+                    }
+                    currentEntity = 'LINE';
+                    entityData = {};
+                }
+                
+                // Parse entity data based on group codes
                 if (line === '10' && i + 1 < lines.length) {
-                    const x = parseFloat(lines[i + 1]);
-                    if (!isNaN(x)) {
-                        minX = Math.min(minX, x);
-                        maxX = Math.max(maxX, x);
+                    const val = parseFloat(lines[i + 1]);
+                    if (!isNaN(val)) {
+                        if (currentEntity === 'CIRCLE') entityData.centerX = val;
+                        else if (currentEntity === 'LINE') entityData.x1 = val;
+                        minX = Math.min(minX, val);
+                        maxX = Math.max(maxX, val);
                     }
                 } else if (line === '20' && i + 1 < lines.length) {
-                    const y = parseFloat(lines[i + 1]);
-                    if (!isNaN(y)) {
-                        minY = Math.min(minY, y);
-                        maxY = Math.max(maxY, y);
+                    const val = parseFloat(lines[i + 1]);
+                    if (!isNaN(val)) {
+                        if (currentEntity === 'CIRCLE') entityData.centerY = val;
+                        else if (currentEntity === 'LINE') entityData.y1 = val;
+                        minY = Math.min(minY, val);
+                        maxY = Math.max(maxY, val);
+                    }
+                } else if (line === '40' && i + 1 < lines.length && currentEntity === 'CIRCLE') {
+                    const val = parseFloat(lines[i + 1]);
+                    if (!isNaN(val)) {
+                        entityData.radius = val;
+                        minX = Math.min(minX, entityData.centerX - val);
+                        maxX = Math.max(maxX, entityData.centerX + val);
+                        minY = Math.min(minY, entityData.centerY - val);
+                        maxY = Math.max(maxY, entityData.centerY + val);
+                    }
+                } else if (line === '11' && i + 1 < lines.length && currentEntity === 'LINE') {
+                    const val = parseFloat(lines[i + 1]);
+                    if (!isNaN(val)) {
+                        entityData.x2 = val;
+                        minX = Math.min(minX, val);
+                        maxX = Math.max(maxX, val);
+                    }
+                } else if (line === '21' && i + 1 < lines.length && currentEntity === 'LINE') {
+                    const val = parseFloat(lines[i + 1]);
+                    if (!isNaN(val)) {
+                        entityData.y2 = val;
+                        minY = Math.min(minY, val);
+                        maxY = Math.max(maxY, val);
                     }
                 }
+            }
+            
+            // Catch last entity
+            if (currentEntity === 'CIRCLE' && entityData.centerX !== undefined && entityData.radius !== undefined) {
+                circles.push({
+                    x: entityData.centerX,
+                    y: entityData.centerY,
+                    r: entityData.radius
+                });
+            } else if (currentEntity === 'LINE' && entityData.x1 !== undefined && entityData.x2 !== undefined) {
+                lineSegments.push({
+                    x1: entityData.x1,
+                    y1: entityData.y1,
+                    x2: entityData.x2,
+                    y2: entityData.y2
+                });
             }
             
             if (minX === Infinity) {
@@ -1242,7 +1322,11 @@
                 minY = 0; maxY = 10;
             }
             
-            dxfGeometry = { minX, maxX, minY, maxY };
+            dxfGeometry = { 
+                minX, maxX, minY, maxY,
+                circles,
+                lines: lineSegments
+            };
             dxfBounds = { 
                 width: maxX - minX, 
                 height: maxY - minY,
@@ -1290,15 +1374,49 @@
             ctx.translate(offsetX, offsetY);
             ctx.rotate(-rotationAngle * Math.PI / 180); // Negative for canvas coordinate system
             
+            // Transform DXF coordinates to canvas coordinates
+            function toCanvasX(x) {
+                return (x - dxfBounds.centerX) * scale;
+            }
+            function toCanvasY(y) {
+                return -(y - dxfBounds.centerY) * scale; // Flip Y for canvas
+            }
+            
+            // Draw actual DXF geometry
+            // Draw lines
+            if (dxfGeometry.lines && dxfGeometry.lines.length > 0) {
+                ctx.strokeStyle = '#6B7280';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                dxfGeometry.lines.forEach(line => {
+                    ctx.moveTo(toCanvasX(line.x1), toCanvasY(line.y1));
+                    ctx.lineTo(toCanvasX(line.x2), toCanvasY(line.y2));
+                });
+                ctx.stroke();
+            }
+            
+            // Draw circles
+            if (dxfGeometry.circles && dxfGeometry.circles.length > 0) {
+                ctx.strokeStyle = '#6B7280';
+                ctx.lineWidth = 1.5;
+                dxfGeometry.circles.forEach(circle => {
+                    ctx.beginPath();
+                    ctx.arc(toCanvasX(circle.x), toCanvasY(circle.y), circle.r * scale, 0, Math.PI * 2);
+                    ctx.stroke();
+                });
+            }
+            
             // Draw bounding box
             ctx.strokeStyle = '#8B949E';
             ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
             ctx.strokeRect(
                 -dxfBounds.width * scale / 2,
                 -dxfBounds.height * scale / 2,
                 dxfBounds.width * scale,
                 dxfBounds.height * scale
             );
+            ctx.setLineDash([]);
             
             // Draw corner markers
             const corners = [
@@ -1332,7 +1450,7 @@
                 ctx.rotate(-rotationAngle * Math.PI / 180);
                 
                 ctx.fillStyle = '#FDB515';
-                ctx.font = 'bold 14px sans-serif';
+                ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillText('Origin (0,0)', originCornerData.x, originCornerData.y - 25);
@@ -1354,7 +1472,7 @@
             ctx.stroke();
             
             ctx.fillStyle = '#FF0000';
-            ctx.font = '12px sans-serif';
+            ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
             ctx.fillText('X', -dxfBounds.width * scale / 2 + 70, dxfBounds.height * scale / 2);
             
             // Y axis (green)
@@ -1370,14 +1488,15 @@
             
             ctx.restore();
             
-            // Draw dimensions
+            // Draw dimensions at top
             ctx.fillStyle = '#8B949E';
-            ctx.font = '12px sans-serif';
+            ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
             ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
             ctx.fillText(
                 `${dxfBounds.width.toFixed(2)}" × ${dxfBounds.height.toFixed(2)}"`,
                 width / 2,
-                30
+                20
             );
         }
 
