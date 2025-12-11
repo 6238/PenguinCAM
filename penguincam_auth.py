@@ -28,9 +28,19 @@ class PenguinCAMAuth:
         self.app = app
         self.config = self._load_config()
         
-        # Set up Flask session
+        # Set up Flask session with persistent secret key
         if not app.secret_key:
-            app.secret_key = secrets.token_hex(32)
+            # Use environment variable or generate one (but warn about it)
+            secret_key = os.environ.get('FLASK_SECRET_KEY')
+            if secret_key:
+                app.secret_key = secret_key
+            else:
+                app.secret_key = secrets.token_hex(32)
+                print("⚠️  WARNING: Using random secret key. Set FLASK_SECRET_KEY environment variable for persistent sessions across redeploys.")
+        
+        # Configure session lifetime (30 days)
+        from datetime import timedelta
+        app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
         
         # Register routes
         self._register_routes()
@@ -218,7 +228,11 @@ class PenguinCAMAuth:
                 # Clear OAuth state
                 session.pop('oauth_state', None)
                 
-                return redirect('/')
+                # Redirect back to original URL if stored, otherwise home
+                return_url = session.pop('auth_return_url', '/')
+                print(f"✅ User authenticated: {email}")
+                print(f"🔙 Redirecting to: {return_url}")
+                return redirect(return_url)
                 
             except Exception as e:
                 return self._render_error_page(
@@ -259,6 +273,9 @@ class PenguinCAMAuth:
             if not self.is_authenticated():
                 if request.is_json:
                     return jsonify({'error': 'Authentication required'}), 401
+                
+                # Store the original URL (with query params) before redirecting to login
+                session['auth_return_url'] = request.url
                 return redirect('/auth/login')
             
             return f(*args, **kwargs)
