@@ -1172,7 +1172,18 @@
                 scrubberContainer.style.display = 'none';
                 previewControls.style.display = 'none';
                 gcodeButtons.style.display = 'none';
-                if (dxfGeometry) {
+                
+                // Resize canvas now that it's visible
+                if (dxfCanvas2D && dxfGeometry) {
+                    setTimeout(() => {
+                        const rect = dxfCanvas2D.getBoundingClientRect();
+                        if (rect.width > 0 && rect.height > 0) {
+                            dxfCanvas2D.width = rect.width;
+                            dxfCanvas2D.height = rect.height;
+                        }
+                        renderDxfSetup();
+                    }, 0);
+                } else if (dxfGeometry) {
                     renderDxfSetup();
                 }
             } else {
@@ -1192,8 +1203,15 @@
             // CRITICAL: Set canvas internal size to match CSS display size
             // to avoid stretching/distortion
             const rect = dxfCanvas2D.getBoundingClientRect();
-            dxfCanvas2D.width = rect.width;
-            dxfCanvas2D.height = rect.height;
+            if (rect.width > 0 && rect.height > 0) {
+                dxfCanvas2D.width = rect.width;
+                dxfCanvas2D.height = rect.height;
+            } else {
+                // Fallback if element not yet sized
+                console.warn('Canvas not yet sized, using defaults');
+                dxfCanvas2D.width = 800;
+                dxfCanvas2D.height = 500;
+            }
             
             // Setup event listeners
             document.querySelectorAll('.corner-btn').forEach(btn => {
@@ -1461,6 +1479,12 @@
             const width = canvas.width;
             const height = canvas.height;
             
+            // Check if canvas has valid size
+            if (width === 0 || height === 0) {
+                console.warn('Canvas has zero size, skipping render');
+                return;
+            }
+            
             // Clear
             ctx.fillStyle = '#0A0E14';
             ctx.fillRect(0, 0, width, height);
@@ -1530,9 +1554,17 @@
                             // Canvas angle = -(DXF angle - rotation) = -DXF angle + rotation
                             const startRad = (-entity.startAngle + rotationAngle) * Math.PI / 180;
                             const endRad = (-entity.endAngle + rotationAngle) * Math.PI / 180;
+                            const arcRadius = entity.radius * scale;
+                            
+                            // Validate arc parameters
+                            if (isNaN(startRad) || isNaN(endRad) || arcRadius <= 0 || !isFinite(arcRadius)) {
+                                console.warn('Invalid arc parameters:', { startRad, endRad, arcRadius });
+                                break;
+                            }
+                            
                             // Y-flip also reverses direction: counter-clockwise becomes clockwise
                             // So we swap start and end to maintain the arc direction
-                            ctx.arc(aPos.x, aPos.y, entity.radius * scale, endRad, startRad, false);
+                            ctx.arc(aPos.x, aPos.y, arcRadius, endRad, startRad, false);
                             ctx.stroke();
                             break;
                             
