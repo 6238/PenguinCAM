@@ -1226,16 +1226,31 @@
             const circles = [];
             const lineSegments = [];
             
-            // Simple DXF parser - extract CIRCLE and LINE entities
+            // Find ENTITIES section - skip HEADER to avoid placeholder values
+            let inEntitiesSection = false;
             let currentEntity = null;
             let entityData = {};
             
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
                 
+                // Check if we're entering ENTITIES section
+                if (line === 'ENTITIES') {
+                    inEntitiesSection = true;
+                    continue;
+                }
+                
+                // Check if we're leaving ENTITIES section
+                if (line === 'ENDSEC' && inEntitiesSection) {
+                    break;
+                }
+                
+                // Only process if we're in ENTITIES section
+                if (!inEntitiesSection) continue;
+                
                 // Detect entity type
                 if (line === 'CIRCLE') {
-                    if (currentEntity && entityData.centerX !== undefined && entityData.radius !== undefined) {
+                    if (currentEntity === 'CIRCLE' && entityData.centerX !== undefined && entityData.radius !== undefined) {
                         circles.push({
                             x: entityData.centerX,
                             y: entityData.centerY,
@@ -1260,7 +1275,7 @@
                 // Parse entity data based on group codes
                 if (line === '10' && i + 1 < lines.length) {
                     const val = parseFloat(lines[i + 1]);
-                    if (!isNaN(val)) {
+                    if (!isNaN(val) && Math.abs(val) < 1e10) { // Sanity check - ignore huge values
                         if (currentEntity === 'CIRCLE') entityData.centerX = val;
                         else if (currentEntity === 'LINE') entityData.x1 = val;
                         minX = Math.min(minX, val);
@@ -1268,7 +1283,7 @@
                     }
                 } else if (line === '20' && i + 1 < lines.length) {
                     const val = parseFloat(lines[i + 1]);
-                    if (!isNaN(val)) {
+                    if (!isNaN(val) && Math.abs(val) < 1e10) {
                         if (currentEntity === 'CIRCLE') entityData.centerY = val;
                         else if (currentEntity === 'LINE') entityData.y1 = val;
                         minY = Math.min(minY, val);
@@ -1276,23 +1291,25 @@
                     }
                 } else if (line === '40' && i + 1 < lines.length && currentEntity === 'CIRCLE') {
                     const val = parseFloat(lines[i + 1]);
-                    if (!isNaN(val)) {
+                    if (!isNaN(val) && val < 1e10) {
                         entityData.radius = val;
-                        minX = Math.min(minX, entityData.centerX - val);
-                        maxX = Math.max(maxX, entityData.centerX + val);
-                        minY = Math.min(minY, entityData.centerY - val);
-                        maxY = Math.max(maxY, entityData.centerY + val);
+                        if (entityData.centerX !== undefined && entityData.centerY !== undefined) {
+                            minX = Math.min(minX, entityData.centerX - val);
+                            maxX = Math.max(maxX, entityData.centerX + val);
+                            minY = Math.min(minY, entityData.centerY - val);
+                            maxY = Math.max(maxY, entityData.centerY + val);
+                        }
                     }
                 } else if (line === '11' && i + 1 < lines.length && currentEntity === 'LINE') {
                     const val = parseFloat(lines[i + 1]);
-                    if (!isNaN(val)) {
+                    if (!isNaN(val) && Math.abs(val) < 1e10) {
                         entityData.x2 = val;
                         minX = Math.min(minX, val);
                         maxX = Math.max(maxX, val);
                     }
                 } else if (line === '21' && i + 1 < lines.length && currentEntity === 'LINE') {
                     const val = parseFloat(lines[i + 1]);
-                    if (!isNaN(val)) {
+                    if (!isNaN(val) && Math.abs(val) < 1e10) {
                         entityData.y2 = val;
                         minY = Math.min(minY, val);
                         maxY = Math.max(maxY, val);
@@ -1321,6 +1338,9 @@
                 minX = 0; maxX = 10;
                 minY = 0; maxY = 10;
             }
+            
+            console.log(`Parsed DXF: ${circles.length} circles, ${lineSegments.length} lines`);
+            console.log(`Bounds: X=[${minX}, ${maxX}], Y=[${minY}, ${maxY}]`);
             
             dxfGeometry = { 
                 minX, maxX, minY, maxY,
