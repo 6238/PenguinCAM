@@ -674,6 +674,83 @@
             background: var(--surface);
             color: var(--text);
         }
+
+        /* Playback Controls */
+.playback-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+}
+
+.playback-button {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    padding: 0;
+}
+
+.playback-button:hover {
+    background: var(--surface-light);
+    border-color: var(--primary);
+    transform: translateY(-1px);
+}
+
+.playback-button:active {
+    transform: translateY(0);
+}
+
+.playback-button.playing {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #000;
+}
+
+.speed-control {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+}
+
+.speed-control label {
+    color: var(--text-dim);
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+.speed-select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 0.5rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.speed-select:hover {
+    border-color: var(--primary);
+}
+
+.speed-select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(253, 181, 21, 0.1);
+}
+
     </style>
 </head>
 <body>
@@ -860,6 +937,25 @@
                             <span id="scrubberOperation" class="scrubber-operation">Ready</span>
                         </div>
                         <input type="range" id="toolpathScrubber" class="toolpath-scrubber" min="0" max="100" value="0" step="1">
+                    </div>
+
+                    <div class="playback-controls" id="playbackControls" style="display: none;">
+                        <button class="playback-button" id="playButton" title="Play/Pause">
+                            <span class="play-icon">▶</span>
+                            <span class="pause-icon" style="display: none;">⏸</span>
+                        </button>
+                        <div class="speed-control">
+                            <label for="playbackSpeed">Speed:</label>
+                            <select id="playbackSpeed" class="speed-select">
+                                <option value="10">0.25x</option>
+                                <option value="20">0.5x</option>
+                                <option value="40" selected>1x</option>
+                                <option value="80">2x</option>
+                                <option value="160">4x</option>
+                                <option value="320">8x</option>
+                            </select>
+                        </div>
+                        <button class="playback-button" id="restartButton" title="Restart">⏮</button>
                     </div>
 
                     <div class="controls" id="previewControls" style="display: none;">
@@ -1089,6 +1185,97 @@
             }
         });
 
+        let isPlaying = false;
+        let playbackInterval = null;
+        let playbackSpeed = 40; // moves per second (default 1x speed)
+
+        // Get playback controls
+        const playButton = document.getElementById('playButton');
+        const restartButton = document.getElementById('restartButton');
+        const playbackSpeedSelect = document.getElementById('playbackSpeed');
+        const scrubber = document.getElementById('toolpathScrubber');
+
+        // Play/Pause button handler
+        playButton.addEventListener('click', () => {
+            if (isPlaying) {
+                stopPlayback();
+            } else {
+                startPlayback();
+            }
+        });
+
+        // Restart button handler
+        restartButton.addEventListener('click', () => {
+            scrubber.value = 0;
+            updateToolpathDisplay(0);
+            if (isPlaying) {
+                stopPlayback();
+                setTimeout(startPlayback, 100); // Brief pause before restart
+            }
+        });
+
+        // Speed control handler
+        playbackSpeedSelect.addEventListener('change', (e) => {
+            playbackSpeed = parseInt(e.target.value);
+            
+            // If currently playing, restart with new speed
+            if (isPlaying) {
+                stopPlayback();
+                startPlayback();
+            }
+        });
+
+        // Manual scrubber interaction stops playback
+        scrubber.addEventListener('mousedown', () => {
+            if (isPlaying) {
+                stopPlayback();
+            }
+        });
+
+        function startPlayback() {
+            isPlaying = true;
+            playButton.classList.add('playing');
+            playButton.querySelector('.play-icon').style.display = 'none';
+            playButton.querySelector('.pause-icon').style.display = 'block';
+            
+            const maxValue = parseInt(scrubber.max);
+            const intervalMs = 1000 / playbackSpeed; // Convert moves/sec to ms/move
+            
+            playbackInterval = setInterval(() => {
+                let currentValue = parseInt(scrubber.value);
+                
+                if (currentValue >= maxValue) {
+                    // Reached end, stop or loop
+                    stopPlayback();
+                    return;
+                }
+                
+                currentValue++;
+                scrubber.value = currentValue;
+                updateToolpathDisplay(currentValue);
+                
+            }, intervalMs);
+        }
+
+        function stopPlayback() {
+            isPlaying = false;
+            playButton.classList.remove('playing');
+            playButton.querySelector('.play-icon').style.display = 'block';
+            playButton.querySelector('.pause-icon').style.display = 'none';
+            
+            if (playbackInterval) {
+                clearInterval(playbackInterval);
+                playbackInterval = null;
+            }
+        }
+
+        // Make sure to stop playback when switching modes
+        const originalSwitchMode = switchMode;
+        switchMode = function(mode) {
+            stopPlayback();
+            originalSwitchMode(mode);
+        };
+
         // UI helpers
         function showLoading() {
             loading.classList.add('show');
@@ -1160,6 +1347,7 @@
             const setupContainer = document.getElementById('dxf-setup-container');
             const previewContainer = document.getElementById('canvas-container');
             const scrubberContainer = document.getElementById('scrubberContainer');
+            const playbackContainer = document.getElementById('playbackControls')
             const previewControls = document.getElementById('previewControls');
             const gcodeButtons = document.getElementById('gcodeButtons');
             
@@ -1167,6 +1355,7 @@
                 setupContainer.style.display = 'block';
                 previewContainer.style.display = 'none';
                 scrubberContainer.style.display = 'none';
+                playbackContainer.style.display = 'none';
                 previewControls.style.display = 'none';
                 gcodeButtons.style.display = 'none';
                 
@@ -1186,6 +1375,7 @@
             } else {
                 setupContainer.style.display = 'none';
                 previewContainer.style.display = 'block';
+                playbackContainer.style.display = 'flex';
                 previewControls.style.display = 'flex';
                 gcodeButtons.style.display = 'flex';
                 // Scrubber visibility handled by visualizeGcode
