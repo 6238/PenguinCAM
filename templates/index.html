@@ -1201,10 +1201,11 @@
             const stockMaterial = new THREE.MeshStandardMaterial({
                 color: 0xE8F0FF, // Light blue-white (aluminum-ish)
                 transparent: true,
-                opacity: 0.25,
+                opacity: 0.15, // More transparent so toolpaths show through
                 metalness: 0.3,
                 roughness: 0.7,
-                side: THREE.DoubleSide
+                side: THREE.DoubleSide,
+                depthWrite: false // Critical! Allows lines to render through transparent material
             });
             
             const stockMesh = new THREE.Mesh(stockGeometry, stockMaterial);
@@ -1214,6 +1215,7 @@
                 stockHeight / 2,
                 -(minY + maxY) / 2
             );
+            stockMesh.renderOrder = -1; // Render stock before toolpaths
             scene.add(stockMesh);
 
             // Create tool representation (endmill)
