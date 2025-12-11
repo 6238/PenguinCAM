@@ -61,44 +61,6 @@ The OnShape browser extension is configured but not appearing in the UI. We've o
 
 ---
 
-### #2: Origin Selection & Rotation Control
-
-**Priority:** Medium  
-**Effort:** Medium-High
-
-**Goal:** User-controlled part positioning and orientation, similar to laser cutter alignment software.
-
-#### **Current Behavior:**
-- Origin automatically set to lower-left corner of bounding box
-- No rotation control
-
-#### **Planned Features:**
-
-**🎯 User-Controlled Origin**
-- Interactive 2D DXF view before toolpath generation
-- Click to set origin point anywhere on the part
-- Visual indicators for current origin
-- Grid/ruler overlay for precise placement
-
-**🔄 90° Rotation**
-- Rotate part in 90° increments
-- Match physical stock orientation (N-S vs E-W mounting)
-- Preview rotation before applying
-
-**🖼️ New UI Component: 2D Alignment View**
-- Step inserted before 3D preview
-- Shows DXF geometry in 2D
-- Interactive controls for origin and rotation
-- "Apply" button to generate toolpaths with user settings
-
-**Benefits:**
-- Better material utilization
-- Flexibility for different stock orientations
-- Match physical CNC setup exactly
-- Optimize grain direction for wood/composites
-
----
-
 ## 💡 Ideas for Consideration
 
 *(Not committed to roadmap yet, but worth exploring)*
