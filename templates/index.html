@@ -1469,7 +1469,7 @@
             const availWidth = width - 2 * padding;
             const availHeight = height - 2 * padding;
             
-            // Apply rotation to bounds
+            // Apply rotation to bounds for calculating display size
             let displayWidth = dxfBounds.width;
             let displayHeight = dxfBounds.height;
             if (rotationAngle === 90 || rotationAngle === 270) {
@@ -1478,23 +1478,37 @@
             
             const scale = Math.min(availWidth / displayWidth, availHeight / displayHeight);
             
-            // Center the drawing
-            const offsetX = width / 2;
-            const offsetY = height / 2;
+            // Center position (no rotation of entire canvas)
+            const centerX = width / 2;
+            const centerY = height / 2;
             
-            ctx.save();
-            ctx.translate(offsetX, offsetY);
-            ctx.rotate(-rotationAngle * Math.PI / 180);
-            
-            // Transform DXF coordinates to canvas coordinates
-            function toCanvasX(x) {
-                return (x - dxfBounds.centerX) * scale;
+            // Helper functions to transform coordinates
+            function rotatePoint(x, y, angle) {
+                const rad = -angle * Math.PI / 180; // Negative for clockwise
+                const cos = Math.cos(rad);
+                const sin = Math.sin(rad);
+                return {
+                    x: x * cos - y * sin,
+                    y: x * sin + y * cos
+                };
             }
-            function toCanvasY(y) {
-                return -(y - dxfBounds.centerY) * scale; // Flip Y for canvas
+            
+            function toCanvasCoords(x, y) {
+                // Translate to center origin
+                let dx = x - dxfBounds.centerX;
+                let dy = y - dxfBounds.centerY;
+                
+                // Apply rotation
+                const rotated = rotatePoint(dx, dy, rotationAngle);
+                
+                // Scale and flip Y, then translate to canvas center
+                return {
+                    x: centerX + rotated.x * scale,
+                    y: centerY - rotated.y * scale
+                };
             }
             
-            // Draw all entities
+            // Draw all entities (rotated)
             ctx.strokeStyle = '#6B7280';
             ctx.lineWidth = 1.5;
             
@@ -1504,41 +1518,38 @@
                     
                     switch(entity.type) {
                         case 'CIRCLE':
-                            ctx.arc(
-                                toCanvasX(entity.center.x), 
-                                toCanvasY(entity.center.y), 
-                                entity.radius * scale, 
-                                0, Math.PI * 2
-                            );
+                            const cPos = toCanvasCoords(entity.center.x, entity.center.y);
+                            ctx.arc(cPos.x, cPos.y, entity.radius * scale, 0, Math.PI * 2);
                             ctx.stroke();
                             break;
                             
                         case 'ARC':
-                            const startRad = -entity.startAngle * Math.PI / 180;
-                            const endRad = -entity.endAngle * Math.PI / 180;
-                            ctx.arc(
-                                toCanvasX(entity.center.x), 
-                                toCanvasY(entity.center.y), 
-                                entity.radius * scale, 
-                                startRad, endRad, true
-                            );
+                            const aPos = toCanvasCoords(entity.center.x, entity.center.y);
+                            // Rotate arc angles by the rotation amount
+                            const startRad = -(entity.startAngle + rotationAngle) * Math.PI / 180;
+                            const endRad = -(entity.endAngle + rotationAngle) * Math.PI / 180;
+                            ctx.arc(aPos.x, aPos.y, entity.radius * scale, startRad, endRad, true);
                             ctx.stroke();
                             break;
                             
                         case 'LINE':
-                            ctx.moveTo(toCanvasX(entity.vertices[0].x), toCanvasY(entity.vertices[0].y));
-                            ctx.lineTo(toCanvasX(entity.vertices[1].x), toCanvasY(entity.vertices[1].y));
+                            const p1 = toCanvasCoords(entity.vertices[0].x, entity.vertices[0].y);
+                            const p2 = toCanvasCoords(entity.vertices[1].x, entity.vertices[1].y);
+                            ctx.moveTo(p1.x, p1.y);
+                            ctx.lineTo(p2.x, p2.y);
                             ctx.stroke();
                             break;
                             
                         case 'LWPOLYLINE':
                         case 'POLYLINE':
                             if (entity.vertices && entity.vertices.length > 0) {
-                                ctx.moveTo(toCanvasX(entity.vertices[0].x), toCanvasY(entity.vertices[0].y));
+                                const v0 = toCanvasCoords(entity.vertices[0].x, entity.vertices[0].y);
+                                ctx.moveTo(v0.x, v0.y);
                                 for (let i = 1; i < entity.vertices.length; i++) {
-                                    ctx.lineTo(toCanvasX(entity.vertices[i].x), toCanvasY(entity.vertices[i].y));
+                                    const v = toCanvasCoords(entity.vertices[i].x, entity.vertices[i].y);
+                                    ctx.lineTo(v.x, v.y);
                                 }
-                                if (entity.shape) { // Closed polyline
+                                if (entity.shape) {
                                     ctx.closePath();
                                 }
                                 ctx.stroke();
@@ -1546,51 +1557,47 @@
                             break;
                             
                         case 'SPLINE':
-                            // Approximate spline with line segments
                             if (entity.controlPoints && entity.controlPoints.length > 1) {
-                                ctx.moveTo(toCanvasX(entity.controlPoints[0].x), toCanvasY(entity.controlPoints[0].y));
+                                const sp0 = toCanvasCoords(entity.controlPoints[0].x, entity.controlPoints[0].y);
+                                ctx.moveTo(sp0.x, sp0.y);
                                 for (let i = 1; i < entity.controlPoints.length; i++) {
-                                    ctx.lineTo(toCanvasX(entity.controlPoints[i].x), toCanvasY(entity.controlPoints[i].y));
+                                    const sp = toCanvasCoords(entity.controlPoints[i].x, entity.controlPoints[i].y);
+                                    ctx.lineTo(sp.x, sp.y);
                                 }
                                 ctx.stroke();
                             }
                             break;
                             
                         case 'ELLIPSE':
-                            // Draw ellipse (simplified - could be improved)
+                            const ePos = toCanvasCoords(entity.center.x, entity.center.y);
                             const majorRadius = Math.sqrt(entity.majorAxisEndPoint.x ** 2 + entity.majorAxisEndPoint.y ** 2);
                             const minorRadius = majorRadius * entity.axisRatio;
-                            ctx.ellipse(
-                                toCanvasX(entity.center.x),
-                                toCanvasY(entity.center.y),
-                                majorRadius * scale,
-                                minorRadius * scale,
-                                0, 0, Math.PI * 2
-                            );
+                            ctx.ellipse(ePos.x, ePos.y, majorRadius * scale, minorRadius * scale, 0, 0, Math.PI * 2);
                             ctx.stroke();
                             break;
                     }
                 });
             }
             
-            // Draw bounding box
+            // Calculate bounding box corners in SCREEN coordinates (NOT rotated)
+            const boxLeft = centerX - (displayWidth * scale) / 2;
+            const boxRight = centerX + (displayWidth * scale) / 2;
+            const boxTop = centerY - (displayHeight * scale) / 2;
+            const boxBottom = centerY + (displayHeight * scale) / 2;
+            
+            // Draw bounding box (dashed, NOT rotated)
             ctx.strokeStyle = '#8B949E';
             ctx.lineWidth = 2;
             ctx.setLineDash([5, 5]);
-            ctx.strokeRect(
-                -dxfBounds.width * scale / 2,
-                -dxfBounds.height * scale / 2,
-                dxfBounds.width * scale,
-                dxfBounds.height * scale
-            );
+            ctx.strokeRect(boxLeft, boxTop, displayWidth * scale, displayHeight * scale);
             ctx.setLineDash([]);
             
-            // Draw corner markers
+            // Draw corner markers at FIXED screen positions
             const corners = [
-                { name: 'bottom-left', x: -dxfBounds.width * scale / 2, y: dxfBounds.height * scale / 2 },
-                { name: 'bottom-right', x: dxfBounds.width * scale / 2, y: dxfBounds.height * scale / 2 },
-                { name: 'top-left', x: -dxfBounds.width * scale / 2, y: -dxfBounds.height * scale / 2 },
-                { name: 'top-right', x: dxfBounds.width * scale / 2, y: -dxfBounds.height * scale / 2 }
+                { name: 'bottom-left', x: boxLeft, y: boxBottom },
+                { name: 'bottom-right', x: boxRight, y: boxBottom },
+                { name: 'top-left', x: boxLeft, y: boxTop },
+                { name: 'top-right', x: boxRight, y: boxTop }
             ];
             
             corners.forEach(corner => {
@@ -1607,53 +1614,41 @@
                 }
             });
             
-            ctx.restore();
-            
-            // Draw origin label
+            // Draw origin label at selected corner
             const originCornerData = corners.find(c => c.name === originCorner);
             if (originCornerData) {
-                ctx.save();
-                ctx.translate(offsetX, offsetY);
-                ctx.rotate(-rotationAngle * Math.PI / 180);
-                
                 ctx.fillStyle = '#FDB515';
                 ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillText('Origin (0,0)', originCornerData.x, originCornerData.y - 25);
-                
-                ctx.restore();
             }
             
-            // Draw axes
-            ctx.save();
-            ctx.translate(offsetX, offsetY);
-            ctx.rotate(-rotationAngle * Math.PI / 180);
-            
-            // X axis (red)
-            ctx.beginPath();
-            ctx.moveTo(-dxfBounds.width * scale / 2, dxfBounds.height * scale / 2);
-            ctx.lineTo(-dxfBounds.width * scale / 2 + 60, dxfBounds.height * scale / 2);
-            ctx.strokeStyle = '#FF0000';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            
-            ctx.fillStyle = '#FF0000';
-            ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-            ctx.fillText('X', -dxfBounds.width * scale / 2 + 70, dxfBounds.height * scale / 2);
-            
-            // Y axis (green)
-            ctx.beginPath();
-            ctx.moveTo(-dxfBounds.width * scale / 2, dxfBounds.height * scale / 2);
-            ctx.lineTo(-dxfBounds.width * scale / 2, dxfBounds.height * scale / 2 - 60);
-            ctx.strokeStyle = '#00FF00';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            
-            ctx.fillStyle = '#00FF00';
-            ctx.fillText('Y', -dxfBounds.width * scale / 2, dxfBounds.height * scale / 2 - 70);
-            
-            ctx.restore();
+            // Draw axes from the origin corner
+            if (originCornerData) {
+                // X axis (red) - points right
+                ctx.beginPath();
+                ctx.moveTo(originCornerData.x, originCornerData.y);
+                ctx.lineTo(originCornerData.x + 60, originCornerData.y);
+                ctx.strokeStyle = '#FF0000';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                ctx.fillStyle = '#FF0000';
+                ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+                ctx.fillText('X', originCornerData.x + 70, originCornerData.y);
+                
+                // Y axis (green) - points up
+                ctx.beginPath();
+                ctx.moveTo(originCornerData.x, originCornerData.y);
+                ctx.lineTo(originCornerData.x, originCornerData.y - 60);
+                ctx.strokeStyle = '#00FF00';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                ctx.fillStyle = '#00FF00';
+                ctx.fillText('Y', originCornerData.x, originCornerData.y - 70);
+            }
             
             // Draw dimensions at top
             ctx.fillStyle = '#8B949E';
@@ -1661,7 +1656,7 @@
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
             ctx.fillText(
-                `${dxfBounds.width.toFixed(2)}" × ${dxfBounds.height.toFixed(2)}"`,
+                `${displayWidth.toFixed(2)}" × ${displayHeight.toFixed(2)}" (${rotationAngle}°)`,
                 width / 2,
                 20
             );
