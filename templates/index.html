@@ -1015,6 +1015,9 @@
                 }
 
             } catch (error) {
+                if (Object.hasOwn(error, "details")) {
+                    console.error(error.details);
+                }
                 showError('Generation Failed', error.message);
             } finally {
                 hideLoading();
