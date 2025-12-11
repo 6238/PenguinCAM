@@ -50,8 +50,8 @@ class FRCPostProcessor:
         self.cut_depth = -self.sacrifice_board_depth  # Cut slightly into sacrifice board
         
         # Cutting parameters (you can adjust these)
-        self.feed_rate = 30.0  # inches per minute
-        self.plunge_rate = 10.0  # inches per minute
+        self.feed_rate = 14.0 if units == "inch" else 365  # inches per minute
+        self.plunge_rate = 10.0 if units =="inch" else 339 # inches per minute
         
         # Tab parameters
         self.tab_width = 0.25  # Width of tabs (inches)
@@ -613,7 +613,7 @@ class FRCPostProcessor:
         gcode.append("")
         
         # Spindle on
-        gcode.append("M3 S18000  ; Spindle on at 18000 RPM")
+        gcode.append("M3 S24000  ; Spindle on at 24000 RPM")
         gcode.append("G4 P2  ; Wait 2 seconds for spindle to reach speed")
         gcode.append("")
         
