@@ -753,9 +753,18 @@ def onshape_import():
                 suggested_filename = f"{doc_clean}_{elem_clean}"
                 print(f"✅ Suggested filename: {suggested_filename}.nc")
             else:
-                print("⚠️  Could not fetch document/element names - will use timestamp")
+                # Generate timestamp fallback
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                suggested_filename = f"OnShape_Part_{timestamp}"
+                print(f"⚠️  Could not fetch document/element names - using timestamp: {suggested_filename}.nc")
         except Exception as e:
+            # Generate timestamp fallback on error
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            suggested_filename = f"OnShape_Part_{timestamp}"
             print(f"⚠️  Error fetching names: {type(e).__name__}: {e}")
+            print(f"   Using timestamp fallback: {suggested_filename}.nc")
             import traceback
             traceback.print_exc()
         

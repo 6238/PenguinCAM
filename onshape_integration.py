@@ -631,9 +631,14 @@ class OnShapeClient:
             response = self._make_api_request('GET', f'/documents/d/{document_id}')
             if response.status_code == 200:
                 return response.json()
-            return None
+            else:
+                print(f"Failed to get document info: HTTP {response.status_code}")
+                print(f"Response: {response.text[:200]}")
+                return None
         except Exception as e:
             print(f"Error getting document info: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def get_element_info(self, document_id, workspace_id, element_id):
@@ -641,18 +646,26 @@ class OnShapeClient:
         try:
             # Get all elements in the document
             response = self._make_api_request(
-                'GET', 
+                'GET',
                 f'/documents/d/{document_id}/w/{workspace_id}/elements'
             )
             if response.status_code == 200:
                 elements = response.json()
+                print(f"   Found {len(elements)} elements in document")
                 # Find the matching element
                 for element in elements:
                     if element.get('id') == element_id:
                         return element
-            return None
+                print(f"   Element {element_id} not found in {len(elements)} elements")
+                return None
+            else:
+                print(f"Failed to get elements: HTTP {response.status_code}")
+                print(f"Response: {response.text[:200]}")
+                return None
         except Exception as e:
             print(f"Error getting element info: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def parse_onshape_url(self, url):
