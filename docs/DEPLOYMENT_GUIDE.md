@@ -100,6 +100,12 @@ ONSHAPE_CLIENT_SECRET=your-onshape-client-secret
 ### Optional Variables
 
 ```bash
+# Flask Session (strongly recommended)
+FLASK_SECRET_KEY=<64-character-hex-string>
+# Keeps user sessions valid across redeploys
+# Generate with: python3 -c "import secrets; print(secrets.token_hex(32))"
+# Without this, users must re-authenticate after each deployment
+
 # Authentication (optional)
 ALLOWED_EMAILS=admin@example.com,teacher@example.com
 # Comma-separated list of specific emails to allow
