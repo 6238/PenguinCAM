@@ -50,6 +50,7 @@ class FRCPostProcessor:
         self.cut_depth = -self.sacrifice_board_depth  # Cut slightly into sacrifice board
         
         # Cutting parameters (you can adjust these)
+        self.spindle_speed = 24000
         self.feed_rate = 14.0 if units == "inch" else 365  # inches per minute
         self.plunge_rate = 10.0 if units =="inch" else 339 # inches per minute
         
@@ -613,7 +614,7 @@ class FRCPostProcessor:
         gcode.append("")
         
         # Spindle on
-        gcode.append("M3 S24000  ; Spindle on at 24000 RPM")
+        gcode.append(f"M3 {self.spindle_speed}  ; Spindle on at {self.spindle_speed} RPM")
         gcode.append("G4 P2  ; Wait 2 seconds for spindle to reach speed")
         gcode.append("")
         
@@ -969,7 +970,6 @@ class FRCPostProcessor:
         
         return gcode
 
-
 def main():
     parser = argparse.ArgumentParser(description='PenguinCAM - Team 6238 Post-Processor')
     parser.add_argument('input_dxf', help='Input DXF file from OnShape')
@@ -993,6 +993,14 @@ def main():
                        choices=[0, 90, 180, 270],
                        help='Rotation angle in degrees clockwise (default: 0)')
     
+    # NEW: Cutting parameters
+    parser.add_argument('--spindle-speed', type=int, default=24000,
+                       help='Spindle speed in RPM (default: 24000)')
+    parser.add_argument('--feed-rate', type=float, default=None,
+                       help='Feed rate (default: 14 ipm or 365 mm/min depending on units)')
+    parser.add_argument('--plunge-rate', type=float, default=None,
+                       help='Plunge rate (default: 10 ipm or 339 mm/min depending on units)')
+    
     args = parser.parse_args()
     
     # Create post-processor
@@ -1002,6 +1010,11 @@ def main():
     pp.num_tabs = args.tabs
     pp.drill_screw_holes = args.drill_screws
     pp.sacrifice_board_depth = args.sacrifice_depth
+    
+    # Set cutting parameters
+    pp.spindle_speed = args.spindle_speed
+    pp.feed_rate = args.feed_rate
+    pp.plunge_rate = args.plunge_rate
     
     # Recalculate Z positions with user-specified sacrifice depth
     pp.cut_depth = -pp.sacrifice_board_depth
@@ -1018,6 +1031,10 @@ def main():
     pp.generate_gcode(args.output_gcode)
     
     print("\nDone! Review the G-code file before running on your machine.")
+    print(f"\nCUTTING PARAMETERS:")
+    print(f"  Spindle speed: {pp.spindle_speed} RPM")
+    print(f"  Feed rate: {pp.feed_rate:.1f} {args.units}/min")
+    print(f"  Plunge rate: {pp.plunge_rate:.1f} {args.units}/min")
     print(f"\nZ-AXIS SETUP:")
     print(f"  ** Zero your Z-axis to the SACRIFICE BOARD surface **")
     print(f"  Material top will be at Z={pp.material_top:.4f}\"")
