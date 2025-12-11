@@ -104,6 +104,8 @@ def process_file():
         sacrifice_depth = float(request.form.get('sacrifice_depth', 0.02))
         tabs = int(request.form.get('tabs', 4))
         drill_screws = request.form.get('drill_screws', 'false') == 'true'
+        origin_corner = request.form.get('origin_corner', 'bottom-left')
+        rotation = int(request.form.get('rotation', 0))
         
         # Save uploaded file
         input_path = os.path.join(UPLOAD_FOLDER, 'input.dxf')
@@ -123,6 +125,8 @@ def process_file():
             '--tool-diameter', str(tool_diameter),
             '--sacrifice-depth', str(sacrifice_depth),
             '--tabs', str(tabs),
+            '--origin-corner', origin_corner,
+            '--rotation', str(rotation),
         ]
         
         if drill_screws:
@@ -159,7 +163,9 @@ def process_file():
                 'tool_diameter': tool_diameter,
                 'sacrifice_depth': sacrifice_depth,
                 'tabs': tabs,
-                'drill_screws': drill_screws
+                'drill_screws': drill_screws,
+                'origin_corner': origin_corner,
+                'rotation': rotation
             }
         })
         

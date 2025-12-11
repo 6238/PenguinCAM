@@ -550,6 +550,122 @@
             transform: scale(1.1);
         }
 
+        /* Mode Toggle */
+        .mode-toggle {
+            display: flex;
+            gap: 0.5rem;
+            margin-left: auto;
+        }
+
+        .mode-button {
+            padding: 0.4rem 0.8rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .mode-button:hover {
+            background: var(--surface-light);
+            color: var(--text);
+        }
+
+        .mode-button.active {
+            background: var(--primary);
+            color: black;
+            border-color: var(--primary);
+            font-weight: 500;
+        }
+
+        /* DXF Setup View */
+        #dxf-setup-container {
+            background: var(--surface);
+            border-radius: 8px;
+            padding: 1rem;
+        }
+
+        .setup-info {
+            margin-bottom: 0.5rem;
+            text-align: center;
+        }
+
+        .setup-label {
+            color: var(--text-dim);
+            font-size: 0.9rem;
+        }
+
+        #dxfSetupCanvas {
+            width: 100%;
+            height: 500px;
+            background: var(--bg);
+            border-radius: 6px;
+            cursor: crosshair;
+            display: block;
+        }
+
+        .setup-controls {
+            margin-top: 1rem;
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+            padding: 1rem;
+            background: var(--surface-light);
+            border-radius: 6px;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .control-group label {
+            color: var(--text);
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        .corner-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+        }
+
+        .corner-btn {
+            padding: 0.5rem 0.75rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .corner-btn:hover {
+            background: var(--surface-light);
+            border-color: var(--primary);
+        }
+
+        .corner-btn.active {
+            background: var(--primary);
+            color: black;
+            border-color: var(--primary);
+            font-weight: 500;
+        }
+
+        .rotation-display {
+            color: var(--primary);
+            font-weight: 600;
+            font-size: 1rem;
+            min-width: 40px;
+            text-align: center;
+        }
+
         .icon-button:hover {
             background: var(--surface);
             border-color: var(--primary);
@@ -697,9 +813,41 @@
                 <div class="panel">
                     <div class="panel-header">
                         <div class="step-number">4</div>
-                        <div class="panel-title">Preview & Download</div>
+                        <div class="panel-title">Setup & Preview</div>
+                        <!-- Mode Toggle -->
+                        <div class="mode-toggle" id="modeToggle" style="display: none;">
+                            <button class="mode-button active" data-mode="setup">Setup DXF</button>
+                            <button class="mode-button" data-mode="preview">Preview G-code</button>
+                        </div>
                     </div>
 
+                    <!-- DXF Setup View (2D) -->
+                    <div id="dxf-setup-container" style="display: none;">
+                        <div class="setup-info">
+                            <div class="setup-label">Click a corner to set as origin (0,0)</div>
+                        </div>
+                        <canvas id="dxfSetupCanvas"></canvas>
+                        
+                        <!-- Origin & Rotation Controls -->
+                        <div class="setup-controls">
+                            <div class="control-group">
+                                <label>Origin Corner:</label>
+                                <div class="corner-buttons">
+                                    <button class="corner-btn active" data-corner="bottom-left">↙ Bottom-Left</button>
+                                    <button class="corner-btn" data-corner="bottom-right">↘ Bottom-Right</button>
+                                    <button class="corner-btn" data-corner="top-left">↖ Top-Left</button>
+                                    <button class="corner-btn" data-corner="top-right">↗ Top-Right</button>
+                                </div>
+                            </div>
+                            <div class="control-group">
+                                <label>Rotation:</label>
+                                <button class="icon-button" id="rotateBtn">↻ Rotate 90° CW</button>
+                                <span id="rotationDisplay" class="rotation-display">0°</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3D G-code Preview -->
                     <div id="canvas-container">
                         <div class="empty-state">
                             <div class="empty-state-icon">🔧</div>
@@ -829,6 +977,13 @@
             generateBtn.textContent = '🚀 Generate G-code';
             hideError();
             hideResults();
+            
+            // Read DXF file for setup mode
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                parseDxfForSetup(e.target.result);
+            };
+            reader.readAsText(file);
         }
 
         function formatFileSize(bytes) {
@@ -848,6 +1003,8 @@
             formData.append('sacrifice_depth', document.getElementById('sacrificeDepth').value);
             formData.append('tabs', document.getElementById('tabs').value);
             formData.append('drill_screws', document.getElementById('drillScrews').checked);
+            formData.append('origin_corner', originCorner); // Add origin corner
+            formData.append('rotation', rotationAngle); // Add rotation angle
 
             showLoading();
             hideError();
@@ -871,7 +1028,8 @@
                 // Show results
                 showResults(data);
 
-                // Visualize G-code
+                // Switch to preview mode and visualize G-code
+                switchMode('preview');
                 visualizeGcode(data.gcode);
 
                 // Enable download and drive buttons
@@ -981,6 +1139,246 @@
 
         function hideResults() {
             results.classList.remove('show');
+        }
+
+        // DXF Setup State
+        let currentMode = 'setup'; // 'setup' or 'preview'
+        let dxfGeometry = null; // Parsed DXF geometry
+        let originCorner = 'bottom-left'; // Selected origin corner
+        let rotationAngle = 0; // 0, 90, 180, 270 degrees
+        let dxfCanvas2D = null;
+        let dxfCtx2D = null;
+        let dxfBounds = null;
+
+        // Mode Switching
+        function switchMode(mode) {
+            currentMode = mode;
+            
+            // Update mode buttons
+            document.querySelectorAll('.mode-button').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.mode === mode);
+            });
+            
+            // Show/hide appropriate views
+            const setupContainer = document.getElementById('dxf-setup-container');
+            const previewContainer = document.getElementById('canvas-container');
+            const scrubberContainer = document.getElementById('scrubberContainer');
+            
+            if (mode === 'setup') {
+                setupContainer.style.display = 'block';
+                previewContainer.style.display = 'none';
+                scrubberContainer.style.display = 'none';
+                if (dxfGeometry) {
+                    renderDxfSetup();
+                }
+            } else {
+                setupContainer.style.display = 'none';
+                previewContainer.style.display = 'block';
+                // Scrubber visibility handled by visualizeGcode
+            }
+        }
+
+        // Initialize 2D canvas for DXF setup
+        function initDxfSetup() {
+            dxfCanvas2D = document.getElementById('dxfSetupCanvas');
+            dxfCtx2D = dxfCanvas2D.getContext('2d');
+            
+            // Set canvas size
+            const container = dxfCanvas2D.parentElement;
+            dxfCanvas2D.width = container.clientWidth - 32; // Account for padding
+            dxfCanvas2D.height = 500;
+            
+            // Setup event listeners
+            document.querySelectorAll('.corner-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    originCorner = btn.dataset.corner;
+                    document.querySelectorAll('.corner-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    renderDxfSetup();
+                });
+            });
+            
+            document.getElementById('rotateBtn').addEventListener('click', () => {
+                rotationAngle = (rotationAngle + 90) % 360;
+                document.getElementById('rotationDisplay').textContent = rotationAngle + '°';
+                renderDxfSetup();
+            });
+            
+            // Mode toggle listeners
+            document.querySelectorAll('.mode-button').forEach(btn => {
+                btn.addEventListener('click', () => switchMode(btn.dataset.mode));
+            });
+        }
+
+        // Parse DXF geometry from file (simplified - extracts bounds and key features)
+        function parseDxfForSetup(dxfContent) {
+            // This is a simplified parser - just gets bounding box
+            // Real DXF parsing happens in Python backend
+            const lines = dxfContent.split('\n');
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+            
+            // Extract coordinate values (simplified)
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (line === '10' && i + 1 < lines.length) {
+                    const x = parseFloat(lines[i + 1]);
+                    if (!isNaN(x)) {
+                        minX = Math.min(minX, x);
+                        maxX = Math.max(maxX, x);
+                    }
+                } else if (line === '20' && i + 1 < lines.length) {
+                    const y = parseFloat(lines[i + 1]);
+                    if (!isNaN(y)) {
+                        minY = Math.min(minY, y);
+                        maxY = Math.max(maxY, y);
+                    }
+                }
+            }
+            
+            if (minX === Infinity) {
+                // Fallback - couldn't parse, use defaults
+                minX = 0; maxX = 10;
+                minY = 0; maxY = 10;
+            }
+            
+            dxfGeometry = { minX, maxX, minY, maxY };
+            dxfBounds = { 
+                width: maxX - minX, 
+                height: maxY - minY,
+                centerX: (minX + maxX) / 2,
+                centerY: (minY + maxY) / 2
+            };
+            
+            // Show mode toggle and switch to setup mode
+            document.getElementById('modeToggle').style.display = 'flex';
+            switchMode('setup');
+        }
+
+        // Render 2D DXF setup view
+        function renderDxfSetup() {
+            if (!dxfGeometry || !dxfCtx2D) return;
+            
+            const ctx = dxfCtx2D;
+            const canvas = dxfCanvas2D;
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Clear
+            ctx.fillStyle = '#0A0E14';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Calculate transform to fit DXF in canvas with padding
+            const padding = 80;
+            const availWidth = width - 2 * padding;
+            const availHeight = height - 2 * padding;
+            
+            // Apply rotation to bounds
+            let displayWidth = dxfBounds.width;
+            let displayHeight = dxfBounds.height;
+            if (rotationAngle === 90 || rotationAngle === 270) {
+                [displayWidth, displayHeight] = [displayHeight, displayWidth];
+            }
+            
+            const scale = Math.min(availWidth / displayWidth, availHeight / displayHeight);
+            
+            // Center the drawing
+            const offsetX = width / 2;
+            const offsetY = height / 2;
+            
+            ctx.save();
+            ctx.translate(offsetX, offsetY);
+            ctx.rotate(-rotationAngle * Math.PI / 180); // Negative for canvas coordinate system
+            
+            // Draw bounding box
+            ctx.strokeStyle = '#8B949E';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(
+                -dxfBounds.width * scale / 2,
+                -dxfBounds.height * scale / 2,
+                dxfBounds.width * scale,
+                dxfBounds.height * scale
+            );
+            
+            // Draw corner markers
+            const corners = [
+                { name: 'bottom-left', x: -dxfBounds.width * scale / 2, y: dxfBounds.height * scale / 2, label: '↙' },
+                { name: 'bottom-right', x: dxfBounds.width * scale / 2, y: dxfBounds.height * scale / 2, label: '↘' },
+                { name: 'top-left', x: -dxfBounds.width * scale / 2, y: -dxfBounds.height * scale / 2, label: '↖' },
+                { name: 'top-right', x: dxfBounds.width * scale / 2, y: -dxfBounds.height * scale / 2, label: '↗' }
+            ];
+            
+            corners.forEach(corner => {
+                const isOrigin = corner.name === originCorner;
+                ctx.beginPath();
+                ctx.arc(corner.x, corner.y, isOrigin ? 12 : 8, 0, Math.PI * 2);
+                ctx.fillStyle = isOrigin ? '#FDB515' : '#8B949E';
+                ctx.fill();
+                
+                if (isOrigin) {
+                    ctx.strokeStyle = '#FDB515';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                }
+            });
+            
+            ctx.restore();
+            
+            // Draw origin label (in canvas coordinates, not rotated)
+            const originCornerData = corners.find(c => c.name === originCorner);
+            if (originCornerData) {
+                ctx.save();
+                ctx.translate(offsetX, offsetY);
+                ctx.rotate(-rotationAngle * Math.PI / 180);
+                
+                ctx.fillStyle = '#FDB515';
+                ctx.font = 'bold 14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('Origin (0,0)', originCornerData.x, originCornerData.y - 25);
+                
+                ctx.restore();
+            }
+            
+            // Draw axes
+            ctx.save();
+            ctx.translate(offsetX, offsetY);
+            ctx.rotate(-rotationAngle * Math.PI / 180);
+            
+            // X axis (red)
+            ctx.beginPath();
+            ctx.moveTo(-dxfBounds.width * scale / 2, dxfBounds.height * scale / 2);
+            ctx.lineTo(-dxfBounds.width * scale / 2 + 60, dxfBounds.height * scale / 2);
+            ctx.strokeStyle = '#FF0000';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            ctx.fillStyle = '#FF0000';
+            ctx.font = '12px sans-serif';
+            ctx.fillText('X', -dxfBounds.width * scale / 2 + 70, dxfBounds.height * scale / 2);
+            
+            // Y axis (green)
+            ctx.beginPath();
+            ctx.moveTo(-dxfBounds.width * scale / 2, dxfBounds.height * scale / 2);
+            ctx.lineTo(-dxfBounds.width * scale / 2, dxfBounds.height * scale / 2 - 60);
+            ctx.strokeStyle = '#00FF00';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            ctx.fillStyle = '#00FF00';
+            ctx.fillText('Y', -dxfBounds.width * scale / 2, dxfBounds.height * scale / 2 - 70);
+            
+            ctx.restore();
+            
+            // Draw dimensions
+            ctx.fillStyle = '#8B949E';
+            ctx.font = '12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(
+                `${dxfBounds.width.toFixed(2)}" × ${dxfBounds.height.toFixed(2)}"`,
+                width / 2,
+                30
+            );
         }
 
         // G-code visualization
@@ -1332,8 +1730,10 @@
         }
 
         // Initialize on load
+        // Initialize on load
         window.addEventListener('load', () => {
             initVisualization();
+            initDxfSetup();
         });
 
         // Handle window resize
