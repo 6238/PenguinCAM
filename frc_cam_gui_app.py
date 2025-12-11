@@ -99,21 +99,6 @@ def process_file():
             return jsonify({'error': 'File must be a DXF file'}), 400
         
         # Get parameters
-        material = request.form.get('material', "polycarb")
-        if material == 'aluminum':
-            spindle_speed = 24000
-            feedrate = 45
-            plungerate = 15
-        elif material == 'plywood':
-            spindle_speed = 24000
-            feedrate = 75 
-            plungerate = 25
-        else:  # polycarb
-            spindle_speed = 24000
-            feedrate = 75
-            plungerate = 25
-
-
         thickness = float(request.form.get('thickness', 0.25))
         tool_diameter = float(request.form.get('tool_diameter', 0.157))
         sacrifice_depth = float(request.form.get('sacrifice_depth', 0.02))
@@ -142,9 +127,6 @@ def process_file():
             '--tabs', str(tabs),
             '--origin-corner', origin_corner,
             '--rotation', str(rotation),
-            '--spindle-speed', str(spindle_speed),
-            '--feed-rate', str(feedrate),
-            '--plunge-rate', str(plungerate),
         ]
         
         if drill_screws:
@@ -157,8 +139,6 @@ def process_file():
             text=True,
             timeout=30
         )
-
-        print(result.stderr)
         
         if result.returncode != 0:
             return jsonify({
@@ -377,7 +357,16 @@ def onshape_oauth_callback():
         # Clean up OAuth state
         session.pop('onshape_oauth_state', None)
         
-        # Redirect to main page with success message
+        # Check if there was a pending import
+        pending_import = session.pop('pending_onshape_import', None)
+        
+        if pending_import:
+            # Redirect back to import with original parameters
+            from urllib.parse import urlencode
+            params = urlencode({k: v for k, v in pending_import.items() if v})
+            return redirect(f'/onshape/import?{params}')
+        
+        # Otherwise redirect to main page with success message
         return redirect('/?onshape_connected=true')
         
     except Exception as e:
@@ -565,11 +554,17 @@ def onshape_import():
         client = session_manager.get_client(user_id)
         
         if not client:
-            # User needs to authenticate with OnShape first
-            return jsonify({
-                'error': 'Not authenticated with OnShape',
-                'auth_url': '/onshape/auth'
-            }), 401
+            # Store import parameters in session before redirecting to OAuth
+            session['pending_onshape_import'] = {
+                'documentId': document_id,
+                'workspaceId': workspace_id,
+                'elementId': element_id,
+                'faceId': face_id
+            }
+            
+            # Redirect to OnShape OAuth
+            from flask import redirect
+            return redirect('/onshape/auth')
         
         # If no face_id provided, auto-select the top face
         if not face_id:
@@ -608,66 +603,17 @@ def onshape_import():
         dxf_filename = os.path.basename(temp_dxf.name)
         dxf_path = temp_dxf.name
         
-        # Automatically process through PenguinCAM
-        try:
-            print(f"\nProcessing {dxf_filename} through PenguinCAM...")
-            
-            # Generate output filename
-            base_name = os.path.splitext(dxf_filename)[0]
-            output_filename = f"{base_name}_onshape.nc"
-            output_path = os.path.join(OUTPUT_FOLDER, output_filename)
-            
-            # Run post-processor (uses positional args: input_dxf output_gcode)
-            result = subprocess.run(
-                [POST_PROCESSOR, dxf_path, output_path],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            
-            if result.returncode == 0:
-                print(f"✅ G-code generated: {output_filename}")
-                print(f"📂 Full path: {output_path}")
-                
-                # Return success with both DXF and G-code info
-                return jsonify({
-                    'success': True,
-                    'dxf_filename': dxf_filename,
-                    'gcode_filename': output_filename,
-                    'output_path': output_path,
-                    'selected_face_id': face_id,
-                    'message': 'DXF imported from OnShape and processed to G-code',
-                    'document_id': document_id,
-                    'download_url': f'/download/{output_filename}'
-                })
-            else:
-                # Processing failed, but DXF is saved
-                print(f"⚠️  Processing failed: {result.stderr}")
-                return jsonify({
-                    'success': True,
-                    'dxf_filename': dxf_filename,
-                    'selected_face_id': face_id,
-                    'message': 'DXF imported but processing failed',
-                    'document_id': document_id,
-                    'error_details': result.stderr
-                })
-                
-        except subprocess.TimeoutExpired:
-            return jsonify({
-                'success': True,
-                'dxf_filename': dxf_filename,
-                'selected_face_id': face_id,
-                'message': 'DXF imported but processing timed out',
-                'document_id': document_id
-            })
-        except Exception as e:
-            return jsonify({
-                'success': True,
-                'dxf_filename': dxf_filename,
-                'selected_face_id': face_id,
-                'message': f'DXF imported but processing error: {str(e)}',
-                'document_id': document_id
-            })
+        print(f"✅ DXF imported from OnShape: {dxf_filename}")
+        print(f"📂 Saved to: {dxf_path}")
+        
+        # Render main page with DXF auto-loaded
+        # The frontend will detect the dxf_file parameter and auto-upload it
+        from flask import render_template
+        return render_template('index.html', 
+                             dxf_file=dxf_filename,
+                             from_onshape=True,
+                             document_id=document_id,
+                             face_id=face_id)
         
     except Exception as e:
         return jsonify({
