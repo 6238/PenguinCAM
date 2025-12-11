@@ -194,6 +194,15 @@ def download_file(filename):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/uploads/<filename>')
+def serve_upload(filename):
+    """Serve uploaded DXF files for frontend preview"""
+    from flask import send_from_directory
+    try:
+        return send_from_directory(UPLOAD_FOLDER, filename)
+    except Exception as e:
+        return jsonify({'error': f'File not found: {str(e)}'}), 404
+
 @app.route('/drive/status')
 @auth.require_auth
 def drive_status():
@@ -641,6 +650,8 @@ def onshape_import():
                 'message': 'Check that the face ID is valid and you have access to the document'
             }), 500
         
+        print(f"📄 DXF content received: {len(dxf_content)} bytes")
+        
         # Save DXF to temp file in uploads folder
         import tempfile
         temp_dxf = tempfile.NamedTemporaryFile(
@@ -656,6 +667,8 @@ def onshape_import():
         
         print(f"✅ DXF imported from OnShape: {dxf_filename}")
         print(f"📂 Saved to: {dxf_path}")
+        print(f"📏 File size on disk: {os.path.getsize(dxf_path)} bytes")
+        print(f"🔗 Will be served at: /uploads/{dxf_filename}")
         
         # Render main page with DXF auto-loaded
         # The frontend will detect the dxf_file parameter and auto-upload it

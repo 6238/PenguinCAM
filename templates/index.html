@@ -1388,11 +1388,13 @@
             }
             
             if (minX === Infinity) {
+                console.warn('⚠️ No valid geometry found, using fallback 10×10 bounds');
                 minX = 0; maxX = 10;
                 minY = 0; maxY = 10;
             }
             
             console.log(`Manual parse: ${entities.length} entities`);
+            console.log(`Bounds: X=[${minX.toFixed(3)}, ${maxX.toFixed(3)}], Y=[${minY.toFixed(3)}, ${maxY.toFixed(3)}]`);
             
             dxfGeometry = { 
                 minX, maxX, minY, maxY,
@@ -2031,11 +2033,23 @@
             
             if (dxfFile && fromOnshape) {
                 console.log('Auto-loading DXF from OnShape:', dxfFile);
+                console.log('Fetching from:', `/uploads/${dxfFile}`);
+                
                 // Fetch the DXF and load it
                 fetch(`/uploads/${dxfFile}`)
-                    .then(response => response.text())
+                    .then(response => {
+                        console.log('Fetch response:', response.status, response.statusText);
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        return response.text();
+                    })
                     .then(dxfContent => {
+                        console.log('DXF content received:', dxfContent.length, 'bytes');
+                        console.log('First 200 chars:', dxfContent.substring(0, 200));
+                        
                         parseDxfForSetup(dxfContent);
+                        
                         // Show success message
                         const statusDiv = document.getElementById('statusMessage');
                         if (statusDiv) {
@@ -2048,7 +2062,7 @@
                         console.error('Error loading DXF:', error);
                         const statusDiv = document.getElementById('statusMessage');
                         if (statusDiv) {
-                            statusDiv.textContent = '❌ Failed to load DXF from OnShape';
+                            statusDiv.textContent = `❌ Failed to load DXF: ${error.message}`;
                             statusDiv.style.display = 'block';
                             statusDiv.className = 'error';
                         }
