@@ -2048,6 +2048,21 @@
                         console.log('DXF content received:', dxfContent.length, 'bytes');
                         console.log('First 200 chars:', dxfContent.substring(0, 200));
                         
+                        // Create a File object from the DXF content
+                        const blob = new Blob([dxfContent], { type: 'application/dxf' });
+                        const file = new File([blob], dxfFile, { type: 'application/dxf' });
+                        
+                        // Set file state and enable generate button
+                        uploadedFile = file;
+                        fileName.textContent = dxfFile;
+                        fileSize.textContent = formatFileSize(dxfContent.length);
+                        fileInfo.style.display = 'flex';
+                        generateBtn.disabled = false;
+                        generateBtn.textContent = '🚀 Generate G-code';
+                        hideError();
+                        hideResults();
+                        
+                        // Parse for 2D setup view
                         parseDxfForSetup(dxfContent);
                         
                         // Show success message
