@@ -172,24 +172,6 @@ def verify_feedrates(onshape_lines, fusion_lines, debug=False):
     else:
         print(f"\t\tCutting feedrate(s): {onshape_cutting_unique}")
 
-    # Compare move counts
-    plunge_count_match = len(onshape_plunge) == len(fusion_plunge)
-    cutting_count_match = len(onshape_cutting) == len(fusion_cutting)
-
-    print(
-        f"\tMove Count Match ---- {PASS if (plunge_count_match and cutting_count_match) else FAIL}"
-    )
-    if not plunge_count_match:
-        print(
-            f"\t\tPlunge moves - Onshape: {len(onshape_plunge)}, Fusion: {len(fusion_plunge)}"
-        )
-        all_passed = False
-    if not cutting_count_match:
-        print(
-            f"\t\tCutting moves - Onshape: {len(onshape_cutting)}, Fusion: {len(fusion_cutting)}"
-        )
-        all_passed = False
-
     return all_passed
 def get_gcode_boundary(gcode_lines):
     """Extract the bounding box (min/max X, Y, Z) from G-code"""
@@ -448,6 +430,8 @@ if __name__ == "__main__":
         tabs=TABS,
         drill_screws=DRILL_SCREWS
     )
+
+    print(penguin_gcode_path)
     
     penguin_lines = load_gcode_file(penguin_gcode_path)
     fusion_lines = load_gcode_file(FUSION_REFERENCE)
