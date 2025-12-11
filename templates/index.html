@@ -609,8 +609,7 @@
         .setup-controls {
             margin-top: 1rem;
             display: flex;
-            gap: 2rem;
-            align-items: center;
+            justify-content: center;
             padding: 1rem;
             background: var(--surface-light);
             border-radius: 6px;
@@ -626,36 +625,6 @@
             color: var(--text);
             font-weight: 500;
             font-size: 0.9rem;
-        }
-
-        .corner-buttons {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 0.5rem;
-        }
-
-        .corner-btn {
-            padding: 0.5rem 0.75rem;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            color: var(--text);
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            transition: all 0.2s;
-            white-space: nowrap;
-        }
-
-        .corner-btn:hover {
-            background: var(--surface-light);
-            border-color: var(--primary);
-        }
-
-        .corner-btn.active {
-            background: var(--primary);
-            color: black;
-            border-color: var(--primary);
-            font-weight: 500;
         }
 
         .rotation-display {
@@ -861,21 +830,12 @@
                     <!-- DXF Setup View (2D) -->
                     <div id="dxf-setup-container" style="display: none;">
                         <div class="setup-info">
-                            <div class="setup-label">Click a corner to set as origin (0,0)</div>
+                            <div class="setup-label">Rotate to orient your part • Origin is always bottom-left (X→ Y↑)</div>
                         </div>
                         <canvas id="dxfSetupCanvas"></canvas>
                         
                         <!-- Origin & Rotation Controls -->
                         <div class="setup-controls">
-                            <div class="control-group">
-                                <label>Origin Corner:</label>
-                                <div class="corner-buttons">
-                                    <button class="corner-btn active" data-corner="bottom-left">↙ Bottom-Left</button>
-                                    <button class="corner-btn" data-corner="bottom-right">↘ Bottom-Right</button>
-                                    <button class="corner-btn" data-corner="top-left">↖ Top-Left</button>
-                                    <button class="corner-btn" data-corner="top-right">↗ Top-Right</button>
-                                </div>
-                            </div>
                             <div class="control-group">
                                 <label>Rotation:</label>
                                 <button class="icon-button" id="rotateBtn">↻ Rotate 90° CW</button>
@@ -1041,7 +1001,7 @@
             formData.append('sacrifice_depth', document.getElementById('sacrificeDepth').value);
             formData.append('tabs', document.getElementById('tabs').value);
             formData.append('drill_screws', document.getElementById('drillScrews').checked);
-            formData.append('origin_corner', originCorner); // Add origin corner
+            formData.append('origin_corner', 'bottom-left'); // Always bottom-left
             formData.append('rotation', rotationAngle); // Add rotation angle
 
             showLoading();
@@ -1182,7 +1142,6 @@
         // DXF Setup State
         let currentMode = 'setup'; // 'setup' or 'preview'
         let dxfGeometry = null; // Parsed DXF geometry
-        let originCorner = 'bottom-left'; // Selected origin corner
         let rotationAngle = 0; // 0, 90, 180, 270 degrees
         let dxfCanvas2D = null;
         let dxfCtx2D = null;
@@ -1210,7 +1169,18 @@
                 scrubberContainer.style.display = 'none';
                 previewControls.style.display = 'none';
                 gcodeButtons.style.display = 'none';
-                if (dxfGeometry) {
+                
+                // Resize canvas now that it's visible
+                if (dxfCanvas2D && dxfGeometry) {
+                    setTimeout(() => {
+                        const rect = dxfCanvas2D.getBoundingClientRect();
+                        if (rect.width > 0 && rect.height > 0) {
+                            dxfCanvas2D.width = rect.width;
+                            dxfCanvas2D.height = rect.height;
+                        }
+                        renderDxfSetup();
+                    }, 0);
+                } else if (dxfGeometry) {
                     renderDxfSetup();
                 }
             } else {
@@ -1227,21 +1197,20 @@
             dxfCanvas2D = document.getElementById('dxfSetupCanvas');
             dxfCtx2D = dxfCanvas2D.getContext('2d');
             
-            // Set canvas size
-            const container = dxfCanvas2D.parentElement;
-            dxfCanvas2D.width = container.clientWidth - 32; // Account for padding
-            dxfCanvas2D.height = 500;
+            // CRITICAL: Set canvas internal size to match CSS display size
+            // to avoid stretching/distortion
+            const rect = dxfCanvas2D.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                dxfCanvas2D.width = rect.width;
+                dxfCanvas2D.height = rect.height;
+            } else {
+                // Fallback if element not yet sized
+                console.warn('Canvas not yet sized, using defaults');
+                dxfCanvas2D.width = 800;
+                dxfCanvas2D.height = 500;
+            }
             
             // Setup event listeners
-            document.querySelectorAll('.corner-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    originCorner = btn.dataset.corner;
-                    document.querySelectorAll('.corner-btn').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    renderDxfSetup();
-                });
-            });
-            
             document.getElementById('rotateBtn').addEventListener('click', () => {
                 rotationAngle = (rotationAngle + 90) % 360;
                 document.getElementById('rotationDisplay').textContent = rotationAngle + '°';
@@ -1498,6 +1467,12 @@
             const width = canvas.width;
             const height = canvas.height;
             
+            // Check if canvas has valid size
+            if (width === 0 || height === 0) {
+                console.warn('Canvas has zero size, skipping render');
+                return;
+            }
+            
             // Clear
             ctx.fillStyle = '#0A0E14';
             ctx.fillRect(0, 0, width, height);
@@ -1567,9 +1542,17 @@
                             // Canvas angle = -(DXF angle - rotation) = -DXF angle + rotation
                             const startRad = (-entity.startAngle + rotationAngle) * Math.PI / 180;
                             const endRad = (-entity.endAngle + rotationAngle) * Math.PI / 180;
+                            const arcRadius = entity.radius * scale;
+                            
+                            // Validate arc parameters
+                            if (isNaN(startRad) || isNaN(endRad) || arcRadius <= 0 || !isFinite(arcRadius)) {
+                                console.warn('Invalid arc parameters:', { startRad, endRad, arcRadius });
+                                break;
+                            }
+                            
                             // Y-flip also reverses direction: counter-clockwise becomes clockwise
                             // So we swap start and end to maintain the arc direction
-                            ctx.arc(aPos.x, aPos.y, entity.radius * scale, endRad, startRad, false);
+                            ctx.arc(aPos.x, aPos.y, arcRadius, endRad, startRad, false);
                             ctx.stroke();
                             break;
                             
@@ -1633,63 +1616,48 @@
             ctx.strokeRect(boxLeft, boxTop, displayWidth * scale, displayHeight * scale);
             ctx.setLineDash([]);
             
-            // Draw corner markers at FIXED screen positions
-            const corners = [
-                { name: 'bottom-left', x: boxLeft, y: boxBottom },
-                { name: 'bottom-right', x: boxRight, y: boxBottom },
-                { name: 'top-left', x: boxLeft, y: boxTop },
-                { name: 'top-right', x: boxRight, y: boxTop }
-            ];
+            // Draw origin marker at bottom-left (ALWAYS)
+            const originX = boxLeft;
+            const originY = boxBottom;
             
-            corners.forEach(corner => {
-                const isOrigin = corner.name === originCorner;
-                ctx.beginPath();
-                ctx.arc(corner.x, corner.y, isOrigin ? 12 : 8, 0, Math.PI * 2);
-                ctx.fillStyle = isOrigin ? '#FDB515' : '#8B949E';
-                ctx.fill();
-                
-                if (isOrigin) {
-                    ctx.strokeStyle = '#FDB515';
-                    ctx.lineWidth = 3;
-                    ctx.stroke();
-                }
-            });
+            ctx.beginPath();
+            ctx.arc(originX, originY, 12, 0, Math.PI * 2);
+            ctx.fillStyle = '#FDB515';
+            ctx.fill();
+            ctx.strokeStyle = '#FDB515';
+            ctx.lineWidth = 3;
+            ctx.stroke();
             
-            // Draw origin label at selected corner
-            const originCornerData = corners.find(c => c.name === originCorner);
-            if (originCornerData) {
-                ctx.fillStyle = '#FDB515';
-                ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText('Origin (0,0)', originCornerData.x, originCornerData.y - 25);
-            }
+            // Draw origin label
+            ctx.fillStyle = '#FDB515';
+            ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('Origin (0,0)', originX, originY - 25);
             
-            // Draw axes from the origin corner
-            if (originCornerData) {
-                // X axis (red) - points right
-                ctx.beginPath();
-                ctx.moveTo(originCornerData.x, originCornerData.y);
-                ctx.lineTo(originCornerData.x + 60, originCornerData.y);
-                ctx.strokeStyle = '#FF0000';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                
-                ctx.fillStyle = '#FF0000';
-                ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-                ctx.fillText('X', originCornerData.x + 70, originCornerData.y);
-                
-                // Y axis (green) - points up
-                ctx.beginPath();
-                ctx.moveTo(originCornerData.x, originCornerData.y);
-                ctx.lineTo(originCornerData.x, originCornerData.y - 60);
-                ctx.strokeStyle = '#00FF00';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                
-                ctx.fillStyle = '#00FF00';
-                ctx.fillText('Y', originCornerData.x, originCornerData.y - 70);
-            }
+            // Draw axes from bottom-left origin
+            // X axis (red) - points right
+            ctx.beginPath();
+            ctx.moveTo(originX, originY);
+            ctx.lineTo(originX + 60, originY);
+            ctx.strokeStyle = '#FF0000';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            ctx.fillStyle = '#FF0000';
+            ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+            ctx.fillText('X', originX + 70, originY);
+            
+            // Y axis (green) - points up
+            ctx.beginPath();
+            ctx.moveTo(originX, originY);
+            ctx.lineTo(originX, originY - 60);
+            ctx.strokeStyle = '#00FF00';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            ctx.fillStyle = '#00FF00';
+            ctx.fillText('Y', originX, originY - 70);
             
             // Draw dimensions at top
             ctx.fillStyle = '#8B949E';
@@ -2064,6 +2032,14 @@
             camera.aspect = container.clientWidth / container.clientHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(container.clientWidth, container.clientHeight);
+            
+            // Also resize DXF canvas to maintain correct aspect ratio
+            if (dxfCanvas2D && dxfGeometry) {
+                const rect = dxfCanvas2D.getBoundingClientRect();
+                dxfCanvas2D.width = rect.width;
+                dxfCanvas2D.height = rect.height;
+                renderDxfSetup(); // Re-render with new size
+            }
         });
     </script>
 </body>
