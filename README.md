@@ -62,11 +62,19 @@ PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC tea
 - All team members can access files
 - Files persist when students graduate
 
-### 📊 **3D Visualization**
+### 📊 **Visualization & Setup**
 
-- Preview toolpaths before machining
-- Rotate and zoom to verify cuts
-- See holes, pockets, and perimeter
+**2D Setup View:**
+- Orient your part before generating G-code
+- Rotate in 90° increments to match stock orientation
+- Origin automatically set to bottom-left (X→ Y↑)
+- Familiar workflow for 3D printer slicer / laser cutter users
+
+**3D Toolpath Preview:**
+- Interactive preview with cutting tool animation
+- Scrubber to step through each move
+- See completed vs. upcoming cuts
+- Verify holes, pockets, and perimeter
 
 ---
 
@@ -80,9 +88,18 @@ Visit https://penguincam.popcornpenguins.com and sign in with your team Google a
 - Paste into PenguinCAM
 - PenguinCAM auto-detects the top face
 
-### 3. Review & Download
-- Check the 3D preview
-- Download G-code file
+### 3. Orient Your Part (Setup Mode)
+- View your part in 2D top-down
+- Click "Rotate 90° CW" to orient it correctly
+- Origin is always bottom-left (like laser cutters)
+
+### 4. Generate & Preview
+- Click "Generate G-code"
+- Review 3D toolpath preview
+- Use scrubber to step through cuts
+
+### 5. Download or Save
+- Download G-code file to USB drive
 - Or upload to team Google Drive
 
 ### 4. Machine Your Part
