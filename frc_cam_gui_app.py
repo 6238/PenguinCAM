@@ -737,23 +737,36 @@ def onshape_import():
             if element_info:
                 print(f"   Element: {element_info.get('name', 'N/A')}")
             
-            if doc_info and element_info:
-                doc_name = doc_info.get('name', 'Document')
-                element_name = element_info.get('name', 'Part_Studio')
-                
+            if doc_info or element_info:
+                # Use whatever names we got (prefer both, fallback to one)
+                doc_name = doc_info.get('name', 'OnShape_Doc') if doc_info else 'OnShape_Doc'
+                element_name = element_info.get('name', 'Part_Studio') if element_info else 'Part_Studio'
+
                 # Clean names for filename (remove spaces, special chars)
                 import re
                 doc_clean = re.sub(r'[^\w\s-]', '', doc_name).strip().replace(' ', '_')
                 elem_clean = re.sub(r'[^\w\s-]', '', element_name).strip().replace(' ', '_')
-                
+
                 # Limit length
                 doc_clean = doc_clean[:50]
                 elem_clean = elem_clean[:50]
-                
-                suggested_filename = f"{doc_clean}_{elem_clean}"
-                print(f"✅ Suggested filename: {suggested_filename}.nc")
+
+                # If both are default/fallback names, use timestamp instead
+                if doc_clean == 'OnShape_Doc' and elem_clean == 'Part_Studio':
+                    from datetime import datetime
+                    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                    suggested_filename = f"OnShape_Part_{timestamp}"
+                    print(f"⚠️  Using timestamp (no names available): {suggested_filename}.nc")
+                else:
+                    # Use element name only if doc name is fallback
+                    if doc_clean == 'OnShape_Doc':
+                        suggested_filename = elem_clean
+                        print(f"✅ Suggested filename (element only): {suggested_filename}.nc")
+                    else:
+                        suggested_filename = f"{doc_clean}_{elem_clean}"
+                        print(f"✅ Suggested filename: {suggested_filename}.nc")
             else:
-                # Generate timestamp fallback
+                # Generate timestamp fallback (both API calls failed)
                 from datetime import datetime
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                 suggested_filename = f"OnShape_Part_{timestamp}"
