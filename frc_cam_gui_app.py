@@ -543,10 +543,31 @@ def onshape_import():
         element_id = params.get('elementId') or params.get('eid')
         face_id = params.get('faceId') or params.get('fid')
         
+        # WORKAROUND: If params have placeholder strings, try to parse from referrer
+        if (document_id and ('${' in str(document_id) or not document_id.strip('${}'))):
+            print("OnShape variable substitution failed, trying referrer...")
+            referrer = request.headers.get('Referer', '')
+            print(f"Referrer: {referrer}")
+            
+            if 'onshape.com/documents/' in referrer:
+                # Parse URL: https://cad.onshape.com/documents/{did}/w/{wid}/e/{eid}
+                import re
+                match = re.search(r'/documents/([^/]+)/[wv]/([^/]+)/e/([^/]+)', referrer)
+                if match:
+                    document_id = match.group(1)
+                    workspace_id = match.group(2)  # Could be workspace or version
+                    element_id = match.group(3)
+                    print(f"Extracted from referrer: doc={document_id}, ws={workspace_id}, elem={element_id}")
+                else:
+                    print("Could not parse OnShape URL from referrer")
+        
         if not all([document_id, workspace_id, element_id]):
             return jsonify({
                 'error': 'Missing required parameters',
-                'required': ['documentId', 'workspaceId', 'elementId']
+                'required': ['documentId', 'workspaceId', 'elementId'],
+                'received': params,
+                'referrer': request.headers.get('Referer', 'none'),
+                'help': 'OnShape variable substitution may not be working. Check extension configuration.'
             }), 400
         
         # Get OnShape client for this user
@@ -569,15 +590,43 @@ def onshape_import():
         # If no face_id provided, auto-select the top face
         if not face_id:
             print("No face ID provided, auto-selecting top face...")
-            face_id = client.auto_select_top_face(document_id, workspace_id, element_id)
             
-            if not face_id:
+            try:
+                # First, try to list all faces for debugging
+                faces_data = client.list_faces(document_id, workspace_id, element_id)
+                print(f"Available faces: {faces_data}")
+                
+                face_id = client.auto_select_top_face(document_id, workspace_id, element_id)
+                
+                if not face_id:
+                    # Provide helpful error with face list
+                    error_msg = 'No horizontal plane faces found. '
+                    if faces_data:
+                        face_count = len(faces_data.get('faces', []))
+                        error_msg += f'Found {face_count} faces total. '
+                    error_msg += 'Try selecting a face manually in OnShape.'
+                    
+                    # Render error page instead of JSON
+                    from flask import render_template
+                    return render_template('index.html',
+                                         error_message=error_msg,
+                                         from_onshape=True,
+                                         debug_info={
+                                             'documentId': document_id,
+                                             'workspaceId': workspace_id,
+                                             'elementId': element_id,
+                                             'faces_found': face_count if faces_data else 0
+                                         }), 400
+                
+                print(f"Auto-selected face: {face_id}")
+                
+            except Exception as e:
+                print(f"Error in face detection: {str(e)}")
                 return jsonify({
-                    'error': 'Could not auto-select top face',
-                    'message': 'No horizontal plane faces found. Please specify a faceId manually.'
+                    'error': 'Face detection failed',
+                    'message': str(e),
+                    'debug_url': f'/onshape/list-faces?documentId={document_id}&workspaceId={workspace_id}&elementId={element_id}'
                 }), 400
-            
-            print(f"Auto-selected face: {face_id}")
         
         # Fetch DXF from OnShape
         dxf_content = client.export_face_to_dxf(
