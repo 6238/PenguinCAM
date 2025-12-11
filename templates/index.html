@@ -1525,10 +1525,13 @@
                             
                         case 'ARC':
                             const aPos = toCanvasCoords(entity.center.x, entity.center.y);
-                            // Rotate arc angles by the rotation amount
-                            const startRad = -(entity.startAngle + rotationAngle) * Math.PI / 180;
-                            const endRad = -(entity.endAngle + rotationAngle) * Math.PI / 180;
-                            ctx.arc(aPos.x, aPos.y, entity.radius * scale, startRad, endRad, true);
+                            // DXF arcs: counter-clockwise, angles in degrees
+                            // Canvas: Y-flipped, so counter-clockwise becomes clockwise
+                            // Apply rotation by SUBTRACTING from angles (clockwise rotation)
+                            const startRad = (entity.startAngle - rotationAngle) * Math.PI / 180;
+                            const endRad = (entity.endAngle - rotationAngle) * Math.PI / 180;
+                            // Use clockwise direction (false) because Y is flipped
+                            ctx.arc(aPos.x, aPos.y, entity.radius * scale, -startRad, -endRad, false);
                             ctx.stroke();
                             break;
                             
