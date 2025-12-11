@@ -1232,6 +1232,7 @@
                 emissive: 0x404040
             });
             toolMesh = new THREE.Mesh(toolGeometry, toolMaterial);
+            toolMesh.userData.toolLength = toolLength; // Store for positioning
             scene.add(toolMesh);
 
             // Initialize toolpath lines
@@ -1276,43 +1277,55 @@
             // Update tool position
             if (toolMesh) {
                 const pos = currentMove.to;
-                toolMesh.position.set(pos.x, pos.z, -pos.y);
+                // Position tool so BOTTOM is at Z coordinate, not center
+                // Cylinder center needs to be offset up by half its length
+                const toolLength = toolMesh.userData.toolLength;
+                toolMesh.position.set(pos.x, pos.z + toolLength / 2, -pos.y);
             }
 
             // Remove old toolpath lines
             if (completedLine) scene.remove(completedLine);
             if (upcomingLine) scene.remove(upcomingLine);
 
-            // Build completed path (green)
-            if (moveIndex > 0) {
-                const completedPoints = [];
-                for (let i = 0; i <= moveIndex; i++) {
-                    const move = toolpathMoves[i];
-                    completedPoints.push(new THREE.Vector3(move.from.x, move.from.z, -move.from.y));
-                    completedPoints.push(new THREE.Vector3(move.to.x, move.to.z, -move.to.y));
-                }
-                const completedGeometry = new THREE.BufferGeometry().setFromPoints(completedPoints);
-                completedLine = new THREE.LineSegments(
-                    completedGeometry,
-                    new THREE.LineBasicMaterial({ color: 0x2EA043, linewidth: 2 })
-                );
-                scene.add(completedLine);
-            }
-
-            // Build upcoming path (gold)
+            // Build upcoming path first (gold) - draw this first so completed renders on top
             if (moveIndex < toolpathMoves.length - 1) {
                 const upcomingPoints = [];
                 for (let i = moveIndex; i < toolpathMoves.length; i++) {
                     const move = toolpathMoves[i];
-                    upcomingPoints.push(new THREE.Vector3(move.from.x, move.from.z, -move.from.y));
+                    if (i === moveIndex) {
+                        upcomingPoints.push(new THREE.Vector3(move.from.x, move.from.z, -move.from.y));
+                    }
                     upcomingPoints.push(new THREE.Vector3(move.to.x, move.to.z, -move.to.y));
                 }
                 const upcomingGeometry = new THREE.BufferGeometry().setFromPoints(upcomingPoints);
-                upcomingLine = new THREE.LineSegments(
+                upcomingLine = new THREE.Line(
                     upcomingGeometry,
-                    new THREE.LineBasicMaterial({ color: 0xFDB515, linewidth: 2, opacity: 0.6, transparent: true })
+                    new THREE.LineBasicMaterial({ 
+                        color: 0xFDB515, 
+                        linewidth: 3,
+                        opacity: 0.8, 
+                        transparent: true 
+                    })
                 );
                 scene.add(upcomingLine);
+            }
+
+            // Build completed path (green) - draw this last so it's on top
+            if (moveIndex > 0) {
+                const completedPoints = [];
+                for (let i = 0; i <= moveIndex; i++) {
+                    const move = toolpathMoves[i];
+                    if (i === 0) {
+                        completedPoints.push(new THREE.Vector3(move.from.x, move.from.z, -move.from.y));
+                    }
+                    completedPoints.push(new THREE.Vector3(move.to.x, move.to.z, -move.to.y));
+                }
+                const completedGeometry = new THREE.BufferGeometry().setFromPoints(completedPoints);
+                completedLine = new THREE.Line(
+                    completedGeometry,
+                    new THREE.LineBasicMaterial({ color: 0x2EA043, linewidth: 3 })
+                );
+                scene.add(completedLine);
             }
         }
 
