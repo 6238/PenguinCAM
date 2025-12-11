@@ -1225,6 +1225,7 @@
             
             const circles = [];
             const lineSegments = [];
+            const arcs = [];
             
             // Find ENTITIES section - skip HEADER to avoid placeholder values
             let inEntitiesSection = false;
@@ -1270,13 +1271,25 @@
                     }
                     currentEntity = 'LINE';
                     entityData = {};
+                } else if (line === 'ARC') {
+                    if (currentEntity === 'ARC' && entityData.centerX !== undefined && entityData.radius !== undefined) {
+                        arcs.push({
+                            x: entityData.centerX,
+                            y: entityData.centerY,
+                            r: entityData.radius,
+                            startAngle: entityData.startAngle || 0,
+                            endAngle: entityData.endAngle || 360
+                        });
+                    }
+                    currentEntity = 'ARC';
+                    entityData = {};
                 }
                 
                 // Parse entity data based on group codes
                 if (line === '10' && i + 1 < lines.length) {
                     const val = parseFloat(lines[i + 1]);
-                    if (!isNaN(val) && Math.abs(val) < 1e10) { // Sanity check - ignore huge values
-                        if (currentEntity === 'CIRCLE') entityData.centerX = val;
+                    if (!isNaN(val) && Math.abs(val) < 1e10) {
+                        if (currentEntity === 'CIRCLE' || currentEntity === 'ARC') entityData.centerX = val;
                         else if (currentEntity === 'LINE') entityData.x1 = val;
                         minX = Math.min(minX, val);
                         maxX = Math.max(maxX, val);
@@ -1284,12 +1297,12 @@
                 } else if (line === '20' && i + 1 < lines.length) {
                     const val = parseFloat(lines[i + 1]);
                     if (!isNaN(val) && Math.abs(val) < 1e10) {
-                        if (currentEntity === 'CIRCLE') entityData.centerY = val;
+                        if (currentEntity === 'CIRCLE' || currentEntity === 'ARC') entityData.centerY = val;
                         else if (currentEntity === 'LINE') entityData.y1 = val;
                         minY = Math.min(minY, val);
                         maxY = Math.max(maxY, val);
                     }
-                } else if (line === '40' && i + 1 < lines.length && currentEntity === 'CIRCLE') {
+                } else if (line === '40' && i + 1 < lines.length && (currentEntity === 'CIRCLE' || currentEntity === 'ARC')) {
                     const val = parseFloat(lines[i + 1]);
                     if (!isNaN(val) && val < 1e10) {
                         entityData.radius = val;
@@ -1299,6 +1312,18 @@
                             minY = Math.min(minY, entityData.centerY - val);
                             maxY = Math.max(maxY, entityData.centerY + val);
                         }
+                    }
+                } else if (line === '50' && i + 1 < lines.length && currentEntity === 'ARC') {
+                    // Start angle (degrees)
+                    const val = parseFloat(lines[i + 1]);
+                    if (!isNaN(val)) {
+                        entityData.startAngle = val;
+                    }
+                } else if (line === '51' && i + 1 < lines.length && currentEntity === 'ARC') {
+                    // End angle (degrees)
+                    const val = parseFloat(lines[i + 1]);
+                    if (!isNaN(val)) {
+                        entityData.endAngle = val;
                     }
                 } else if (line === '11' && i + 1 < lines.length && currentEntity === 'LINE') {
                     const val = parseFloat(lines[i + 1]);
@@ -1331,6 +1356,14 @@
                     x2: entityData.x2,
                     y2: entityData.y2
                 });
+            } else if (currentEntity === 'ARC' && entityData.centerX !== undefined && entityData.radius !== undefined) {
+                arcs.push({
+                    x: entityData.centerX,
+                    y: entityData.centerY,
+                    r: entityData.radius,
+                    startAngle: entityData.startAngle || 0,
+                    endAngle: entityData.endAngle || 360
+                });
             }
             
             if (minX === Infinity) {
@@ -1339,13 +1372,14 @@
                 minY = 0; maxY = 10;
             }
             
-            console.log(`Parsed DXF: ${circles.length} circles, ${lineSegments.length} lines`);
+            console.log(`Parsed DXF: ${circles.length} circles, ${lineSegments.length} lines, ${arcs.length} arcs`);
             console.log(`Bounds: X=[${minX}, ${maxX}], Y=[${minY}, ${maxY}]`);
             
             dxfGeometry = { 
                 minX, maxX, minY, maxY,
                 circles,
-                lines: lineSegments
+                lines: lineSegments,
+                arcs
             };
             dxfBounds = { 
                 width: maxX - minX, 
@@ -1422,6 +1456,23 @@
                 dxfGeometry.circles.forEach(circle => {
                     ctx.beginPath();
                     ctx.arc(toCanvasX(circle.x), toCanvasY(circle.y), circle.r * scale, 0, Math.PI * 2);
+                    ctx.stroke();
+                });
+            }
+            
+            // Draw arcs
+            if (dxfGeometry.arcs && dxfGeometry.arcs.length > 0) {
+                ctx.strokeStyle = '#6B7280';
+                ctx.lineWidth = 1.5;
+                dxfGeometry.arcs.forEach(arc => {
+                    ctx.beginPath();
+                    // DXF angles are in degrees, canvas uses radians
+                    // DXF: 0° = East (3 o'clock), counter-clockwise
+                    // Canvas: 0 = East (3 o'clock), but Y is flipped so we need to negate angles
+                    const startRad = -arc.startAngle * Math.PI / 180;
+                    const endRad = -arc.endAngle * Math.PI / 180;
+                    // Arc direction: DXF is always counter-clockwise, but with flipped Y it becomes clockwise
+                    ctx.arc(toCanvasX(arc.x), toCanvasY(arc.y), arc.r * scale, startRad, endRad, true);
                     ctx.stroke();
                 });
             }
