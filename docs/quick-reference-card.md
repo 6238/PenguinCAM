@@ -4,36 +4,23 @@
 
 ---
 
-## 🚀 Quick Start (4 Steps)
+## 🚀 Quick Start (3 Steps)
 
-### 1. Log In
-Go to: **https://penguincam.popcornpenguins.com**
+### 1. Send Part from OnShape ⭐
 
-Sign in with your **@popcornpenguins.com** Google account
-
----
-
-### 2. Import Your Part
-
-**Option A: From OnShape (Recommended)**
+**Easiest Method - One Click:**
 1. Open your Part Studio in OnShape
-2. Copy the URL from your browser
-   - Example: `https://cad.onshape.com/documents/abc.../w/xyz.../e/def...`
-3. In PenguinCAM, look for "Import from OnShape" or similar
-4. Paste the URL
-5. Click Import
-6. PenguinCAM automatically finds the top face!
+2. **Right-click the part** in the feature tree (left sidebar)
+3. Click **"Send to PenguinCAM"** from the menu
+4. Part opens automatically in PenguinCAM!
 
-**Option B: Upload DXF**
-1. In OnShape, right-click your part face
-2. Export → DXF
-3. Save the file
-4. In PenguinCAM, click "Upload DXF"
-5. Select your file
+**First Time Only:** You'll sign in with your @popcornpenguins.com Google account
+
+**Alternative:** Manual DXF upload (see below)
 
 ---
 
-### 3. Orient Your Part (Setup Mode)
+### 2. Orient Your Part (Setup Mode)
 
 After import, you'll see a **2D top-down view** of your part:
 
@@ -47,7 +34,7 @@ After import, you'll see a **2D top-down view** of your part:
 
 ---
 
-### 4. Generate & Download
+### 3. Generate & Download
 
 1. Click **"Generate G-code"** 
 2. **Review 3D preview** - Rotate to check toolpaths
@@ -392,6 +379,29 @@ In PenguinCAM web interface:
 - Ask your mentor
 - Check team documentation
 - GitHub: [Your repo link]
+
+---
+
+## 📤 Alternative: Manual DXF Upload
+
+**If OnShape extension isn't available:**
+
+1. **In OnShape:**
+   - Right-click the face you want to machine
+   - Export → DXF
+   - Save the file
+
+2. **In PenguinCAM:**
+   - Go to https://penguincam.popcornpenguins.com
+   - Sign in with @popcornpenguins.com account
+   - Drag & drop DXF file (or click to browse)
+   
+3. **Continue as normal:**
+   - Orient part in Setup Mode
+   - Generate G-code
+   - Download or save to Drive
+
+**Same result, just an extra step!**
 
 ---
 

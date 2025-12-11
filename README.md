@@ -13,11 +13,11 @@ A web-based tool for FRC robotics teams to automatically generate CNC G-code fro
 PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC teams:
 
 1. **Design in OnShape** → Create flat plates with holes and pockets
-2. **Export via PenguinCAM** → Auto-detect top face, generate toolpaths
-3. **Download G-code** → Ready to run on your CNC router
-4. **Upload to Drive** → Share with team in Google Shared Drive
+2. **Right-click → "Send to PenguinCAM"** → One-click export from OnShape
+3. **Orient & Generate** → Rotate part, auto-generate toolpaths
+4. **Download or Save to Drive** → Ready to run on your CNC router
 
-**No CAM software knowledge required!** PenguinCAM knows what FRC teams need.
+**No CAM software, no manual exports, no face selection required!** PenguinCAM knows what FRC teams need.
 
 ---
 
@@ -43,12 +43,21 @@ PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC tea
 - Parts come out the correct size
 - Perimeter offset outward, pockets offset inward
 
-### 🔗 **OnShape Integration**
+### 🔗 **OnShape Integration** ⭐ Preferred Workflow
 
-- Direct import from OnShape Part Studios
-- Auto-selects top face (highest Z position)
-- No manual DXF export needed
-- OAuth authentication
+**One-Click Export from OnShape:**
+- Right-click part in OnShape → "Send to PenguinCAM"
+- Auto-detects top face (highest Z position)
+- Opens PenguinCAM with part already loaded
+- No manual DXF export or face selection needed
+
+**How to Set Up:**
+1. Install PenguinCAM extension in your OnShape company
+2. Extension appears in right-click menu on parts
+3. Click once to send part directly to PenguinCAM
+4. OAuth authentication (one-time per team member)
+
+**Alternative:** Manual DXF upload still available for offline work
 
 ### 🔐 **Team Access Control**
 
@@ -80,30 +89,30 @@ PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC tea
 
 ## Quick Start for Students
 
-### 1. Log In
-Visit https://penguincam.popcornpenguins.com and sign in with your team Google account.
+### Method 1: From OnShape (Recommended) ⭐
 
-### 2. Import from OnShape
-- Copy your Part Studio URL
-- Paste into PenguinCAM
-- PenguinCAM auto-detects the top face
+**One-Click Workflow:**
+1. **Design your part** in OnShape (flat plate with holes/pockets)
+2. **Right-click the part** in the feature tree
+3. **Click "Send to PenguinCAM"** from the menu
+4. **Orient your part** - Rotate if needed in 2D setup view
+5. **Click "Generate G-code"** - Review 3D preview
+6. **Download or save to Drive** - Ready for CNC!
 
-### 3. Orient Your Part (Setup Mode)
-- View your part in 2D top-down
-- Click "Rotate 90° CW" to orient it correctly
-- Origin is always bottom-left (like laser cutters)
+**First Time Setup:** You'll be asked to authenticate with Google (one time per team member)
 
-### 4. Generate & Preview
-- Click "Generate G-code"
-- Review 3D toolpath preview
-- Use scrubber to step through cuts
+### Method 2: Manual DXF Upload
 
-### 5. Download or Save
-- Download G-code file to USB drive
-- Or upload to team Google Drive
+**For offline work or non-OnShape files:**
+1. **Export DXF** from your CAD software
+2. **Visit** https://penguincam.popcornpenguins.com
+3. **Upload DXF file** via drag-and-drop
+4. **Orient & generate** - Same as above
+5. **Download or save to Drive**
 
-### 4. Machine Your Part
-- Load G-code into CNC
+### Running on the CNC
+
+- Load G-code into your CNC controller
 - Set up material and zero axes (see [Quick Reference](docs/quick-reference-card.md))
 - Run the program!
 
@@ -119,6 +128,7 @@ PenguinCAM is deployed on Railway with automatic GitHub integration.
 - [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Deploy to Railway, environment variables
 - [Authentication Guide](docs/AUTHENTICATION_GUIDE.md) - Google OAuth and Workspace setup
 - [Integrations Guide](docs/INTEGRATIONS_GUIDE.md) - OnShape and Google Drive configuration
+- [OnShape Extension Setup](docs/ONSHAPE_SETUP.md) - Install one-click export in OnShape ⭐
 
 ### Documentation
 
