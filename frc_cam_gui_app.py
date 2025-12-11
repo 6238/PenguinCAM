@@ -141,6 +141,10 @@ def process_file():
         if drill_screws:
             cmd.append('--drill-screws')
         
+        print(f"🚀 Running post-processor...")
+        print(f"   Command: {' '.join(cmd)}")
+        print(f"   Output will be: {output_path}")
+        
         # Run post-processor
         result = subprocess.run(
             cmd,
@@ -149,11 +153,28 @@ def process_file():
             timeout=30
         )
         
+        print(f"📊 Post-processor finished:")
+        print(f"   Return code: {result.returncode}")
+        print(f"   Stdout length: {len(result.stdout)} bytes")
+        print(f"   Stderr length: {len(result.stderr)} bytes")
+        
         if result.returncode != 0:
+            print(f"❌ Post-processor failed!")
+            print(f"   Stderr: {result.stderr}")
             return jsonify({
                 'error': 'Post-processor failed',
                 'details': result.stderr
             }), 500
+        
+        # Check if output file was created
+        if not os.path.exists(output_path):
+            print(f"❌ Output file not created: {output_path}")
+            return jsonify({
+                'error': 'Post-processor did not create output file',
+                'details': result.stdout + '\n\n' + result.stderr
+            }), 500
+        
+        print(f"✅ Output file created: {os.path.getsize(output_path)} bytes")
         
         # Read generated G-code
         with open(output_path, 'r') as f:
@@ -683,8 +704,19 @@ def onshape_import():
         suggested_filename = None
         try:
             print("📝 Fetching document and element names...")
+            print(f"   Document ID: {document_id}")
+            print(f"   Workspace ID: {workspace_id}")
+            print(f"   Element ID: {element_id}")
+            
             doc_info = client.get_document_info(document_id)
+            print(f"   Doc info result: {doc_info is not None}")
+            if doc_info:
+                print(f"   Document: {doc_info.get('name', 'N/A')}")
+            
             element_info = client.get_element_info(document_id, workspace_id, element_id)
+            print(f"   Element info result: {element_info is not None}")
+            if element_info:
+                print(f"   Element: {element_info.get('name', 'N/A')}")
             
             if doc_info and element_info:
                 doc_name = doc_info.get('name', 'Document')
@@ -695,12 +727,18 @@ def onshape_import():
                 doc_clean = re.sub(r'[^\w\s-]', '', doc_name).strip().replace(' ', '_')
                 elem_clean = re.sub(r'[^\w\s-]', '', element_name).strip().replace(' ', '_')
                 
+                # Limit length
+                doc_clean = doc_clean[:50]
+                elem_clean = elem_clean[:50]
+                
                 suggested_filename = f"{doc_clean}_{elem_clean}"
                 print(f"✅ Suggested filename: {suggested_filename}.nc")
             else:
-                print("⚠️  Could not fetch document/element names")
+                print("⚠️  Could not fetch document/element names - will use timestamp")
         except Exception as e:
-            print(f"⚠️  Error fetching names: {e}")
+            print(f"⚠️  Error fetching names: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
         
         # Save DXF to temp file in uploads folder
         import tempfile
@@ -728,7 +766,7 @@ def onshape_import():
                              from_onshape=True,
                              document_id=document_id,
                              face_id=face_id,
-                             suggested_filename=suggested_filename)
+                             suggested_filename=suggested_filename or '')
         
     except Exception as e:
         return jsonify({

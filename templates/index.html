@@ -999,7 +999,10 @@
                 const data = await response.json();
 
                 if (!response.ok) {
-                    throw new Error(data.error || 'Unknown error');
+                    // Include details if available
+                    const errorMsg = data.error || 'Unknown error';
+                    const details = data.details ? `\n\n${data.details}` : '';
+                    throw new Error(errorMsg + details);
                 }
 
                 gcodeContent = data.gcode;
@@ -1084,7 +1087,13 @@
 
         function showError(title, message) {
             errorAlert.classList.add('show');
-            errorMessage.innerHTML = `<strong>${title}:</strong> ${message}`;
+            // Escape HTML but preserve newlines
+            const escapedMessage = message
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\n/g, '<br>');
+            errorMessage.innerHTML = `<strong>${title}:</strong><br>${escapedMessage}`;
         }
 
         function hideError() {
