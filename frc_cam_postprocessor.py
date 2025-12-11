@@ -614,11 +614,7 @@ class FRCPostProcessor:
         gcode.append("")
         
         # Spindle on
-<<<<<<< HEAD
         gcode.append(f"M3 S{self.spindle_speed}  ; Spindle on at {self.spindle_speed} RPM")
-=======
-        gcode.append(f"M3 {self.spindle_speed}  ; Spindle on at {self.spindle_speed} RPM")
->>>>>>> 6aa4b64 (Material chooser)
         gcode.append("G4 P2  ; Wait 2 seconds for spindle to reach speed")
         gcode.append("")
         
