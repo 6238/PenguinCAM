@@ -663,6 +663,106 @@
                 position: static;
             }
         }
+
+        select {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.75rem;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(253, 181, 21, 0.1);
+        }
+
+        select option {
+            background: var(--surface);
+            color: var(--text);
+        }
+
+        /* Playback Controls */
+        .playback-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .playback-button {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            width: 40px;
+            height: 40px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            padding: 0;
+        }
+
+        .playback-button:hover {
+            background: var(--surface-light);
+            border-color: var(--primary);
+            transform: translateY(-1px);
+        }
+
+        .playback-button:active {
+            transform: translateY(0);
+        }
+
+        .playback-button.playing {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: #000;
+        }
+
+        .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex: 1;
+        }
+
+        .speed-control label {
+            color: var(--text-dim);
+            font-size: 0.9rem;
+            margin: 0;
+        }
+
+        .speed-select {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.5rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .speed-select:hover {
+            border-color: var(--primary);
+        }
+
+        .speed-select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(253, 181, 21, 0.1);
+        }
     </style>
 </head>
 <body>
@@ -714,6 +814,18 @@
                     </div>
 
                     <form id="paramForm">
+                        <div class="param-group">
+                            <label>
+                                Material Type
+                                <span class="label-hint">Cutting parameters preset</span>
+                            </label>
+                            <select id="material" required>
+                                <option value="polycarb">Polycarb</option>
+                                <option value="plywood">Plywood</option>
+                                <option value="aluminum">Aluminum</option>
+                            </select>
+                        </div>
+
                         <div class="param-group">
                             <label>
                                 Material Thickness (inches)
@@ -839,6 +951,25 @@
                             <span id="scrubberOperation" class="scrubber-operation">Ready</span>
                         </div>
                         <input type="range" id="toolpathScrubber" class="toolpath-scrubber" min="0" max="100" value="0" step="1">
+                    </div>
+
+                    <div class="playback-controls" id="playbackControls" style="display: none;">
+                        <button class="playback-button" id="playButton" title="Play/Pause">
+                            <span class="play-icon">▶</span>
+                            <span class="pause-icon" style="display: none;">⏸</span>
+                        </button>
+                        <div class="speed-control">
+                            <label for="playbackSpeed">Speed:</label>
+                            <select id="playbackSpeed" class="speed-select">
+                                <option value="10">0.25x</option>
+                                <option value="20">0.5x</option>
+                                <option value="40" selected>1x</option>
+                                <option value="80">2x</option>
+                                <option value="160">4x</option>
+                                <option value="320">8x</option>
+                            </select>
+                        </div>
+                        <button class="playback-button" id="restartButton" title="Restart">⏮</button>
                     </div>
 
                     <div class="controls" id="previewControls" style="display: none;">
@@ -975,6 +1106,7 @@
 
             const formData = new FormData();
             formData.append('file', uploadedFile);
+            formData.append('material', document.getElementById('material').value);
             formData.append('thickness', document.getElementById('thickness').value);
             formData.append('tool_diameter', document.getElementById('toolDiameter').value);
             formData.append('sacrifice_depth', document.getElementById('sacrificeDepth').value);
@@ -1022,6 +1154,9 @@
                 }
 
             } catch (error) {
+                if (Object.hasOwn(error, "details")) {
+                    console.error(error.details);
+                }
                 showError('Generation Failed', error.message);
             } finally {
                 hideLoading();
@@ -1933,6 +2068,84 @@
                 const moveIndex = parseInt(e.target.value);
                 updateToolpathDisplay(moveIndex);
             };
+
+            // Show playback controls
+            document.getElementById('playbackControls').style.display = 'flex';
+
+            let isPlaying = false;
+            let playbackInterval = null;
+            let playbackSpeed = 40; // moves per second (default 1x speed)
+
+            // Get playback controls
+            const playButton = document.getElementById('playButton');
+            const restartButton = document.getElementById('restartButton');
+            const playbackSpeedSelect = document.getElementById('playbackSpeed');
+            const playIcon = playButton.querySelector('.play-icon');
+            const pauseIcon = playButton.querySelector('.pause-icon');
+
+            // Play/Pause button handler
+            playButton.addEventListener('click', () => {
+                if (isPlaying) {
+                    stopPlayback();
+                } else {
+                    startPlayback();
+                }
+            });
+
+            // Restart button handler
+            restartButton.addEventListener('click', () => {
+                scrubber.value = 0;
+                updateToolpathDisplay(0);
+                if (isPlaying) {
+                    stopPlayback();
+                    setTimeout(startPlayback, 100); // Brief pause before restart
+                }
+            });
+
+            // Speed selector handler
+            playbackSpeedSelect.addEventListener('change', (e) => {
+                playbackSpeed = parseInt(e.target.value);
+                if (isPlaying) {
+                    // Restart playback with new speed
+                    stopPlayback();
+                    startPlayback();
+                }
+            });
+
+            function startPlayback() {
+                isPlaying = true;
+                playButton.classList.add('playing');
+                playIcon.style.display = 'none';
+                pauseIcon.style.display = 'block';
+
+                // Calculate interval based on speed (moves per second)
+                const intervalMs = 1000 / playbackSpeed;
+
+                playbackInterval = setInterval(() => {
+                    const currentValue = parseInt(scrubber.value);
+                    const maxValue = parseInt(scrubber.max);
+
+                    if (currentValue >= maxValue) {
+                        stopPlayback();
+                        return;
+                    }
+
+                    scrubber.value = currentValue + 1;
+                    updateToolpathDisplay(currentValue + 1);
+                }, intervalMs);
+            }
+
+            function stopPlayback() {
+                isPlaying = false;
+                playButton.classList.remove('playing');
+                playIcon.style.display = 'block';
+                pauseIcon.style.display = 'none';
+
+                if (playbackInterval) {
+                    clearInterval(playbackInterval);
+                    playbackInterval = null;
+                }
+            }
 
             // Camera positioning
             const viewDist = Math.max(maxX, maxY, maxZ) * 2;

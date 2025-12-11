@@ -99,6 +99,20 @@ def process_file():
             return jsonify({'error': 'File must be a DXF file'}), 400
         
         # Get parameters
+        material = request.form.get('material', "polycarb")
+        if material == 'aluminum':
+            spindle_speed = 24000
+            feedrate = 45
+            plungerate = 15
+        elif material == 'plywood':
+            spindle_speed = 24000
+            feedrate = 75
+            plungerate = 25
+        else:  # polycarb
+            spindle_speed = 24000
+            feedrate = 75
+            plungerate = 25
+
         thickness = float(request.form.get('thickness', 0.25))
         tool_diameter = float(request.form.get('tool_diameter', 0.157))
         sacrifice_depth = float(request.form.get('sacrifice_depth', 0.02))
@@ -136,8 +150,11 @@ def process_file():
             '--tabs', str(tabs),
             '--origin-corner', origin_corner,
             '--rotation', str(rotation),
+            '--spindle-speed', str(spindle_speed),
+            '--feed-rate', str(feedrate),
+            '--plunge-rate', str(plungerate),
         ]
-        
+
         if drill_screws:
             cmd.append('--drill-screws')
         
@@ -152,7 +169,9 @@ def process_file():
             text=True,
             timeout=30
         )
-        
+
+        print(result.stderr)
+
         print(f"📊 Post-processor finished:")
         print(f"   Return code: {result.returncode}")
         print(f"   Stdout length: {len(result.stdout)} bytes")
