@@ -36,32 +36,7 @@ The OnShape browser extension is configured but not appearing in the UI. We've o
 
 ## 🚀 Future Enhancements
 
-### #1: Documentation (Two Audiences)
-
-**Priority:** High  
-**Effort:** Medium
-
-Create comprehensive documentation for two distinct audiences:
-
-#### **A. Mentor Handoff Guide**
-Documentation for the next Team 6238 mentor:
-- Overview of services (Google Cloud, Railway, Dreamhost)
-- How to access and update Railway deployment
-- Environment variables reference
-- Common troubleshooting scenarios
-- Emergency contacts and support resources
-
-#### **B. Setup Guide for Other Teams**
-Documentation for FRC teams wanting to customize PenguinCAM:
-- Initial setup from scratch
-- How to adapt for different tools and workflows
-- Configuration options explained
-- Deployment alternatives (Railway, self-hosted, etc.)
-- Customization examples
-
----
-
-### #2: Improved G-code Visualization
+### #1: Improved G-code Visualization
 
 **Priority:** Medium  
 **Effort:** High
@@ -84,7 +59,7 @@ Documentation for FRC teams wanting to customize PenguinCAM:
 
 ---
 
-### #3: G-code Validation & Testing
+### #2: G-code Validation & Testing
 
 **Priority:** High  
 **Effort:** Medium-High
@@ -109,7 +84,7 @@ Documentation for FRC teams wanting to customize PenguinCAM:
 
 ---
 
-### #4: Origin Selection & Rotation Control
+### #3: Origin Selection & Rotation Control
 
 **Priority:** Medium  
 **Effort:** Medium-High
