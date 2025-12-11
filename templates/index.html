@@ -888,6 +888,7 @@
     </main>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dxf-parser@1.3.0/dist/dxf-parser.min.js"></script>
     <script>
         // Global state
         let uploadedFile = null;
@@ -1216,181 +1217,91 @@
             });
         }
 
-        // Parse DXF geometry from file (extracts bounds and basic shapes)
+        // Parse DXF geometry from file using dxf-parser library
         function parseDxfForSetup(dxfContent) {
-            // Extract geometry for visualization
-            const lines = dxfContent.split('\n');
-            let minX = Infinity, maxX = -Infinity;
-            let minY = Infinity, maxY = -Infinity;
-            
-            const circles = [];
-            const lineSegments = [];
-            const arcs = [];
-            
-            // Find ENTITIES section - skip HEADER to avoid placeholder values
-            let inEntitiesSection = false;
-            let currentEntity = null;
-            let entityData = {};
-            
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i].trim();
+            try {
+                // Use dxf-parser library to parse DXF
+                const parser = new window.DxfParser();
+                const dxf = parser.parseSync(dxfContent);
                 
-                // Check if we're entering ENTITIES section
-                if (line === 'ENTITIES') {
-                    inEntitiesSection = true;
-                    continue;
+                console.log('Parsed DXF:', dxf);
+                
+                // Extract bounds from all entities
+                let minX = Infinity, maxX = -Infinity;
+                let minY = Infinity, maxY = -Infinity;
+                
+                // Helper to update bounds
+                function updateBounds(x, y) {
+                    minX = Math.min(minX, x);
+                    maxX = Math.max(maxX, x);
+                    minY = Math.min(minY, y);
+                    maxY = Math.max(maxY, y);
                 }
                 
-                // Check if we're leaving ENTITIES section
-                if (line === 'ENDSEC' && inEntitiesSection) {
-                    break;
-                }
-                
-                // Only process if we're in ENTITIES section
-                if (!inEntitiesSection) continue;
-                
-                // Detect entity type
-                if (line === 'CIRCLE') {
-                    if (currentEntity === 'CIRCLE' && entityData.centerX !== undefined && entityData.radius !== undefined) {
-                        circles.push({
-                            x: entityData.centerX,
-                            y: entityData.centerY,
-                            r: entityData.radius
-                        });
-                    }
-                    currentEntity = 'CIRCLE';
-                    entityData = {};
-                } else if (line === 'LINE') {
-                    if (currentEntity === 'LINE' && entityData.x1 !== undefined && entityData.x2 !== undefined) {
-                        lineSegments.push({
-                            x1: entityData.x1,
-                            y1: entityData.y1,
-                            x2: entityData.x2,
-                            y2: entityData.y2
-                        });
-                    }
-                    currentEntity = 'LINE';
-                    entityData = {};
-                } else if (line === 'ARC') {
-                    if (currentEntity === 'ARC' && entityData.centerX !== undefined && entityData.radius !== undefined) {
-                        arcs.push({
-                            x: entityData.centerX,
-                            y: entityData.centerY,
-                            r: entityData.radius,
-                            startAngle: entityData.startAngle || 0,
-                            endAngle: entityData.endAngle || 360
-                        });
-                    }
-                    currentEntity = 'ARC';
-                    entityData = {};
-                }
-                
-                // Parse entity data based on group codes
-                if (line === '10' && i + 1 < lines.length) {
-                    const val = parseFloat(lines[i + 1]);
-                    if (!isNaN(val) && Math.abs(val) < 1e10) {
-                        if (currentEntity === 'CIRCLE' || currentEntity === 'ARC') entityData.centerX = val;
-                        else if (currentEntity === 'LINE') entityData.x1 = val;
-                        minX = Math.min(minX, val);
-                        maxX = Math.max(maxX, val);
-                    }
-                } else if (line === '20' && i + 1 < lines.length) {
-                    const val = parseFloat(lines[i + 1]);
-                    if (!isNaN(val) && Math.abs(val) < 1e10) {
-                        if (currentEntity === 'CIRCLE' || currentEntity === 'ARC') entityData.centerY = val;
-                        else if (currentEntity === 'LINE') entityData.y1 = val;
-                        minY = Math.min(minY, val);
-                        maxY = Math.max(maxY, val);
-                    }
-                } else if (line === '40' && i + 1 < lines.length && (currentEntity === 'CIRCLE' || currentEntity === 'ARC')) {
-                    const val = parseFloat(lines[i + 1]);
-                    if (!isNaN(val) && val < 1e10) {
-                        entityData.radius = val;
-                        if (entityData.centerX !== undefined && entityData.centerY !== undefined) {
-                            minX = Math.min(minX, entityData.centerX - val);
-                            maxX = Math.max(maxX, entityData.centerX + val);
-                            minY = Math.min(minY, entityData.centerY - val);
-                            maxY = Math.max(maxY, entityData.centerY + val);
+                // Process entities to get bounds
+                if (dxf.entities) {
+                    dxf.entities.forEach(entity => {
+                        switch(entity.type) {
+                            case 'CIRCLE':
+                                updateBounds(entity.center.x - entity.radius, entity.center.y - entity.radius);
+                                updateBounds(entity.center.x + entity.radius, entity.center.y + entity.radius);
+                                break;
+                            case 'ARC':
+                                updateBounds(entity.center.x - entity.radius, entity.center.y - entity.radius);
+                                updateBounds(entity.center.x + entity.radius, entity.center.y + entity.radius);
+                                break;
+                            case 'LINE':
+                                updateBounds(entity.vertices[0].x, entity.vertices[0].y);
+                                updateBounds(entity.vertices[1].x, entity.vertices[1].y);
+                                break;
+                            case 'LWPOLYLINE':
+                            case 'POLYLINE':
+                                entity.vertices.forEach(v => updateBounds(v.x, v.y));
+                                break;
+                            case 'SPLINE':
+                                if (entity.controlPoints) {
+                                    entity.controlPoints.forEach(p => updateBounds(p.x, p.y));
+                                }
+                                break;
+                            case 'ELLIPSE':
+                                // Approximate with bounding box
+                                const majorRadius = Math.sqrt(entity.majorAxisEndPoint.x ** 2 + entity.majorAxisEndPoint.y ** 2);
+                                const minorRadius = majorRadius * entity.axisRatio;
+                                updateBounds(entity.center.x - majorRadius, entity.center.y - minorRadius);
+                                updateBounds(entity.center.x + majorRadius, entity.center.y + minorRadius);
+                                break;
                         }
-                    }
-                } else if (line === '50' && i + 1 < lines.length && currentEntity === 'ARC') {
-                    // Start angle (degrees)
-                    const val = parseFloat(lines[i + 1]);
-                    if (!isNaN(val)) {
-                        entityData.startAngle = val;
-                    }
-                } else if (line === '51' && i + 1 < lines.length && currentEntity === 'ARC') {
-                    // End angle (degrees)
-                    const val = parseFloat(lines[i + 1]);
-                    if (!isNaN(val)) {
-                        entityData.endAngle = val;
-                    }
-                } else if (line === '11' && i + 1 < lines.length && currentEntity === 'LINE') {
-                    const val = parseFloat(lines[i + 1]);
-                    if (!isNaN(val) && Math.abs(val) < 1e10) {
-                        entityData.x2 = val;
-                        minX = Math.min(minX, val);
-                        maxX = Math.max(maxX, val);
-                    }
-                } else if (line === '21' && i + 1 < lines.length && currentEntity === 'LINE') {
-                    const val = parseFloat(lines[i + 1]);
-                    if (!isNaN(val) && Math.abs(val) < 1e10) {
-                        entityData.y2 = val;
-                        minY = Math.min(minY, val);
-                        maxY = Math.max(maxY, val);
-                    }
+                    });
                 }
+                
+                if (minX === Infinity) {
+                    minX = 0; maxX = 10;
+                    minY = 0; maxY = 10;
+                }
+                
+                console.log(`DXF bounds: X=[${minX.toFixed(3)}, ${maxX.toFixed(3)}], Y=[${minY.toFixed(3)}, ${maxY.toFixed(3)}]`);
+                console.log(`Entity count: ${dxf.entities ? dxf.entities.length : 0}`);
+                
+                // Store parsed DXF data
+                dxfGeometry = { 
+                    minX, maxX, minY, maxY,
+                    entities: dxf.entities || []
+                };
+                dxfBounds = { 
+                    width: maxX - minX, 
+                    height: maxY - minY,
+                    centerX: (minX + maxX) / 2,
+                    centerY: (minY + maxY) / 2
+                };
+                
+                // Show mode toggle and switch to setup mode
+                document.getElementById('modeToggle').style.display = 'flex';
+                switchMode('setup');
+                
+            } catch (error) {
+                console.error('DXF parsing error:', error);
+                alert('Failed to parse DXF file: ' + error.message);
             }
-            
-            // Catch last entity
-            if (currentEntity === 'CIRCLE' && entityData.centerX !== undefined && entityData.radius !== undefined) {
-                circles.push({
-                    x: entityData.centerX,
-                    y: entityData.centerY,
-                    r: entityData.radius
-                });
-            } else if (currentEntity === 'LINE' && entityData.x1 !== undefined && entityData.x2 !== undefined) {
-                lineSegments.push({
-                    x1: entityData.x1,
-                    y1: entityData.y1,
-                    x2: entityData.x2,
-                    y2: entityData.y2
-                });
-            } else if (currentEntity === 'ARC' && entityData.centerX !== undefined && entityData.radius !== undefined) {
-                arcs.push({
-                    x: entityData.centerX,
-                    y: entityData.centerY,
-                    r: entityData.radius,
-                    startAngle: entityData.startAngle || 0,
-                    endAngle: entityData.endAngle || 360
-                });
-            }
-            
-            if (minX === Infinity) {
-                // Fallback - couldn't parse, use defaults
-                minX = 0; maxX = 10;
-                minY = 0; maxY = 10;
-            }
-            
-            console.log(`Parsed DXF: ${circles.length} circles, ${lineSegments.length} lines, ${arcs.length} arcs`);
-            console.log(`Bounds: X=[${minX}, ${maxX}], Y=[${minY}, ${maxY}]`);
-            
-            dxfGeometry = { 
-                minX, maxX, minY, maxY,
-                circles,
-                lines: lineSegments,
-                arcs
-            };
-            dxfBounds = { 
-                width: maxX - minX, 
-                height: maxY - minY,
-                centerX: (minX + maxX) / 2,
-                centerY: (minY + maxY) / 2
-            };
-            
-            // Show mode toggle and switch to setup mode
-            document.getElementById('modeToggle').style.display = 'flex';
-            switchMode('setup');
         }
 
         // Render 2D DXF setup view
@@ -1426,7 +1337,7 @@
             
             ctx.save();
             ctx.translate(offsetX, offsetY);
-            ctx.rotate(-rotationAngle * Math.PI / 180); // Negative for canvas coordinate system
+            ctx.rotate(-rotationAngle * Math.PI / 180);
             
             // Transform DXF coordinates to canvas coordinates
             function toCanvasX(x) {
@@ -1436,44 +1347,82 @@
                 return -(y - dxfBounds.centerY) * scale; // Flip Y for canvas
             }
             
-            // Draw actual DXF geometry
-            // Draw lines
-            if (dxfGeometry.lines && dxfGeometry.lines.length > 0) {
-                ctx.strokeStyle = '#6B7280';
-                ctx.lineWidth = 1.5;
-                ctx.beginPath();
-                dxfGeometry.lines.forEach(line => {
-                    ctx.moveTo(toCanvasX(line.x1), toCanvasY(line.y1));
-                    ctx.lineTo(toCanvasX(line.x2), toCanvasY(line.y2));
-                });
-                ctx.stroke();
-            }
+            // Draw all entities
+            ctx.strokeStyle = '#6B7280';
+            ctx.lineWidth = 1.5;
             
-            // Draw circles
-            if (dxfGeometry.circles && dxfGeometry.circles.length > 0) {
-                ctx.strokeStyle = '#6B7280';
-                ctx.lineWidth = 1.5;
-                dxfGeometry.circles.forEach(circle => {
+            if (dxfGeometry.entities) {
+                dxfGeometry.entities.forEach(entity => {
                     ctx.beginPath();
-                    ctx.arc(toCanvasX(circle.x), toCanvasY(circle.y), circle.r * scale, 0, Math.PI * 2);
-                    ctx.stroke();
-                });
-            }
-            
-            // Draw arcs
-            if (dxfGeometry.arcs && dxfGeometry.arcs.length > 0) {
-                ctx.strokeStyle = '#6B7280';
-                ctx.lineWidth = 1.5;
-                dxfGeometry.arcs.forEach(arc => {
-                    ctx.beginPath();
-                    // DXF angles are in degrees, canvas uses radians
-                    // DXF: 0° = East (3 o'clock), counter-clockwise
-                    // Canvas: 0 = East (3 o'clock), but Y is flipped so we need to negate angles
-                    const startRad = -arc.startAngle * Math.PI / 180;
-                    const endRad = -arc.endAngle * Math.PI / 180;
-                    // Arc direction: DXF is always counter-clockwise, but with flipped Y it becomes clockwise
-                    ctx.arc(toCanvasX(arc.x), toCanvasY(arc.y), arc.r * scale, startRad, endRad, true);
-                    ctx.stroke();
+                    
+                    switch(entity.type) {
+                        case 'CIRCLE':
+                            ctx.arc(
+                                toCanvasX(entity.center.x), 
+                                toCanvasY(entity.center.y), 
+                                entity.radius * scale, 
+                                0, Math.PI * 2
+                            );
+                            ctx.stroke();
+                            break;
+                            
+                        case 'ARC':
+                            const startRad = -entity.startAngle * Math.PI / 180;
+                            const endRad = -entity.endAngle * Math.PI / 180;
+                            ctx.arc(
+                                toCanvasX(entity.center.x), 
+                                toCanvasY(entity.center.y), 
+                                entity.radius * scale, 
+                                startRad, endRad, true
+                            );
+                            ctx.stroke();
+                            break;
+                            
+                        case 'LINE':
+                            ctx.moveTo(toCanvasX(entity.vertices[0].x), toCanvasY(entity.vertices[0].y));
+                            ctx.lineTo(toCanvasX(entity.vertices[1].x), toCanvasY(entity.vertices[1].y));
+                            ctx.stroke();
+                            break;
+                            
+                        case 'LWPOLYLINE':
+                        case 'POLYLINE':
+                            if (entity.vertices && entity.vertices.length > 0) {
+                                ctx.moveTo(toCanvasX(entity.vertices[0].x), toCanvasY(entity.vertices[0].y));
+                                for (let i = 1; i < entity.vertices.length; i++) {
+                                    ctx.lineTo(toCanvasX(entity.vertices[i].x), toCanvasY(entity.vertices[i].y));
+                                }
+                                if (entity.shape) { // Closed polyline
+                                    ctx.closePath();
+                                }
+                                ctx.stroke();
+                            }
+                            break;
+                            
+                        case 'SPLINE':
+                            // Approximate spline with line segments
+                            if (entity.controlPoints && entity.controlPoints.length > 1) {
+                                ctx.moveTo(toCanvasX(entity.controlPoints[0].x), toCanvasY(entity.controlPoints[0].y));
+                                for (let i = 1; i < entity.controlPoints.length; i++) {
+                                    ctx.lineTo(toCanvasX(entity.controlPoints[i].x), toCanvasY(entity.controlPoints[i].y));
+                                }
+                                ctx.stroke();
+                            }
+                            break;
+                            
+                        case 'ELLIPSE':
+                            // Draw ellipse (simplified - could be improved)
+                            const majorRadius = Math.sqrt(entity.majorAxisEndPoint.x ** 2 + entity.majorAxisEndPoint.y ** 2);
+                            const minorRadius = majorRadius * entity.axisRatio;
+                            ctx.ellipse(
+                                toCanvasX(entity.center.x),
+                                toCanvasY(entity.center.y),
+                                majorRadius * scale,
+                                minorRadius * scale,
+                                0, 0, Math.PI * 2
+                            );
+                            ctx.stroke();
+                            break;
+                    }
                 });
             }
             
@@ -1491,10 +1440,10 @@
             
             // Draw corner markers
             const corners = [
-                { name: 'bottom-left', x: -dxfBounds.width * scale / 2, y: dxfBounds.height * scale / 2, label: '↙' },
-                { name: 'bottom-right', x: dxfBounds.width * scale / 2, y: dxfBounds.height * scale / 2, label: '↘' },
-                { name: 'top-left', x: -dxfBounds.width * scale / 2, y: -dxfBounds.height * scale / 2, label: '↖' },
-                { name: 'top-right', x: dxfBounds.width * scale / 2, y: -dxfBounds.height * scale / 2, label: '↗' }
+                { name: 'bottom-left', x: -dxfBounds.width * scale / 2, y: dxfBounds.height * scale / 2 },
+                { name: 'bottom-right', x: dxfBounds.width * scale / 2, y: dxfBounds.height * scale / 2 },
+                { name: 'top-left', x: -dxfBounds.width * scale / 2, y: -dxfBounds.height * scale / 2 },
+                { name: 'top-right', x: dxfBounds.width * scale / 2, y: -dxfBounds.height * scale / 2 }
             ];
             
             corners.forEach(corner => {
@@ -1513,7 +1462,7 @@
             
             ctx.restore();
             
-            // Draw origin label (in canvas coordinates, not rotated)
+            // Draw origin label
             const originCornerData = corners.find(c => c.name === originCorner);
             if (originCornerData) {
                 ctx.save();
