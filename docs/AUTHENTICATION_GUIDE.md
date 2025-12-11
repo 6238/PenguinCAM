@@ -508,5 +508,5 @@ ALLOWED_DOMAINS=your-workspace-domain.com
 
 ---
 
-**Last Updated:** December 2024  
+**Last Updated:** December 2025  
 **Maintained by:** FRC Team 6238 Popcorn Penguins
