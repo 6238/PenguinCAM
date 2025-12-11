@@ -1015,9 +1015,6 @@
                 }
 
             } catch (error) {
-                if (Object.hasOwn(error, "details")) {
-                    console.error(error.details);
-                }
                 showError('Generation Failed', error.message);
             } finally {
                 hideLoading();
@@ -2006,6 +2003,28 @@
             initVisualization();
             initDxfSetup();
             
+            // DEBUG: Check if OnShape provides context via JavaScript
+            console.log('=== OnShape Context Debug ===');
+            console.log('window.opener:', window.opener);
+            console.log('window.parent:', window.parent);
+            console.log('URL params:', new URLSearchParams(window.location.search));
+            console.log('OnShape globals:', {
+                onshape: typeof window.onshape !== 'undefined' ? window.onshape : 'undefined',
+                OnshapeClient: typeof window.OnshapeClient !== 'undefined' ? window.OnshapeClient : 'undefined'
+            });
+            
+            // Check for error message from OnShape import
+            const errorMessage = '{{ error_message if error_message else "" }}';
+            if (errorMessage) {
+                const statusDiv = document.getElementById('statusMessage');
+                if (statusDiv) {
+                    statusDiv.textContent = '❌ ' + errorMessage;
+                    statusDiv.style.display = 'block';
+                    statusDiv.className = 'error';
+                }
+                return; // Don't try to load DXF
+            }
+            
             // Auto-load DXF if coming from OnShape
             const dxfFile = '{{ dxf_file if dxf_file else "" }}';
             const fromOnshape = {{ 'true' if from_onshape else 'false' }};
@@ -2027,7 +2046,12 @@
                     })
                     .catch(error => {
                         console.error('Error loading DXF:', error);
-                        alert('Failed to load DXF from OnShape');
+                        const statusDiv = document.getElementById('statusMessage');
+                        if (statusDiv) {
+                            statusDiv.textContent = '❌ Failed to load DXF from OnShape';
+                            statusDiv.style.display = 'block';
+                            statusDiv.className = 'error';
+                        }
                     });
             }
         });

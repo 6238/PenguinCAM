@@ -543,31 +543,33 @@ def onshape_import():
         element_id = params.get('elementId') or params.get('eid')
         face_id = params.get('faceId') or params.get('fid')
         
-        # WORKAROUND: If params have placeholder strings, try to parse from referrer
-        if (document_id and ('${' in str(document_id) or not document_id.strip('${}'))):
-            print("OnShape variable substitution failed, trying referrer...")
-            referrer = request.headers.get('Referer', '')
-            print(f"Referrer: {referrer}")
+        # Get OnShape server and user info that IS being sent
+        onshape_server = params.get('server', 'https://cad.onshape.com')
+        onshape_userid = params.get('userId')
+        
+        print(f"OnShape params received: {params}")
+        
+        # WORKAROUND: If params have placeholder strings, we can't proceed
+        if (document_id and ('${' in str(document_id) or document_id.startswith('$'))):
+            print("❌ OnShape variable substitution failed!")
+            print(f"Received literal: documentId={document_id}")
             
-            if 'onshape.com/documents/' in referrer:
-                # Parse URL: https://cad.onshape.com/documents/{did}/w/{wid}/e/{eid}
-                import re
-                match = re.search(r'/documents/([^/]+)/[wv]/([^/]+)/e/([^/]+)', referrer)
-                if match:
-                    document_id = match.group(1)
-                    workspace_id = match.group(2)  # Could be workspace or version
-                    element_id = match.group(3)
-                    print(f"Extracted from referrer: doc={document_id}, ws={workspace_id}, elem={element_id}")
-                else:
-                    print("Could not parse OnShape URL from referrer")
+            # Show helpful error page
+            from flask import render_template
+            return render_template('index.html',
+                                 error_message='OnShape integration error: Variable substitution not working. Please contact support or use manual DXF upload.',
+                                 debug_info={
+                                     'issue': 'OnShape extension not substituting variables',
+                                     'received_params': str(params),
+                                     'workaround': 'Export DXF manually from OnShape and upload it here'
+                                 }), 400
         
         if not all([document_id, workspace_id, element_id]):
             return jsonify({
                 'error': 'Missing required parameters',
                 'required': ['documentId', 'workspaceId', 'elementId'],
                 'received': params,
-                'referrer': request.headers.get('Referer', 'none'),
-                'help': 'OnShape variable substitution may not be working. Check extension configuration.'
+                'help': 'OnShape variable substitution not working. Check extension configuration or use manual DXF upload.'
             }), 400
         
         # Get OnShape client for this user
