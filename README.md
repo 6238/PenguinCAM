@@ -1,286 +1,368 @@
-# FRC Robotics CAM Post-Processor
+# PenguinCAM
 
-A simple, no-fuss CAM post-processor designed specifically for FRC robotics teams. Automatically generates G-code from OnShape DXF exports with all your standard operations built-in.
+**FRC Team 6238 Popcorn Penguins CAM Post-Processor**
+
+A web-based tool for FRC robotics teams to automatically generate CNC G-code from OnShape designs. No CAM software required!
+
+🔗 **Live App:** https://penguincam.popcornpenguins.com
+
+---
+
+## What is PenguinCAM?
+
+PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC teams:
+
+1. **Design in OnShape** → Create flat plates with holes and pockets
+2. **Export via PenguinCAM** → Auto-detect top face, generate toolpaths
+3. **Download G-code** → Ready to run on your CNC router
+4. **Upload to Drive** → Share with team in Google Shared Drive
+
+**No CAM software knowledge required!** PenguinCAM knows what FRC teams need.
+
+---
 
 ## Features
 
+### 🤖 **Built for FRC**
+
 ✅ **Automatic hole detection:**
 - #10 screw holes (0.19" diameter)
-- 1.125" bearing holes
-- Custom operations for each
+- 1.125" bearing holes  
+- Non-standard holes milled as circular pockets
+
+✅ **Smart perimeter cutting:**
+- Holding tabs prevent parts from flying away
+- Tabs only on straight sections (avoids curves)
+- Configurable tab count
 
 ✅ **Pocket recognition:**
-- Automatically identifies inner boundaries as pockets
-- Generates toolpaths for pocket clearing
+- Auto-detects inner boundaries
+- Generates clearing toolpaths
 
-✅ **Perimeter with tabs:**
-- Cuts outer perimeter with holding tabs
-- **Smart tab placement** - tabs only on straight sections (avoids curves)
-- Configurable tab count, width, and height
-- Prevents parts from flying away during cutting
+✅ **Tool compensation built-in:**
+- Parts come out the correct size
+- Perimeter offset outward, pockets offset inward
 
-✅ **OnShape DXF compatibility:**
-- Handles LINE, ARC, and SPLINE entities
-- Automatically connects segments into closed paths
-- Works with complex curved geometry
+### 🔗 **OnShape Integration**
 
-✅ **Tool compensation:**
-- Perimeter offset OUTWARD for correct part size
-- Pockets offset INWARD  
-- Holes compensated for exact diameter
+- Direct import from OnShape Part Studios
+- Auto-selects top face (highest Z position)
+- No manual DXF export needed
+- OAuth authentication
 
-✅ **Pre-configured for FRC:**
-- Material thickness: 1/8" to 1/2"
-- Works with aluminum, polycarbonate, and wood
-- Standard feed rates and plunge rates built-in
+### 🔐 **Team Access Control**
 
-## Installation
+- Google Workspace authentication
+- Restrict to your domain (e.g., @popcornpenguins.com)
+- Secure OAuth 2.0 login
 
-### 1. Install Python (if you don't have it)
-Download Python 3.8 or newer from [python.org](https://www.python.org/downloads/)
+### 💾 **Google Drive Integration**
 
-### 2. Install dependencies
-```bash
-pip install -r requirements.txt
+- Upload G-code directly to team Shared Drive
+- All team members can access files
+- Files persist when students graduate
+
+### 📊 **3D Visualization**
+
+- Preview toolpaths before machining
+- Rotate and zoom to verify cuts
+- See holes, pockets, and perimeter
+
+---
+
+## Quick Start for Students
+
+### 1. Log In
+Visit https://penguincam.popcornpenguins.com and sign in with your team Google account.
+
+### 2. Import from OnShape
+- Copy your Part Studio URL
+- Paste into PenguinCAM
+- PenguinCAM auto-detects the top face
+
+### 3. Review & Download
+- Check the 3D preview
+- Download G-code file
+- Or upload to team Google Drive
+
+### 4. Machine Your Part
+- Load G-code into CNC
+- Set up material and zero axes (see [Quick Reference](docs/quick-reference-card.md))
+- Run the program!
+
+---
+
+## For Mentors & Setup
+
+### Deployment
+
+PenguinCAM is deployed on Railway with automatic GitHub integration.
+
+**Setup guides:**
+- [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Deploy to Railway, environment variables
+- [Authentication Guide](docs/AUTHENTICATION_GUIDE.md) - Google OAuth and Workspace setup
+- [Integrations Guide](docs/INTEGRATIONS_GUIDE.md) - OnShape and Google Drive configuration
+
+### Documentation
+
+**For daily use:**
+- [Quick Reference Card](docs/quick-reference-card.md) - Cheat sheet for students and mentors
+
+**Technical references:**
+- [Tool Compensation Guide](docs/TOOL_COMPENSATION_GUIDE.md) - How tool offsets work
+- [Z-Coordinate System](docs/Z_COORDINATE_SYSTEM.md) - Sacrifice board zeroing explained
+
+**Planning:**
+- [Roadmap](ROADMAP.md) - Future features and improvements
+
+### Requirements
+
+**Runtime dependencies:**
+```
+Flask>=3.0.0
+gunicorn>=21.2.0
+requests>=2.31.0
+ezdxf>=1.0.0
+shapely>=2.0.0
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+google-api-python-client>=2.100.0
 ```
 
-Or install manually:
-```bash
-pip install ezdxf shapely
+See `requirements.txt` for complete list.
+
+---
+
+## How It Works
+
+### The Pipeline
+
+```
+OnShape Part Studio
+    ↓ (OAuth API)
+DXF Export
+    ↓ (Auto top-face detection)
+Geometry Analysis
+    ↓ (Hole detection, path generation)
+G-code Generation
+    ↓ (Tool compensation)
+3D Preview + Download
+    ↓ (Optional)
+Google Drive Upload
 ```
 
-## Usage
+### Key Components
 
-### Step 1: Export from OnShape
-1. Open your part in OnShape
-2. Right-click on the face you want to cut
-3. Select **Export** → **DXF**
-4. Save the file (e.g., `robot_plate.dxf`)
+**Backend (Python):**
+- `frc_cam_gui_app.py` - Flask web server
+- `frc_cam_postprocessor.py` - G-code generation engine
+- `onshape_integration.py` - OnShape API client
+- `google_drive_integration.py` - Drive uploads
+- `penguincam_auth.py` - Google OAuth authentication
 
-### Step 2: Run the post-processor
-```bash
-python frc_cam_postprocessor.py robot_plate.dxf output.gcode --thickness 0.25 --tool-diameter 0.157
+**Frontend:**
+- `templates/index.html` - Web interface with Three.js visualization
+- `static/popcornlogo.png` - Team branding
+
+**Configuration:**
+- `Procfile` - Railway deployment config
+- `requirements.txt` - Python dependencies
+- Environment variables - Secrets and API keys
+
+---
+
+## Technical Details
+
+### G-code Operations
+
+PenguinCAM generates optimized toolpaths:
+
+1. **Screw holes (#10):**
+   - Center drill operation (fast)
+   - Or full mill if disabled
+
+2. **Bearing holes (1.125"):**
+   - Helical bore from center
+   - Compensated for exact final diameter
+
+3. **Non-standard holes:**
+   - Milled as circular pockets
+   - 32-point circular path
+
+4. **Pockets:**
+   - Offset inward by tool radius
+   - Full-depth plunge and trace
+
+5. **Perimeter:**
+   - Offset outward by tool radius
+   - Cut with holding tabs
+   - Tabs only on straight sections
+
+### Z-Axis Coordinate System
+
+**Z=0 is at the SACRIFICE BOARD (bottom), not material top.**
+
+This ensures:
+- ✅ Consistent setup across jobs
+- ✅ Guaranteed cut-through (0.02" overcut)
+- ✅ No math required when changing material thickness
+
+See [Z_COORDINATE_SYSTEM.md](docs/Z_COORDINATE_SYSTEM.md) for details.
+
+### Tool Compensation
+
+All toolpaths are automatically compensated:
+
+- **Perimeter:** Offset OUT by tool radius → final part matches CAD size
+- **Pockets:** Offset IN by tool radius → pockets match CAD size  
+- **Holes:** Reduced radius → final holes match CAD diameter
+
+See [TOOL_COMPENSATION_GUIDE.md](docs/TOOL_COMPENSATION_GUIDE.md) for math and examples.
+
+---
+
+## Default Settings
+
+**Material:**
+- Thickness: 0.25" (configurable)
+- Sacrifice board overcut: 0.02"
+
+**Tool:**
+- Diameter: 0.157" (4mm endmill)
+- Common alternatives: 1/8" (0.125"), 1/4" (0.250")
+
+**Feeds & Speeds:**
+- Feed rate: 30 IPM
+- Plunge rate: 10 IPM
+- Safe height: 0.1" above material top
+
+**Tabs:**
+- Count: 4 (evenly spaced)
+- Width: 0.25"
+- Height: 0.03" (material left in tab)
+
+These can be customized in the code for your specific machine and materials.
+
+---
+
+## Repository Structure
+
+```
+penguincam/
+├── README.md                      # This file
+├── ROADMAP.md                     # Future plans
+├── requirements.txt               # Python dependencies
+├── Procfile                       # Railway deployment
+│
+├── docs/                          # Documentation
+│   ├── DEPLOYMENT_GUIDE.md        # Setup & deployment
+│   ├── AUTHENTICATION_GUIDE.md    # Google OAuth
+│   ├── INTEGRATIONS_GUIDE.md      # OnShape & Drive
+│   ├── quick-reference-card.md    # Quick start
+│   ├── TOOL_COMPENSATION_GUIDE.md # Technical reference
+│   └── Z_COORDINATE_SYSTEM.md     # Zeroing guide
+│
+├── static/                        # Static assets
+│   └── popcornlogo.png            # Team logo
+│
+├── templates/                     # HTML templates
+│   └── index.html                 # Main web interface
+│
+├── frc_cam_gui_app.py            # Flask web server
+├── frc_cam_postprocessor.py      # G-code generator
+├── onshape_integration.py        # OnShape API
+├── google_drive_integration.py   # Drive uploads
+├── penguincam_auth.py            # OAuth authentication
+│
+└── [config files...]              # Various JSON configs
 ```
 
-**IMPORTANT:** Always specify your tool diameter! Without it, your parts will be the wrong size.
+---
 
-**MACHINE SETUP:**
-- **X/Y Zero:** Clamp your material to the sacrifice board, then set X=0 Y=0 at the **lower-left corner** of your material. This matches the origin point in your CAD file.
-- **Z Zero:** Set Z=0 at the **sacrifice board surface** (bottom), not the material top. This ensures consistent setup and guaranteed cut-through with the overcut. See [Z_COORDINATE_SYSTEM.md](Z_COORDINATE_SYSTEM.md) for details.
+## Development
 
-### Command-line options:
-```
-python frc_cam_postprocessor.py INPUT.dxf OUTPUT.gcode [OPTIONS]
+### Local Testing
 
-Required:
-  INPUT.dxf           Input DXF file from OnShape
-  OUTPUT.gcode        Output G-code file
+1. **Clone repository:**
+   ```bash
+   git clone https://github.com/your-team/penguincam.git
+   cd penguincam
+   ```
 
-Options:
-  --thickness FLOAT        Material thickness in inches (default: 0.25)
-  --tool-diameter FLOAT    Tool diameter in inches (default: 0.157" = 4mm)
-  --sacrifice-depth FLOAT  Cut depth into sacrifice board (default: 0.02")
-  --units inch/mm          Units to use (default: inch)
-  --tabs INT               Number of tabs on perimeter (default: 4)
-  --drill-screws           Center drill screw holes instead of milling (faster)
-```
+2. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-**Tool diameter is critical!** Common sizes:
-- 4mm = 0.157" (default)
-- 1/8" = 0.125"
-- 6mm = 0.236"
-- 1/4" = 0.250"
+3. **Set environment variables:**
+   ```bash
+   export GOOGLE_CLIENT_ID=your-client-id
+   export GOOGLE_CLIENT_SECRET=your-secret
+   export ONSHAPE_CLIENT_ID=your-onshape-id
+   export ONSHAPE_CLIENT_SECRET=your-onshape-secret
+   export BASE_URL=http://localhost:6238
+   export AUTH_ENABLED=false  # Skip auth for local testing
+   ```
 
-**Z-axis setup:** Z=0 is at the **sacrifice board (bottom)**, not the material top.
-- Always zero to the sacrifice board surface
-- Default overcut: 0.02" into sacrifice board
-- Increase to 0.03" for flex materials or if cuts aren't complete
+4. **Run locally:**
+   ```bash
+   python frc_cam_gui_app.py
+   ```
 
-### Examples:
+5. **Visit:** http://localhost:6238
 
-**1/4" aluminum plate with 4mm tool:**
-```bash
-python frc_cam_postprocessor.py plate.dxf plate.gcode --thickness 0.25 --tool-diameter 0.157
-```
+### Deployment
 
-**1/8" polycarbonate with 6 tabs and 1/8" tool:**
-```bash
-python frc_cam_postprocessor.py shield.dxf shield.gcode --thickness 0.125 --tool-diameter 0.125 --tabs 6
-```
+Push to `main` branch → Railway auto-deploys
 
-**1/2" plywood with 1/4" tool and faster drilling:**
-```bash
-python frc_cam_postprocessor.py base.dxf base.gcode --thickness 0.5 --tool-diameter 0.25 --drill-screws
-```
+See [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for complete setup.
 
-## What It Does
-
-The script automatically:
-
-1. **Loads your DXF file** and extracts all geometry
-2. **Classifies circles by diameter:**
-   - ~0.19" diameter → Screw hole (drill or mill operation)
-   - ~1.125" diameter → Bearing hole (helical bore)
-3. **Identifies closed polylines:**
-   - Largest boundary → Perimeter (cut with tabs)
-   - Smaller inner boundaries → Pockets (full depth cut)
-4. **Applies tool compensation:**
-   - Perimeter: Offset OUTWARD by tool radius (so final part matches CAD)
-   - Pockets: Offset INWARD by tool radius
-   - Holes: Reduced radius for proper final size
-5. **Generates G-code** with proper:
-   - Feed rates and plunge rates
-   - Safe heights and rapid moves
-   - Spindle control
-   - Tab placement on perimeter
-
-### Critical: Tool Compensation
-
-**Your parts will be the wrong size without correct tool diameter!**
-
-The script automatically compensates for tool width:
-- If CAD says 6" square, final part will be 6" (not 5.843")
-- If CAD says 1.125" hole, final hole will be 1.125" (not 1.282")
-
-See [TOOL_COMPENSATION_GUIDE.md](TOOL_COMPENSATION_GUIDE.md) for complete details.
-
-## Customizing Parameters
-
-Open `frc_cam_postprocessor.py` and modify these values in the `__init__` method:
-
-```python
-# Tool settings (also via --tool-diameter)
-self.tool_diameter = 0.157   # 4mm end mill
-self.tool_radius = tool_diameter / 2
-
-# Feed rates (inches per minute)
-self.feed_rate = 30.0        # Cutting feed rate
-self.plunge_rate = 10.0      # Plunge/retract rate
-
-# Heights
-self.safe_height = 0.1       # Clearance height above material
-
-# Tab settings
-self.tab_width = 0.25        # Width of each tab (inches)
-self.tab_height = 0.03       # Material left in tab (inches)
-self.num_tabs = 4            # Number of tabs (also via --tabs)
-
-# Hole detection tolerance
-self.tolerance = 0.02        # +/- tolerance for hole matching
-
-# Screw hole strategy
-self.drill_screw_holes = True  # True = center drill, False = mill out
-```
-
-## Material-Specific Settings
-
-You might want different settings for different materials:
-
-**Aluminum:**
-- Feed rate: 30-40 IPM
-- Plunge rate: 8-10 IPM
-
-**Polycarbonate:**
-- Feed rate: 40-60 IPM
-- Plunge rate: 15-20 IPM
-
-**Wood:**
-- Feed rate: 50-80 IPM
-- Plunge rate: 20-30 IPM
-
-## Output Format
-
-The generated G-code includes:
-- Header comments with file info
-- Setup commands (units, positioning)
-- Spindle control (M3/M5)
-- Organized sections for each operation type
-- Safety moves between operations
-- Return to origin at end
-
-## Troubleshooting
-
-**"No circles found"**
-- Make sure your DXF has actual CIRCLE entities, not arcs
-- Check that holes aren't grouped or blocked
-
-**"No polylines found" or "Found 0 closed paths"**
-- OnShape exports individual LINE/ARC/SPLINE entities instead of polylines
-- The post-processor automatically connects them - see [ONSHAPE_DXF_FIX.md](ONSHAPE_DXF_FIX.md)
-- If you see "Created convex hull (APPROXIMATE)", your geometry has gaps
-- Check that all perimeter segments connect in your CAD
-
-**Wrong holes detected**
-- Adjust `self.tolerance` value if your holes are slightly off-size
-- Check that circles are the correct diameter in your CAD
-
-**Tabs in wrong places**
-- Tabs are evenly spaced around perimeter
-- Adjust `self.num_tabs` to change count
-
-**G-code doesn't run**
-- Verify your CNC controller accepts these G-code commands
-- You may need to adjust M-codes for your specific machine
-
-## Safety Notes
-
-⚠️ **ALWAYS:**
-- Review the generated G-code before running
-- Do a test run with the spindle off
-- Check that tool paths don't collide with fixtures
-- Verify material is properly secured
-- Use appropriate safety equipment
-
-⚠️ **This is a basic post-processor:**
-- No collision detection
-- No tool compensation
-- Assumes a single tool for all operations
-- Tabs may need adjustment for your specific needs
-
-## Advanced Usage
-
-### Creating tool change operations
-
-If you want to use different tools for different operations, you can modify the code to add tool changes:
-
-```python
-# In _generate_bearing_hole_gcode():
-gcode.append("M6 T2  ; Change to bearing cutter")
-```
-
-### Adding adaptive clearing for pockets
-
-For larger pockets, you might want to add a full adaptive clearing routine. Consider using a library like `opencamlib` or `pycam` for more sophisticated toolpath generation.
-
-### Integration with your workflow
-
-You can create batch scripts to process multiple files:
-
-```bash
-#!/bin/bash
-for file in *.dxf; do
-    python frc_cam_postprocessor.py "$file" "${file%.dxf}.gcode" --thickness 0.25
-done
-```
+---
 
 ## Contributing
 
-This is a simple starting point. Feel free to:
-- Add more hole sizes
-- Implement better pocket clearing strategies
-- Add tool libraries
-- Create material presets
-- Improve tab placement algorithms
+PenguinCAM was built for FRC Team 6238 but is open for other teams to use and improve!
+
+**Ideas welcome:**
+- Additional hole sizes
+- More sophisticated pocket clearing
+- Multi-tool support
+- Material presets
+- Better tab algorithms
+
+See [ROADMAP.md](ROADMAP.md) for planned features.
+
+---
 
 ## License
 
-Free to use and modify for your FRC team!
+[Add your license here]
 
-## Questions?
+---
 
-If you run into issues, check:
-1. Are the hole diameters exactly right in your CAD?
-2. Is the DXF export from OnShape clean (no extra layers)?
-3. Does the generated G-code match what your CNC expects?
+## Credits
 
-Good luck with your robot build! 🤖
+**Built by FRC Team 6238 Popcorn Penguins**
+
+For questions or support:
+- GitHub Issues: [Your repo URL]
+- Team mentor: [Your contact]
+
+---
+
+## For Other FRC Teams
+
+Interested in using PenguinCAM for your team? Great!
+
+**Setup steps:**
+1. Fork this repository
+2. Follow [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) to deploy on Railway
+3. Configure Google OAuth for your Workspace
+4. Set up OnShape API credentials
+5. Customize for your team (logo, domain, etc.)
+
+The setup takes about 1-2 hours but then requires minimal maintenance. Your students will love the streamlined workflow!
+
+---
+
+**Go Popcorn Penguins! 🍿🐧**
