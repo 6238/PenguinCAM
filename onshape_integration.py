@@ -636,6 +636,25 @@ class OnShapeClient:
             print(f"Error getting document info: {e}")
             return None
     
+    def get_element_info(self, document_id, workspace_id, element_id):
+        """Get information about an element (Part Studio, Assembly, etc.)"""
+        try:
+            # Get all elements in the document
+            response = self._make_api_request(
+                'GET', 
+                f'/documents/d/{document_id}/w/{workspace_id}/elements'
+            )
+            if response.status_code == 200:
+                elements = response.json()
+                # Find the matching element
+                for element in elements:
+                    if element.get('id') == element_id:
+                        return element
+            return None
+        except Exception as e:
+            print(f"Error getting element info: {e}")
+            return None
+    
     def parse_onshape_url(self, url):
         """
         Parse an OnShape URL to extract document/workspace/element IDs

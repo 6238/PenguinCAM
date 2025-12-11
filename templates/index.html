@@ -867,6 +867,7 @@
     <script>
         // Global state
         let uploadedFile = null;
+        let suggestedFilename = null; // For OnShape imports
         let gcodeContent = null;
         let outputFilename = null;
         let scene, camera, renderer, controls;
@@ -981,6 +982,9 @@
             formData.append('drill_screws', document.getElementById('drillScrews').checked);
             formData.append('origin_corner', 'bottom-left'); // Always bottom-left
             formData.append('rotation', rotationAngle); // Add rotation angle
+            if (suggestedFilename) {
+                formData.append('suggested_filename', suggestedFilename); // OnShape filename
+            }
 
             showLoading();
             hideError();
@@ -2030,6 +2034,7 @@
             // Auto-load DXF if coming from OnShape
             const dxfFile = '{{ dxf_file if dxf_file else "" }}';
             const fromOnshape = {{ 'true' if from_onshape else 'false' }};
+            const onshapeSuggestedFilename = '{{ suggested_filename if suggested_filename else "" }}';
             
             if (dxfFile && fromOnshape) {
                 console.log('Auto-loading DXF from OnShape:', dxfFile);
@@ -2054,6 +2059,7 @@
                         
                         // Set file state and enable generate button
                         uploadedFile = file;
+                        suggestedFilename = onshapeSuggestedFilename || null; // Store suggested name
                         fileName.textContent = dxfFile;
                         fileSize.textContent = formatFileSize(dxfContent.length);
                         fileInfo.style.display = 'flex';

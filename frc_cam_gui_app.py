@@ -99,21 +99,6 @@ def process_file():
             return jsonify({'error': 'File must be a DXF file'}), 400
         
         # Get parameters
-        material = request.form.get('material', "polycarb")
-        if material == 'aluminum':
-            spindle_speed = 24000
-            feedrate = 45
-            plungerate = 15
-        elif material == 'plywood':
-            spindle_speed = 24000
-            feedrate = 75 
-            plungerate = 25
-        else:  # polycarb
-            spindle_speed = 24000
-            feedrate = 75
-            plungerate = 25
-
-
         thickness = float(request.form.get('thickness', 0.25))
         tool_diameter = float(request.form.get('tool_diameter', 0.157))
         sacrifice_depth = float(request.form.get('sacrifice_depth', 0.02))
@@ -121,13 +106,22 @@ def process_file():
         drill_screws = request.form.get('drill_screws', 'false') == 'true'
         origin_corner = request.form.get('origin_corner', 'bottom-left')
         rotation = int(request.form.get('rotation', 0))
+        suggested_filename = request.form.get('suggested_filename', '')
         
         # Save uploaded file
         input_path = os.path.join(UPLOAD_FOLDER, 'input.dxf')
         file.save(input_path)
         
-        # Generate output path
-        output_filename = Path(file.filename).stem + '.gcode'
+        # Generate output filename
+        if suggested_filename:
+            # Use OnShape-derived name
+            output_filename = suggested_filename + '.nc'
+            print(f"📝 Using OnShape filename: {output_filename}")
+        else:
+            # Use DXF filename
+            output_filename = Path(file.filename).stem + '.nc'
+            print(f"📝 Using DXF filename: {output_filename}")
+        
         output_path = os.path.join(OUTPUT_FOLDER, output_filename)
         
         # Build command
@@ -142,9 +136,6 @@ def process_file():
             '--tabs', str(tabs),
             '--origin-corner', origin_corner,
             '--rotation', str(rotation),
-            '--spindle-speed', str(spindle_speed),
-            '--feed-rate', str(feedrate),
-            '--plunge-rate', str(plungerate),
         ]
         
         if drill_screws:
@@ -157,8 +148,6 @@ def process_file():
             text=True,
             timeout=30
         )
-
-        print(result.stderr)
         
         if result.returncode != 0:
             return jsonify({
@@ -260,7 +249,10 @@ def drive_status():
 @auth.require_auth
 def upload_to_drive(filename):
     """Upload a G-code file to Google Drive"""
+    print(f"📤 Drive upload requested for: {filename}")
+    
     if not GOOGLE_DRIVE_AVAILABLE:
+        print("❌ Google Drive integration not available")
         return jsonify({
             'success': False,
             'message': 'Google Drive integration not available'
@@ -268,7 +260,11 @@ def upload_to_drive(filename):
     
     try:
         file_path = os.path.join(OUTPUT_FOLDER, filename)
+        print(f"📂 Looking for file at: {file_path}")
+        print(f"📂 File exists: {os.path.exists(file_path)}")
+        
         if not os.path.exists(file_path):
+            print(f"❌ File not found: {file_path}")
             return jsonify({
                 'success': False,
                 'message': 'File not found'
@@ -277,36 +273,47 @@ def upload_to_drive(filename):
         # Get credentials from session
         creds = None
         if AUTH_AVAILABLE and auth.is_enabled():
+            print("🔐 Getting credentials from session...")
             creds = auth.get_credentials()
             if not creds:
+                print("❌ No credentials in session")
                 return jsonify({
                     'success': False,
                     'message': 'Not authenticated with Google Drive'
                 }), 401
+            print(f"✅ Got credentials, scopes: {creds.scopes if hasattr(creds, 'scopes') else 'unknown'}")
         
         # Create uploader with credentials
+        print("🔧 Creating GoogleDriveUploader...")
         uploader = GoogleDriveUploader(credentials=creds)
         
+        print("🔐 Authenticating...")
         if not uploader.authenticate():
+            print("❌ Authentication failed")
             return jsonify({
                 'success': False,
                 'message': 'Failed to authenticate with Google Drive'
             }), 500
         
+        print("✅ Authenticated, uploading file...")
         # Upload the file
         result = uploader.upload_file(file_path, filename)
         
-        if result:
+        print(f"📤 Upload result: {result}")
+        
+        if result and result.get('success'):
+            print(f"✅ Upload successful: {result.get('web_link')}")
             return jsonify({
                 'success': True,
                 'message': 'File uploaded to Google Drive',
-                'file_id': result.get('id'),
-                'web_view_link': result.get('webViewLink')
+                'file_id': result.get('file_id'),
+                'web_view_link': result.get('web_link')
             })
         else:
+            print(f"❌ Upload failed: {result.get('message') if result else 'Unknown error'}")
             return jsonify({
                 'success': False,
-                'message': 'Upload failed'
+                'message': result.get('message') if result else 'Upload failed'
             }), 500
             
     except Exception as e:
@@ -672,6 +679,29 @@ def onshape_import():
         
         print(f"📄 DXF content received: {len(dxf_content)} bytes")
         
+        # Fetch document and element names for better filename
+        suggested_filename = None
+        try:
+            print("📝 Fetching document and element names...")
+            doc_info = client.get_document_info(document_id)
+            element_info = client.get_element_info(document_id, workspace_id, element_id)
+            
+            if doc_info and element_info:
+                doc_name = doc_info.get('name', 'Document')
+                element_name = element_info.get('name', 'Part_Studio')
+                
+                # Clean names for filename (remove spaces, special chars)
+                import re
+                doc_clean = re.sub(r'[^\w\s-]', '', doc_name).strip().replace(' ', '_')
+                elem_clean = re.sub(r'[^\w\s-]', '', element_name).strip().replace(' ', '_')
+                
+                suggested_filename = f"{doc_clean}_{elem_clean}"
+                print(f"✅ Suggested filename: {suggested_filename}.nc")
+            else:
+                print("⚠️  Could not fetch document/element names")
+        except Exception as e:
+            print(f"⚠️  Error fetching names: {e}")
+        
         # Save DXF to temp file in uploads folder
         import tempfile
         temp_dxf = tempfile.NamedTemporaryFile(
@@ -697,7 +727,8 @@ def onshape_import():
                              dxf_file=dxf_filename,
                              from_onshape=True,
                              document_id=document_id,
-                             face_id=face_id)
+                             face_id=face_id,
+                             suggested_filename=suggested_filename)
         
     except Exception as e:
         return jsonify({
