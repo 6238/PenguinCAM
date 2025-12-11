@@ -4,7 +4,7 @@
 
 ---
 
-## 🚀 Quick Start (3 Steps)
+## 🚀 Quick Start (4 Steps)
 
 ### 1. Log In
 Go to: **https://penguincam.popcornpenguins.com**
@@ -33,11 +33,25 @@ Sign in with your **@popcornpenguins.com** Google account
 
 ---
 
-### 3. Generate & Download
+### 3. Orient Your Part (Setup Mode)
 
-1. **Review 3D preview** - Rotate to check toolpaths
-2. **Adjust settings** if needed (material thickness, tabs)
-3. Click **"Generate G-code"**
+After import, you'll see a **2D top-down view** of your part:
+
+1. **Check orientation** - Is it rotated how you want?
+2. Click **"Rotate 90° CW"** to match your stock material
+3. **Origin is always bottom-left** (X→ Y↑)
+   - Like 3D printer slicers or laser cutters
+   - No need to pick a corner!
+
+**Tip:** Orient your part so cutting direction matches grain or longest dimension
+
+---
+
+### 4. Generate & Download
+
+1. Click **"Generate G-code"** 
+2. **Review 3D preview** - Rotate to check toolpaths
+3. **Use scrubber** to step through each cut
 4. Click **"Download G-code"** OR **"Save to Google Drive"**
 
 Done! 🎉
