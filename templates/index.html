@@ -1189,10 +1189,11 @@
             dxfCanvas2D = document.getElementById('dxfSetupCanvas');
             dxfCtx2D = dxfCanvas2D.getContext('2d');
             
-            // Set canvas size
-            const container = dxfCanvas2D.parentElement;
-            dxfCanvas2D.width = container.clientWidth - 32; // Account for padding
-            dxfCanvas2D.height = 500;
+            // CRITICAL: Set canvas internal size to match CSS display size
+            // to avoid stretching/distortion
+            const rect = dxfCanvas2D.getBoundingClientRect();
+            dxfCanvas2D.width = rect.width;
+            dxfCanvas2D.height = rect.height;
             
             // Setup event listeners
             document.querySelectorAll('.corner-btn').forEach(btn => {
@@ -2026,6 +2027,14 @@
             camera.aspect = container.clientWidth / container.clientHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(container.clientWidth, container.clientHeight);
+            
+            // Also resize DXF canvas to maintain correct aspect ratio
+            if (dxfCanvas2D && dxfGeometry) {
+                const rect = dxfCanvas2D.getBoundingClientRect();
+                dxfCanvas2D.width = rect.width;
+                dxfCanvas2D.height = rect.height;
+                renderDxfSetup(); // Re-render with new size
+            }
         });
     </script>
 </body>
