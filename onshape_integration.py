@@ -640,7 +640,9 @@ class OnShapeClient:
     def get_document_info(self, document_id):
         """Get information about a document"""
         try:
-            response = self._make_api_request('GET', f'/documents/{document_id}')
+            endpoint = f'/documents/{document_id}'
+            print(f"   Calling: {self.API_BASE}{endpoint}")
+            response = self._make_api_request('GET', endpoint)
             if response.status_code == 200:
                 return response.json()
             else:
