@@ -721,29 +721,48 @@ def onshape_import():
         
         print(f"📄 DXF content received: {len(dxf_content)} bytes")
 
-        # Generate filename from part name (already fetched from bodydetails)
+        # Generate filename: try to combine document name + part name
         suggested_filename = None
-        if part_name_from_body:
-            # Clean name for filename (remove spaces, special chars)
-            import re
-            part_clean = re.sub(r'[^\w\s-]', '', part_name_from_body).strip().replace(' ', '_')
-            part_clean = part_clean[:50]  # Limit length
+        doc_name = None
 
+        # Try to get document name (optional, may fail with 404)
+        try:
+            print("📝 Attempting to fetch document name...")
+            doc_info = client.get_document_info(document_id)
+            if doc_info:
+                doc_name = doc_info.get('name')
+                print(f"   ✅ Got document name: {doc_name}")
+            else:
+                print(f"   ⚠️  Document API returned None")
+        except Exception as e:
+            print(f"   ⚠️  Document API failed (will use part name only): {e}")
+
+        # Build filename from whatever we have
+        import re
+        if doc_name and part_name_from_body:
+            # Best case: combine both
+            doc_clean = re.sub(r'[^\w\s-]', '', doc_name).strip().replace(' ', '_')[:50]
+            part_clean = re.sub(r'[^\w\s-]', '', part_name_from_body).strip().replace(' ', '_')[:50]
+            suggested_filename = f"{doc_clean}_{part_clean}"
+            print(f"✅ Using document + part name: {suggested_filename}.nc")
+        elif part_name_from_body:
+            # Fallback: part name only
+            part_clean = re.sub(r'[^\w\s-]', '', part_name_from_body).strip().replace(' ', '_')[:50]
             if part_clean and part_clean != 'Unnamed_Part':
                 suggested_filename = part_clean
-                print(f"✅ Using part name from bodydetails: {suggested_filename}.nc")
+                print(f"✅ Using part name only: {suggested_filename}.nc")
             else:
-                # Fallback to timestamp if name is empty or default
+                # Part name is generic, use timestamp
                 from datetime import datetime
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                 suggested_filename = f"OnShape_Part_{timestamp}"
-                print(f"⚠️  Part name unavailable, using timestamp: {suggested_filename}.nc")
+                print(f"⚠️  Generic part name, using timestamp: {suggested_filename}.nc")
         else:
-            # Fallback to timestamp if no part name
+            # Last resort: timestamp
             from datetime import datetime
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             suggested_filename = f"OnShape_Part_{timestamp}"
-            print(f"⚠️  No part name from bodydetails, using timestamp: {suggested_filename}.nc")
+            print(f"⚠️  No names available, using timestamp: {suggested_filename}.nc")
         
         # Save DXF to temp file in uploads folder
         import tempfile
