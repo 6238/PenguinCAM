@@ -138,14 +138,19 @@ class FRCPostProcessor:
         print(f"Loading {filename}...")
         doc = ezdxf.readfile(filename)
         msp = doc.modelspace()
-        
+
         # Extract circles (holes)
         self.circles = []
         for entity in msp.query('CIRCLE'):
             center = (entity.dxf.center.x, entity.dxf.center.y)
             radius = entity.dxf.radius
             self.circles.append({'center': center, 'radius': radius, 'diameter': radius * 2})
-        
+
+        # Initialize geometry lists for transform_coordinates compatibility
+        self.lines = []  # Individual lines (converted to polylines)
+        self.arcs = []   # Individual arcs (converted to polylines)
+        self.splines = []  # Individual splines (converted to polylines)
+
         # Extract polylines and lines (boundaries/pockets)
         self.polylines = []
         
@@ -465,7 +470,12 @@ class FRCPostProcessor:
             for x, y in points:
                 all_x.append(x)
                 all_y.append(y)
-        
+
+        for polyline in self.polylines:
+            for x, y in polyline:
+                all_x.append(x)
+                all_y.append(y)
+
         if not all_x or not all_y:
             print("Warning: No geometry found for transformation")
             return
@@ -516,7 +526,10 @@ class FRCPostProcessor:
                 # For splines, we need to recreate - for now, skip
                 # This is a limitation but rarely matters for FRC parts
                 pass
-            
+
+            for i, polyline in enumerate(self.polylines):
+                self.polylines[i] = [rotate_point(x, y) for x, y in polyline]
+
             # Recalculate bounds after rotation
             all_x = []
             all_y = []
@@ -532,7 +545,12 @@ class FRCPostProcessor:
                 radius = arc['radius']
                 all_x.extend([arc['center'][0] - radius, arc['center'][0] + radius])
                 all_y.extend([arc['center'][1] - radius, arc['center'][1] + radius])
-            
+
+            for polyline in self.polylines:
+                for x, y in polyline:
+                    all_x.append(x)
+                    all_y.append(y)
+
             minX, maxX = min(all_x), max(all_x)
             minY, maxY = min(all_y), max(all_y)
         
@@ -560,7 +578,10 @@ class FRCPostProcessor:
         
         for arc in self.arcs:
             arc['center'] = translate_point(*arc['center'])
-        
+
+        for i, polyline in enumerate(self.polylines):
+            self.polylines[i] = [translate_point(x, y) for x, y in polyline]
+
         # Calculate new bounds
         all_x = []
         all_y = []
@@ -570,7 +591,11 @@ class FRCPostProcessor:
         for line in self.lines:
             all_x.extend([line['start'][0], line['end'][0]])
             all_y.extend([line['start'][1], line['end'][1]])
-        
+        for polyline in self.polylines:
+            for x, y in polyline:
+                all_x.append(x)
+                all_y.append(y)
+
         new_minX, new_maxX = min(all_x), max(all_x)
         new_minY, new_maxY = min(all_y), max(all_y)
         
