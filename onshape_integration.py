@@ -492,17 +492,18 @@ class OnShapeClient:
                 # Parse bodies and faces
                 if 'bodies' in data:
                     print(f"\nFound {len(data['bodies'])} bodies:")
-                    
+
                     for body in data['bodies']:
                         body_id = body.get('id', 'unknown')
+                        body_name = body.get('properties', {}).get('name', 'Unnamed')
                         faces = body.get('faces', [])
-                        print(f"  Body {body_id}: {len(faces)} faces")
-                        
+                        print(f"  Body {body_id} ({body_name}): {len(faces)} faces")
+
                         for i, face in enumerate(faces[:5]):  # Show first 5
                             face_id = face.get('id', 'unknown')
                             surface_type = face.get('surface', {}).get('type', 'unknown')
                             print(f"    Face {face_id}: {surface_type}")
-                        
+
                         if len(faces) > 5:
                             print(f"    ... and {len(faces) - 5} more faces")
                 
@@ -538,11 +539,14 @@ class OnShapeClient:
             bid = body.get('id')
             if not bid:
                 continue
-            
+
             # If body_id specified, only include that body
             if body_id and bid != body_id:
                 continue
-            
+
+            # Extract part name from properties
+            body_name = body.get('properties', {}).get('name', 'Unnamed_Part')
+
             # Extract face information including area and surface details
             face_info = []
             for face in body.get('faces', []):
@@ -551,7 +555,7 @@ class OnShapeClient:
                     surface = face.get('surface', {})
                     origin = surface.get('origin', {})
                     normal = surface.get('normal', {})
-                    
+
                     info = {
                         'id': fid,
                         'area': face.get('area', 0),
@@ -560,70 +564,78 @@ class OnShapeClient:
                         'normal': normal
                     }
                     face_info.append(info)
-            
+
             # Sort by area (largest first)
             face_info.sort(key=lambda f: f['area'], reverse=True)
-            
-            result[bid] = face_info
-            print(f"Body {bid}: {len(face_info)} faces, largest area: {face_info[0]['area'] if face_info else 0}")
+
+            result[bid] = {
+                'name': body_name,
+                'faces': face_info
+            }
+            print(f"Body {bid} ({body_name}): {len(face_info)} faces, largest area: {face_info[0]['area'] if face_info else 0}")
         
         return result
     
     def auto_select_top_face(self, document_id, workspace_id, element_id):
         """
         Automatically select the top face of a part (highest Z plane face)
-        
+
         Returns:
-            Face ID of the top face, or None if not found
+            Tuple of (face_id, part_name) or (None, None) if not found
         """
         faces_by_body = self.get_body_faces(document_id, workspace_id, element_id)
-        
+
         if not faces_by_body:
-            return None
-        
-        # Get all faces from all bodies
+            return None, None
+
+        # Get all faces from all bodies, tracking which body they belong to
         all_faces = []
-        for body_id, faces in faces_by_body.items():
-            all_faces.extend(faces)
-        
+        for body_id, body_data in faces_by_body.items():
+            part_name = body_data['name']
+            for face in body_data['faces']:
+                face['body_id'] = body_id
+                face['part_name'] = part_name
+                all_faces.append(face)
+
         # Filter for PLANE faces that are horizontal (normal pointing up/down in Z)
         horizontal_planes = []
         for face in all_faces:
             if face['surfaceType'] != 'PLANE':
                 continue
-            
+
             normal = face.get('normal', {})
             origin = face.get('origin', {})
-            
+
             nz = normal.get('z', None)
-            
+
             if nz is None:
                 continue
-            
+
             # Check if normal is vertical (pointing up or down)
             # Normal should be close to (0, 0, ±1)
             if abs(abs(nz) - 1.0) < 0.1:  # Allow small tolerance
                 z_pos = origin.get('z', 0)
-                
+
                 horizontal_planes.append({
                     'face_id': face['id'],
                     'z_position': z_pos,
                     'normal_z': nz,
-                    'area': face['area']
+                    'area': face['area'],
+                    'part_name': face['part_name']
                 })
-                
-                print(f"  Found horizontal plane: {face['id']}, Z={z_pos:.6f}, normal_z={nz:.3f}, area={face['area']:.6f}")
-        
+
+                print(f"  Found horizontal plane: {face['id']} ({face['part_name']}), Z={z_pos:.6f}, normal_z={nz:.3f}, area={face['area']:.6f}")
+
         if not horizontal_planes:
             print("No horizontal plane faces found")
-            return None
-        
+            return None, None
+
         # Find the one with the highest Z position
         top_face = max(horizontal_planes, key=lambda f: f['z_position'])
-        
-        print(f"\n✅ Auto-selected top face: {top_face['face_id']} at Z={top_face['z_position']:.6f}")
-        
-        return top_face['face_id']
+
+        print(f"\n✅ Auto-selected top face: {top_face['face_id']} from part '{top_face['part_name']}' at Z={top_face['z_position']:.6f}")
+
+        return top_face['face_id'], top_face['part_name']
     
     def get_document_info(self, document_id):
         """Get information about a document"""

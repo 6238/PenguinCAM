@@ -666,24 +666,26 @@ def onshape_import():
             return redirect('/onshape/auth')
         
         # If no face_id provided, auto-select the top face
+        part_name_from_body = None
         if not face_id:
             print("No face ID provided, auto-selecting top face...")
-            
+
             try:
                 # First, try to list all faces for debugging
                 faces_data = client.list_faces(document_id, workspace_id, element_id)
                 print(f"Available faces: {faces_data}")
-                
-                face_id = client.auto_select_top_face(document_id, workspace_id, element_id)
-                
+
+                # This now returns (face_id, part_name)
+                face_id, part_name_from_body = client.auto_select_top_face(document_id, workspace_id, element_id)
+
                 if not face_id:
                     # Provide helpful error with face list
                     error_msg = 'No horizontal plane faces found. '
                     if faces_data:
-                        face_count = len(faces_data.get('faces', []))
-                        error_msg += f'Found {face_count} faces total. '
+                        face_count = len(faces_data.get('bodies', []))
+                        error_msg += f'Found {face_count} bodies total. '
                     error_msg += 'Try selecting a face manually in OnShape.'
-                    
+
                     # Render error page instead of JSON
                     from flask import render_template
                     return render_template('index.html',
@@ -693,11 +695,11 @@ def onshape_import():
                                              'documentId': document_id,
                                              'workspaceId': workspace_id,
                                              'elementId': element_id,
-                                             'faces_found': face_count if faces_data else 0
+                                             'bodies_found': face_count if faces_data else 0
                                          }), 400
-                
-                print(f"Auto-selected face: {face_id}")
-                
+
+                print(f"Auto-selected face: {face_id} from part: {part_name_from_body}")
+
             except Exception as e:
                 print(f"Error in face detection: {str(e)}")
                 return jsonify({
@@ -718,68 +720,30 @@ def onshape_import():
             }), 500
         
         print(f"📄 DXF content received: {len(dxf_content)} bytes")
-        
-        # Fetch document and element names for better filename
+
+        # Generate filename from part name (already fetched from bodydetails)
         suggested_filename = None
-        try:
-            print("📝 Fetching document and element names...")
-            print(f"   Document ID: {document_id}")
-            print(f"   Workspace ID: {workspace_id}")
-            print(f"   Element ID: {element_id}")
-            
-            doc_info = client.get_document_info(document_id)
-            print(f"   Doc info result: {doc_info is not None}")
-            if doc_info:
-                print(f"   Document: {doc_info.get('name', 'N/A')}")
-            
-            element_info = client.get_element_info(document_id, workspace_id, element_id)
-            print(f"   Element info result: {element_info is not None}")
-            if element_info:
-                print(f"   Element: {element_info.get('name', 'N/A')}")
-            
-            if doc_info or element_info:
-                # Use whatever names we got (prefer both, fallback to one)
-                doc_name = doc_info.get('name', 'OnShape_Doc') if doc_info else 'OnShape_Doc'
-                element_name = element_info.get('name', 'Part_Studio') if element_info else 'Part_Studio'
+        if part_name_from_body:
+            # Clean name for filename (remove spaces, special chars)
+            import re
+            part_clean = re.sub(r'[^\w\s-]', '', part_name_from_body).strip().replace(' ', '_')
+            part_clean = part_clean[:50]  # Limit length
 
-                # Clean names for filename (remove spaces, special chars)
-                import re
-                doc_clean = re.sub(r'[^\w\s-]', '', doc_name).strip().replace(' ', '_')
-                elem_clean = re.sub(r'[^\w\s-]', '', element_name).strip().replace(' ', '_')
-
-                # Limit length
-                doc_clean = doc_clean[:50]
-                elem_clean = elem_clean[:50]
-
-                # If both are default/fallback names, use timestamp instead
-                if doc_clean == 'OnShape_Doc' and elem_clean == 'Part_Studio':
-                    from datetime import datetime
-                    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                    suggested_filename = f"OnShape_Part_{timestamp}"
-                    print(f"⚠️  Using timestamp (no names available): {suggested_filename}.nc")
-                else:
-                    # Use element name only if doc name is fallback
-                    if doc_clean == 'OnShape_Doc':
-                        suggested_filename = elem_clean
-                        print(f"✅ Suggested filename (element only): {suggested_filename}.nc")
-                    else:
-                        suggested_filename = f"{doc_clean}_{elem_clean}"
-                        print(f"✅ Suggested filename: {suggested_filename}.nc")
+            if part_clean and part_clean != 'Unnamed_Part':
+                suggested_filename = part_clean
+                print(f"✅ Using part name from bodydetails: {suggested_filename}.nc")
             else:
-                # Generate timestamp fallback (both API calls failed)
+                # Fallback to timestamp if name is empty or default
                 from datetime import datetime
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                 suggested_filename = f"OnShape_Part_{timestamp}"
-                print(f"⚠️  Could not fetch document/element names - using timestamp: {suggested_filename}.nc")
-        except Exception as e:
-            # Generate timestamp fallback on error
+                print(f"⚠️  Part name unavailable, using timestamp: {suggested_filename}.nc")
+        else:
+            # Fallback to timestamp if no part name
             from datetime import datetime
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             suggested_filename = f"OnShape_Part_{timestamp}"
-            print(f"⚠️  Error fetching names: {type(e).__name__}: {e}")
-            print(f"   Using timestamp fallback: {suggested_filename}.nc")
-            import traceback
-            traceback.print_exc()
+            print(f"⚠️  No part name from bodydetails, using timestamp: {suggested_filename}.nc")
         
         # Save DXF to temp file in uploads folder
         import tempfile
