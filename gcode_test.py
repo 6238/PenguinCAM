@@ -330,18 +330,23 @@ def verify_safe_heights(onshape_lines, fusion_lines, tolerance=0.001):
     return all_passed
 
 
-def generate_gcode_from_dxf(dxf_path, material_thickness=0.25, tool_diameter=0.157, 
-                            sacrifice_depth=0.02, units='inch', tabs=4, drill_screws=False):
+def generate_gcode_from_dxf(dxf_path, material_thickness=0.25, tool_diameter=0.157,
+                            sacrifice_depth=0.02, units='inch', tabs=4, drill_screws=False,
+                            material='plywood'):
     """Generate G-code from DXF using PenguinCAM"""
-    
+
     # Create post-processor with specified parameters
-    pp = FRCPostProcessor(material_thickness=material_thickness, 
+    pp = FRCPostProcessor(material_thickness=material_thickness,
                           tool_diameter=tool_diameter,
                           units=units)
+
+    # Apply material preset (sets feeds, speeds, ramp angles) - matches GUI behavior
+    pp.apply_material_preset(material)
+
     pp.num_tabs = tabs
     pp.drill_screw_holes = drill_screws
     pp.sacrifice_board_depth = sacrifice_depth
-    
+
     # Recalculate Z positions with user-specified sacrifice depth
     pp.cut_depth = -pp.sacrifice_board_depth
     
@@ -365,6 +370,7 @@ if __name__ == "__main__":
     FUSION_REFERENCE = "./fusion_output.gcode"
     
     # CAM parameters
+    MATERIAL = 'plywood'  # Material preset: 'plywood', 'aluminum', or 'polycarbonate'
     MATERIAL_THICKNESS = 6.35
     TOOL_DIAMETER = 4
     SACRIFICE_DEPTH = 0.5
@@ -383,7 +389,8 @@ if __name__ == "__main__":
         sacrifice_depth=SACRIFICE_DEPTH,
         units=UNITS,
         tabs=TABS,
-        drill_screws=DRILL_SCREWS
+        drill_screws=DRILL_SCREWS,
+        material=MATERIAL
     )
     
     penguin_lines = load_gcode_file(penguin_gcode_path)

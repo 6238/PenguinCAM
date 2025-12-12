@@ -22,7 +22,7 @@ MATERIAL_PRESETS = {
         'name': 'Plywood',
         'feed_rate': 75.0,        # Cutting feed rate (IPM)
         'ramp_feed_rate': 50.0,   # Ramp feed rate (IPM)
-        'plunge_rate': 25.0,      # Plunge feed rate (IPM)
+        'plunge_rate': 20.0,      # Plunge feed rate (IPM) - matches Fusion 360
         'spindle_speed': 18000,   # RPM
         'ramp_angle': 20.0,       # Ramp angle in degrees
         'description': 'Standard plywood settings - 18K RPM, 75 IPM cutting'
@@ -40,7 +40,7 @@ MATERIAL_PRESETS = {
         'name': 'Polycarbonate',
         'feed_rate': 75.0,        # Same as plywood
         'ramp_feed_rate': 50.0,   # Same as plywood
-        'plunge_rate': 25.0,      # Same as plywood
+        'plunge_rate': 20.0,      # Same as plywood - matches Fusion 360
         'spindle_speed': 18000,   # RPM
         'ramp_angle': 20.0,       # Same as plywood
         'description': 'Polycarbonate - same as plywood settings'
@@ -86,7 +86,7 @@ class FRCPostProcessor:
         self.spindle_speed = 18000  # RPM
         self.feed_rate = 75.0 if units == "inch" else 1905  # Cutting feed rate (IPM or mm/min)
         self.ramp_feed_rate = 50.0 if units == "inch" else 1270  # Ramp feed rate (IPM or mm/min)
-        self.plunge_rate = 25.0 if units == "inch" else 635  # Plunge feed rate (IPM or mm/min)
+        self.plunge_rate = 20.0 if units == "inch" else 508  # Plunge feed rate (IPM or mm/min) - matches Fusion 360
         self.ramp_angle = 20.0  # Ramp angle in degrees (for helical bores and perimeter ramps)
         
         # Tab parameters
