@@ -16,6 +16,38 @@ from typing import List, Tuple
 import argparse
 
 
+# Material presets based on team 6238 feeds/speeds document
+MATERIAL_PRESETS = {
+    'plywood': {
+        'name': 'Plywood',
+        'feed_rate': 75.0,        # Cutting feed rate (IPM)
+        'ramp_feed_rate': 50.0,   # Ramp feed rate (IPM)
+        'plunge_rate': 25.0,      # Plunge feed rate (IPM)
+        'spindle_speed': 18000,   # RPM
+        'ramp_angle': 20.0,       # Ramp angle in degrees
+        'description': 'Standard plywood settings - 18K RPM, 75 IPM cutting'
+    },
+    'aluminum': {
+        'name': 'Aluminum (Box Tubing)',
+        'feed_rate': 55.0,        # Cutting feed rate (IPM)
+        'ramp_feed_rate': 35.0,   # Ramp feed rate (IPM)
+        'plunge_rate': 35.0,      # Plunge feed rate (IPM) - using ramp rate
+        'spindle_speed': 18000,   # RPM
+        'ramp_angle': 4.0,        # Ramp angle in degrees
+        'description': 'Aluminum box tubing - 18K RPM, 55 IPM cutting, 4° ramp'
+    },
+    'polycarbonate': {
+        'name': 'Polycarbonate',
+        'feed_rate': 75.0,        # Same as plywood
+        'ramp_feed_rate': 50.0,   # Same as plywood
+        'plunge_rate': 25.0,      # Same as plywood
+        'spindle_speed': 18000,   # RPM
+        'ramp_angle': 20.0,       # Same as plywood
+        'description': 'Polycarbonate - same as plywood settings'
+    }
+}
+
+
 class FRCPostProcessor:
     def __init__(self, material_thickness: float, tool_diameter: float, units: str = "inch"):
         """
@@ -42,23 +74,52 @@ class FRCPostProcessor:
         # Z-axis reference: Z=0 is at BOTTOM (sacrifice board surface)
         # This allows zeroing to the sacrifice board instead of material top
         self.sacrifice_board_depth = 0.02  # How far to cut into sacrifice board (inches)
-        self.clearance_height = 0.1  # Clearance above material top (inches)
-        
+        self.clearance_height = 0.5  # Clearance above material top for rapid moves (inches)
+
         # Calculated Z positions (Z=0 at sacrifice board)
-        self.safe_height = material_thickness + self.clearance_height  # Above material
+        self.safe_height = 1.5  # Safe height for rapid moves (absolute, not relative to material)
+        self.retract_height = material_thickness + self.clearance_height  # Retract above material
         self.material_top = material_thickness  # Top surface of material
         self.cut_depth = -self.sacrifice_board_depth  # Cut slightly into sacrifice board
-        
-        # Cutting parameters (you can adjust these)
-        self.spindle_speed = 24000
-        self.feed_rate = 14.0 if units == "inch" else 365  # inches per minute
-        self.plunge_rate = 10.0 if units =="inch" else 339 # inches per minute
+
+        # Cutting parameters (defaults - can be overridden by material presets)
+        self.spindle_speed = 18000  # RPM
+        self.feed_rate = 75.0 if units == "inch" else 1905  # Cutting feed rate (IPM or mm/min)
+        self.ramp_feed_rate = 50.0 if units == "inch" else 1270  # Ramp feed rate (IPM or mm/min)
+        self.plunge_rate = 25.0 if units == "inch" else 635  # Plunge feed rate (IPM or mm/min)
+        self.ramp_angle = 20.0  # Ramp angle in degrees (for helical bores and perimeter ramps)
         
         # Tab parameters
         self.tab_width = 0.25  # Width of tabs (inches)
-        self.tab_height = 0.03  # How much material to leave in tab (inches)
+        self.tab_height = 0.1  # How much material to leave in tab (inches) - per team standards
         self.num_tabs = 4  # Number of tabs around perimeter
-        
+
+    def apply_material_preset(self, material: str):
+        """
+        Apply a material preset to set feeds, speeds, and ramp angles.
+
+        Args:
+            material: Material name ('plywood', 'aluminum', 'polycarbonate')
+        """
+        if material not in MATERIAL_PRESETS:
+            print(f"Warning: Unknown material '{material}'. Available: {', '.join(MATERIAL_PRESETS.keys())}")
+            print("Using default plywood settings.")
+            material = 'plywood'
+
+        preset = MATERIAL_PRESETS[material]
+        self.feed_rate = preset['feed_rate']
+        self.ramp_feed_rate = preset['ramp_feed_rate']
+        self.plunge_rate = preset['plunge_rate']
+        self.spindle_speed = preset['spindle_speed']
+        self.ramp_angle = preset['ramp_angle']
+
+        print(f"\nApplied material preset: {preset['name']}")
+        print(f"  {preset['description']}")
+        print(f"  Feed rate: {self.feed_rate} IPM")
+        print(f"  Ramp feed rate: {self.ramp_feed_rate} IPM")
+        print(f"  Plunge rate: {self.plunge_rate} IPM")
+        print(f"  Ramp angle: {self.ramp_angle}°")
+
     def load_dxf(self, filename: str):
         """Load DXF file and extract geometry"""
         print(f"Loading {filename}...")
@@ -508,11 +569,11 @@ class FRCPostProcessor:
         self.screw_holes = []
         self.bearing_holes = []
         self.other_holes = []
-        
+
         for circle in self.circles:
             diameter = circle['diameter']
             center = circle['center']
-            
+
             # Check if it's a screw hole
             if abs(diameter - self.screw_hole_diameter) < self.tolerance:
                 self.screw_holes.append(center)
@@ -524,10 +585,28 @@ class FRCPostProcessor:
             else:
                 self.other_holes.append({'center': center, 'diameter': diameter})
                 print(f"  Unknown hole (d={diameter:.3f}) at ({center[0]:.3f}, {center[1]:.3f})")
-        
+
         print(f"\nClassified: {len(self.screw_holes)} screw holes, "
               f"{len(self.bearing_holes)} bearing holes, "
               f"{len(self.other_holes)} other holes")
+
+        # Sort holes to minimize travel time
+        self._sort_holes()
+
+    def _sort_holes(self):
+        """
+        Sort holes to minimize tool travel time.
+        Sorts by X coordinate first, then by Y within each X group (zigzag pattern).
+        """
+        if len(self.screw_holes) > 1:
+            # Sort screw holes by X, then Y
+            self.screw_holes.sort(key=lambda p: (round(p[0], 2), p[1]))
+            print(f"Sorted {len(self.screw_holes)} screw holes for optimal travel")
+
+        if len(self.bearing_holes) > 1:
+            # Sort bearing holes by X, then Y
+            self.bearing_holes.sort(key=lambda p: (round(p[0], 2), p[1]))
+            print(f"Sorted {len(self.bearing_holes)} bearing holes for optimal travel")
     
     def identify_perimeter_and_pockets(self):
         """Identify the outer perimeter and any inner pockets"""
@@ -584,42 +663,56 @@ class FRCPostProcessor:
     
     def generate_gcode(self, output_file: str):
         """Generate complete G-code file"""
+        import datetime
+
         gcode = []
-        
-        # Header
-        gcode.append("(PenguinCAM - Team 6238)")
-        gcode.append(f"(Material thickness: {self.material_thickness}\")")
-        gcode.append(f"(Tool diameter: {self.tool_diameter}\" = {self.tool_diameter * 25.4:.2f}mm)")
-        gcode.append(f"(Tool compensation: Perimeter +{self.tool_radius:.4f}\", Pockets -{self.tool_radius:.4f}\")")
+
+        # Generate timestamp
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # Header with timestamp
+        gcode.append(f"(POPCORN PENGUINS GENERATED AT {timestamp})")
+        gcode.append("(PenguinCAM - Team 6238 CNC Post-Processor)")
+        gcode.append(f"(Material: {self.material_thickness}\" thick)")
+        gcode.append(f"(Tool: D={self.tool_diameter}\" / {self.tool_diameter * 25.4:.2f}mm - FLAT END MILL)")
+        gcode.append(f"(ZMIN: {self.cut_depth:.4f}\" - Tool compensation: Perimeter +{self.tool_radius:.4f}\", Pockets -{self.tool_radius:.4f}\")")
         gcode.append("")
         gcode.append("(Z-AXIS COORDINATE SYSTEM:)")
-        gcode.append(f"(  Z=0 is at SACRIFICE BOARD (bottom))")
-        gcode.append(f"(  Material top is at Z={self.material_top:.4f}\")")
-        gcode.append(f"(  Cut depth: Z={self.cut_depth:.4f}\" ({self.sacrifice_board_depth:.4f}\" into sacrifice board))")
+        gcode.append(f"(  Z=0 is at SACRIFICE BOARD surface)")
+        gcode.append(f"(  Material top: Z={self.material_top:.4f}\")")
+        gcode.append(f"(  Cut depth: Z={self.cut_depth:.4f}\" - {self.sacrifice_board_depth:.4f}\" into sacrifice board)")
         gcode.append(f"(  Safe height: Z={self.safe_height:.4f}\")")
-        gcode.append("(  ** Zero your Z-axis to the sacrifice board surface **)")
+        gcode.append(f"(  Retract height: Z={self.retract_height:.4f}\")")
+        gcode.append("(  ** Zero Z-axis to sacrifice board surface **)")
         gcode.append("")
-        gcode.append("(Generated by frc_cam_postprocessor.py)")
-        gcode.append("")
-        
-        # Setup
+
+        # Modal G-code setup (similar to Fusion 360)
+        gcode.append("G90 G94 G91.1 G40 G49 G17")
+        gcode.append("(G90=Absolute, G94=Feed/min, G91.1=Arc centers absolute, G40=Cutter comp cancel, G49=Tool length comp cancel, G17=XY plane)")
+
+        # Units
         if self.units == "inch":
             gcode.append("G20  ; Inches")
         else:
             gcode.append("G21  ; Millimeters")
-        
-        gcode.append("G90  ; Absolute positioning")
-        gcode.append("G17  ; XY plane")
-        gcode.append(f"F{self.feed_rate}  ; Set feed rate")
+
+        # Home Z axis (G28)
+        gcode.append("G28 G91 Z0.  ; Home Z axis")
+        gcode.append("G90  ; Back to absolute mode")
         gcode.append("")
-        
+
         # Spindle on
-        gcode.append(f"M3 S{self.spindle_speed}  ; Spindle on at {self.spindle_speed} RPM")
+        gcode.append(f"S{self.spindle_speed} M3  ; Spindle on at {self.spindle_speed} RPM")
         gcode.append("G4 P2  ; Wait 2 seconds for spindle to reach speed")
         gcode.append("")
-        
-        # Move to safe height
-        gcode.append(f"G0 Z{self.safe_height:.4f}  ; Move to safe height")
+
+        # Set work coordinate system
+        gcode.append("G54  ; Use work coordinate system 1")
+        gcode.append("")
+
+        # Initial safe move to machine coordinate Z0 (avoids fixture collisions)
+        gcode.append("G53 G0 Z0.  ; Move to machine coordinate Z0 (safe clearance)")
+        gcode.append(f"G0 Z{self.safe_height:.4f}  ; Move to safe height in work coordinates")
         gcode.append("")
         
         # Screw holes
@@ -641,23 +734,39 @@ class FRCPostProcessor:
                     # Calculate toolpath radius (hole radius minus tool radius)
                     hole_radius = self.screw_hole_diameter / 2
                     toolpath_radius = hole_radius - self.tool_radius
-                    
+
                     if toolpath_radius <= 0:
                         gcode.append(f"(WARNING: Tool too large to mill {self.screw_hole_diameter:.4f}\" hole - switching to center drill)")
                         gcode.append(f"G0 X{x:.4f} Y{y:.4f}  ; Position over hole center")
-                        gcode.append(f"G0 Z{self.safe_height:.4f}")
+                        gcode.append(f"G0 Z{self.retract_height:.4f}")
                         gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.plunge_rate}  ; Plunge")
-                        gcode.append(f"G1 Z{self.safe_height:.4f} F{self.plunge_rate}  ; Retract")
+                        gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
                     else:
+                        # Calculate helical passes using material-specific ramp angle
+                        num_passes, depth_per_pass = self._calculate_helical_passes(toolpath_radius)
+
                         # Position at edge of toolpath
                         start_x = x + toolpath_radius
                         start_y = y
-                        gcode.append(f"G0 X{start_x:.4f} Y{start_y:.4f}  ; Position at hole edge (compensated)")
-                        gcode.append(f"G0 Z{self.safe_height:.4f}")
-                        gcode.append(f"G1 Z{self.material_top:.4f} F{self.plunge_rate}  ; Rapid to surface")
-                        gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-toolpath_radius:.4f} J0 Z{self.cut_depth:.4f} F{self.plunge_rate}  ; Helical plunge")
+                        gcode.append(f"(Helical bore: {num_passes} passes at {self.ramp_angle}°, {depth_per_pass:.4f}\" per pass)")
+                        gcode.append(f"G0 X{start_x:.4f} Y{start_y:.4f}  ; Position at hole edge")
+                        gcode.append(f"G0 Z{self.retract_height:.4f}  ; Rapid to retract height")
+
+                        # Helical plunge in multiple passes using ramp feed rate
+                        current_z = self.retract_height
+                        for pass_num in range(num_passes):
+                            target_z = self.retract_height - (pass_num + 1) * depth_per_pass
+                            # Don't go deeper than cut_depth on final pass
+                            if pass_num == num_passes - 1:
+                                target_z = self.cut_depth
+
+                            gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-toolpath_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_passes}")
+
+                        # Clean up pass at final depth
                         gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-toolpath_radius:.4f} J0 F{self.feed_rate}  ; Clean up pass")
-                        gcode.append(f"G0 Z{self.safe_height:.4f}  ; Retract")
+
+                        # Retract
+                        gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
                     gcode.append("")
         
         # Bearing holes (spiral out from center)
@@ -685,6 +794,7 @@ class FRCPostProcessor:
         # Footer
         gcode.append("(===== FINISH =====)")
         gcode.append(f"G0 Z{self.safe_height:.4f}  ; Move to safe height")
+        gcode.append("G53 G0 Z0.  ; Move to machine coordinate Z0 (safe clearance)")
         gcode.append("M5  ; Spindle off")
         gcode.append("G0 X0 Y0  ; Return to origin")
         gcode.append("M30  ; Program end")
@@ -696,35 +806,88 @@ class FRCPostProcessor:
         print(f"\nG-code written to {output_file}")
         print(f"Total lines: {len(gcode)}")
     
+    def _calculate_helical_passes(self, toolpath_radius: float, target_angle_deg: float = None) -> Tuple[int, float]:
+        """
+        Calculate number of helical passes needed for a safe plunge angle.
+
+        Args:
+            toolpath_radius: Radius of the circular toolpath
+            target_angle_deg: Target plunge angle in degrees (default uses self.ramp_angle)
+
+        Returns:
+            Tuple of (number_of_passes, depth_per_pass)
+        """
+        import math
+
+        # Use material-specific ramp angle if not specified
+        if target_angle_deg is None:
+            target_angle_deg = self.ramp_angle
+
+        # Total depth to cut
+        total_depth = self.material_top - self.cut_depth
+
+        # Circumference of one revolution
+        circumference = 2 * math.pi * toolpath_radius
+
+        # For target angle: depth_per_rev = circumference * tan(angle)
+        target_depth_per_rev = circumference * math.tan(math.radians(target_angle_deg))
+
+        # Number of passes needed
+        num_passes = max(1, int(math.ceil(total_depth / target_depth_per_rev)))
+        depth_per_pass = total_depth / num_passes
+
+        return num_passes, depth_per_pass
+
     def _generate_bearing_hole_gcode(self, cx: float, cy: float) -> List[str]:
-        """Generate G-code for a bearing hole using helical interpolation with tool compensation"""
+        """
+        Generate G-code for a bearing hole using spiral-out strategy.
+        Starts at center and spirals outward in multiple passes.
+        """
         gcode = []
-        
-        # Calculate toolpath radius (hole radius minus tool radius for inside cut)
+
+        # Calculate target toolpath radius (hole radius minus tool radius for inside cut)
         hole_radius = self.bearing_hole_diameter / 2
-        toolpath_radius = hole_radius - self.tool_radius
-        
-        if toolpath_radius <= 0:
+        final_toolpath_radius = hole_radius - self.tool_radius
+
+        if final_toolpath_radius <= 0:
             gcode.append(f"(WARNING: Tool diameter {self.tool_diameter:.4f}\" is too large for {self.bearing_hole_diameter:.4f}\" hole!)")
             return gcode
-        
-        # Position at edge of toolpath
-        start_x = cx + toolpath_radius
-        start_y = cy
-        
-        gcode.append(f"G0 X{start_x:.4f} Y{start_y:.4f}  ; Position at hole edge (compensated)")
-        gcode.append(f"G0 Z{self.safe_height:.4f}")
-        
-        # Helical plunge using G2 (clockwise circular interpolation)
-        gcode.append(f"G1 Z{self.material_top:.4f} F{self.plunge_rate}  ; Rapid to material surface")
-        gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-toolpath_radius:.4f} J0 Z{self.cut_depth:.4f} F{self.plunge_rate}  ; Helical plunge")
-        
-        # Clean up pass at depth
-        gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-toolpath_radius:.4f} J0 F{self.feed_rate}  ; Clean up pass")
-        
+
+        # Strategy: Spiral out from center in multiple passes
+        # Each pass increases the radius by about 60% of tool diameter
+        stepover = self.tool_diameter * 0.6
+        num_radial_passes = max(1, int(math.ceil(final_toolpath_radius / stepover)))
+
+        gcode.append(f"(Bearing hole: {num_radial_passes} radial passes, spiraling from center)")
+
+        # Start at center
+        gcode.append(f"G0 X{cx:.4f} Y{cy:.4f}  ; Position at hole center")
+        gcode.append(f"G0 Z{self.retract_height:.4f}  ; Rapid to retract height")
+
+        # Plunge at center
+        gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.plunge_rate}  ; Plunge at center")
+
+        # Spiral outward
+        for pass_num in range(1, num_radial_passes + 1):
+            # Calculate radius for this pass
+            if pass_num == num_radial_passes:
+                current_radius = final_toolpath_radius  # Final pass uses exact radius
+            else:
+                current_radius = stepover * pass_num
+
+            # Move to edge of current radius
+            start_x = cx + current_radius
+            start_y = cy
+
+            gcode.append(f"(Radial pass {pass_num}/{num_radial_passes}, radius={current_radius:.4f}\")")
+            gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.feed_rate}  ; Move to radius")
+
+            # Cut one complete circle at this radius
+            gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-current_radius:.4f} J0 F{self.feed_rate}  ; Cut circle")
+
         # Retract
-        gcode.append(f"G0 Z{self.safe_height:.4f}  ; Retract")
-        
+        gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
+
         return gcode
     
     def _generate_pocket_gcode(self, pocket_points: List[Tuple[float, float]]) -> List[str]:
@@ -914,13 +1077,57 @@ class FRCPostProcessor:
                     tab_positions.append(position)
         
         gcode.append(f"(Tabs placed: {len(tab_positions)} on straight sections)")
-        
+
+        # Calculate ramp-in distance using material-specific ramp angle
+        ramp_depth = self.retract_height - self.cut_depth
+        ramp_distance = ramp_depth / math.tan(math.radians(self.ramp_angle))
+        gcode.append(f"(Ramp-in: {ramp_distance:.4f}\" at {self.ramp_angle}°)")
+
         # Move to start
         start = offset_points[0]
-        gcode.append(f"G0 X{start[0]:.4f} Y{start[1]:.4f}  ; Move to perimeter start (compensated)")
-        gcode.append(f"G0 Z{self.safe_height:.4f}")
-        gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.plunge_rate}  ; Plunge to cut depth")
-        
+        gcode.append(f"G0 X{start[0]:.4f} Y{start[1]:.4f}  ; Move to perimeter start")
+        gcode.append(f"G0 Z{self.retract_height:.4f}  ; Rapid to retract height")
+
+        # Ramp in along the perimeter path
+        # Calculate points along perimeter for ramping
+        ramp_points = []
+        current_ramp_dist = 0
+        current_z = self.retract_height
+
+        for i in range(len(offset_points)):
+            p1 = offset_points[i]
+            p2 = offset_points[(i + 1) % len(offset_points)]
+            seg_len = segment_lengths[i]
+
+            if current_ramp_dist >= ramp_distance:
+                break  # Ramp complete
+
+            if current_ramp_dist + seg_len <= ramp_distance:
+                # Entire segment is part of ramp
+                z_at_end = self.retract_height - (current_ramp_dist + seg_len) / ramp_distance * ramp_depth
+                ramp_points.append((p2[0], p2[1], z_at_end))
+                current_ramp_dist += seg_len
+            else:
+                # Partial segment - ramp ends partway through
+                remaining_ramp = ramp_distance - current_ramp_dist
+                t = remaining_ramp / seg_len
+                final_x = p1[0] + t * (p2[0] - p1[0])
+                final_y = p1[1] + t * (p2[1] - p1[1])
+                ramp_points.append((final_x, final_y, self.cut_depth))
+                current_ramp_dist = ramp_distance
+                break
+
+        # Execute ramp moves using ramp feed rate
+        for i, (x, y, z) in enumerate(ramp_points):
+            gcode.append(f"G1 X{x:.4f} Y{y:.4f} Z{z:.4f} F{self.ramp_feed_rate}  ; Ramp segment {i+1}")
+
+        # Ensure we're at full depth
+        if current_ramp_dist < ramp_distance:
+            gcode.append(f"(WARNING: Perimeter too short for full ramp - final plunge needed)")
+            gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.ramp_feed_rate}  ; Final plunge")
+
+        gcode.append("")
+
         # Cut around perimeter with tabs
         current_distance = 0
         tab_index = 0
@@ -974,7 +1181,10 @@ def main():
     parser = argparse.ArgumentParser(description='PenguinCAM - Team 6238 Post-Processor')
     parser.add_argument('input_dxf', help='Input DXF file from OnShape')
     parser.add_argument('output_gcode', help='Output G-code file')
-    parser.add_argument('--thickness', type=float, default=0.25, 
+    parser.add_argument('--material', type=str, default='plywood',
+                       choices=['plywood', 'aluminum', 'polycarbonate'],
+                       help='Material preset (default: plywood) - sets feeds, speeds, and ramp angles')
+    parser.add_argument('--thickness', type=float, default=0.25,
                        help='Material thickness in inches (default: 0.25)')
     parser.add_argument('--tool-diameter', type=float, default=0.157,
                        help='Tool diameter in inches (default: 0.157" = 4mm)')
@@ -994,8 +1204,8 @@ def main():
                        help='Rotation angle in degrees clockwise (default: 0)')
     
     # NEW: Cutting parameters
-    parser.add_argument('--spindle-speed', type=int, default=24000,
-                       help='Spindle speed in RPM (default: 24000)')
+    parser.add_argument('--spindle-speed', type=int, default=18000,
+                       help='Spindle speed in RPM (default: 18000)')
     parser.add_argument('--feed-rate', type=float, default=None,
                        help='Feed rate (default: 14 ipm or 365 mm/min depending on units)')
     parser.add_argument('--plunge-rate', type=float, default=None,
@@ -1004,17 +1214,25 @@ def main():
     args = parser.parse_args()
     
     # Create post-processor
-    pp = FRCPostProcessor(material_thickness=args.thickness, 
+    pp = FRCPostProcessor(material_thickness=args.thickness,
                           tool_diameter=args.tool_diameter,
                           units=args.units)
+
+    # Apply material preset (sets feeds, speeds, ramp angles)
+    pp.apply_material_preset(args.material)
+
+    # Override with command-line parameters if specified
     pp.num_tabs = args.tabs
     pp.drill_screw_holes = args.drill_screws
     pp.sacrifice_board_depth = args.sacrifice_depth
-    
-    # Set cutting parameters
-    pp.spindle_speed = args.spindle_speed
-    pp.feed_rate = args.feed_rate
-    pp.plunge_rate = args.plunge_rate
+
+    # Set cutting parameters (override preset if specified)
+    if args.spindle_speed != 18000:  # Only override if user changed from default
+        pp.spindle_speed = args.spindle_speed
+    if args.feed_rate is not None:
+        pp.feed_rate = args.feed_rate
+    if args.plunge_rate is not None:
+        pp.plunge_rate = args.plunge_rate
     
     # Recalculate Z positions with user-specified sacrifice depth
     pp.cut_depth = -pp.sacrifice_board_depth
@@ -1028,9 +1246,19 @@ def main():
     
     pp.classify_holes()
     pp.identify_perimeter_and_pockets()
-    pp.generate_gcode(args.output_gcode)
-    
-    print("\nDone! Review the G-code file before running on your machine.")
+
+    # Add timestamp to output filename
+    import datetime
+    import os
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    base_name = os.path.splitext(args.output_gcode)[0]
+    extension = os.path.splitext(args.output_gcode)[1]
+    output_with_timestamp = f"{base_name}_{timestamp}{extension}"
+
+    pp.generate_gcode(output_with_timestamp)
+
+    print(f"\nDone! G-code written to: {output_with_timestamp}")
+    print("Review the G-code file before running on your machine.")
     print(f"\nCUTTING PARAMETERS:")
     print(f"  Spindle speed: {pp.spindle_speed} RPM")
     print(f"  Feed rate: {pp.feed_rate:.1f} {args.units}/min")

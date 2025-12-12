@@ -99,19 +99,16 @@ def process_file():
             return jsonify({'error': 'File must be a DXF file'}), 400
         
         # Get parameters
-        material = request.form.get('material', "polycarb")
-        if material == 'aluminum':
-            spindle_speed = 24000
-            feedrate = 45
-            plungerate = 15
-        elif material == 'plywood':
-            spindle_speed = 24000
-            feedrate = 75
-            plungerate = 25
-        else:  # polycarb
-            spindle_speed = 24000
-            feedrate = 75
-            plungerate = 25
+        material = request.form.get('material', 'plywood')
+
+        # Map UI material names to post-processor material names
+        material_mapping = {
+            'polycarb': 'polycarbonate',
+            'polycarbonate': 'polycarbonate',
+            'plywood': 'plywood',
+            'aluminum': 'aluminum'
+        }
+        material = material_mapping.get(material.lower(), 'plywood')
 
         thickness = float(request.form.get('thickness', 0.25))
         tool_diameter = float(request.form.get('tool_diameter', 0.157))
@@ -121,11 +118,11 @@ def process_file():
         origin_corner = request.form.get('origin_corner', 'bottom-left')
         rotation = int(request.form.get('rotation', 0))
         suggested_filename = request.form.get('suggested_filename', '')
-        
+
         # Save uploaded file
         input_path = os.path.join(UPLOAD_FOLDER, 'input.dxf')
         file.save(input_path)
-        
+
         # Generate output filename
         if suggested_filename:
             # Use OnShape-derived name
@@ -135,24 +132,22 @@ def process_file():
             # Use DXF filename
             output_filename = Path(file.filename).stem + '.nc'
             print(f"📝 Using DXF filename: {output_filename}")
-        
+
         output_path = os.path.join(OUTPUT_FOLDER, output_filename)
-        
-        # Build command
+
+        # Build command - let post-processor handle material presets
         cmd = [
             sys.executable,
             str(POST_PROCESSOR),
             input_path,
             output_path,
+            '--material', material,
             '--thickness', str(thickness),
             '--tool-diameter', str(tool_diameter),
             '--sacrifice-depth', str(sacrifice_depth),
             '--tabs', str(tabs),
             '--origin-corner', origin_corner,
             '--rotation', str(rotation),
-            '--spindle-speed', str(spindle_speed),
-            '--feed-rate', str(feedrate),
-            '--plunge-rate', str(plungerate),
         ]
 
         if drill_screws:
