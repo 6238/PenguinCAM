@@ -107,17 +107,30 @@ class FRCPostProcessor:
             material = 'plywood'
 
         preset = MATERIAL_PRESETS[material]
-        self.feed_rate = preset['feed_rate']
-        self.ramp_feed_rate = preset['ramp_feed_rate']
-        self.plunge_rate = preset['plunge_rate']
+
+        # Preset values are defined in IPM - convert to mm/min if needed
+        if self.units == 'mm':
+            self.feed_rate = preset['feed_rate'] * 25.4
+            self.ramp_feed_rate = preset['ramp_feed_rate'] * 25.4
+            self.plunge_rate = preset['plunge_rate'] * 25.4
+        else:
+            self.feed_rate = preset['feed_rate']
+            self.ramp_feed_rate = preset['ramp_feed_rate']
+            self.plunge_rate = preset['plunge_rate']
+
         self.spindle_speed = preset['spindle_speed']
         self.ramp_angle = preset['ramp_angle']
 
         print(f"\nApplied material preset: {preset['name']}")
         print(f"  {preset['description']}")
-        print(f"  Feed rate: {self.feed_rate} IPM")
-        print(f"  Ramp feed rate: {self.ramp_feed_rate} IPM")
-        print(f"  Plunge rate: {self.plunge_rate} IPM")
+        if self.units == 'mm':
+            print(f"  Feed rate: {preset['feed_rate']} IPM ({self.feed_rate:.0f} mm/min)")
+            print(f"  Ramp feed rate: {preset['ramp_feed_rate']} IPM ({self.ramp_feed_rate:.0f} mm/min)")
+            print(f"  Plunge rate: {preset['plunge_rate']} IPM ({self.plunge_rate:.0f} mm/min)")
+        else:
+            print(f"  Feed rate: {self.feed_rate} IPM")
+            print(f"  Ramp feed rate: {self.ramp_feed_rate} IPM")
+            print(f"  Plunge rate: {self.plunge_rate} IPM")
         print(f"  Ramp angle: {self.ramp_angle}°")
 
     def load_dxf(self, filename: str):
