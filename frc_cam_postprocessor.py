@@ -1131,6 +1131,7 @@ class FRCPostProcessor:
         ramp_points = []
         current_ramp_dist = 0
         current_z = self.retract_height
+        ramp_end_segment = 0  # Track which segment the ramp ends on
 
         for i in range(len(offset_points)):
             p1 = offset_points[i]
@@ -1145,6 +1146,7 @@ class FRCPostProcessor:
                 z_at_end = self.retract_height - (current_ramp_dist + seg_len) / ramp_distance * ramp_depth
                 ramp_points.append((p2[0], p2[1], z_at_end))
                 current_ramp_dist += seg_len
+                ramp_end_segment = i + 1  # Ramp ends at the end of this segment
             else:
                 # Partial segment - ramp ends partway through
                 remaining_ramp = ramp_distance - current_ramp_dist
@@ -1153,6 +1155,7 @@ class FRCPostProcessor:
                 final_y = p1[1] + t * (p2[1] - p1[1])
                 ramp_points.append((final_x, final_y, self.cut_depth))
                 current_ramp_dist = ramp_distance
+                ramp_end_segment = i  # Ramp ends partway through this segment
                 break
 
         # Execute ramp moves using ramp feed rate
@@ -1166,26 +1169,32 @@ class FRCPostProcessor:
 
         gcode.append("")
 
-        # Cut around perimeter with tabs
-        current_distance = 0
+        # Cut around perimeter with tabs, starting from where ramp ended
+        # Adjust the distance to account for the ramp distance already covered
+        current_distance = current_ramp_dist
         tab_index = 0
-        
-        for i, point in enumerate(offset_points[1:] + [offset_points[0]], 1):
+
+        # Create perimeter points list starting from where ramp ended
+        # Continue from ramp_end_segment to end, then wrap around to start
+        remaining_points = offset_points[ramp_end_segment:] + offset_points[:ramp_end_segment]
+        remaining_lengths = segment_lengths[ramp_end_segment:] + segment_lengths[:ramp_end_segment]
+
+        for i, point in enumerate(remaining_points[1:] + [remaining_points[0]], 1):
             segment_start_dist = current_distance
-            segment_end_dist = current_distance + segment_lengths[i - 1]
+            segment_end_dist = current_distance + remaining_lengths[i - 1]
             
             # Check if any tabs are in this segment
             while tab_index < len(tab_positions) and tab_positions[tab_index] < segment_end_dist:
                 tab_dist = tab_positions[tab_index]
-                
-                if tab_dist >= segment_start_dist and segment_lengths[i - 1] > 0:
+
+                if tab_dist >= segment_start_dist and remaining_lengths[i - 1] > 0:
                     # Calculate tab position along segment
-                    t = (tab_dist - segment_start_dist) / segment_lengths[i - 1]
-                    prev_point = offset_points[i - 1]
-                    
+                    t = (tab_dist - segment_start_dist) / remaining_lengths[i - 1]
+                    prev_point = remaining_points[i - 1]
+
                     # Tab start
-                    tab_start_x = prev_point[0] + t * (point[0] - prev_point[0]) - self.tab_width / 2 * (point[0] - prev_point[0]) / segment_lengths[i - 1]
-                    tab_start_y = prev_point[1] + t * (point[1] - prev_point[1]) - self.tab_width / 2 * (point[1] - prev_point[1]) / segment_lengths[i - 1]
+                    tab_start_x = prev_point[0] + t * (point[0] - prev_point[0]) - self.tab_width / 2 * (point[0] - prev_point[0]) / remaining_lengths[i - 1]
+                    tab_start_y = prev_point[1] + t * (point[1] - prev_point[1]) - self.tab_width / 2 * (point[1] - prev_point[1]) / remaining_lengths[i - 1]
                     
                     # Move to tab start
                     gcode.append(f"G1 X{tab_start_x:.4f} Y{tab_start_y:.4f} F{self.feed_rate}")
@@ -1195,8 +1204,8 @@ class FRCPostProcessor:
                     gcode.append(f"G1 Z{tab_z:.4f} F{self.plunge_rate}  ; Tab {tab_index + 1}")
                     
                     # Tab end
-                    tab_end_x = prev_point[0] + t * (point[0] - prev_point[0]) + self.tab_width / 2 * (point[0] - prev_point[0]) / segment_lengths[i - 1]
-                    tab_end_y = prev_point[1] + t * (point[1] - prev_point[1]) + self.tab_width / 2 * (point[1] - prev_point[1]) / segment_lengths[i - 1]
+                    tab_end_x = prev_point[0] + t * (point[0] - prev_point[0]) + self.tab_width / 2 * (point[0] - prev_point[0]) / remaining_lengths[i - 1]
+                    tab_end_y = prev_point[1] + t * (point[1] - prev_point[1]) + self.tab_width / 2 * (point[1] - prev_point[1]) / remaining_lengths[i - 1]
                     
                     # Move across tab
                     gcode.append(f"G1 X{tab_end_x:.4f} Y{tab_end_y:.4f} F{self.feed_rate}")
