@@ -1215,7 +1215,7 @@ def main():
     parser.add_argument('--rotation', type=int, default=0,
                        choices=[0, 90, 180, 270],
                        help='Rotation angle in degrees clockwise (default: 0)')
-    
+
     # NEW: Cutting parameters
     parser.add_argument('--spindle-speed', type=int, default=18000,
                        help='Spindle speed in RPM (default: 18000)')
@@ -1266,11 +1266,13 @@ def main():
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     base_name = os.path.splitext(args.output_gcode)[0]
     extension = os.path.splitext(args.output_gcode)[1]
-    output_with_timestamp = f"{base_name}_{timestamp}{extension}"
+    output_path = f"{base_name}_{timestamp}{extension}"
 
-    pp.generate_gcode(output_with_timestamp)
+    pp.generate_gcode(output_path)
 
-    print(f"\nDone! G-code written to: {output_with_timestamp}")
+    # Print actual output path for GUI to parse (prefixed with OUTPUT_FILE:)
+    print(f"OUTPUT_FILE:{output_path}")
+    print(f"\nDone! G-code written to: {output_path}")
     print("Review the G-code file before running on your machine.")
     print(f"\nCUTTING PARAMETERS:")
     print(f"  Spindle speed: {pp.spindle_speed} RPM")

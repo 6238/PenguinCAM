@@ -179,14 +179,25 @@ def process_file():
                 'error': 'Post-processor failed',
                 'details': result.stderr
             }), 500
-        
+
+        # Parse actual output filename from stdout (post-processor adds timestamp)
+        actual_output_path = output_path  # Default fallback
+        for line in result.stdout.split('\n'):
+            if line.startswith('OUTPUT_FILE:'):
+                actual_output_path = line.split('OUTPUT_FILE:', 1)[1].strip()
+                print(f"📄 Actual output file: {actual_output_path}")
+                break
+
         # Check if output file was created
-        if not os.path.exists(output_path):
-            print(f"❌ Output file not created: {output_path}")
+        if not os.path.exists(actual_output_path):
+            print(f"❌ Output file not created: {actual_output_path}")
             return jsonify({
                 'error': 'Post-processor did not create output file',
                 'details': result.stdout + '\n\n' + result.stderr
             }), 500
+
+        # Update output_path to the actual file with timestamp
+        output_path = actual_output_path
         
         print(f"✅ Output file created: {os.path.getsize(output_path)} bytes")
         
