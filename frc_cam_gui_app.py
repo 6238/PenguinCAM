@@ -198,19 +198,22 @@ def process_file():
 
         # Update output_path to the actual file with timestamp
         output_path = actual_output_path
-        
+
         print(f"✅ Output file created: {os.path.getsize(output_path)} bytes")
-        
+
         # Read generated G-code
         with open(output_path, 'r') as f:
             gcode_content = f.read()
-        
+
         # Parse console output for statistics
         console_output = result.stdout
-        
+
+        # Get actual filename with timestamp for download/drive routes
+        actual_filename = os.path.basename(actual_output_path)
+
         return jsonify({
             'success': True,
-            'filename': output_filename,
+            'filename': actual_filename,  # Return actual filename with timestamp
             'gcode': gcode_content,
             'console': console_output,
             'parameters': {
