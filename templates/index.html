@@ -1983,14 +1983,17 @@
             );
             scene.add(originMarker);
 
-            // Material boundaries
+            // Get actual material thickness for visualization
+            const materialThickness = parseFloat(document.getElementById('thickness').value);
+
+            // Material boundaries (at material top surface)
             const materialOutline = new THREE.Line(
                 new THREE.BufferGeometry().setFromPoints([
-                    new THREE.Vector3(minX, maxZ, -minY),
-                    new THREE.Vector3(maxX, maxZ, -minY),
-                    new THREE.Vector3(maxX, maxZ, -maxY),
-                    new THREE.Vector3(minX, maxZ, -maxY),
-                    new THREE.Vector3(minX, maxZ, -minY)
+                    new THREE.Vector3(minX, materialThickness, -minY),
+                    new THREE.Vector3(maxX, materialThickness, -minY),
+                    new THREE.Vector3(maxX, materialThickness, -maxY),
+                    new THREE.Vector3(minX, materialThickness, -maxY),
+                    new THREE.Vector3(minX, materialThickness, -minY)
                 ]),
                 new THREE.LineBasicMaterial({ color: 0x8B949E, linewidth: 1, opacity: 0.5, transparent: true })
             );
@@ -2011,8 +2014,8 @@
             // Add stock material as semi-transparent solid
             const stockWidth = maxX - minX;
             const stockDepth = maxY - minY;
-            const stockHeight = maxZ; // Z=0 to Z=maxZ (sacrifice board to material top)
-            
+            const stockHeight = materialThickness; // Z=0 to Z=materialThickness (already defined above)
+
             const stockGeometry = new THREE.BoxGeometry(stockWidth, stockHeight, stockDepth);
             const stockMaterial = new THREE.MeshStandardMaterial({
                 color: 0xE8F0FF, // Light blue-white (aluminum-ish)
