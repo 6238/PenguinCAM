@@ -354,7 +354,7 @@ def upload_to_drive(filename):
             print(f"✅ Upload successful: {result.get('web_link')}")
             return jsonify({
                 'success': True,
-                'message': 'File uploaded to Google Drive',
+                'message': f'✅ Uploaded: {filename}',
                 'file_id': result.get('file_id'),
                 'web_view_link': result.get('web_link')
             })
