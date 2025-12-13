@@ -627,12 +627,15 @@ def onshape_import():
         workspace_id = params.get('workspaceId') or params.get('wid')
         element_id = params.get('elementId') or params.get('eid')
         face_id = params.get('faceId') or params.get('fid')
-        
+        body_id = params.get('partId') or params.get('bodyId') or params.get('bid')  # Optional - for part selection
+
         # Get OnShape server and user info that IS being sent
         onshape_server = params.get('server', 'https://cad.onshape.com')
         onshape_userid = params.get('userId')
-        
+
         print(f"OnShape params received: {params}")
+        if body_id:
+            print(f"  User selected body/part: {body_id}")
         
         # WORKAROUND: If params have placeholder strings, we can't proceed
         if (document_id and ('${' in str(document_id) or document_id.startswith('$'))):
@@ -685,7 +688,8 @@ def onshape_import():
                 print(f"Available faces: {faces_data}")
 
                 # This now returns (face_id, part_name)
-                face_id, part_name_from_body = client.auto_select_top_face(document_id, workspace_id, element_id)
+                # Pass body_id if user selected a specific part in OnShape
+                face_id, part_name_from_body = client.auto_select_top_face(document_id, workspace_id, element_id, body_id)
 
                 if not face_id:
                     # Provide helpful error with face list

@@ -576,24 +576,34 @@ class OnShapeClient:
         
         return result
     
-    def auto_select_top_face(self, document_id, workspace_id, element_id):
+    def auto_select_top_face(self, document_id, workspace_id, element_id, body_id=None):
         """
         Automatically select the top face of a part (highest Z plane face)
+
+        Args:
+            document_id: OnShape document ID
+            workspace_id: OnShape workspace ID
+            element_id: OnShape element ID
+            body_id: Optional body/part ID to filter to a specific part
 
         Returns:
             Tuple of (face_id, part_name) or (None, None) if not found
         """
-        faces_by_body = self.get_body_faces(document_id, workspace_id, element_id)
+        faces_by_body = self.get_body_faces(document_id, workspace_id, element_id, body_id)
 
         if not faces_by_body:
             return None, None
 
-        # Get all faces from all bodies, tracking which body they belong to
+        # If body_id was specified and we got results, we're only looking at that one body
+        if body_id and body_id in faces_by_body:
+            print(f"Filtering to selected body: {body_id} ({faces_by_body[body_id]['name']})")
+
+        # Get all faces from all bodies (or just the selected body), tracking which body they belong to
         all_faces = []
-        for body_id, body_data in faces_by_body.items():
+        for bid, body_data in faces_by_body.items():
             part_name = body_data['name']
             for face in body_data['faces']:
-                face['body_id'] = body_id
+                face['body_id'] = bid  # The actual body ID from the loop
                 face['part_name'] = part_name
                 all_faces.append(face)
 
@@ -630,10 +640,21 @@ class OnShapeClient:
             print("No horizontal plane faces found")
             return None, None
 
-        # Find the one with the highest Z position
-        top_face = max(horizontal_planes, key=lambda f: f['z_position'])
+        # Find the highest Z position
+        max_z = max(f['z_position'] for f in horizontal_planes)
 
-        print(f"\n✅ Auto-selected top face: {top_face['face_id']} from part '{top_face['part_name']}' at Z={top_face['z_position']:.6f}")
+        # Among faces near the top (within 0.01" of max Z), select the one with largest area
+        # This avoids selecting tiny faces on top of teeth/features
+        tolerance = 0.01
+        top_faces = [f for f in horizontal_planes if abs(f['z_position'] - max_z) <= tolerance]
+
+        if not top_faces:
+            top_faces = horizontal_planes  # Fallback
+
+        # Select the face with the largest area
+        top_face = max(top_faces, key=lambda f: f['area'])
+
+        print(f"\n✅ Auto-selected top face: {top_face['face_id']} from part '{top_face['part_name']}' at Z={top_face['z_position']:.6f}, area={top_face['area']:.6f}")
 
         return top_face['face_id'], top_face['part_name']
     
