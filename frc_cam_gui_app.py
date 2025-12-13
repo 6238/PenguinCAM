@@ -185,13 +185,22 @@ def process_file():
                 'details': result.stderr
             }), 500
 
-        # Parse actual output filename from stdout (post-processor adds timestamp)
+        # Parse actual output filename and cycle time from stdout
         actual_output_path = output_path  # Default fallback
+        cycle_time = None
+        cycle_time_display = None
         for line in result.stdout.split('\n'):
             if line.startswith('OUTPUT_FILE:'):
                 actual_output_path = line.split('OUTPUT_FILE:', 1)[1].strip()
                 print(f"📄 Actual output file: {actual_output_path}")
-                break
+            elif 'ESTIMATED_CYCLE_TIME:' in line:
+                # Parse: "⏱️  ESTIMATED_CYCLE_TIME: 123.4 seconds (2m 3s)"
+                import re
+                match = re.search(r'ESTIMATED_CYCLE_TIME:\s*([\d.]+)\s*seconds\s*\(([^)]+)\)', line)
+                if match:
+                    cycle_time = float(match.group(1))
+                    cycle_time_display = match.group(2)
+                    print(f"⏱️  Parsed cycle time: {cycle_time_display}")
 
         # Check if output file was created
         if not os.path.exists(actual_output_path):
@@ -216,7 +225,7 @@ def process_file():
         # Get actual filename with timestamp for download/drive routes
         actual_filename = os.path.basename(actual_output_path)
 
-        return jsonify({
+        response_data = {
             'success': True,
             'filename': actual_filename,  # Return actual filename with timestamp
             'gcode': gcode_content,
@@ -230,7 +239,14 @@ def process_file():
                 'origin_corner': origin_corner,
                 'rotation': rotation
             }
-        })
+        }
+
+        # Add cycle time if available
+        if cycle_time_display:
+            response_data['cycle_time'] = cycle_time_display
+            response_data['cycle_time_seconds'] = cycle_time
+
+        return jsonify(response_data)
         
     except ValueError as e:
         return jsonify({'error': f'Invalid parameter value: {str(e)}'}), 400

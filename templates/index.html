@@ -1420,7 +1420,12 @@
             // Parse statistics from console
             const lines = data.console.split('\n');
             const statsHtml = [];
-            
+
+            // Add cycle time if available
+            if (data.cycle_time) {
+                statsHtml.push(`<div class="stat"><div class="stat-label">⏱️ Estimated Time</div><div class="stat-value">${data.cycle_time}</div></div>`);
+            }
+
             // Extract key info
             const screwMatch = data.console.match(/(\d+) screw holes/);
             const bearingMatch = data.console.match(/(\d+) bearing holes/);

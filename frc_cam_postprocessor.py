@@ -897,13 +897,33 @@ class FRCPostProcessor:
         gcode.append("M5  ; Spindle off")
         gcode.append("G53 G0 X0.5 Y23.5  ; Move gantry to back of machine for easy access")
         gcode.append("M30  ; Program end")
-        
+
+        # Calculate estimated cycle time
+        time_estimate = self._estimate_cycle_time(gcode)
+
+        # Add cycle time to header (insert after the operations section)
+        for i, line in enumerate(gcode):
+            if line.startswith("(Operations:"):
+                # Find where to insert (after "No straight plunges")
+                insert_idx = i + 3  # After Operations, Helical angle, No straight plunges
+                time_lines = [
+                    "",
+                    f"(Estimated cycle time: {self._format_time(time_estimate['total'])})",
+                    f"(  Cutting: {self._format_time(time_estimate['cutting'])}, Rapids: {self._format_time(time_estimate['rapid'])}, Spindle: {self._format_time(time_estimate['dwell'])})",
+                    "(  Note: Estimate does not include acceleration/deceleration)"
+                ]
+                for j, time_line in enumerate(time_lines):
+                    gcode.insert(insert_idx + j, time_line)
+                break
+
         # Write to file
         with open(output_file, 'w') as f:
             f.write('\n'.join(gcode))
-        
+
         print(f"\nG-code written to {output_file}")
         print(f"Total lines: {len(gcode)}")
+        print(f"\n⏱️  ESTIMATED_CYCLE_TIME: {time_estimate['total']:.1f} seconds ({self._format_time(time_estimate['total'])})")
+        print(f"   Cutting: {self._format_time(time_estimate['cutting'])}, Rapids: {self._format_time(time_estimate['rapid'])}, Spindle: {self._format_time(time_estimate['dwell'])}")
     
     def _calculate_helical_passes(self, toolpath_radius: float, target_angle_deg: float = None) -> Tuple[int, float]:
         """
@@ -1004,7 +1024,150 @@ class FRCPostProcessor:
         gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
 
         return gcode
-    
+
+    def _estimate_cycle_time(self, gcode_lines: List[str]) -> dict:
+        """
+        Estimate total cycle time from G-code.
+        Returns dict with breakdown of time components.
+        """
+        import re
+        import math
+
+        cutting_time = 0.0  # G1/G2/G3 moves
+        rapid_time = 0.0    # G0 moves
+        dwell_time = 0.0    # G4 pauses
+
+        # Assume typical rapid speed (machine dependent)
+        rapid_speed = 400.0  # IPM - conservative estimate
+
+        current_x = 0.0
+        current_y = 0.0
+        current_z = 0.0
+        current_feed = self.feed_rate
+
+        for line in gcode_lines:
+            # Remove comments
+            line = re.sub(r'\(.*?\)', '', line).strip()
+            line = re.sub(r';.*$', '', line).strip()
+
+            if not line:
+                continue
+
+            # Parse G-code command
+            if line.startswith('G0'):
+                # Rapid move
+                x, y, z = current_x, current_y, current_z
+                if 'X' in line:
+                    x = float(re.search(r'X([-\d.]+)', line).group(1))
+                if 'Y' in line:
+                    y = float(re.search(r'Y([-\d.]+)', line).group(1))
+                if 'Z' in line:
+                    z = float(re.search(r'Z([-\d.]+)', line).group(1))
+
+                distance = math.sqrt((x - current_x)**2 + (y - current_y)**2 + (z - current_z)**2)
+                rapid_time += distance / rapid_speed * 60  # Convert to seconds
+
+                current_x, current_y, current_z = x, y, z
+
+            elif line.startswith('G1'):
+                # Linear cutting move
+                x, y, z = current_x, current_y, current_z
+                feed = current_feed
+
+                if 'X' in line:
+                    x = float(re.search(r'X([-\d.]+)', line).group(1))
+                if 'Y' in line:
+                    y = float(re.search(r'Y([-\d.]+)', line).group(1))
+                if 'Z' in line:
+                    z = float(re.search(r'Z([-\d.]+)', line).group(1))
+                if 'F' in line:
+                    feed = float(re.search(r'F([-\d.]+)', line).group(1))
+                    current_feed = feed
+
+                distance = math.sqrt((x - current_x)**2 + (y - current_y)**2 + (z - current_z)**2)
+                cutting_time += distance / feed * 60  # Convert to seconds
+
+                current_x, current_y, current_z = x, y, z
+
+            elif line.startswith('G2') or line.startswith('G3'):
+                # Arc move
+                x, y, z = current_x, current_y, current_z
+                feed = current_feed
+
+                if 'X' in line:
+                    x = float(re.search(r'X([-\d.]+)', line).group(1))
+                if 'Y' in line:
+                    y = float(re.search(r'Y([-\d.]+)', line).group(1))
+                if 'Z' in line:
+                    z = float(re.search(r'Z([-\d.]+)', line).group(1))
+                if 'F' in line:
+                    feed = float(re.search(r'F([-\d.]+)', line).group(1))
+                    current_feed = feed
+
+                # Get arc center offsets
+                i = 0.0
+                j = 0.0
+                if 'I' in line:
+                    i = float(re.search(r'I([-\d.]+)', line).group(1))
+                if 'J' in line:
+                    j = float(re.search(r'J([-\d.]+)', line).group(1))
+
+                # Calculate arc length (approximate)
+                center_x = current_x + i
+                center_y = current_y + j
+                radius = math.sqrt(i**2 + j**2)
+
+                # Calculate angle swept
+                start_angle = math.atan2(current_y - center_y, current_x - center_x)
+                end_angle = math.atan2(y - center_y, x - center_x)
+                angle = end_angle - start_angle
+
+                # Handle full circles and direction (G2=CW, G3=CCW)
+                if abs(angle) < 0.001:  # Full circle
+                    angle = 2 * math.pi
+                elif line.startswith('G2') and angle > 0:
+                    angle -= 2 * math.pi
+                elif line.startswith('G3') and angle < 0:
+                    angle += 2 * math.pi
+
+                arc_length = abs(angle * radius)
+
+                # Add Z component if helical
+                z_distance = abs(z - current_z)
+                total_distance = math.sqrt(arc_length**2 + z_distance**2)
+
+                cutting_time += total_distance / feed * 60  # Convert to seconds
+
+                current_x, current_y, current_z = x, y, z
+
+            elif line.startswith('G4'):
+                # Dwell
+                if 'P' in line:
+                    dwell_seconds = float(re.search(r'P([-\d.]+)', line).group(1))
+                    dwell_time += dwell_seconds
+
+        total_time = cutting_time + rapid_time + dwell_time
+
+        return {
+            'total': total_time,
+            'cutting': cutting_time,
+            'rapid': rapid_time,
+            'dwell': dwell_time
+        }
+
+    def _format_time(self, seconds: float) -> str:
+        """Format seconds as human-readable time string"""
+        if seconds < 60:
+            return f"{int(seconds)}s"
+        elif seconds < 3600:
+            minutes = int(seconds // 60)
+            secs = int(seconds % 60)
+            return f"{minutes}m {secs}s"
+        else:
+            hours = int(seconds // 3600)
+            minutes = int((seconds % 3600) // 60)
+            return f"{hours}h {minutes}m"
+
     def _generate_pocket_gcode(self, pocket_points: List[Tuple[float, float]]) -> List[str]:
         """Generate G-code for a pocket with tool compensation (offset inward)"""
         gcode = []
