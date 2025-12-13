@@ -836,7 +836,7 @@ class FRCPostProcessor:
         gcode.append(f"G0 Z{self.safe_height:.4f}  ; Move to safe height")
         gcode.append("G53 G0 Z0.  ; Move to machine coordinate Z0 (safe clearance)")
         gcode.append("M5  ; Spindle off")
-        gcode.append("G0 X0 Y0  ; Return to origin")
+        gcode.append("G53 G0 X0.5 Y23.5  ; Move gantry to back of machine for easy access")
         gcode.append("M30  ; Program end")
         
         # Write to file
