@@ -750,11 +750,10 @@ class FRCPostProcessor:
         gcode.append("G54  ; Use work coordinate system 1")
         gcode.append("")
 
-        # Initial safe move to machine coordinate Z0 (avoids fixture collisions)
-        gcode.append("G53 G0 Z0.  ; Move to machine coordinate Z0 (safe clearance)")
-        gcode.append(f"G0 Z{self.safe_height:.4f}  ; Move to safe height in work coordinates")
+        # Initial safe move to machine coordinate Z0 (stay high to avoid fixture collisions during XY moves)
+        gcode.append("G53 G0 Z0.  ; Move to machine coordinate Z0 (safe clearance) - stay high for XY rapids")
         gcode.append("")
-        
+
         # Screw holes
         if self.screw_holes:
             gcode.append("(===== SCREW HOLES =====)")
