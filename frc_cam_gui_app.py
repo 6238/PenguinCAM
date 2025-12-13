@@ -616,13 +616,17 @@ def onshape_import():
     
     try:
         from flask import session
-        
+
+        # Log the complete incoming URL for debugging
+        print(f"\n🔗 Complete request URL: {request.url}")
+        print(f"   Method: {request.method}")
+
         # Get parameters (either from query string or JSON body)
         if request.method == 'POST':
             params = request.json or {}
         else:
             params = request.args.to_dict()
-        
+
         document_id = params.get('documentId') or params.get('did')
         workspace_id = params.get('workspaceId') or params.get('wid')
         element_id = params.get('elementId') or params.get('eid')
@@ -734,11 +738,24 @@ def onshape_import():
         dxf_content = client.export_face_to_dxf(
             document_id, workspace_id, element_id, face_id, export_body_id
         )
-        
+
         if not dxf_content:
+            error_msg = f"Failed to export DXF from OnShape. "
+            if export_body_id:
+                error_msg += f"Attempted to export body/part: {export_body_id}. "
+            else:
+                error_msg += "No body/part ID available for export. "
+            error_msg += "Check OnShape API logs above for details."
+
             return jsonify({
                 'error': 'Failed to export DXF from OnShape',
-                'message': 'Check that the face ID is valid and you have access to the document'
+                'message': error_msg,
+                'details': {
+                    'face_id': face_id,
+                    'body_id': export_body_id,
+                    'document_id': document_id,
+                    'element_id': element_id
+                }
             }), 500
         
         print(f"📄 DXF content received: {len(dxf_content)} bytes")
