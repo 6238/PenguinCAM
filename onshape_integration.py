@@ -584,17 +584,18 @@ class OnShapeClient:
             traceback.print_exc()
             return None
     
-    def get_body_faces(self, document_id, workspace_id, element_id, body_id=None):
+    def get_body_faces(self, document_id, workspace_id, element_id, body_id=None, cached_faces_data=None):
         """
         Get face information for bodies in an element
-        
+
         Args:
             body_id: Optional body ID filter (e.g., 'JHD')
-            
+            cached_faces_data: Optional pre-fetched faces data to avoid duplicate API calls
+
         Returns:
             Dict mapping body IDs to lists of face info dicts with id, area, surface type, position
         """
-        data = self.list_faces(document_id, workspace_id, element_id)
+        data = cached_faces_data if cached_faces_data else self.list_faces(document_id, workspace_id, element_id)
         
         if not data or 'bodies' not in data:
             return None
@@ -642,7 +643,7 @@ class OnShapeClient:
         
         return result
     
-    def auto_select_top_face(self, document_id, workspace_id, element_id, body_id=None):
+    def auto_select_top_face(self, document_id, workspace_id, element_id, body_id=None, cached_faces_data=None):
         """
         Automatically select the largest planar face
 
@@ -651,11 +652,12 @@ class OnShapeClient:
             workspace_id: OnShape workspace ID
             element_id: OnShape element ID
             body_id: Optional body/part ID to filter to a specific part
+            cached_faces_data: Optional pre-fetched faces data to avoid duplicate API calls
 
         Returns:
             Tuple of (face_id, body_id, part_name, normal) or (None, None, None, None) if not found
         """
-        faces_by_body = self.get_body_faces(document_id, workspace_id, element_id, body_id)
+        faces_by_body = self.get_body_faces(document_id, workspace_id, element_id, body_id, cached_faces_data)
 
         if not faces_by_body:
             return None, None, None, None

@@ -700,45 +700,34 @@ def onshape_import():
                 if body_count > 1 and not body_id:
                     print("🔍 Multiple parts detected, showing part selector...")
 
-                    # Get detailed info about each part
+                    # Get detailed info about each part (reuse cached faces_data)
                     from onshape_integration import OnShapeClient
                     part_selection_data = []
 
-                    # Get body faces to calculate dimensions
-                    bodies_with_faces = client.get_body_faces(document_id, workspace_id, element_id)
+                    # Get body faces using cached data to avoid duplicate API call
+                    bodies_with_faces = client.get_body_faces(document_id, workspace_id, element_id, cached_faces_data=faces_data)
 
                     # Find the largest part by top face area
                     largest_body_id = None
                     largest_area = 0
 
                     for bid, body_data in bodies_with_faces.items():
-                        # Get horizontal faces
-                        horizontal_faces = [f for f in body_data['faces']
-                                          if f['surfaceType'] == 'PLANE'
-                                          and f.get('normal', {}).get('z') is not None
-                                          and abs(abs(f['normal']['z']) - 1.0) < 0.1]
+                        # Get all planar faces
+                        planar_faces = [f for f in body_data['faces'] if f['surfaceType'] == 'PLANE']
 
-                        if not horizontal_faces:
-                            continue
+                        if planar_faces:
+                            # Find largest planar face
+                            largest_face = max(planar_faces, key=lambda f: f.get('area', 0))
+                            face_area = largest_face.get('area', 0)
 
-                        # Get top face (highest Z)
-                        top_face = max(horizontal_faces, key=lambda f: f.get('origin', {}).get('z', 0))
-                        face_area = top_face.get('area', 0)
-
-                        if face_area > largest_area:
-                            largest_area = face_area
-                            largest_body_id = bid
-
-                        # Calculate rough bounding box dimensions (simplified)
-                        # In reality we'd need to parse the geometry, but area gives us a rough idea
-                        estimated_size = (face_area ** 0.5) * 2  # Very rough estimate
+                            if face_area > largest_area:
+                                largest_area = face_area
+                                largest_body_id = bid
 
                         part_selection_data.append({
                             'body_id': bid,
                             'name': body_data['name'],
                             'face_count': len(body_data['faces']),
-                            'width': estimated_size,
-                            'height': estimated_size,
                             'is_largest': False  # Will set this after loop
                         })
 
@@ -763,8 +752,8 @@ def onshape_import():
                                          from_onshape=True)
 
                 # This now returns (face_id, body_id, part_name, normal)
-                # Pass body_id if user selected a specific part in OnShape
-                face_id, auto_selected_body_id, part_name_from_body, face_normal = client.auto_select_top_face(document_id, workspace_id, element_id, body_id)
+                # Pass body_id if user selected a specific part in OnShape, and cached data to avoid duplicate API call
+                face_id, auto_selected_body_id, part_name_from_body, face_normal = client.auto_select_top_face(document_id, workspace_id, element_id, body_id, faces_data)
 
                 if not face_id:
                     # Provide helpful error with face list
