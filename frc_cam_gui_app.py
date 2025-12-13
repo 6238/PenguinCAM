@@ -150,6 +150,11 @@ def process_file():
             '--rotation', str(rotation),
         ]
 
+        # Add user name if authenticated
+        user_name = session.get('user_name')
+        if user_name:
+            cmd.extend(['--user', user_name])
+
         if drill_screws:
             cmd.append('--drill-screws')
         
