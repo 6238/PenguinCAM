@@ -1241,8 +1241,38 @@ class FRCPostProcessor:
 
         # Ensure we're at full depth
         if current_ramp_dist < ramp_distance:
-            gcode.append(f"(WARNING: Perimeter too short for full ramp - final plunge needed)")
-            gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.ramp_feed_rate}  ; Final plunge")
+            # Calculate remaining depth to descend
+            if ramp_points:
+                current_pos = ramp_points[-1]
+                current_z = current_pos[2]
+                remaining_depth = current_z - self.cut_depth
+
+                if remaining_depth > 0.001:  # Only if significant depth remains
+                    # Use small helical loop instead of straight plunge
+                    helix_radius = self.tool_diameter * 0.75  # Small radius, safe for any geometry
+                    helix_center_x = current_pos[0]
+                    helix_center_y = current_pos[1]
+
+                    # Calculate number of helical loops needed
+                    circumference = 2 * math.pi * helix_radius
+                    depth_per_loop = circumference * math.tan(math.radians(self.ramp_angle))
+                    num_loops = max(1, int(math.ceil(remaining_depth / depth_per_loop)))
+                    depth_per_loop_actual = remaining_depth / num_loops
+
+                    gcode.append(f"(Perimeter too short - using helical finish: {num_loops} loop(s) at {self.ramp_angle}°)")
+
+                    # Move to edge of helix radius
+                    start_x = helix_center_x + helix_radius
+                    start_y = helix_center_y
+                    gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.feed_rate}  ; Move to helix start")
+
+                    # Perform helical loops
+                    for loop_num in range(num_loops):
+                        target_z = current_z - (loop_num + 1) * depth_per_loop_actual
+                        gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-helix_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical loop {loop_num + 1}/{num_loops}")
+
+                    # Return to perimeter path
+                    gcode.append(f"G1 X{helix_center_x:.4f} Y{helix_center_y:.4f} F{self.feed_rate}  ; Return to perimeter")
 
         gcode.append("")
 
