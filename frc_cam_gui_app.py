@@ -4,7 +4,7 @@ PenguinCAM - FRC Team 6238 CAM Tool
 A Flask-based web interface for generating G-code from DXF files
 """
 
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, session
 from werkzeug.middleware.proxy_fix import ProxyFix
 import os
 import sys
