@@ -634,8 +634,11 @@ def onshape_import():
         onshape_userid = params.get('userId')
 
         print(f"OnShape params received: {params}")
+        print(f"  Extracted body_id/partId: {body_id!r}")
         if body_id:
-            print(f"  User selected body/part: {body_id}")
+            print(f"  ✅ User selected body/part: {body_id}")
+        else:
+            print(f"  ⚠️  No partId received - will search all parts in document")
         
         # WORKAROUND: If params have placeholder strings, we can't proceed
         if (document_id and ('${' in str(document_id) or document_id.startswith('$'))):
@@ -686,7 +689,8 @@ def onshape_import():
             try:
                 # First, try to list all faces for debugging
                 faces_data = client.list_faces(document_id, workspace_id, element_id)
-                print(f"Available faces: {faces_data}")
+                body_count = len(faces_data.get('bodies', [])) if faces_data else 0
+                print(f"📊 Found {body_count} bodies/parts in document")
 
                 # This now returns (face_id, body_id, part_name)
                 # Pass body_id if user selected a specific part in OnShape

@@ -598,9 +598,18 @@ class OnShapeClient:
         if not faces_by_body:
             return None, None, None
 
-        # If body_id was specified and we got results, we're only looking at that one body
-        if body_id and body_id in faces_by_body:
-            print(f"Filtering to selected body: {body_id} ({faces_by_body[body_id]['name']})")
+        # Show available body IDs for debugging
+        available_body_ids = list(faces_by_body.keys())
+        print(f"\n📋 Available body IDs in document: {available_body_ids}")
+
+        # If body_id was specified, check if it matches
+        if body_id:
+            if body_id in faces_by_body:
+                print(f"✅ Filtering to selected body: {body_id} ({faces_by_body[body_id]['name']})")
+            else:
+                print(f"⚠️  Requested body_id '{body_id}' not found in available bodies!")
+                print(f"   Available: {available_body_ids}")
+                print(f"   Will search all parts instead")
 
         # Get all faces from all bodies (or just the selected body), tracking which body they belong to
         all_faces = []
