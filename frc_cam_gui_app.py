@@ -762,9 +762,9 @@ def onshape_import():
                                          },
                                          from_onshape=True)
 
-                # This now returns (face_id, body_id, part_name)
+                # This now returns (face_id, body_id, part_name, normal)
                 # Pass body_id if user selected a specific part in OnShape
-                face_id, auto_selected_body_id, part_name_from_body = client.auto_select_top_face(document_id, workspace_id, element_id, body_id)
+                face_id, auto_selected_body_id, part_name_from_body, face_normal = client.auto_select_top_face(document_id, workspace_id, element_id, body_id)
 
                 if not face_id:
                     # Provide helpful error with face list
@@ -802,7 +802,7 @@ def onshape_import():
         print(f"Exporting with body_id: {export_body_id} (from {'URL param' if body_id else 'auto-selection'})")
 
         dxf_content = client.export_face_to_dxf(
-            document_id, workspace_id, element_id, face_id, export_body_id
+            document_id, workspace_id, element_id, face_id, export_body_id, face_normal
         )
 
         if not dxf_content:

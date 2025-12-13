@@ -210,7 +210,56 @@ class OnShapeClient:
             print(f"Error getting user info: {e}")
             return None
     
-    def export_face_to_dxf(self, document_id, workspace_id, element_id, face_id, body_id=None):
+    def _calculate_view_matrix(self, normal):
+        """
+        Calculate a view matrix that looks at a face straight-on based on its normal.
+
+        Args:
+            normal: Dict with 'x', 'y', 'z' keys for the face normal vector
+
+        Returns:
+            String representing a 4x4 view matrix in OnShape format
+        """
+        nx = normal.get('x', 0)
+        ny = normal.get('y', 0)
+        nz = normal.get('z', 1)
+
+        # Determine which axis the normal is closest to
+        abs_nx, abs_ny, abs_nz = abs(nx), abs(ny), abs(nz)
+
+        # View matrices for 6 cardinal directions (4x4 in row-major order)
+        # Format: a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p representing:
+        # a b c d
+        # e f g h
+        # i j k l
+        # m n o p
+
+        if abs_nz > abs_nx and abs_nz > abs_ny:
+            # Face pointing ±Z (horizontal)
+            if nz > 0:
+                # Top view (looking down -Z)
+                return "1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1"
+            else:
+                # Bottom view (looking up +Z, flip X)
+                return "-1,0,0,0,0,1,0,0,0,0,-1,0,0,0,0,1"
+        elif abs_ny > abs_nx:
+            # Face pointing ±Y
+            if ny > 0:
+                # Back view (looking along -Y, rotate -90° around X)
+                return "1,0,0,0,0,0,-1,0,0,1,0,0,0,0,0,1"
+            else:
+                # Front view (looking along +Y, rotate 90° around X)
+                return "1,0,0,0,0,0,1,0,0,-1,0,0,0,0,0,1"
+        else:
+            # Face pointing ±X
+            if nx > 0:
+                # Right side view (looking along -X, rotate 90° around Y)
+                return "0,0,-1,0,0,1,0,0,1,0,0,0,0,0,0,1"
+            else:
+                # Left side view (looking along +X, rotate -90° around Y)
+                return "0,0,1,0,0,1,0,0,-1,0,0,0,0,0,0,1"
+
+    def export_face_to_dxf(self, document_id, workspace_id, element_id, face_id, body_id=None, face_normal=None):
         """
         Export a face from a Part Studio as DXF
 
@@ -220,6 +269,7 @@ class OnShapeClient:
             element_id: Element ID (from URL: /e/{eid})
             face_id: The face ID (used for logging/backwards compatibility)
             body_id: The body/part ID to export (if None, uses face_id for backwards compatibility)
+            face_normal: Optional dict with face normal vector {'x': ..., 'y': ..., 'z': ...}
 
         Returns:
             DXF file content as bytes, or None if failed
@@ -230,6 +280,8 @@ class OnShapeClient:
         print(f"Element: {element_id}")
         print(f"Face: {face_id}")
         print(f"Body: {body_id}")
+        if face_normal:
+            print(f"Normal: ({face_normal.get('x', 0):.3f}, {face_normal.get('y', 0):.3f}, {face_normal.get('z', 0):.3f})")
         
         # Try the internal export endpoint that OnShape's web UI uses
         print("\n[Method 1] Trying exportinternal endpoint (web UI method)...")
@@ -241,10 +293,18 @@ class OnShapeClient:
             export_id = face_id  # Always use face_id for Part Studio exports
             print(f"Using face_id for export: {export_id}")
 
-            # Don't specify a view matrix - let OnShape figure out the right orientation
-            # based on the selected face's normal. This works for faces at any orientation.
+            # Calculate view matrix based on face normal (if provided)
+            if face_normal:
+                view_matrix = self._calculate_view_matrix(face_normal)
+                print(f"Using calculated view matrix for normal ({face_normal.get('x', 0):.3f}, {face_normal.get('y', 0):.3f}, {face_normal.get('z', 0):.3f})")
+            else:
+                # Default to top-down view
+                view_matrix = "1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1"
+                print("Using default top-down view matrix")
+
             body = {
                 "format": "DXF",
+                "view": view_matrix,
                 "version": "2013",
                 "units": "inch",
                 "flatten": "true",  # Critical for 2D export
@@ -584,7 +644,7 @@ class OnShapeClient:
     
     def auto_select_top_face(self, document_id, workspace_id, element_id, body_id=None):
         """
-        Automatically select the top face of a part (highest Z plane face)
+        Automatically select the largest planar face
 
         Args:
             document_id: OnShape document ID
@@ -593,12 +653,12 @@ class OnShapeClient:
             body_id: Optional body/part ID to filter to a specific part
 
         Returns:
-            Tuple of (face_id, body_id, part_name) or (None, None, None) if not found
+            Tuple of (face_id, body_id, part_name, normal) or (None, None, None, None) if not found
         """
         faces_by_body = self.get_body_faces(document_id, workspace_id, element_id, body_id)
 
         if not faces_by_body:
-            return None, None, None
+            return None, None, None, None
 
         # Show available body IDs for debugging
         available_body_ids = list(faces_by_body.keys())
@@ -640,7 +700,7 @@ class OnShapeClient:
 
         if not plane_faces:
             print("No planar faces found")
-            return None, None, None
+            return None, None, None, None
 
         # Select the face with the largest area
         selected_face = max(plane_faces, key=lambda f: f['area'])
@@ -653,7 +713,7 @@ class OnShapeClient:
 
         print(f"\n✅ Auto-selected face: {selected_face['face_id']} from part '{selected_face['part_name']}' (body: {selected_face['body_id']}), area={selected_face['area']:.6f}, normal=({nx:.3f}, {ny:.3f}, {nz:.3f})")
 
-        return selected_face['face_id'], selected_face['body_id'], selected_face['part_name']
+        return selected_face['face_id'], selected_face['body_id'], selected_face['part_name'], selected_face['normal']
     
     def get_document_info(self, document_id):
         """Get information about a document"""
