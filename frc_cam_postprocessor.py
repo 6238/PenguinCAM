@@ -28,7 +28,7 @@ MATERIAL_PRESETS = {
         'description': 'Standard plywood settings - 18K RPM, 75 IPM cutting'
     },
     'aluminum': {
-        'name': 'Aluminum (Box Tubing)',
+        'name': 'Aluminum',
         'feed_rate': 55.0,        # Cutting feed rate (IPM)
         'ramp_feed_rate': 35.0,   # Ramp feed rate (IPM)
         'plunge_rate': 35.0,      # Plunge feed rate (IPM) - using ramp rate
