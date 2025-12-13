@@ -251,7 +251,7 @@ class OnShapeClient:
                 "splinesAsPolylines": "true",
                 "triggerAutoDownload": "true",
                 "storeInDocument": "false",
-                "partIds": export_id  # The body/part ID (or face ID for backwards compatibility)
+                "partIds": [export_id]  # Must be an array, not a string
             }
             
             print(f"API endpoint: {self.API_BASE}{endpoint}")
