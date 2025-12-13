@@ -238,8 +238,11 @@ class OnShapeClient:
         try:
             # Use a top-down view matrix (looking down at XY plane)
             # This is what you'd see when looking at a flat plate from above
-            # Use body_id if provided (to export full part), otherwise fall back to face_id
-            export_id = body_id if body_id else face_id
+            # For Part Studios, OnShape's "partIds" parameter actually expects face IDs, not body IDs
+            # (Confusing naming by OnShape!)
+            export_id = face_id  # Always use face_id for Part Studio exports
+            print(f"Using face_id for export: {export_id}")
+
             body = {
                 "format": "DXF",
                 "view": "1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1",  # Identity matrix (top view)
@@ -251,7 +254,7 @@ class OnShapeClient:
                 "splinesAsPolylines": "true",
                 "triggerAutoDownload": "true",
                 "storeInDocument": "false",
-                "partIds": [export_id]  # Must be an array, not a string
+                "partIds": [export_id]  # For Part Studios, this is actually a face ID
             }
             
             print(f"API endpoint: {self.API_BASE}{endpoint}")
