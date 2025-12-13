@@ -806,10 +806,13 @@
             background: var(--surface-light);
             border: 2px solid var(--border);
             border-radius: 8px;
-            padding: 1rem;
+            padding: 0.75rem 1rem;
             margin-bottom: 0.75rem;
             cursor: pointer;
             transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
         }
 
         .part-option:hover {
@@ -824,19 +827,21 @@
         }
 
         .part-option input[type="radio"] {
-            margin-right: 0.75rem;
+            flex-shrink: 0;
             cursor: pointer;
         }
 
         .part-name {
             font-weight: 600;
             color: var(--text);
-            margin-bottom: 0.25rem;
+            white-space: nowrap;
         }
 
         .part-info {
             font-size: 0.85rem;
             color: var(--text-dim);
+            margin-left: auto;
+            white-space: nowrap;
         }
 
         .part-badge {
@@ -896,17 +901,15 @@
                 {% for part in part_selection.parts %}
                 <label class="part-option {% if loop.first %}selected{% endif %}">
                     <input type="radio" name="partSelection" value="{{ part.body_id }}" {% if loop.first %}checked{% endif %}>
-                    <div>
-                        <div class="part-name">
-                            {{ part.name }}
-                            {% if part.is_largest %}
-                            <span class="part-badge">LARGEST</span>
-                            {% endif %}
-                        </div>
-                        <div class="part-info">
-                            {{ "%.2f"|format(part.width) }}" × {{ "%.2f"|format(part.height) }}", {{ part.face_count }} faces
-                        </div>
-                    </div>
+                    <span class="part-name">
+                        {{ part.name }}
+                        {% if part.is_largest %}
+                        <span class="part-badge">LARGEST</span>
+                        {% endif %}
+                    </span>
+                    <span class="part-info">
+                        {{ "%.2f"|format(part.width) }}" × {{ "%.2f"|format(part.height) }}", {{ part.face_count }} faces
+                    </span>
                 </label>
                 {% endfor %}
             </div>
