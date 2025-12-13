@@ -705,8 +705,10 @@ class FRCPostProcessor:
 
         gcode = []
 
-        # Generate timestamp
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Generate timestamp in Pacific time
+        from zoneinfo import ZoneInfo
+        pacific_time = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
+        timestamp = pacific_time.strftime("%Y%m%d_%H%M%S")
 
         # Header with timestamp
         gcode.append(f"(POPCORN PENGUINS GENERATED AT {timestamp})")
@@ -1294,10 +1296,12 @@ def main():
     pp.classify_holes()
     pp.identify_perimeter_and_pockets()
 
-    # Add timestamp to output filename
+    # Add timestamp to output filename (Pacific time)
     import datetime
     import os
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    from zoneinfo import ZoneInfo
+    pacific_time = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
+    timestamp = pacific_time.strftime("%Y%m%d_%H%M%S")
     base_name = os.path.splitext(args.output_gcode)[0]
     extension = os.path.splitext(args.output_gcode)[1]
     output_path = f"{base_name}_{timestamp}{extension}"

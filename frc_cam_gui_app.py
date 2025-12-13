@@ -791,15 +791,19 @@ def onshape_import():
                 suggested_filename = part_clean
                 print(f"✅ Using part name only: {suggested_filename}.nc")
             else:
-                # Part name is generic, use timestamp
+                # Part name is generic, use timestamp (Pacific time)
                 from datetime import datetime
-                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                from zoneinfo import ZoneInfo
+                pacific_time = datetime.now(ZoneInfo("America/Los_Angeles"))
+                timestamp = pacific_time.strftime("%Y-%m-%d_%H-%M-%S")
                 suggested_filename = f"OnShape_Part_{timestamp}"
                 print(f"⚠️  Generic part name, using timestamp: {suggested_filename}.nc")
         else:
-            # Last resort: timestamp
+            # Last resort: timestamp (Pacific time)
             from datetime import datetime
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            from zoneinfo import ZoneInfo
+            pacific_time = datetime.now(ZoneInfo("America/Los_Angeles"))
+            timestamp = pacific_time.strftime("%Y-%m-%d_%H-%M-%S")
             suggested_filename = f"OnShape_Part_{timestamp}"
             print(f"⚠️  No names available, using timestamp: {suggested_filename}.nc")
         
