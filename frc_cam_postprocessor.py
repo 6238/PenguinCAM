@@ -107,6 +107,7 @@ class FRCPostProcessor:
             material = 'plywood'
 
         preset = MATERIAL_PRESETS[material]
+        self.material_name = preset['name']  # Store material name for header
 
         # Preset values are defined in IPM - convert to mm/min if needed
         if self.units == 'mm':
@@ -713,7 +714,10 @@ class FRCPostProcessor:
         # Header with timestamp
         gcode.append(f"(POPCORN PENGUINS GENERATED AT {timestamp})")
         gcode.append("(PenguinCAM - Team 6238 CNC Post-Processor)")
-        gcode.append(f"(Material: {self.material_thickness}\" thick)")
+        material_info = f"{self.material_thickness}\" thick"
+        if hasattr(self, 'material_name'):
+            material_info = f"{self.material_name} - {material_info}"
+        gcode.append(f"(Material: {material_info})")
         gcode.append(f"(Tool: D={self.tool_diameter}\" / {self.tool_diameter * 25.4:.2f}mm - FLAT END MILL)")
         gcode.append(f"(ZMIN: {self.cut_depth:.4f}\" - Tool compensation: Perimeter +{self.tool_radius:.4f}\", Pockets -{self.tool_radius:.4f}\")")
         gcode.append("")
