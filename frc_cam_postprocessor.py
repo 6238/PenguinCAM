@@ -795,10 +795,6 @@ class FRCPostProcessor:
                         current_z = self.retract_height
                         for pass_num in range(num_passes):
                             target_z = self.retract_height - (pass_num + 1) * depth_per_pass
-                            # Don't go deeper than cut_depth on final pass
-                            if pass_num == num_passes - 1:
-                                target_z = self.cut_depth
-
                             gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-toolpath_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_passes}")
 
                         # Clean up pass at final depth
@@ -862,8 +858,8 @@ class FRCPostProcessor:
         if target_angle_deg is None:
             target_angle_deg = self.ramp_angle
 
-        # Total depth to cut
-        total_depth = self.material_top - self.cut_depth
+        # Total depth to cut (from retract height down to cut depth)
+        total_depth = self.retract_height - self.cut_depth
 
         # Circumference of one revolution
         circumference = 2 * math.pi * toolpath_radius
@@ -913,10 +909,6 @@ class FRCPostProcessor:
         gcode.append(f"(Helical entry: {num_helical_passes} passes at {self.ramp_angle}°, {depth_per_pass:.4f}\" per pass)")
         for pass_num in range(num_helical_passes):
             target_z = self.retract_height - (pass_num + 1) * depth_per_pass
-            # Don't go deeper than cut_depth on final pass
-            if pass_num == num_helical_passes - 1:
-                target_z = self.cut_depth
-
             gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-entry_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_helical_passes}")
 
         # Clean up pass at entry radius and final depth
