@@ -236,16 +236,15 @@ class OnShapeClient:
         endpoint = f"/documents/d/{document_id}/w/{workspace_id}/e/{element_id}/exportinternal"
         
         try:
-            # Use a top-down view matrix (looking down at XY plane)
-            # This is what you'd see when looking at a flat plate from above
             # For Part Studios, OnShape's "partIds" parameter actually expects face IDs, not body IDs
             # (Confusing naming by OnShape!)
             export_id = face_id  # Always use face_id for Part Studio exports
             print(f"Using face_id for export: {export_id}")
 
+            # Don't specify a view matrix - let OnShape figure out the right orientation
+            # based on the selected face's normal. This works for faces at any orientation.
             body = {
                 "format": "DXF",
-                "view": "1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1",  # Identity matrix (top view)
                 "version": "2013",
                 "units": "inch",
                 "flatten": "true",  # Critical for 2D export
@@ -623,7 +622,8 @@ class OnShapeClient:
                 face['part_name'] = part_name
                 all_faces.append(face)
 
-        # Filter for PLANE faces only (any orientation)
+        # Filter for PLANE faces (any orientation)
+        # OnShape's export will handle the proper orientation based on the face normal
         plane_faces = []
         for face in all_faces:
             if face['surfaceType'] != 'PLANE':
@@ -642,12 +642,12 @@ class OnShapeClient:
             print("No planar faces found")
             return None, None, None
 
-        # Select the face with the largest area (simple and effective)
-        top_face = max(plane_faces, key=lambda f: f['area'])
+        # Select the face with the largest area
+        selected_face = max(plane_faces, key=lambda f: f['area'])
 
-        print(f"\n✅ Auto-selected face: {top_face['face_id']} from part '{top_face['part_name']}' (body: {top_face['body_id']}), area={top_face['area']:.6f}")
+        print(f"\n✅ Auto-selected face: {selected_face['face_id']} from part '{selected_face['part_name']}' (body: {selected_face['body_id']}), area={selected_face['area']:.6f}")
 
-        return top_face['face_id'], top_face['body_id'], top_face['part_name']
+        return selected_face['face_id'], selected_face['body_id'], selected_face['part_name']
     
     def get_document_info(self, document_id):
         """Get information about a document"""
