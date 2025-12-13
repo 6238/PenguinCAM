@@ -254,7 +254,7 @@ class OnShapeClient:
                 "splinesAsPolylines": "true",
                 "triggerAutoDownload": "true",
                 "storeInDocument": "false",
-                "partIds": [export_id]  # For Part Studios, this is actually a face ID
+                "partIds": export_id  # Must be a string, not an array!
             }
             
             print(f"API endpoint: {self.API_BASE}{endpoint}")
