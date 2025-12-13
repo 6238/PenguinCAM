@@ -696,6 +696,72 @@ def onshape_import():
                 body_count = len(faces_data.get('bodies', [])) if faces_data else 0
                 print(f"📊 Found {body_count} bodies/parts in document")
 
+                # If multiple parts and no bodyId specified, show part selection modal
+                if body_count > 1 and not body_id:
+                    print("🔍 Multiple parts detected, showing part selector...")
+
+                    # Get detailed info about each part
+                    from onshape_integration import OnShapeClient
+                    part_selection_data = []
+
+                    # Get body faces to calculate dimensions
+                    bodies_with_faces = client.get_body_faces(document_id, workspace_id, element_id)
+
+                    # Find the largest part by top face area
+                    largest_body_id = None
+                    largest_area = 0
+
+                    for bid, body_data in bodies_with_faces.items():
+                        # Get horizontal faces
+                        horizontal_faces = [f for f in body_data['faces']
+                                          if f['surfaceType'] == 'PLANE'
+                                          and f.get('normal', {}).get('z') is not None
+                                          and abs(abs(f['normal']['z']) - 1.0) < 0.1]
+
+                        if not horizontal_faces:
+                            continue
+
+                        # Get top face (highest Z)
+                        top_face = max(horizontal_faces, key=lambda f: f.get('origin', {}).get('z', 0))
+                        face_area = top_face.get('area', 0)
+
+                        if face_area > largest_area:
+                            largest_area = face_area
+                            largest_body_id = bid
+
+                        # Calculate rough bounding box dimensions (simplified)
+                        # In reality we'd need to parse the geometry, but area gives us a rough idea
+                        estimated_size = (face_area ** 0.5) * 2  # Very rough estimate
+
+                        part_selection_data.append({
+                            'body_id': bid,
+                            'name': body_data['name'],
+                            'face_count': len(body_data['faces']),
+                            'width': estimated_size,
+                            'height': estimated_size,
+                            'is_largest': False  # Will set this after loop
+                        })
+
+                    # Mark the largest part
+                    for part in part_selection_data:
+                        if part['body_id'] == largest_body_id:
+                            part['is_largest'] = True
+                            break
+
+                    # Sort by size (largest first)
+                    part_selection_data.sort(key=lambda p: p['face_count'] * (1 if p['is_largest'] else 0), reverse=True)
+
+                    # Render template with part selection
+                    from flask import render_template
+                    return render_template('index.html',
+                                         part_selection={
+                                             'parts': part_selection_data,
+                                             'document_id': document_id,
+                                             'workspace_id': workspace_id,
+                                             'element_id': element_id
+                                         },
+                                         from_onshape=True)
+
                 # This now returns (face_id, body_id, part_name)
                 # Pass body_id if user selected a specific part in OnShape
                 face_id, auto_selected_body_id, part_name_from_body = client.auto_select_top_face(document_id, workspace_id, element_id, body_id)

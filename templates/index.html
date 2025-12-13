@@ -763,9 +763,161 @@
             border-color: var(--primary);
             box-shadow: 0 0 0 2px rgba(253, 181, 21, 0.1);
         }
+        /* Part Selection Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(10, 14, 20, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-content {
+            background: var(--surface);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            color: var(--primary);
+            text-align: center;
+        }
+
+        .part-list {
+            margin-bottom: 1.5rem;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .part-option {
+            background: var(--surface-light);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .part-option:hover {
+            border-color: var(--primary);
+            background: var(--bg);
+        }
+
+        .part-option.selected {
+            border-color: var(--primary);
+            background: var(--bg);
+            box-shadow: 0 0 0 2px rgba(253, 181, 21, 0.2);
+        }
+
+        .part-option input[type="radio"] {
+            margin-right: 0.75rem;
+            cursor: pointer;
+        }
+
+        .part-name {
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 0.25rem;
+        }
+
+        .part-info {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+        }
+
+        .part-badge {
+            display: inline-block;
+            background: var(--primary);
+            color: var(--bg);
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            margin-left: 0.5rem;
+            font-weight: 600;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+        }
+
+        .modal-actions button {
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            border: none;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .modal-actions button.primary {
+            background: var(--primary);
+            color: var(--bg);
+        }
+
+        .modal-actions button.primary:hover {
+            background: var(--primary-dark);
+        }
+
+        .modal-actions button.secondary {
+            background: var(--surface-light);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .modal-actions button.secondary:hover {
+            background: var(--border);
+        }
     </style>
 </head>
 <body>
+    <!-- Part Selection Modal (shown when multiple parts detected) -->
+    {% if part_selection %}
+    <div class="modal-overlay" id="partSelectionModal">
+        <div class="modal-content">
+            <div class="modal-header">Which part would you like to cut?</div>
+            <div class="part-list" id="partList">
+                {% for part in part_selection.parts %}
+                <label class="part-option {% if loop.first %}selected{% endif %}">
+                    <input type="radio" name="partSelection" value="{{ part.body_id }}" {% if loop.first %}checked{% endif %}>
+                    <div>
+                        <div class="part-name">
+                            {{ part.name }}
+                            {% if part.is_largest %}
+                            <span class="part-badge">LARGEST</span>
+                            {% endif %}
+                        </div>
+                        <div class="part-info">
+                            {{ "%.2f"|format(part.width) }}" × {{ "%.2f"|format(part.height) }}", {{ part.face_count }} faces
+                        </div>
+                    </div>
+                </label>
+                {% endfor %}
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="secondary" onclick="window.history.back()">Cancel</button>
+                <button type="button" class="primary" onclick="selectPart()">Select</button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <header>
         <div class="logo-container">
             <img src="/static/popcornlogo.png" alt="Popcorn Penguins Logo">
@@ -996,6 +1148,29 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
+        // Part Selection Modal
+        function selectPart() {
+            const selected = document.querySelector('input[name="partSelection"]:checked');
+            if (selected) {
+                const bodyId = selected.value;
+                // Reload page with selected bodyId
+                const url = new URL(window.location.href);
+                url.searchParams.set('bodyId', bodyId);
+                window.location.href = url.toString();
+            }
+        }
+
+        // Handle part option selection (visual feedback)
+        document.addEventListener('DOMContentLoaded', () => {
+            const partOptions = document.querySelectorAll('.part-option');
+            partOptions.forEach(option => {
+                option.addEventListener('click', () => {
+                    partOptions.forEach(opt => opt.classList.remove('selected'));
+                    option.classList.add('selected');
+                });
+            });
+        });
+
         // Global state
         let uploadedFile = null;
         let suggestedFilename = null; // For OnShape imports
