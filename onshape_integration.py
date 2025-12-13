@@ -623,7 +623,6 @@ class OnShapeClient:
                 all_faces.append(face)
 
         # Filter for PLANE faces (any orientation)
-        # OnShape's export will handle the proper orientation based on the face normal
         plane_faces = []
         for face in all_faces:
             if face['surfaceType'] != 'PLANE':
@@ -633,7 +632,8 @@ class OnShapeClient:
                 'face_id': face['id'],
                 'area': face['area'],
                 'part_name': face['part_name'],
-                'body_id': face['body_id']
+                'body_id': face['body_id'],
+                'normal': face.get('normal', {})
             })
 
             print(f"  Found planar face: {face['id']} ({face['part_name']}), area={face['area']:.6f}")
@@ -645,7 +645,13 @@ class OnShapeClient:
         # Select the face with the largest area
         selected_face = max(plane_faces, key=lambda f: f['area'])
 
-        print(f"\n✅ Auto-selected face: {selected_face['face_id']} from part '{selected_face['part_name']}' (body: {selected_face['body_id']}), area={selected_face['area']:.6f}")
+        # Store the normal for view matrix calculation
+        normal = selected_face['normal']
+        nx = normal.get('x', 0)
+        ny = normal.get('y', 0)
+        nz = normal.get('z', 1)
+
+        print(f"\n✅ Auto-selected face: {selected_face['face_id']} from part '{selected_face['part_name']}' (body: {selected_face['body_id']}), area={selected_face['area']:.6f}, normal=({nx:.3f}, {ny:.3f}, {nz:.3f})")
 
         return selected_face['face_id'], selected_face['body_id'], selected_face['part_name']
     
