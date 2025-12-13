@@ -210,16 +210,17 @@ class OnShapeClient:
             print(f"Error getting user info: {e}")
             return None
     
-    def export_face_to_dxf(self, document_id, workspace_id, element_id, face_id):
+    def export_face_to_dxf(self, document_id, workspace_id, element_id, face_id, body_id=None):
         """
         Export a face from a Part Studio as DXF
-        
+
         Args:
             document_id: OnShape document ID (from URL: /documents/d/{did})
             workspace_id: Workspace ID (from URL: /w/{wid})
             element_id: Element ID (from URL: /e/{eid})
-            face_id: The face ID to export (e.g., 'JIa')
-            
+            face_id: The face ID (used for logging/backwards compatibility)
+            body_id: The body/part ID to export (if None, uses face_id for backwards compatibility)
+
         Returns:
             DXF file content as bytes, or None if failed
         """
@@ -228,6 +229,7 @@ class OnShapeClient:
         print(f"Workspace: {workspace_id}")
         print(f"Element: {element_id}")
         print(f"Face: {face_id}")
+        print(f"Body: {body_id}")
         
         # Try the internal export endpoint that OnShape's web UI uses
         print("\n[Method 1] Trying exportinternal endpoint (web UI method)...")
@@ -236,6 +238,8 @@ class OnShapeClient:
         try:
             # Use a top-down view matrix (looking down at XY plane)
             # This is what you'd see when looking at a flat plate from above
+            # Use body_id if provided (to export full part), otherwise fall back to face_id
+            export_id = body_id if body_id else face_id
             body = {
                 "format": "DXF",
                 "view": "1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1",  # Identity matrix (top view)
@@ -247,7 +251,7 @@ class OnShapeClient:
                 "splinesAsPolylines": "true",
                 "triggerAutoDownload": "true",
                 "storeInDocument": "false",
-                "partIds": face_id  # The face ID!
+                "partIds": export_id  # The body/part ID (or face ID for backwards compatibility)
             }
             
             print(f"API endpoint: {self.API_BASE}{endpoint}")
@@ -587,12 +591,12 @@ class OnShapeClient:
             body_id: Optional body/part ID to filter to a specific part
 
         Returns:
-            Tuple of (face_id, part_name) or (None, None) if not found
+            Tuple of (face_id, body_id, part_name) or (None, None, None) if not found
         """
         faces_by_body = self.get_body_faces(document_id, workspace_id, element_id, body_id)
 
         if not faces_by_body:
-            return None, None
+            return None, None, None
 
         # If body_id was specified and we got results, we're only looking at that one body
         if body_id and body_id in faces_by_body:
@@ -631,14 +635,15 @@ class OnShapeClient:
                     'z_position': z_pos,
                     'normal_z': nz,
                     'area': face['area'],
-                    'part_name': face['part_name']
+                    'part_name': face['part_name'],
+                    'body_id': face['body_id']
                 })
 
                 print(f"  Found horizontal plane: {face['id']} ({face['part_name']}), Z={z_pos:.6f}, normal_z={nz:.3f}, area={face['area']:.6f}")
 
         if not horizontal_planes:
             print("No horizontal plane faces found")
-            return None, None
+            return None, None, None
 
         # Find the highest Z position
         max_z = max(f['z_position'] for f in horizontal_planes)
@@ -654,9 +659,9 @@ class OnShapeClient:
         # Select the face with the largest area
         top_face = max(top_faces, key=lambda f: f['area'])
 
-        print(f"\n✅ Auto-selected top face: {top_face['face_id']} from part '{top_face['part_name']}' at Z={top_face['z_position']:.6f}, area={top_face['area']:.6f}")
+        print(f"\n✅ Auto-selected top face: {top_face['face_id']} from part '{top_face['part_name']}' (body: {top_face['body_id']}) at Z={top_face['z_position']:.6f}, area={top_face['area']:.6f}")
 
-        return top_face['face_id'], top_face['part_name']
+        return top_face['face_id'], top_face['body_id'], top_face['part_name']
     
     def get_document_info(self, document_id):
         """Get information about a document"""
