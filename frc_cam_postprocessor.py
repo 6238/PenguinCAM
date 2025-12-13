@@ -728,7 +728,7 @@ class FRCPostProcessor:
 
         # Modal G-code setup (similar to Fusion 360)
         gcode.append("G90 G94 G91.1 G40 G49 G17")
-        gcode.append("(G90=Absolute, G94=Feed/min, G91.1=Arc centers absolute, G40=Cutter comp cancel, G49=Tool length comp cancel, G17=XY plane)")
+        gcode.append("(G90=Absolute, G94=Feed/min, G91.1=Arc centers incremental (IJK relative to start point), G40=Cutter comp cancel, G49=Tool length comp cancel, G17=XY plane)")
 
         # Units
         if self.units == "inch":
@@ -879,8 +879,8 @@ class FRCPostProcessor:
 
     def _generate_bearing_hole_gcode(self, cx: float, cy: float) -> List[str]:
         """
-        Generate G-code for a bearing hole using spiral-out strategy.
-        Starts at center and spirals outward in multiple passes.
+        Generate G-code for a bearing hole using helical entry + spiral-out strategy.
+        Uses helical interpolation to safely enter, then spirals outward in multiple passes.
         """
         gcode = []
 
@@ -892,21 +892,37 @@ class FRCPostProcessor:
             gcode.append(f"(WARNING: Tool diameter {self.tool_diameter:.4f}\" is too large for {self.bearing_hole_diameter:.4f}\" hole!)")
             return gcode
 
-        # Strategy: Spiral out from center in multiple passes
+        # Strategy: Helical entry at small radius, then spiral outward
         # Each pass increases the radius by about 60% of tool diameter
         stepover = self.tool_diameter * 0.6
         num_radial_passes = max(1, int(math.ceil(final_toolpath_radius / stepover)))
 
-        gcode.append(f"(Bearing hole: {num_radial_passes} radial passes, spiraling from center)")
+        # Calculate helical entry passes
+        entry_radius = min(stepover, final_toolpath_radius)  # Use first stepover radius
+        num_helical_passes, depth_per_pass = self._calculate_helical_passes(entry_radius)
 
-        # Start at center
-        gcode.append(f"G0 X{cx:.4f} Y{cy:.4f}  ; Position at hole center")
+        gcode.append(f"(Bearing hole: helical entry at {entry_radius:.4f}\" radius, then {num_radial_passes} radial passes)")
+
+        # Position at edge of entry radius
+        start_x = cx + entry_radius
+        start_y = cy
+        gcode.append(f"G0 X{start_x:.4f} Y{start_y:.4f}  ; Position at entry radius")
         gcode.append(f"G0 Z{self.retract_height:.4f}  ; Rapid to retract height")
 
-        # Plunge at center
-        gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.plunge_rate}  ; Plunge at center")
+        # Helical entry in multiple passes using ramp feed rate
+        gcode.append(f"(Helical entry: {num_helical_passes} passes at {self.ramp_angle}°, {depth_per_pass:.4f}\" per pass)")
+        for pass_num in range(num_helical_passes):
+            target_z = self.retract_height - (pass_num + 1) * depth_per_pass
+            # Don't go deeper than cut_depth on final pass
+            if pass_num == num_helical_passes - 1:
+                target_z = self.cut_depth
 
-        # Spiral outward
+            gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-entry_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_helical_passes}")
+
+        # Clean up pass at entry radius and final depth
+        gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-entry_radius:.4f} J0 F{self.feed_rate}  ; Clean up pass at entry radius")
+
+        # Spiral outward from entry radius
         for pass_num in range(1, num_radial_passes + 1):
             # Calculate radius for this pass
             if pass_num == num_radial_passes:
@@ -914,15 +930,19 @@ class FRCPostProcessor:
             else:
                 current_radius = stepover * pass_num
 
+            # Skip if this radius is smaller than entry radius (already cut)
+            if current_radius <= entry_radius + 0.001:
+                continue
+
             # Move to edge of current radius
-            start_x = cx + current_radius
-            start_y = cy
+            current_x = cx + current_radius
+            current_y = cy
 
             gcode.append(f"(Radial pass {pass_num}/{num_radial_passes}, radius={current_radius:.4f}\")")
-            gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.feed_rate}  ; Move to radius")
+            gcode.append(f"G1 X{current_x:.4f} Y{current_y:.4f} F{self.feed_rate}  ; Move to radius")
 
             # Cut one complete circle at this radius
-            gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-current_radius:.4f} J0 F{self.feed_rate}  ; Cut circle")
+            gcode.append(f"G2 X{current_x:.4f} Y{current_y:.4f} I{-current_radius:.4f} J0 F{self.feed_rate}  ; Cut circle")
 
         # Retract
         gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
