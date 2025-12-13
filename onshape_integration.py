@@ -623,55 +623,29 @@ class OnShapeClient:
                 face['part_name'] = part_name
                 all_faces.append(face)
 
-        # Filter for PLANE faces that are horizontal (normal pointing up/down in Z)
-        horizontal_planes = []
+        # Filter for PLANE faces only (any orientation)
+        plane_faces = []
         for face in all_faces:
             if face['surfaceType'] != 'PLANE':
                 continue
 
-            normal = face.get('normal', {})
-            origin = face.get('origin', {})
+            plane_faces.append({
+                'face_id': face['id'],
+                'area': face['area'],
+                'part_name': face['part_name'],
+                'body_id': face['body_id']
+            })
 
-            nz = normal.get('z', None)
+            print(f"  Found planar face: {face['id']} ({face['part_name']}), area={face['area']:.6f}")
 
-            if nz is None:
-                continue
-
-            # Check if normal is vertical (pointing up or down)
-            # Normal should be close to (0, 0, ±1)
-            if abs(abs(nz) - 1.0) < 0.1:  # Allow small tolerance
-                z_pos = origin.get('z', 0)
-
-                horizontal_planes.append({
-                    'face_id': face['id'],
-                    'z_position': z_pos,
-                    'normal_z': nz,
-                    'area': face['area'],
-                    'part_name': face['part_name'],
-                    'body_id': face['body_id']
-                })
-
-                print(f"  Found horizontal plane: {face['id']} ({face['part_name']}), Z={z_pos:.6f}, normal_z={nz:.3f}, area={face['area']:.6f}")
-
-        if not horizontal_planes:
-            print("No horizontal plane faces found")
+        if not plane_faces:
+            print("No planar faces found")
             return None, None, None
 
-        # Find the highest Z position
-        max_z = max(f['z_position'] for f in horizontal_planes)
+        # Select the face with the largest area (simple and effective)
+        top_face = max(plane_faces, key=lambda f: f['area'])
 
-        # Among faces near the top (within 0.01" of max Z), select the one with largest area
-        # This avoids selecting tiny faces on top of teeth/features
-        tolerance = 0.01
-        top_faces = [f for f in horizontal_planes if abs(f['z_position'] - max_z) <= tolerance]
-
-        if not top_faces:
-            top_faces = horizontal_planes  # Fallback
-
-        # Select the face with the largest area
-        top_face = max(top_faces, key=lambda f: f['area'])
-
-        print(f"\n✅ Auto-selected top face: {top_face['face_id']} from part '{top_face['part_name']}' (body: {top_face['body_id']}) at Z={top_face['z_position']:.6f}, area={top_face['area']:.6f}")
+        print(f"\n✅ Auto-selected face: {top_face['face_id']} from part '{top_face['part_name']}' (body: {top_face['body_id']}), area={top_face['area']:.6f}")
 
         return top_face['face_id'], top_face['body_id'], top_face['part_name']
     
