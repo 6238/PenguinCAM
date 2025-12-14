@@ -1719,6 +1719,12 @@
                         minY = Math.min(minY, val);
                         maxY = Math.max(maxY, val);
                     }
+                } else if (line === '70' && i + 1 < lines.length && currentEntity === 'LWPOLYLINE') {
+                    // Group code 70 contains polyline flags; bit 0 (value & 1) indicates closed
+                    const flags = parseInt(lines[i + 1].trim());
+                    if (!isNaN(flags)) {
+                        entityData.closed = (flags & 1) !== 0;
+                    }
                 }
             }
             
@@ -1776,7 +1782,8 @@
             } else if (type === 'LWPOLYLINE') {
                 return {
                     type: 'LWPOLYLINE',
-                    vertices: data.vertices || []
+                    vertices: data.vertices || [],
+                    shape: data.closed || false  // 'shape' property is used by renderer to close path
                 };
             }
             return null;
