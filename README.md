@@ -168,7 +168,7 @@ See `requirements.txt` for complete list.
 OnShape Part Studio
     ↓ (OAuth API)
 DXF Export
-    ↓ (Auto top-face detection)
+    ↓ (Automatic face detection)
 Geometry Analysis
     ↓ (Hole detection, path generation)
 G-code Generation
