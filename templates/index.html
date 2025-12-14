@@ -2118,17 +2118,17 @@
                     const jMatch = trimmed.match(/J([-\d.]+)/);
 
                     if (iMatch && jMatch) {
-                        const i = parseFloat(iMatch[1]);
-                        const j = parseFloat(jMatch[1]);
+                        const arcI = parseFloat(iMatch[1]);
+                        const arcJ = parseFloat(jMatch[1]);
 
                         // Arc center (incremental from start point - G91.1 mode)
-                        const centerX = currentX + i;
-                        const centerY = currentY + j;
+                        const centerX = currentX + arcI;
+                        const centerY = currentY + arcJ;
 
                         // Calculate arc parameters
                         const startAngle = Math.atan2(currentY - centerY, currentX - centerX);
                         const endAngle = Math.atan2(newY - centerY, newX - centerX);
-                        const radius = Math.sqrt(i * i + j * j);
+                        const radius = Math.sqrt(arcI * arcI + arcJ * arcJ);
 
                         // Determine sweep direction and angle
                         let sweepAngle = endAngle - startAngle;
@@ -2233,7 +2233,7 @@
             const markerSize = Math.max(0.15, maxDimension * 0.02);
             const originMarker = new THREE.Mesh(
                 new THREE.SphereGeometry(markerSize, 16, 16),
-                new THREE.MeshBasicMaterial({ color: 0xFFFFFF, emissive: 0xFFFFFF })
+                new THREE.MeshBasicMaterial({ color: 0xFFFFFF })
             );
             scene.add(originMarker);
 
