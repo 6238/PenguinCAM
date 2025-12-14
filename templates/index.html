@@ -2112,7 +2112,78 @@
                 const newY = yMatch ? parseFloat(yMatch[1]) : currentY;
                 const newZ = zMatch ? parseFloat(zMatch[1]) : currentZ;
 
-                // Only add move if position changed
+                // Handle arcs (G2 = CW, G3 = CCW)
+                if (moveType === 'G2' || moveType === 'G3') {
+                    const iMatch = trimmed.match(/I([-\d.]+)/);
+                    const jMatch = trimmed.match(/J([-\d.]+)/);
+
+                    if (iMatch && jMatch) {
+                        const i = parseFloat(iMatch[1]);
+                        const j = parseFloat(jMatch[1]);
+
+                        // Arc center (incremental from start point - G91.1 mode)
+                        const centerX = currentX + i;
+                        const centerY = currentY + j;
+
+                        // Calculate arc parameters
+                        const startAngle = Math.atan2(currentY - centerY, currentX - centerX);
+                        const endAngle = Math.atan2(newY - centerY, newX - centerX);
+                        const radius = Math.sqrt(i * i + j * j);
+
+                        // Determine sweep direction and angle
+                        let sweepAngle = endAngle - startAngle;
+
+                        // Handle G2 (clockwise) vs G3 (counterclockwise)
+                        const isClockwise = moveType === 'G2';
+
+                        // Normalize sweep angle
+                        if (isClockwise) {
+                            // For CW, sweep should be negative
+                            if (sweepAngle > 0) sweepAngle -= 2 * Math.PI;
+                            // Handle full circles (start == end)
+                            if (Math.abs(sweepAngle) < 0.001) sweepAngle = -2 * Math.PI;
+                        } else {
+                            // For CCW, sweep should be positive
+                            if (sweepAngle < 0) sweepAngle += 2 * Math.PI;
+                            // Handle full circles (start == end)
+                            if (Math.abs(sweepAngle) < 0.001) sweepAngle = 2 * Math.PI;
+                        }
+
+                        // Tessellate arc into line segments
+                        const numSegments = Math.max(8, Math.ceil(Math.abs(sweepAngle) * radius * 10));
+                        const zStep = (newZ - currentZ) / numSegments;
+
+                        for (let i = 0; i < numSegments; i++) {
+                            const t = (i + 1) / numSegments;
+                            const angle = startAngle + sweepAngle * t;
+                            const arcX = centerX + radius * Math.cos(angle);
+                            const arcY = centerY + radius * Math.sin(angle);
+                            const arcZ = currentZ + zStep * (i + 1);
+
+                            toolpathMoves.push({
+                                type: moveType,
+                                from: { x: currentX, y: currentY, z: currentZ },
+                                to: { x: arcX, y: arcY, z: arcZ },
+                                line: trimmed
+                            });
+
+                            currentX = arcX;
+                            currentY = arcY;
+                            currentZ = arcZ;
+
+                            minX = Math.min(minX, currentX);
+                            maxX = Math.max(maxX, currentX);
+                            minY = Math.min(minY, currentY);
+                            maxY = Math.max(maxY, currentY);
+                            minZ = Math.min(minZ, currentZ);
+                            maxZ = Math.max(maxZ, currentZ);
+                        }
+
+                        continue; // Skip the linear move handling below
+                    }
+                }
+
+                // Linear moves (G0, G1) or arcs without I/J
                 if (newX !== currentX || newY !== currentY || newZ !== currentZ) {
                     toolpathMoves.push({
                         type: moveType,
