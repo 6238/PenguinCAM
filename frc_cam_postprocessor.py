@@ -1288,11 +1288,24 @@ class FRCPostProcessor:
             # CIRCULAR POCKET: Use efficient Archimedean spiral
             gcode.append(f"(Circular pocket detected - using Archimedean spiral clearing)")
 
-            # Calculate maximum distance from center to any perimeter point
-            max_radius = 0
-            for point in offset_points:
-                dist = math.sqrt((point[0] - entry_x)**2 + (point[1] - entry_y)**2)
-                max_radius = max(max_radius, dist)
+            # Calculate inscribed radius (minimum distance from center to any EDGE)
+            # This prevents circular spiral from cutting outside pocket sides
+            from shapely.geometry import LineString, Point
+            center_point = Point(entry_x, entry_y)
+
+            min_edge_distance = float('inf')
+            for i in range(len(offset_points)):
+                # Create line segment for each edge
+                p1 = offset_points[i]
+                p2 = offset_points[(i + 1) % len(offset_points)]
+                edge = LineString([p1, p2])
+
+                # Calculate perpendicular distance from center to this edge
+                edge_dist = center_point.distance(edge)
+                min_edge_distance = min(min_edge_distance, edge_dist)
+
+            # Use inscribed radius (not circumscribed radius to vertices!)
+            max_radius = min_edge_distance
 
             # Archimedean spiral: r = b*θ where b = stepover/(2π)
             spiral_constant = stepover / (2 * math.pi)
