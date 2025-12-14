@@ -2155,16 +2155,21 @@
                             continue;
                         }
 
+                        // Save start position before tessellation
+                        const startX = currentX;
+                        const startY = currentY;
+                        const startZ = currentZ;
+
                         // Tessellate arc into line segments
                         const numSegments = Math.max(8, Math.ceil(Math.abs(sweepAngle) * radius * 10));
-                        const zStep = (newZ - currentZ) / numSegments;
+                        const zStep = (newZ - startZ) / numSegments;
 
                         for (let i = 0; i < numSegments; i++) {
                             const t = (i + 1) / numSegments;
                             const angle = startAngle + sweepAngle * t;
                             const arcX = centerX + radius * Math.cos(angle);
                             const arcY = centerY + radius * Math.sin(angle);
-                            const arcZ = currentZ + zStep * (i + 1);
+                            const arcZ = startZ + zStep * (i + 1);
 
                             // Validate segment
                             if (isNaN(arcX) || isNaN(arcY) || isNaN(arcZ)) {
