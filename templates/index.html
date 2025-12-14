@@ -2149,6 +2149,12 @@
                             if (Math.abs(sweepAngle) < 0.001) sweepAngle = 2 * Math.PI;
                         }
 
+                        // Validate arc parameters
+                        if (isNaN(radius) || radius <= 0 || isNaN(sweepAngle)) {
+                            console.warn('Invalid arc parameters:', { radius, sweepAngle, centerX, centerY });
+                            continue;
+                        }
+
                         // Tessellate arc into line segments
                         const numSegments = Math.max(8, Math.ceil(Math.abs(sweepAngle) * radius * 10));
                         const zStep = (newZ - currentZ) / numSegments;
@@ -2159,6 +2165,12 @@
                             const arcX = centerX + radius * Math.cos(angle);
                             const arcY = centerY + radius * Math.sin(angle);
                             const arcZ = currentZ + zStep * (i + 1);
+
+                            // Validate segment
+                            if (isNaN(arcX) || isNaN(arcY) || isNaN(arcZ)) {
+                                console.warn('Invalid arc segment:', { arcX, arcY, arcZ });
+                                continue;
+                            }
 
                             toolpathMoves.push({
                                 type: moveType,
@@ -2204,6 +2216,10 @@
                     maxZ = Math.max(maxZ, currentZ);
                 }
             }
+
+            console.log('Arc parsing complete. Total moves:', toolpathMoves.length);
+            console.log('Bounds:', { minX, maxX, minY, maxY, minZ, maxZ });
+            console.log('First 5 moves:', toolpathMoves.slice(0, 5));
 
             if (toolpathMoves.length === 0) return;
 
