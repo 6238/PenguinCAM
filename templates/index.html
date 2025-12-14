@@ -1651,12 +1651,15 @@
                 if (!inEntitiesSection) continue;
                 
                 // Detect entity type
-                if (line === 'CIRCLE' || line === 'ARC' || line === 'LINE') {
+                if (line === 'CIRCLE' || line === 'ARC' || line === 'LINE' || line === 'LWPOLYLINE') {
                     if (currentEntity) {
                         entities.push(createEntity(currentEntity, entityData));
                     }
                     currentEntity = line;
                     entityData = { type: line };
+                    if (line === 'LWPOLYLINE') {
+                        entityData.vertices = [];
+                    }
                 }
                 
                 // Parse coordinates
@@ -1667,6 +1670,8 @@
                             entityData.centerX = val;
                         } else if (currentEntity === 'LINE') {
                             entityData.x1 = val;
+                        } else if (currentEntity === 'LWPOLYLINE') {
+                            entityData.tempX = val;
                         }
                         minX = Math.min(minX, val);
                         maxX = Math.max(maxX, val);
@@ -1678,6 +1683,9 @@
                             entityData.centerY = val;
                         } else if (currentEntity === 'LINE') {
                             entityData.y1 = val;
+                        } else if (currentEntity === 'LWPOLYLINE' && entityData.tempX !== undefined) {
+                            entityData.vertices.push({ x: entityData.tempX, y: val });
+                            delete entityData.tempX;
                         }
                         minY = Math.min(minY, val);
                         maxY = Math.max(maxY, val);
@@ -1764,6 +1772,11 @@
                         { x: data.x1, y: data.y1 },
                         { x: data.x2, y: data.y2 }
                     ]
+                };
+            } else if (type === 'LWPOLYLINE') {
+                return {
+                    type: 'LWPOLYLINE',
+                    vertices: data.vertices || []
                 };
             }
             return null;
