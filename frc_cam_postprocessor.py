@@ -25,6 +25,7 @@ MATERIAL_PRESETS = {
         'plunge_rate': 20.0,      # Plunge feed rate (IPM) - matches Fusion 360
         'spindle_speed': 18000,   # RPM
         'ramp_angle': 20.0,       # Ramp angle in degrees
+        'ramp_start_clearance': 0.150,  # Clearance above material to start ramping (inches)
         'description': 'Standard plywood settings - 18K RPM, 75 IPM cutting'
     },
     'aluminum': {
@@ -34,6 +35,7 @@ MATERIAL_PRESETS = {
         'plunge_rate': 35.0,      # Plunge feed rate (IPM) - using ramp rate
         'spindle_speed': 18000,   # RPM
         'ramp_angle': 4.0,        # Ramp angle in degrees
+        'ramp_start_clearance': 0.050,  # Clearance above material to start ramping (inches)
         'description': 'Aluminum box tubing - 18K RPM, 55 IPM cutting, 4° ramp'
     },
     'polycarbonate': {
@@ -43,6 +45,7 @@ MATERIAL_PRESETS = {
         'plunge_rate': 20.0,      # Same as plywood - matches Fusion 360
         'spindle_speed': 18000,   # RPM
         'ramp_angle': 20.0,       # Same as plywood
+        'ramp_start_clearance': 0.100,  # Clearance above material to start ramping (inches)
         'description': 'Polycarbonate - same as plywood settings'
     }
 }
@@ -114,10 +117,12 @@ class FRCPostProcessor:
             self.feed_rate = preset['feed_rate'] * 25.4
             self.ramp_feed_rate = preset['ramp_feed_rate'] * 25.4
             self.plunge_rate = preset['plunge_rate'] * 25.4
+            self.ramp_start_clearance = preset['ramp_start_clearance'] * 25.4
         else:
             self.feed_rate = preset['feed_rate']
             self.ramp_feed_rate = preset['ramp_feed_rate']
             self.plunge_rate = preset['plunge_rate']
+            self.ramp_start_clearance = preset['ramp_start_clearance']
 
         self.spindle_speed = preset['spindle_speed']
         self.ramp_angle = preset['ramp_angle']
@@ -128,10 +133,12 @@ class FRCPostProcessor:
             print(f"  Feed rate: {preset['feed_rate']} IPM ({self.feed_rate:.0f} mm/min)")
             print(f"  Ramp feed rate: {preset['ramp_feed_rate']} IPM ({self.ramp_feed_rate:.0f} mm/min)")
             print(f"  Plunge rate: {preset['plunge_rate']} IPM ({self.plunge_rate:.0f} mm/min)")
+            print(f"  Ramp start clearance: {preset['ramp_start_clearance']}\" ({self.ramp_start_clearance:.1f} mm)")
         else:
             print(f"  Feed rate: {self.feed_rate} IPM")
             print(f"  Ramp feed rate: {self.ramp_feed_rate} IPM")
             print(f"  Plunge rate: {self.plunge_rate} IPM")
+            print(f"  Ramp start clearance: {self.ramp_start_clearance}\"")
         print(f"  Ramp angle: {self.ramp_angle}°")
 
     def load_dxf(self, filename: str):
@@ -845,20 +852,22 @@ class FRCPostProcessor:
                         gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.plunge_rate}  ; Plunge")
                         gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
                     else:
+                        # Calculate ramp start height (close to material surface)
+                        ramp_start_height = self.material_top + self.ramp_start_clearance
+
                         # Calculate helical passes using material-specific ramp angle
-                        num_passes, depth_per_pass = self._calculate_helical_passes(toolpath_radius)
+                        num_passes, depth_per_pass = self._calculate_helical_passes(toolpath_radius, ramp_start_height=ramp_start_height)
 
                         # Position at edge of toolpath
                         start_x = x + toolpath_radius
                         start_y = y
                         gcode.append(f"(Helical bore: {num_passes} passes at {self.ramp_angle}°, {depth_per_pass:.4f}\" per pass)")
                         gcode.append(f"G0 X{start_x:.4f} Y{start_y:.4f}  ; Position at hole edge")
-                        gcode.append(f"G0 Z{self.retract_height:.4f}  ; Rapid to retract height")
+                        gcode.append(f"G0 Z{ramp_start_height:.4f}  ; Rapid to ramp start height")
 
                         # Helical plunge in multiple passes using ramp feed rate
-                        current_z = self.retract_height
                         for pass_num in range(num_passes):
-                            target_z = self.retract_height - (pass_num + 1) * depth_per_pass
+                            target_z = ramp_start_height - (pass_num + 1) * depth_per_pass
                             gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-toolpath_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_passes}")
 
                         # Clean up pass at final depth
@@ -925,13 +934,14 @@ class FRCPostProcessor:
         print(f"\n⏱️  ESTIMATED_CYCLE_TIME: {time_estimate['total']:.1f} seconds ({self._format_time(time_estimate['total'])})")
         print(f"   Cutting: {self._format_time(time_estimate['cutting'])}, Rapids: {self._format_time(time_estimate['rapid'])}, Spindle: {self._format_time(time_estimate['dwell'])}")
     
-    def _calculate_helical_passes(self, toolpath_radius: float, target_angle_deg: float = None) -> Tuple[int, float]:
+    def _calculate_helical_passes(self, toolpath_radius: float, target_angle_deg: float = None, ramp_start_height: float = None) -> Tuple[int, float]:
         """
         Calculate number of helical passes needed for a safe plunge angle.
 
         Args:
             toolpath_radius: Radius of the circular toolpath
             target_angle_deg: Target plunge angle in degrees (default uses self.ramp_angle)
+            ramp_start_height: Z height to start ramping from (default uses material_top + ramp_start_clearance)
 
         Returns:
             Tuple of (number_of_passes, depth_per_pass)
@@ -942,8 +952,12 @@ class FRCPostProcessor:
         if target_angle_deg is None:
             target_angle_deg = self.ramp_angle
 
-        # Total depth to cut (from retract height down to cut depth)
-        total_depth = self.retract_height - self.cut_depth
+        # Use ramp start height if specified, otherwise use material_top + clearance
+        if ramp_start_height is None:
+            ramp_start_height = self.material_top + self.ramp_start_clearance
+
+        # Total depth to cut (from ramp start height down to cut depth)
+        total_depth = ramp_start_height - self.cut_depth
 
         # Circumference of one revolution
         circumference = 2 * math.pi * toolpath_radius
@@ -977,9 +991,12 @@ class FRCPostProcessor:
         stepover = self.tool_diameter * 0.6
         num_radial_passes = max(1, int(math.ceil(final_toolpath_radius / stepover)))
 
+        # Calculate ramp start height (close to material surface)
+        ramp_start_height = self.material_top + self.ramp_start_clearance
+
         # Calculate helical entry passes
         entry_radius = min(stepover, final_toolpath_radius)  # Use first stepover radius
-        num_helical_passes, depth_per_pass = self._calculate_helical_passes(entry_radius)
+        num_helical_passes, depth_per_pass = self._calculate_helical_passes(entry_radius, ramp_start_height=ramp_start_height)
 
         gcode.append(f"(Bearing hole: helical entry at {entry_radius:.4f}\" radius, then {num_radial_passes} radial passes)")
 
@@ -987,12 +1004,12 @@ class FRCPostProcessor:
         start_x = cx + entry_radius
         start_y = cy
         gcode.append(f"G0 X{start_x:.4f} Y{start_y:.4f}  ; Position at entry radius")
-        gcode.append(f"G0 Z{self.retract_height:.4f}  ; Rapid to retract height")
+        gcode.append(f"G0 Z{ramp_start_height:.4f}  ; Rapid to ramp start height")
 
         # Helical entry in multiple passes using ramp feed rate
         gcode.append(f"(Helical entry: {num_helical_passes} passes at {self.ramp_angle}°, {depth_per_pass:.4f}\" per pass)")
         for pass_num in range(num_helical_passes):
-            target_z = self.retract_height - (pass_num + 1) * depth_per_pass
+            target_z = ramp_start_height - (pass_num + 1) * depth_per_pass
             gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-entry_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_helical_passes}")
 
         # Clean up pass at entry radius and final depth
@@ -1356,21 +1373,24 @@ class FRCPostProcessor:
         
         gcode.append(f"(Tabs placed: {len(tab_positions)} on straight sections)")
 
+        # Calculate ramp start height (close to material surface)
+        ramp_start_height = self.material_top + self.ramp_start_clearance
+
         # Calculate ramp-in distance using material-specific ramp angle
-        ramp_depth = self.retract_height - self.cut_depth
+        ramp_depth = ramp_start_height - self.cut_depth
         ramp_distance = ramp_depth / math.tan(math.radians(self.ramp_angle))
         gcode.append(f"(Ramp-in: {ramp_distance:.4f}\" at {self.ramp_angle}°)")
 
         # Move to start
         start = offset_points[0]
         gcode.append(f"G0 X{start[0]:.4f} Y{start[1]:.4f}  ; Move to perimeter start")
-        gcode.append(f"G0 Z{self.retract_height:.4f}  ; Rapid to retract height")
+        gcode.append(f"G0 Z{ramp_start_height:.4f}  ; Rapid to ramp start height")
 
         # Ramp in along the perimeter path
         # Calculate points along perimeter for ramping
         ramp_points = []
         current_ramp_dist = 0
-        current_z = self.retract_height
+        current_z = ramp_start_height
         ramp_end_segment = 0  # Track which segment the ramp ends on
 
         for i in range(len(offset_points)):
@@ -1383,7 +1403,7 @@ class FRCPostProcessor:
 
             if current_ramp_dist + seg_len <= ramp_distance:
                 # Entire segment is part of ramp
-                z_at_end = self.retract_height - (current_ramp_dist + seg_len) / ramp_distance * ramp_depth
+                z_at_end = ramp_start_height - (current_ramp_dist + seg_len) / ramp_distance * ramp_depth
                 ramp_points.append((p2[0], p2[1], z_at_end))
                 current_ramp_dist += seg_len
                 ramp_end_segment = i + 1  # Ramp ends at the end of this segment
@@ -1449,7 +1469,8 @@ class FRCPostProcessor:
         remaining_points = offset_points[ramp_end_segment:] + offset_points[:ramp_end_segment]
         remaining_lengths = segment_lengths[ramp_end_segment:] + segment_lengths[:ramp_end_segment]
 
-        for i, point in enumerate(remaining_points[1:] + [remaining_points[0]], 1):
+        # We need to close back to where the ramp actually ended
+        for i, point in enumerate(remaining_points[1:], 1):
             segment_start_dist = current_distance
             segment_end_dist = current_distance + remaining_lengths[i - 1]
             
@@ -1488,7 +1509,12 @@ class FRCPostProcessor:
             # Continue to next point
             gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
             current_distance = segment_end_dist
-        
+
+        # Close the perimeter by returning to where ramp ended
+        if ramp_points:
+            ramp_end_x, ramp_end_y, _ = ramp_points[-1]
+            gcode.append(f"G1 X{ramp_end_x:.4f} Y{ramp_end_y:.4f} F{self.feed_rate}  ; Close perimeter")
+
         # Retract
         gcode.append(f"G0 Z{self.safe_height:.4f}  ; Retract")
         
