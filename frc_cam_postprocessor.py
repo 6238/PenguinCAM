@@ -1588,11 +1588,11 @@ def main():
     
     # Process file
     pp.load_dxf(args.input_dxf)
-    
+
     # Apply origin and rotation transformation BEFORE processing
-    if args.origin_corner != 'bottom-left' or args.rotation != 0:
-        pp.transform_coordinates(args.origin_corner, args.rotation)
-    
+    # ALWAYS transform to ensure selected corner is at (0,0)
+    pp.transform_coordinates(args.origin_corner, args.rotation)
+
     pp.classify_holes()
     pp.identify_perimeter_and_pockets()
 
