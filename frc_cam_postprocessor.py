@@ -1186,43 +1186,95 @@ class FRCPostProcessor:
             return f"{hours}h {minutes}m"
 
     def _generate_pocket_gcode(self, pocket_points: List[Tuple[float, float]]) -> List[str]:
-        """Generate G-code for a pocket with tool compensation (offset inward)"""
+        """Generate G-code for a pocket with tool compensation (offset inward) and helical entry"""
         gcode = []
-        
+
         # Create offset path (inward by tool radius)
         from shapely.geometry import Polygon
         pocket_poly = Polygon(pocket_points)
-        
+
         # Buffer inward (negative buffer)
         offset_poly = pocket_poly.buffer(-self.tool_radius)
-        
+
         if offset_poly.is_empty or offset_poly.area < 0.001:
             gcode.append(f"(WARNING: Pocket too small for tool diameter {self.tool_diameter:.4f}\")")
             return gcode
-        
+
         # Get the boundary of the offset polygon
         if hasattr(offset_poly, 'exterior'):
             offset_points = list(offset_poly.exterior.coords)[:-1]  # Remove duplicate last point
         else:
             gcode.append("(WARNING: Pocket offset resulted in invalid geometry)")
             return gcode
-        
-        # Move to start
-        start = offset_points[0]
-        gcode.append(f"G0 X{start[0]:.4f} Y{start[1]:.4f}  ; Move to pocket start (compensated)")
-        gcode.append(f"G0 Z{self.safe_height:.4f}")
-        gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.plunge_rate}  ; Plunge")
-        
-        # Cut around pocket boundary (offset path)
-        for point in offset_points[1:]:
-            gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
-        
-        # Close the loop
-        gcode.append(f"G1 X{start[0]:.4f} Y{start[1]:.4f} F{self.feed_rate}  ; Close loop")
-        
+
+        # Use pocket centroid as entry position (center of pocket)
+        entry_x = offset_poly.centroid.x
+        entry_y = offset_poly.centroid.y
+
+        # Calculate helical entry parameters
+        helix_radius = self.tool_diameter * 0.75  # Small helix for entry
+        ramp_start_height = self.material_top + self.ramp_start_clearance
+        num_helical_passes, depth_per_pass = self._calculate_helical_passes(helix_radius, ramp_start_height=ramp_start_height)
+
+        gcode.append(f"(Pocket with helical entry at center: {num_helical_passes} passes at {self.ramp_angle}°)")
+
+        # Position at pocket center
+        gcode.append(f"G0 X{entry_x:.4f} Y{entry_y:.4f}  ; Position at pocket center")
+        gcode.append(f"G0 Z{ramp_start_height:.4f}  ; Rapid to ramp start height")
+
+        # Helical entry at center
+        start_x = entry_x + helix_radius
+        start_y = entry_y
+        gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.feed_rate}  ; Move to helix start")
+
+        for pass_num in range(num_helical_passes):
+            target_z = ramp_start_height - (pass_num + 1) * depth_per_pass
+            gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-helix_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_helical_passes}")
+
+        # Return to center after helix
+        gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.feed_rate}  ; Return to pocket center")
+
+        # Spiral outward from center to perimeter
+        # Calculate maximum distance from center to any perimeter point
+        max_radius = 0
+        for point in offset_points:
+            dist = math.sqrt((point[0] - entry_x)**2 + (point[1] - entry_y)**2)
+            max_radius = max(max_radius, dist)
+
+        # Calculate spiral passes (similar to bearing holes)
+        stepover = self.tool_diameter * 0.6
+        num_passes = max(1, int(math.ceil(max_radius / stepover)))
+
+        gcode.append(f"(Spiral clearing: {num_passes} passes from center to perimeter)")
+
+        # Spiral outward
+        for pass_num in range(1, num_passes + 1):
+            if pass_num == num_passes:
+                # Final pass - cut actual perimeter
+                gcode.append(f"(Final pass: cut perimeter)")
+                gcode.append(f"G1 X{offset_points[0][0]:.4f} Y{offset_points[0][1]:.4f} F{self.feed_rate}")
+                for point in offset_points[1:]:
+                    gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
+                gcode.append(f"G1 X{offset_points[0][0]:.4f} Y{offset_points[0][1]:.4f} F{self.feed_rate}  ; Close pocket")
+            else:
+                # Intermediate pass - cut circular path
+                current_radius = stepover * pass_num
+                gcode.append(f"(Pass {pass_num}/{num_passes}: radius {current_radius:.4f}\")")
+
+                # Move to radius
+                pass_x = entry_x + current_radius
+                pass_y = entry_y
+                gcode.append(f"G1 X{pass_x:.4f} Y{pass_y:.4f} F{self.feed_rate}")
+
+                # Cut circle at this radius
+                gcode.append(f"G2 X{pass_x:.4f} Y{pass_y:.4f} I{-current_radius:.4f} J0 F{self.feed_rate}  ; Spiral pass {pass_num}")
+
+                # Return to center
+                gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.feed_rate}")
+
         # Retract
         gcode.append(f"G0 Z{self.safe_height:.4f}  ; Retract")
-        
+
         return gcode
     
     def _generate_perimeter_gcode(self, perimeter_points: List[Tuple[float, float]]) -> List[str]:
