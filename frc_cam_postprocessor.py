@@ -1037,9 +1037,10 @@ class FRCPostProcessor:
             gcode.append(f"(Archimedean spiral: {num_points} points from r={entry_radius:.4f}\" to r={final_toolpath_radius:.4f}\")")
 
             # Cut continuous spiral from entry_radius to final_toolpath_radius
+            # Use negative angle for clockwise spiral (climb milling on inside feature)
             for i in range(num_points):
-                current_angle = i * angle_increment
-                current_radius = entry_radius + spiral_constant * current_angle
+                current_angle = -(i * angle_increment)  # Negative for clockwise
+                current_radius = entry_radius + spiral_constant * abs(current_angle)
 
                 # Convert polar coordinates to Cartesian
                 x = cx + current_radius * math.cos(current_angle)
@@ -1337,9 +1338,10 @@ class FRCPostProcessor:
             gcode.append(f"(Archimedean spiral: {num_points} points to radius {max_radius:.4f}\")")
 
             # Cut continuous spiral from center to max_radius
+            # Use negative angle for clockwise spiral (climb milling on inside feature)
             for i in range(num_points):
-                current_angle = i * angle_increment
-                current_radius = spiral_constant * current_angle
+                current_angle = -(i * angle_increment)  # Negative for clockwise
+                current_radius = spiral_constant * abs(current_angle)
 
                 # Convert polar coordinates to Cartesian
                 x = entry_x + current_radius * math.cos(current_angle)
