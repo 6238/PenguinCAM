@@ -1543,6 +1543,7 @@ class FRCPostProcessor:
         current_distance = current_ramp_dist
         tab_z = self.cut_depth + self.tab_height
         tab_number = 0
+        current_z = self.cut_depth  # Track current Z height to avoid unnecessary moves
 
         # Create perimeter points list starting from where ramp ended
         # Continue from ramp_end_segment to end, then wrap around to start
@@ -1551,7 +1552,7 @@ class FRCPostProcessor:
 
         # Helper function to process a segment with tab checking
         def process_segment(p1, p2, seg_start_dist, seg_length):
-            nonlocal tab_number
+            nonlocal tab_number, current_z
 
             if seg_length == 0:
                 return
@@ -1569,7 +1570,10 @@ class FRCPostProcessor:
                     intersecting_tabs.append((overlap_start, overlap_end, tab_idx))
 
             if not intersecting_tabs:
-                # No tabs in this segment - just cut normally
+                # No tabs in this segment - ensure we're at cut depth, then cut normally
+                if current_z != self.cut_depth:
+                    gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.plunge_rate}")
+                    current_z = self.cut_depth
                 gcode.append(f"G1 X{p2[0]:.4f} Y{p2[1]:.4f} F{self.feed_rate}")
                 return
 
@@ -1602,25 +1606,28 @@ class FRCPostProcessor:
                 end_y = p1[1] + t_end * (p2[1] - p1[1])
 
                 if is_tab:
-                    # Move to tab, raise Z, move across, lower Z
                     # Calculate XY position at subsegment start
                     t_start = (sub_start - seg_start_dist) / seg_length
                     start_x = p1[0] + t_start * (p2[0] - p1[0])
                     start_y = p1[1] + t_start * (p2[1] - p1[1])
 
-                    # Move to tab start (at cut depth)
+                    # Move to tab start in XY
                     gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.feed_rate}")
 
-                    # Raise Z
-                    tab_number += 1
-                    gcode.append(f"G1 Z{tab_z:.4f} F{self.plunge_rate}  ; Tab {tab_number} start")
+                    # Raise Z only if not already at tab height
+                    if current_z != tab_z:
+                        tab_number += 1
+                        gcode.append(f"G1 Z{tab_z:.4f} F{self.plunge_rate}  ; Tab {tab_number} start")
+                        current_z = tab_z
 
                     # Move across tab (at tab height)
                     gcode.append(f"G1 X{end_x:.4f} Y{end_y:.4f} F{self.feed_rate}")
-
-                    # Lower Z
-                    gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.plunge_rate}  ; Tab {tab_number} end")
                 else:
+                    # Lower Z only if not already at cut depth
+                    if current_z != self.cut_depth:
+                        gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.plunge_rate}  ; Tab end")
+                        current_z = self.cut_depth
+
                     # Normal cutting move (at cut depth)
                     gcode.append(f"G1 X{end_x:.4f} Y{end_y:.4f} F{self.feed_rate}")
 
