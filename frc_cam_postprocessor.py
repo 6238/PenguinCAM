@@ -26,6 +26,7 @@ MATERIAL_PRESETS = {
         'spindle_speed': 18000,   # RPM
         'ramp_angle': 20.0,       # Ramp angle in degrees
         'ramp_start_clearance': 0.150,  # Clearance above material to start ramping (inches)
+        'stepover_percentage': 0.65,    # Radial stepover as fraction of tool diameter (65% for plywood)
         'description': 'Standard plywood settings - 18K RPM, 75 IPM cutting'
     },
     'aluminum': {
@@ -36,6 +37,7 @@ MATERIAL_PRESETS = {
         'spindle_speed': 18000,   # RPM
         'ramp_angle': 4.0,        # Ramp angle in degrees
         'ramp_start_clearance': 0.050,  # Clearance above material to start ramping (inches)
+        'stepover_percentage': 0.45,    # Radial stepover as fraction of tool diameter (45% conservative for aluminum)
         'description': 'Aluminum box tubing - 18K RPM, 55 IPM cutting, 4° ramp'
     },
     'polycarbonate': {
@@ -46,6 +48,7 @@ MATERIAL_PRESETS = {
         'spindle_speed': 18000,   # RPM
         'ramp_angle': 20.0,       # Same as plywood
         'ramp_start_clearance': 0.100,  # Clearance above material to start ramping (inches)
+        'stepover_percentage': 0.55,    # Radial stepover as fraction of tool diameter (55% moderate for polycarbonate)
         'description': 'Polycarbonate - same as plywood settings'
     }
 }
@@ -91,6 +94,7 @@ class FRCPostProcessor:
         self.ramp_feed_rate = 50.0 if units == "inch" else 1270  # Ramp feed rate (IPM or mm/min)
         self.plunge_rate = 20.0 if units == "inch" else 508  # Plunge feed rate (IPM or mm/min) - matches Fusion 360
         self.ramp_angle = 20.0  # Ramp angle in degrees (for helical bores and perimeter ramps)
+        self.stepover_percentage = 0.6  # Radial stepover as fraction of tool diameter (default 60%)
         
         # Tab parameters
         self.tab_width = 0.25  # Width of tabs (inches)
@@ -126,6 +130,7 @@ class FRCPostProcessor:
 
         self.spindle_speed = preset['spindle_speed']
         self.ramp_angle = preset['ramp_angle']
+        self.stepover_percentage = preset['stepover_percentage']
 
         print(f"\nApplied material preset: {preset['name']}")
         print(f"  {preset['description']}")
@@ -140,6 +145,7 @@ class FRCPostProcessor:
             print(f"  Plunge rate: {self.plunge_rate} IPM")
             print(f"  Ramp start clearance: {self.ramp_start_clearance}\"")
         print(f"  Ramp angle: {self.ramp_angle}°")
+        print(f"  Stepover: {self.stepover_percentage*100:.0f}% of tool diameter")
 
     def load_dxf(self, filename: str):
         """Load DXF file and extract geometry"""
@@ -987,8 +993,8 @@ class FRCPostProcessor:
             return gcode
 
         # Strategy: Helical entry at small radius, then spiral outward
-        # Each pass increases the radius by about 60% of tool diameter
-        stepover = self.tool_diameter * 0.6
+        # Each pass increases the radius by stepover percentage (material-specific)
+        stepover = self.tool_diameter * self.stepover_percentage
         num_radial_passes = max(1, int(math.ceil(final_toolpath_radius / stepover)))
 
         # Calculate ramp start height (close to material surface)
@@ -1242,7 +1248,7 @@ class FRCPostProcessor:
             max_radius = max(max_radius, dist)
 
         # Calculate spiral passes (similar to bearing holes)
-        stepover = self.tool_diameter * 0.6
+        stepover = self.tool_diameter * self.stepover_percentage
         num_passes = max(1, int(math.ceil(max_radius / stepover)))
 
         gcode.append(f"(Spiral clearing: {num_passes} passes from center to perimeter)")
