@@ -1324,17 +1324,21 @@ class FRCPostProcessor:
         ramp_distance = ramp_depth / math.tan(math.radians(self.ramp_angle))
         gcode.append(f"(Ramp-in: {ramp_distance:.4f}\" at {self.ramp_angle}°)")
 
-        # Calculate tab positions - evenly spaced in the cutting section (after ramp)
+        # Calculate tab zones (start/end distances) - evenly spaced in cutting section (after ramp)
         # We cut from ramp_distance to perimeter_length, so tabs should only be in that range
         cutting_length = perimeter_length - ramp_distance
         tab_spacing = cutting_length / self.num_tabs
-        tab_positions = []
+        tab_zones = []  # List of (start_dist, end_dist) tuples
 
         # Place tabs starting after the ramp, centered in each section
+        half_tab_width = self.tab_width / 2
         for i in range(self.num_tabs):
-            tab_positions.append(ramp_distance + tab_spacing * (i + 0.5))
+            tab_center = ramp_distance + tab_spacing * (i + 0.5)
+            tab_start = tab_center - half_tab_width
+            tab_end = tab_center + half_tab_width
+            tab_zones.append((tab_start, tab_end))
 
-        gcode.append(f"(Tabs: {len(tab_positions)} evenly spaced in cutting section)")
+        gcode.append(f"(Tabs: {len(tab_zones)} evenly spaced in cutting section, {self.tab_width:.4f}\" wide)")
 
         # Move to start
         start = offset_points[0]
@@ -1415,104 +1419,110 @@ class FRCPostProcessor:
         gcode.append("")
 
         # Cut around perimeter with tabs, starting from where ramp ended
-        # Adjust the distance to account for the ramp distance already covered
+        # Use segment-centric approach: check each segment against tab zones
         current_distance = current_ramp_dist
-        tab_index = 0
+        tab_z = self.cut_depth + self.tab_height
+        tab_number = 0
 
         # Create perimeter points list starting from where ramp ended
         # Continue from ramp_end_segment to end, then wrap around to start
         remaining_points = offset_points[ramp_end_segment:] + offset_points[:ramp_end_segment]
         remaining_lengths = segment_lengths[ramp_end_segment:] + segment_lengths[:ramp_end_segment]
 
-        # We need to close back to where the ramp actually ended
-        for i, point in enumerate(remaining_points[1:], 1):
-            segment_start_dist = current_distance
-            segment_end_dist = current_distance + remaining_lengths[i - 1]
-            
-            # Check if any tabs are in this segment
-            while tab_index < len(tab_positions) and tab_positions[tab_index] < segment_end_dist:
-                tab_dist = tab_positions[tab_index]
+        # Helper function to process a segment with tab checking
+        def process_segment(p1, p2, seg_start_dist, seg_length):
+            nonlocal tab_number
 
-                if tab_dist >= segment_start_dist and remaining_lengths[i - 1] > 0:
-                    # Calculate tab position along segment
-                    t = (tab_dist - segment_start_dist) / remaining_lengths[i - 1]
-                    prev_point = remaining_points[i - 1]
+            if seg_length == 0:
+                return
 
-                    # Tab start
-                    tab_start_x = prev_point[0] + t * (point[0] - prev_point[0]) - self.tab_width / 2 * (point[0] - prev_point[0]) / remaining_lengths[i - 1]
-                    tab_start_y = prev_point[1] + t * (point[1] - prev_point[1]) - self.tab_width / 2 * (point[1] - prev_point[1]) / remaining_lengths[i - 1]
-                    
-                    # Move to tab start
-                    gcode.append(f"G1 X{tab_start_x:.4f} Y{tab_start_y:.4f} F{self.feed_rate}")
-                    
-                    # Raise for tab (leave tab_height of material)
-                    tab_z = self.cut_depth + self.tab_height
-                    gcode.append(f"G1 Z{tab_z:.4f} F{self.plunge_rate}  ; Tab {tab_index + 1}")
-                    
-                    # Tab end
-                    tab_end_x = prev_point[0] + t * (point[0] - prev_point[0]) + self.tab_width / 2 * (point[0] - prev_point[0]) / remaining_lengths[i - 1]
-                    tab_end_y = prev_point[1] + t * (point[1] - prev_point[1]) + self.tab_width / 2 * (point[1] - prev_point[1]) / remaining_lengths[i - 1]
-                    
-                    # Move across tab
-                    gcode.append(f"G1 X{tab_end_x:.4f} Y{tab_end_y:.4f} F{self.feed_rate}")
-                    
-                    # Lower back to cut depth
-                    gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.plunge_rate}")
-                
-                tab_index += 1
-            
-            # Continue to next point
-            gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
-            current_distance = segment_end_dist
+            seg_end_dist = seg_start_dist + seg_length
+
+            # Find all tab zones that intersect this segment
+            intersecting_tabs = []
+            for tab_idx, (tab_start, tab_end) in enumerate(tab_zones):
+                # Check if tab zone overlaps with segment
+                if tab_start < seg_end_dist and tab_end > seg_start_dist:
+                    # Clamp to segment boundaries
+                    overlap_start = max(tab_start, seg_start_dist)
+                    overlap_end = min(tab_end, seg_end_dist)
+                    intersecting_tabs.append((overlap_start, overlap_end, tab_idx))
+
+            if not intersecting_tabs:
+                # No tabs in this segment - just cut normally
+                gcode.append(f"G1 X{p2[0]:.4f} Y{p2[1]:.4f} F{self.feed_rate}")
+                return
+
+            # Segment has tabs - split it into subsegments
+            # Sort intersecting tabs by start distance
+            intersecting_tabs.sort(key=lambda x: x[0])
+
+            # Build list of subsegments: [(start_dist, end_dist, is_tab), ...]
+            subsegments = []
+            current_pos = seg_start_dist
+
+            for overlap_start, overlap_end, tab_idx in intersecting_tabs:
+                # Add pre-tab segment if there's a gap
+                if current_pos < overlap_start:
+                    subsegments.append((current_pos, overlap_start, False, -1))
+
+                # Add tab segment
+                subsegments.append((overlap_start, overlap_end, True, tab_idx))
+                current_pos = overlap_end
+
+            # Add post-tab segment if there's remaining length
+            if current_pos < seg_end_dist:
+                subsegments.append((current_pos, seg_end_dist, False, -1))
+
+            # Process each subsegment
+            for sub_start, sub_end, is_tab, tab_idx in subsegments:
+                # Calculate XY position at subsegment end
+                t_end = (sub_end - seg_start_dist) / seg_length
+                end_x = p1[0] + t_end * (p2[0] - p1[0])
+                end_y = p1[1] + t_end * (p2[1] - p1[1])
+
+                if is_tab:
+                    # Move to tab, raise Z, move across, lower Z
+                    # Calculate XY position at subsegment start
+                    t_start = (sub_start - seg_start_dist) / seg_length
+                    start_x = p1[0] + t_start * (p2[0] - p1[0])
+                    start_y = p1[1] + t_start * (p2[1] - p1[1])
+
+                    # Move to tab start (at cut depth)
+                    gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.feed_rate}")
+
+                    # Raise Z
+                    tab_number += 1
+                    gcode.append(f"G1 Z{tab_z:.4f} F{self.plunge_rate}  ; Tab {tab_number} start")
+
+                    # Move across tab (at tab height)
+                    gcode.append(f"G1 X{end_x:.4f} Y{end_y:.4f} F{self.feed_rate}")
+
+                    # Lower Z
+                    gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.plunge_rate}  ; Tab {tab_number} end")
+                else:
+                    # Normal cutting move (at cut depth)
+                    gcode.append(f"G1 X{end_x:.4f} Y{end_y:.4f} F{self.feed_rate}")
+
+        # Process all segments from where ramp ended to closing
+        for i in range(len(remaining_points) - 1):
+            p1 = remaining_points[i]
+            p2 = remaining_points[i + 1]
+            seg_length = remaining_lengths[i]
+
+            process_segment(p1, p2, current_distance, seg_length)
+            current_distance += seg_length
 
         # Close the perimeter by returning to where ramp ended
-        # Check for tabs in the closing segment
         if ramp_points:
             ramp_end_x, ramp_end_y, _ = ramp_points[-1]
+            last_point = remaining_points[-1]
 
-            # Get the current position (last point we moved to)
-            if remaining_points:
-                last_point = remaining_points[-1] if len(remaining_points) > 1 else remaining_points[0]
-            else:
-                last_point = offset_points[0]
+            # Calculate closing segment
+            closing_length = math.sqrt((ramp_end_x - last_point[0])**2 + (ramp_end_y - last_point[1])**2)
 
-            # Calculate closing segment length
-            closing_segment_length = math.sqrt((ramp_end_x - last_point[0])**2 + (ramp_end_y - last_point[1])**2)
-            closing_segment_end_dist = current_distance + closing_segment_length
-
-            # Check if any tabs are in the closing segment
-            while tab_index < len(tab_positions) and tab_positions[tab_index] < closing_segment_end_dist:
-                tab_dist = tab_positions[tab_index]
-
-                if tab_dist >= current_distance and closing_segment_length > 0:
-                    # Calculate tab position along closing segment
-                    t = (tab_dist - current_distance) / closing_segment_length
-
-                    # Tab start
-                    tab_start_x = last_point[0] + t * (ramp_end_x - last_point[0]) - self.tab_width / 2 * (ramp_end_x - last_point[0]) / closing_segment_length
-                    tab_start_y = last_point[1] + t * (ramp_end_y - last_point[1]) - self.tab_width / 2 * (ramp_end_y - last_point[1]) / closing_segment_length
-
-                    # Move to tab start
-                    gcode.append(f"G1 X{tab_start_x:.4f} Y{tab_start_y:.4f} F{self.feed_rate}")
-
-                    # Raise for tab
-                    tab_z = self.cut_depth + self.tab_height
-                    gcode.append(f"G1 Z{tab_z:.4f} F{self.plunge_rate}  ; Tab {tab_index + 1}")
-
-                    # Tab end
-                    tab_end_x = last_point[0] + t * (ramp_end_x - last_point[0]) + self.tab_width / 2 * (ramp_end_x - last_point[0]) / closing_segment_length
-                    tab_end_y = last_point[1] + t * (ramp_end_y - last_point[1]) + self.tab_width / 2 * (ramp_end_y - last_point[1]) / closing_segment_length
-
-                    # Move across tab
-                    gcode.append(f"G1 X{tab_end_x:.4f} Y{tab_end_y:.4f} F{self.feed_rate}")
-
-                    # Lower back to cut depth
-                    gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.plunge_rate}")
-
-                tab_index += 1
-
-            # Complete the closing move
-            gcode.append(f"G1 X{ramp_end_x:.4f} Y{ramp_end_y:.4f} F{self.feed_rate}  ; Close perimeter")
+            # Process closing segment
+            process_segment(last_point, (ramp_end_x, ramp_end_y), current_distance, closing_length)
 
         # Retract
         gcode.append(f"G0 Z{self.safe_height:.4f}  ; Retract")
