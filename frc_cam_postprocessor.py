@@ -799,7 +799,7 @@ class FRCPostProcessor:
 
         # Modal G-code setup (similar to Fusion 360)
         gcode.append("G90 G94 G91.1 G40 G49 G17")
-        gcode.append("(G90=Absolute, G94=Feed/min, G91.1=Arc centers incremental (IJK relative to start point), G40=Cutter comp cancel, G49=Tool length comp cancel, G17=XY plane)")
+        gcode.append("(G90=Absolute, G94=Feed/min, G91.1=Arc centers incremental [IJK relative to start point], G40=Cutter comp cancel, G49=Tool length comp cancel, G17=XY plane)")
 
         # Units
         if self.units == "inch":
@@ -807,8 +807,8 @@ class FRCPostProcessor:
         else:
             gcode.append("G21  ; Millimeters")
 
-        # Home Z axis (G28)
-        gcode.append("G28 G91 Z0.  ; Home Z axis")
+        # Home Z axis (G28) - use G0 for rapid speed
+        gcode.append("G0 G28 G91 Z0.  ; Home Z axis at rapid speed")
         gcode.append("G90  ; Back to absolute mode")
         gcode.append("")
 
