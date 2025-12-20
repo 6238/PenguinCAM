@@ -48,8 +48,15 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # Set secret key for session management (required by auth and OnShape integration)
-if not app.secret_key:
+# Check environment variable first for persistent sessions across deployments
+secret_key = os.environ.get('FLASK_SECRET_KEY')
+if secret_key:
+    app.secret_key = secret_key
+    print("✅ Using persistent FLASK_SECRET_KEY from environment")
+elif not app.secret_key:
     app.secret_key = secrets.token_hex(32)
+    print("⚠️  WARNING: Using random secret key. Sessions will not persist across restarts.")
+    print("   Set FLASK_SECRET_KEY environment variable for persistent sessions.")
 
 # Initialize authentication if available
 if AUTH_AVAILABLE:
