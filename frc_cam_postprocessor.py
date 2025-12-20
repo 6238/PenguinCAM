@@ -30,22 +30,26 @@ MATERIAL_PRESETS = {
         'name': 'Plywood',
         'feed_rate': 75.0,        # Cutting feed rate (IPM)
         'ramp_feed_rate': 50.0,   # Ramp feed rate (IPM)
-        'plunge_rate': 20.0,      # Plunge feed rate (IPM) - matches Fusion 360
+        'plunge_rate': 35.0,      # Plunge feed rate (IPM) for tab Z moves
         'spindle_speed': 18000,   # RPM
         'ramp_angle': 20.0,       # Ramp angle in degrees
         'ramp_start_clearance': 0.150,  # Clearance above material to start ramping (inches)
         'stepover_percentage': 0.65,    # Radial stepover as fraction of tool diameter (65% for plywood)
+        'tab_width': 0.25,        # Tab width (inches)
+        'tab_height': 0.1,        # Tab height (inches)
         'description': 'Standard plywood settings - 18K RPM, 75 IPM cutting'
     },
     'aluminum': {
         'name': 'Aluminum',
         'feed_rate': 55.0,        # Cutting feed rate (IPM)
         'ramp_feed_rate': 35.0,   # Ramp feed rate (IPM)
-        'plunge_rate': 35.0,      # Plunge feed rate (IPM) - using ramp rate
+        'plunge_rate': 15.0,      # Plunge feed rate (IPM) for tab Z moves - slower for aluminum
         'spindle_speed': 18000,   # RPM
         'ramp_angle': 4.0,        # Ramp angle in degrees
         'ramp_start_clearance': 0.050,  # Clearance above material to start ramping (inches)
-        'stepover_percentage': 0.45,    # Radial stepover as fraction of tool diameter (45% conservative for aluminum)
+        'stepover_percentage': 0.25,    # Radial stepover as fraction of tool diameter (25% conservative for aluminum)
+        'tab_width': 0.160,       # Tab width (inches) - smaller for aluminum
+        'tab_height': 0.040,      # Tab height (inches) - thinner for aluminum
         'description': 'Aluminum box tubing - 18K RPM, 55 IPM cutting, 4° ramp'
     },
     'polycarbonate': {
@@ -57,6 +61,8 @@ MATERIAL_PRESETS = {
         'ramp_angle': 20.0,       # Same as plywood
         'ramp_start_clearance': 0.100,  # Clearance above material to start ramping (inches)
         'stepover_percentage': 0.55,    # Radial stepover as fraction of tool diameter (55% moderate for polycarbonate)
+        'tab_width': 0.25,        # Tab width (inches) - same as plywood
+        'tab_height': 0.1,        # Tab height (inches) - same as plywood
         'description': 'Polycarbonate - same as plywood settings'
     }
 }
@@ -97,7 +103,9 @@ class FRCPostProcessor:
         self.spindle_speed = 18000  # RPM
         self.feed_rate = 75.0 if units == "inch" else 1905  # Cutting feed rate (IPM or mm/min)
         self.ramp_feed_rate = 50.0 if units == "inch" else 1270  # Ramp feed rate (IPM or mm/min)
-        self.plunge_rate = 20.0 if units == "inch" else 508  # Plunge feed rate (IPM or mm/min) - matches Fusion 360
+        self.plunge_rate = 35.0 if units == "inch" else 889  # Plunge feed rate (IPM or mm/min) for tab Z moves
+        self.traverse_rate = 100.0 if units == "inch" else 2540  # Lateral moves above material (IPM or mm/min)
+        self.approach_rate = 50.0 if units == "inch" else 1270  # Z approach to ramp start height (IPM or mm/min)
         self.ramp_angle = 20.0  # Ramp angle in degrees (for helical bores and perimeter ramps)
         self.stepover_percentage = 0.6  # Radial stepover as fraction of tool diameter (default 60%)
         
@@ -137,6 +145,14 @@ class FRCPostProcessor:
         self.ramp_angle = preset['ramp_angle']
         self.stepover_percentage = preset['stepover_percentage']
 
+        # Tab sizes (convert to mm if needed)
+        if self.units == 'mm':
+            self.tab_width = preset['tab_width'] * 25.4
+            self.tab_height = preset['tab_height'] * 25.4
+        else:
+            self.tab_width = preset['tab_width']
+            self.tab_height = preset['tab_height']
+
         print(f"\nApplied material preset: {preset['name']}")
         print(f"  {preset['description']}")
         if self.units == 'mm':
@@ -151,6 +167,7 @@ class FRCPostProcessor:
             print(f"  Ramp start clearance: {self.ramp_start_clearance}\"")
         print(f"  Ramp angle: {self.ramp_angle}°")
         print(f"  Stepover: {self.stepover_percentage*100:.0f}% of tool diameter")
+        print(f"  Tab size: {preset['tab_width']}\" x {preset['tab_height']}\" (W x H)")
 
     def _distance_2d(self, p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
         """Calculate 2D Euclidean distance between two points"""
@@ -788,6 +805,7 @@ class FRCPostProcessor:
 
         # Initial safe move to machine coordinate Z0 (stay high to avoid fixture collisions during XY moves)
         gcode.append("G53 G0 Z0.  ; Move to machine coordinate Z0 (safe clearance) - stay high for XY rapids")
+        gcode.append("G0 X0 Y0  ; Rapid to work origin")
         gcode.append("")
 
         # Holes (all circular features - helical entry + spiral clearing)
@@ -922,8 +940,8 @@ class FRCPostProcessor:
         # Position at edge of entry radius
         start_x = cx + entry_radius
         start_y = cy
-        gcode.append(f"G0 X{start_x:.4f} Y{start_y:.4f}  ; Position at entry radius")
-        gcode.append(f"G0 Z{ramp_start_height:.4f}  ; Rapid to ramp start height")
+        gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.traverse_rate}  ; Position at entry radius")
+        gcode.append(f"G1 Z{ramp_start_height:.4f} F{self.approach_rate}  ; Approach to ramp start height")
 
         # Helical entry in multiple passes using ramp feed rate
         gcode.append(f"(Helical entry: {num_helical_passes} passes at {self.ramp_angle}°, {depth_per_pass:.4f}\" per pass)")
@@ -1181,13 +1199,13 @@ class FRCPostProcessor:
         gcode.append(f"(Pocket with helical entry at center: {num_helical_passes} passes at {self.ramp_angle}°)")
 
         # Position at pocket center
-        gcode.append(f"G0 X{entry_x:.4f} Y{entry_y:.4f}  ; Position at pocket center")
-        gcode.append(f"G0 Z{ramp_start_height:.4f}  ; Rapid to ramp start height")
+        gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.traverse_rate}  ; Position at pocket center")
+        gcode.append(f"G1 Z{ramp_start_height:.4f} F{self.approach_rate}  ; Approach to ramp start height")
 
         # Helical entry at center
         start_x = entry_x + helix_radius
         start_y = entry_y
-        gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.feed_rate}  ; Move to helix start")
+        gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.traverse_rate}  ; Move to helix start (above material)")
 
         for pass_num in range(num_helical_passes):
             target_z = ramp_start_height - (pass_num + 1) * depth_per_pass
@@ -1371,8 +1389,8 @@ class FRCPostProcessor:
 
         # Move to start
         start = offset_points[0]
-        gcode.append(f"G0 X{start[0]:.4f} Y{start[1]:.4f}  ; Move to perimeter start")
-        gcode.append(f"G0 Z{ramp_start_height:.4f}  ; Rapid to ramp start height")
+        gcode.append(f"G1 X{start[0]:.4f} Y{start[1]:.4f} F{self.traverse_rate}  ; Move to perimeter start")
+        gcode.append(f"G1 Z{ramp_start_height:.4f} F{self.approach_rate}  ; Approach to ramp start height")
 
         # Ramp in along the perimeter path
         # Calculate points along perimeter for ramping
