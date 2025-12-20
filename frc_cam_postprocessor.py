@@ -874,10 +874,10 @@ class FRCPostProcessor:
                         # Helical plunge in multiple passes using ramp feed rate
                         for pass_num in range(num_passes):
                             target_z = ramp_start_height - (pass_num + 1) * depth_per_pass
-                            gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-toolpath_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_passes}")
+                            gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-toolpath_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_passes} (CCW for climb milling)")
 
                         # Clean up pass at final depth
-                        gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-toolpath_radius:.4f} J0 F{self.feed_rate}  ; Clean up pass")
+                        gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-toolpath_radius:.4f} J0 F{self.feed_rate}  ; Clean up pass (CCW for climb milling)")
 
                         # Retract
                         gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
@@ -1016,10 +1016,10 @@ class FRCPostProcessor:
         gcode.append(f"(Helical entry: {num_helical_passes} passes at {self.ramp_angle}°, {depth_per_pass:.4f}\" per pass)")
         for pass_num in range(num_helical_passes):
             target_z = ramp_start_height - (pass_num + 1) * depth_per_pass
-            gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-entry_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_helical_passes}")
+            gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-entry_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_helical_passes} (CCW for climb milling)")
 
         # Clean up pass at entry radius and final depth
-        gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-entry_radius:.4f} J0 F{self.feed_rate}  ; Clean up pass at entry radius")
+        gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-entry_radius:.4f} J0 F{self.feed_rate}  ; Clean up pass at entry radius (CCW for climb milling)")
 
         # True Archimedean spiral outward from entry radius to final radius
         # Spiral equation: r = r_start + b*θ where b = stepover/(2π)
@@ -1037,10 +1037,10 @@ class FRCPostProcessor:
             gcode.append(f"(Archimedean spiral: {num_points} points from r={entry_radius:.4f}\" to r={final_toolpath_radius:.4f}\")")
 
             # Cut continuous spiral from entry_radius to final_toolpath_radius
-            # Use negative angle for clockwise spiral (climb milling on inside feature)
+            # Use positive angle for counter-clockwise spiral (climb milling on inside feature)
             for i in range(num_points):
-                current_angle = -(i * angle_increment)  # Negative for clockwise
-                current_radius = entry_radius + spiral_constant * abs(current_angle)
+                current_angle = i * angle_increment  # Positive for counter-clockwise
+                current_radius = entry_radius + spiral_constant * current_angle
 
                 # Convert polar coordinates to Cartesian
                 x = cx + current_radius * math.cos(current_angle)
@@ -1053,7 +1053,7 @@ class FRCPostProcessor:
         final_y = cy
         gcode.append(f"(Final cleanup pass at exact radius)")
         gcode.append(f"G1 X{final_x:.4f} Y{final_y:.4f} F{self.feed_rate}  ; Move to final radius")
-        gcode.append(f"G2 X{final_x:.4f} Y{final_y:.4f} I{-final_toolpath_radius:.4f} J0 F{self.feed_rate}  ; Cut final circle")
+        gcode.append(f"G3 X{final_x:.4f} Y{final_y:.4f} I{-final_toolpath_radius:.4f} J0 F{self.feed_rate}  ; Cut final circle (CCW for climb milling)")
 
         # Retract
         gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
@@ -1283,7 +1283,7 @@ class FRCPostProcessor:
 
         for pass_num in range(num_helical_passes):
             target_z = ramp_start_height - (pass_num + 1) * depth_per_pass
-            gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-helix_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_helical_passes}")
+            gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-helix_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_helical_passes} (CCW for climb milling)")
 
         # Return to center after helix
         gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.feed_rate}  ; Return to pocket center")
@@ -1338,10 +1338,10 @@ class FRCPostProcessor:
             gcode.append(f"(Archimedean spiral: {num_points} points to radius {max_radius:.4f}\")")
 
             # Cut continuous spiral from center to max_radius
-            # Use negative angle for clockwise spiral (climb milling on inside feature)
+            # Use positive angle for counter-clockwise spiral (climb milling on inside feature)
             for i in range(num_points):
-                current_angle = -(i * angle_increment)  # Negative for clockwise
-                current_radius = spiral_constant * abs(current_angle)
+                current_angle = i * angle_increment  # Positive for counter-clockwise
+                current_radius = spiral_constant * current_angle
 
                 # Convert polar coordinates to Cartesian
                 x = entry_x + current_radius * math.cos(current_angle)
@@ -1421,6 +1421,8 @@ class FRCPostProcessor:
         # Get the boundary of the offset polygon
         if hasattr(offset_poly, 'exterior'):
             offset_points = list(offset_poly.exterior.coords)[:-1]  # Remove duplicate last point
+            # Reverse points for clockwise direction (climb milling on outside features)
+            offset_points = offset_points[::-1]
         else:
             gcode.append("(WARNING: Perimeter offset resulted in invalid geometry)")
             return gcode
@@ -1531,7 +1533,7 @@ class FRCPostProcessor:
                     # Perform helical loops
                     for loop_num in range(num_loops):
                         target_z = current_z - (loop_num + 1) * depth_per_loop_actual
-                        gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-helix_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical loop {loop_num + 1}/{num_loops}")
+                        gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-helix_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical loop {loop_num + 1}/{num_loops} (CCW for climb milling)")
 
                     # Return to perimeter path
                     gcode.append(f"G1 X{helix_center_x:.4f} Y{helix_center_y:.4f} F{self.feed_rate}  ; Return to perimeter")
