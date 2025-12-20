@@ -43,7 +43,7 @@ class TestMaterialPresets(unittest.TestCase):
         self.assertEqual(pp.feed_rate, 55.0)
         self.assertEqual(pp.spindle_speed, 18000)
         self.assertEqual(pp.ramp_angle, 4.0)
-        self.assertEqual(pp.stepover_percentage, 0.45)
+        self.assertEqual(pp.stepover_percentage, 0.25)
 
     def test_polycarbonate_preset_applies_correctly(self):
         pp = FRCPostProcessor(0.25, 0.157)
