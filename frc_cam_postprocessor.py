@@ -7,12 +7,21 @@ Generates G-code from DXF files with predefined operations for:
 - Perimeter with tabs
 """
 
+# Standard library
+import argparse
+import datetime
+import json
+import math
+import os
+import re
+from collections import defaultdict
+from typing import List, Tuple
+from zoneinfo import ZoneInfo
+
+# Third-party
 import ezdxf
 from shapely.geometry import Point, Polygon, LineString, MultiPolygon
-from shapely.ops import unary_union
-import math
-from typing import List, Tuple
-import argparse
+from shapely.ops import unary_union, linemerge
 
 
 # Material presets based on team 6238 feeds/speeds document
@@ -143,6 +152,10 @@ class FRCPostProcessor:
         print(f"  Ramp angle: {self.ramp_angle}°")
         print(f"  Stepover: {self.stepover_percentage*100:.0f}% of tool diameter")
 
+    def _distance_2d(self, p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
+        """Calculate 2D Euclidean distance between two points"""
+        return math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
+
     def load_dxf(self, filename: str):
         """Load DXF file and extract geometry"""
         print(f"Loading {filename}...")
@@ -195,10 +208,6 @@ class FRCPostProcessor:
         Chain individual LINE, ARC, and SPLINE entities into closed paths.
         This handles DXF exports from OnShape and other CAD programs that don't use polylines.
         """
-        from shapely.geometry import LineString, Point, Polygon
-        from shapely.ops import linemerge, unary_union
-        import math
-        
         # First, try the graph-based approach for exact geometry
         print("  Attempting to connect segments into exact paths...")
         exact_paths = self._connect_segments_graph_based(lines, arcs, splines)
@@ -292,9 +301,6 @@ class FRCPostProcessor:
         Build a connectivity graph and find closed cycles.
         This preserves exact geometry including curves.
         """
-        from collections import defaultdict
-        import math
-        
         # Build list of all segments with their endpoints
         segments = []
         
@@ -322,9 +328,9 @@ class FRCPostProcessor:
         
         # Build adjacency graph
         tolerance = 0.01  # 0.01" tolerance for matching endpoints
-        
+
         def points_match(p1, p2, tol=tolerance):
-            return math.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2) < tol
+            return self._distance_2d(p1, p2) < tol
         
         # Find which segments connect to which
         graph = defaultdict(list)  # endpoint -> list of (segment_idx, is_start)
@@ -407,8 +413,6 @@ class FRCPostProcessor:
     
     def _sample_arc(self, arc, num_points=20):
         """Sample an ARC entity into a series of points"""
-        import math
-        
         center = (arc.dxf.center.x, arc.dxf.center.y)
         radius = arc.dxf.radius
         start_angle = math.radians(arc.dxf.start_angle)
@@ -452,8 +456,6 @@ class FRCPostProcessor:
             origin_corner: 'bottom-left', 'bottom-right', 'top-left', 'top-right'
             rotation_angle: 0, 90, 180, 270 degrees clockwise
         """
-        import math
-        
         # First, find bounding box of ALL entities
         all_x = []
         all_y = []
@@ -680,10 +682,6 @@ class FRCPostProcessor:
     
     def generate_gcode(self, output_file: str):
         """Generate complete G-code file"""
-        import datetime
-        import json
-        import os
-
         gcode = []
 
         # Load machine config
@@ -699,7 +697,6 @@ class FRCPostProcessor:
             }
 
         # Generate timestamp in Pacific time
-        from zoneinfo import ZoneInfo
         pacific_time = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
         timestamp = pacific_time.strftime("%Y-%m-%d %H:%M")
 
@@ -714,7 +711,6 @@ class FRCPostProcessor:
         operations_str = ", ".join(operations) if operations else "None"
 
         # Calculate helical entry angle
-        import math
         helical_angle = f"~{int(self.ramp_angle)}°"
 
         # Generate comprehensive header
@@ -982,9 +978,6 @@ class FRCPostProcessor:
         Estimate total cycle time from G-code.
         Returns dict with breakdown of time components.
         """
-        import re
-        import math
-
         cutting_time = 0.0  # G1/G2/G3 moves
         rapid_time = 0.0    # G0 moves
         dwell_time = 0.0    # G4 pauses
@@ -1131,7 +1124,6 @@ class FRCPostProcessor:
         Returns:
             True if pocket is circular, False otherwise
         """
-        from shapely.geometry import Polygon
         pocket_poly = Polygon(pocket_points)
         cx = pocket_poly.centroid.x
         cy = pocket_poly.centroid.y
@@ -1139,7 +1131,7 @@ class FRCPostProcessor:
         # Calculate distances from centroid to all vertices
         distances = []
         for x, y in pocket_points:
-            dist = math.sqrt((x - cx)**2 + (y - cy)**2)
+            dist = self._distance_2d((x, y), (cx, cy))
             distances.append(dist)
 
         if not distances:
@@ -1158,7 +1150,6 @@ class FRCPostProcessor:
         gcode = []
 
         # Create offset path (inward by tool radius)
-        from shapely.geometry import Polygon
         pocket_poly = Polygon(pocket_points)
 
         # Buffer inward (negative buffer)
@@ -1209,7 +1200,7 @@ class FRCPostProcessor:
         # Calculate maximum distance from center to any perimeter point
         max_radius = 0
         for point in offset_points:
-            dist = math.sqrt((point[0] - entry_x)**2 + (point[1] - entry_y)**2)
+            dist = self._distance_2d(point, (entry_x, entry_y))
             max_radius = max(max_radius, dist)
 
         # Calculate spiral passes (similar to hole clearing)
@@ -1323,9 +1314,8 @@ class FRCPostProcessor:
     def _generate_perimeter_gcode(self, perimeter_points: List[Tuple[float, float]]) -> List[str]:
         """Generate G-code for perimeter with tabs and tool compensation (offset outward)"""
         gcode = []
-        
+
         # Create offset path (outward by tool radius)
-        from shapely.geometry import Polygon
         perimeter_poly = Polygon(perimeter_points)
         
         # Buffer outward (positive buffer) 
@@ -1349,7 +1339,7 @@ class FRCPostProcessor:
         for i in range(len(offset_points)):
             p1 = offset_points[i]
             p2 = offset_points[(i + 1) % len(offset_points)]
-            length = math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
+            length = self._distance_2d(p1, p2)
             segment_lengths.append(length)
 
         # Calculate total perimeter length
@@ -1565,7 +1555,7 @@ class FRCPostProcessor:
             last_point = remaining_points[-1]
 
             # Calculate closing segment
-            closing_length = math.sqrt((ramp_end_x - last_point[0])**2 + (ramp_end_y - last_point[1])**2)
+            closing_length = self._distance_2d((ramp_end_x, ramp_end_y), last_point)
 
             # Process closing segment
             process_segment(last_point, (ramp_end_x, ramp_end_y), current_distance, closing_length)
@@ -1649,9 +1639,6 @@ def main():
     pp.identify_perimeter_and_pockets()
 
     # Add timestamp to output filename (Pacific time)
-    import datetime
-    import os
-    from zoneinfo import ZoneInfo
     pacific_time = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
     timestamp = pacific_time.strftime("%Y%m%d_%H%M%S")
     base_name = os.path.splitext(args.output_gcode)[0]
