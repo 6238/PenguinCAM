@@ -116,18 +116,11 @@ See [Z_COORDINATE_SYSTEM.md](Z_COORDINATE_SYSTEM.md) for detailed explanation.
 
 ### Holes (Automatic Detection)
 
-**#10 Screw Holes (anything 0.185" to 0.205" diameter):**
-- Perfect for #10 screws
-- Always milled for free fit at 0.201", the size of the hole in the DXF is ignored
+**All Circular Holes:**
+- Helical entry + spiral clearing strategy
+- Preserves exact CAD dimensions - what you draw is what you get
 - Holes too small for your tool (< 1.2× tool diameter) are skipped
-
-**1.125" Bearing Holes:**
-- Helical bore from center
-- Exact size for VEX bearings
-
-**Other Circles:**
-- Milled as circular pockets
-- Any non-standard size
+- Works for all sizes: #10 screws (0.201"), bearings (1.125"), or custom
 
 ### Pockets
 

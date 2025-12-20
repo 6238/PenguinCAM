@@ -1012,15 +1012,6 @@
                             </label>
                             <input type="number" id="tabs" step="1" value="4" min="0" max="20" required>
                         </div>
-
-                        <div class="param-group">
-                            <div class="checkbox-group">
-                                <input type="checkbox" id="drillScrews">
-                                <label for="drillScrews" class="checkbox-label">
-                                    Center drill screw holes (faster)
-                                </label>
-                            </div>
-                        </div>
                     </form>
                 </div>
 
@@ -1289,7 +1280,6 @@
             formData.append('tool_diameter', document.getElementById('toolDiameter').value);
             formData.append('sacrifice_depth', document.getElementById('sacrificeDepth').value);
             formData.append('tabs', document.getElementById('tabs').value);
-            formData.append('drill_screws', document.getElementById('drillScrews').checked);
             formData.append('origin_corner', 'bottom-left'); // Always bottom-left
             formData.append('rotation', rotationAngle); // Add rotation angle
             if (suggestedFilename) {
@@ -1427,15 +1417,15 @@
             }
 
             // Extract key info
-            const screwMatch = data.console.match(/(\d+) screw holes/);
-            const bearingMatch = data.console.match(/(\d+) bearing holes/);
+            const holesMatch = data.console.match(/(\d+) millable holes/);
+            const pocketsMatch = data.console.match(/and (\d+) pockets/);
             const linesMatch = data.console.match(/Total lines: (\d+)/);
 
-            if (screwMatch) {
-                statsHtml.push(`<div class="stat"><div class="stat-label">Screw Holes</div><div class="stat-value">${screwMatch[1]}</div></div>`);
+            if (holesMatch) {
+                statsHtml.push(`<div class="stat"><div class="stat-label">Holes</div><div class="stat-value">${holesMatch[1]}</div></div>`);
             }
-            if (bearingMatch) {
-                statsHtml.push(`<div class="stat"><div class="stat-label">Bearing Holes</div><div class="stat-value">${bearingMatch[1]}</div></div>`);
+            if (pocketsMatch) {
+                statsHtml.push(`<div class="stat"><div class="stat-label">Pockets</div><div class="stat-value">${pocketsMatch[1]}</div></div>`);
             }
             if (linesMatch) {
                 statsHtml.push(`<div class="stat"><div class="stat-label">G-code Lines</div><div class="stat-value">${linesMatch[1]}</div></div>`);

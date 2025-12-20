@@ -26,9 +26,9 @@ PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC tea
 ### 🤖 **Built for FRC**
 
 ✅ **Automatic hole detection:**
-- #10 screw holes (0.201" free fit clearance)
-- 1.125" bearing holes  
-- Non-standard holes milled as circular pockets
+- All circular holes (preserves exact CAD dimensions)
+- #10 screw holes, bearing holes, or custom sizes
+- Helical entry + spiral clearing strategy
 
 ✅ **Smart perimeter cutting:**
 - Holding tabs prevent parts from flying away
@@ -204,23 +204,18 @@ Google Drive Upload
 
 PenguinCAM generates optimized toolpaths:
 
-1. **Screw holes (#10):**
-   - Center drill operation (fast)
-   - Or full mill if disabled
+1. **Holes (all sizes):**
+   - Helical entry from center
+   - Spiral clearing to final diameter
+   - Compensated for exact CAD dimensions
+   - Works for #10 screws, bearings, or custom
 
-2. **Bearing holes (1.125"):**
-   - Helical bore from center
-   - Compensated for exact final diameter
-
-3. **Non-standard holes:**
-   - Milled as circular pockets
-   - 32-point circular path
-
-4. **Pockets:**
+2. **Pockets:**
    - Offset inward by tool radius
-   - Full-depth plunge and trace
+   - Helical entry, then clearing passes
+   - Spiral strategy for circular pockets
 
-5. **Perimeter:**
+3. **Perimeter:**
    - Offset outward by tool radius
    - Cut with holding tabs
    - Tabs only on straight sections

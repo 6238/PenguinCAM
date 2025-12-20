@@ -331,7 +331,7 @@ def verify_safe_heights(onshape_lines, fusion_lines, tolerance=0.001):
 
 
 def generate_gcode_from_dxf(dxf_path, material_thickness=0.25, tool_diameter=0.157,
-                            sacrifice_depth=0.02, units='inch', tabs=4, drill_screws=False,
+                            sacrifice_depth=0.02, units='inch', tabs=4,
                             material='plywood'):
     """Generate G-code from DXF using PenguinCAM"""
 
@@ -344,7 +344,6 @@ def generate_gcode_from_dxf(dxf_path, material_thickness=0.25, tool_diameter=0.1
     pp.apply_material_preset(material)
 
     pp.num_tabs = tabs
-    pp.drill_screw_holes = drill_screws
     pp.sacrifice_board_depth = sacrifice_depth
 
     # Recalculate Z positions with user-specified sacrifice depth
@@ -376,8 +375,7 @@ if __name__ == "__main__":
     SACRIFICE_DEPTH = 0.5
     UNITS = 'mm'
     TABS = 4
-    DRILL_SCREWS = True
-    
+
     # Output options
     KEEP_GCODE = False
     OUTPUT_GCODE_PATH = "./penguin_cam_output.gcode"
@@ -389,7 +387,6 @@ if __name__ == "__main__":
         sacrifice_depth=SACRIFICE_DEPTH,
         units=UNITS,
         tabs=TABS,
-        drill_screws=DRILL_SCREWS,
         material=MATERIAL
     )
     

@@ -2,8 +2,7 @@
 """
 PenguinCAM - FRC Team 6238 CAM Post-Processor
 Generates G-code from DXF files with predefined operations for:
-- #10 screw holes
-- 1.125" bearing holes
+- Circular holes (helical + spiral clearing)
 - Pockets
 - Perimeter with tabs
 """
@@ -70,16 +69,6 @@ class FRCPostProcessor:
         self.units = units
         self.tolerance = 0.02  # Tolerance for hole detection (inches)
 
-        # Hole diameters - #10 screw clearance holes per ASME B18.2.8:
-        #   Close fit: 0.196"
-        #   Free fit:  0.201"
-        # Detection range: 0.185" to 0.205" (catches common #10 hole sizes)
-        # Mill diameter: 0.201" (free fit - easier assembly, standard for FRC)
-        self.screw_hole_detect_diameter = 0.195  # Midpoint of detection range
-        self.screw_hole_detect_tolerance = 0.01  # Detection range: ±0.01" (0.185" to 0.205")
-        self.screw_hole_mill_diameter = 0.201    # #10 free fit - actual hole size to mill
-        self.bearing_hole_diameter = 1.125  # Bearing hole
-        
         # Minimum hole diameter that can be milled (must be > tool diameter for chip evacuation)
         # Holes smaller than this are skipped
         self.min_millable_hole = tool_diameter * 1.2  # 20% larger than tool for chip clearance
@@ -625,29 +614,27 @@ class FRCPostProcessor:
     
     def classify_holes(self):
         """Classify holes by diameter"""
-        self.screw_holes = []
-        self.bearing_holes = []
-        self.other_holes = []
+        # Classify all circles as holes (apply size check)
+        self.bearing_holes = []  # All millable holes (name kept for compatibility)
+        holes_skipped = 0
 
         for circle in self.circles:
             diameter = circle['diameter']
             center = circle['center']
 
-            # Check if it's a screw hole (detection range: 0.185" to 0.205")
-            if abs(diameter - self.screw_hole_detect_diameter) < self.screw_hole_detect_tolerance:
-                self.screw_holes.append(center)
-                print(f"  Screw hole at ({center[0]:.3f}, {center[1]:.3f})")
-            # Check if it's a bearing hole
-            elif abs(diameter - self.bearing_hole_diameter) < self.tolerance:
-                self.bearing_holes.append(center)
-                print(f"  Bearing hole at ({center[0]:.3f}, {center[1]:.3f})")
-            else:
-                self.other_holes.append({'center': center, 'diameter': diameter})
-                print(f"  Unknown hole (d={diameter:.3f}) at ({center[0]:.3f}, {center[1]:.3f})")
+            # Skip holes that are too small to mill with this tool
+            if diameter < self.min_millable_hole:
+                print(f"  ⚠️  Skipping hole at ({center[0]:.3f}, {center[1]:.3f}) - diameter {diameter:.3f}\" too small for {self.tool_diameter:.3f}\" tool")
+                holes_skipped += 1
+                continue
 
-        print(f"\nClassified: {len(self.screw_holes)} screw holes, "
-              f"{len(self.bearing_holes)} bearing holes, "
-              f"{len(self.other_holes)} other holes")
+            # All millable holes use the same strategy (helical + spiral)
+            self.bearing_holes.append({'center': center, 'diameter': diameter})
+            print(f"  Hole (d={diameter:.3f}\") at ({center[0]:.3f}, {center[1]:.3f})")
+
+        print(f"\nIdentified {len(self.bearing_holes)} millable holes")
+        if holes_skipped > 0:
+            print(f"  ⚠️  Skipped {holes_skipped} hole(s) too small for tool")
 
         # Sort holes to minimize travel time
         self._sort_holes()
@@ -657,15 +644,10 @@ class FRCPostProcessor:
         Sort holes to minimize tool travel time.
         Sorts by X coordinate first, then by Y within each X group (zigzag pattern).
         """
-        if len(self.screw_holes) > 1:
-            # Sort screw holes by X, then Y
-            self.screw_holes.sort(key=lambda p: (round(p[0], 2), p[1]))
-            print(f"Sorted {len(self.screw_holes)} screw holes for optimal travel")
-
         if len(self.bearing_holes) > 1:
-            # Sort bearing holes by X, then Y
-            self.bearing_holes.sort(key=lambda p: (round(p[0], 2), p[1]))
-            print(f"Sorted {len(self.bearing_holes)} bearing holes for optimal travel")
+            # Sort holes by X, then Y (bearing_holes now contains all millable holes)
+            self.bearing_holes.sort(key=lambda h: (round(h['center'][0], 2), h['center'][1]))
+            print(f"Sorted {len(self.bearing_holes)} holes for optimal travel")
     
     def identify_perimeter_and_pockets(self):
         """Identify the outer perimeter and any inner pockets"""
@@ -693,43 +675,8 @@ class FRCPostProcessor:
         polygons.sort(key=lambda x: x[0].area, reverse=True)
         self.perimeter = polygons[0][1]  # Get the original points
         self.pockets = [p[1] for p in polygons[1:]]
-        
-        # Add "other holes" (non-screw, non-bearing circles) as circular pockets
-        # These need to be milled out - skip holes that are too small for the tool
-        holes_added = 0
-        holes_skipped = 0
-        for hole in self.other_holes:
-            center = hole['center']
-            diameter = hole['diameter']
-            radius = diameter / 2.0
-
-            # Skip holes that are too small to mill with this tool
-            if diameter < self.min_millable_hole:
-                print(f"  ⚠️  Skipping hole at ({center[0]:.3f}, {center[1]:.3f}) - diameter {diameter:.3f}\" too small for {self.tool_diameter:.3f}\" tool")
-                holes_skipped += 1
-                continue
-
-            # Create a circular pocket with 32 points
-            num_points = 32
-            circle_points = []
-            for i in range(num_points):
-                angle = 2 * math.pi * i / num_points
-                x = center[0] + radius * math.cos(angle)
-                y = center[1] + radius * math.sin(angle)
-                circle_points.append((x, y))
-
-            # Close the circle
-            circle_points.append(circle_points[0])
-
-            # Add to pockets
-            self.pockets.append(circle_points)
-            holes_added += 1
 
         print(f"\nIdentified perimeter and {len(self.pockets)} pockets")
-        if holes_added > 0:
-            print(f"  (includes {holes_added} circular pockets from non-standard holes)")
-        if holes_skipped > 0:
-            print(f"  ⚠️  Skipped {holes_skipped} hole(s) too small for tool")
     
     def generate_gcode(self, output_file: str):
         """Generate complete G-code file"""
@@ -758,10 +705,8 @@ class FRCPostProcessor:
 
         # Determine operations present
         operations = []
-        if self.screw_holes:
-            operations.append("Screw Holes")
         if self.bearing_holes:
-            operations.append("Bearing Bores")
+            operations.append("Holes")
         if self.pockets:
             operations.append("Pockets")
         if self.perimeter:
@@ -849,87 +794,14 @@ class FRCPostProcessor:
         gcode.append("G53 G0 Z0.  ; Move to machine coordinate Z0 (safe clearance) - stay high for XY rapids")
         gcode.append("")
 
-        # Screw holes
-        if self.screw_holes:
-            gcode.append("(===== SCREW HOLES =====)")
-            gcode.append("(Strategy: Mill out - helical interpolation with tool compensation)")
-            holes_skipped = 0
-            for i, (x, y) in enumerate(self.screw_holes, 1):
-                # Calculate toolpath radius (hole radius minus tool radius)
-                # Uses free fit diameter (0.201") for easier assembly
-                hole_radius = self.screw_hole_mill_diameter / 2
-                toolpath_radius = hole_radius - self.tool_radius
-
-                if toolpath_radius <= 0:
-                    gcode.append(f"(SKIPPED: Screw hole {i} at ({x:.3f}, {y:.3f}) - tool too large to mill {self.screw_hole_mill_diameter:.4f}\" hole)")
-                    holes_skipped += 1
-                else:
-                    gcode.append(f"(Screw hole {i})")
-                    # Calculate ramp start height (close to material surface)
-                    ramp_start_height = self.material_top + self.ramp_start_clearance
-
-                    # Calculate helical passes using material-specific ramp angle
-                    num_passes, depth_per_pass = self._calculate_helical_passes(toolpath_radius, ramp_start_height=ramp_start_height)
-
-                    # Position at edge of toolpath
-                    start_x = x + toolpath_radius
-                    start_y = y
-                    gcode.append(f"(Helical bore: {num_passes} passes at {self.ramp_angle}°, {depth_per_pass:.4f}\" per pass)")
-                    gcode.append(f"G0 X{start_x:.4f} Y{start_y:.4f}  ; Position at hole edge")
-                    gcode.append(f"G0 Z{ramp_start_height:.4f}  ; Rapid to ramp start height")
-
-                    # Helical plunge in multiple passes using ramp feed rate
-                    for pass_num in range(num_passes):
-                        target_z = ramp_start_height - (pass_num + 1) * depth_per_pass
-                        gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-toolpath_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_passes}")
-
-                    # Clean up pass at final depth
-                    gcode.append(f"G2 X{start_x:.4f} Y{start_y:.4f} I{-toolpath_radius:.4f} J0 F{self.feed_rate}  ; Clean up pass")
-
-                    # Retract
-                    gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
-                    gcode.append("")
-
-                    if toolpath_radius <= 0:
-                        gcode.append(f"(WARNING: Tool too large to mill {self.screw_hole_diameter:.4f}\" hole - switching to center drill)")
-                        gcode.append(f"G0 X{x:.4f} Y{y:.4f}  ; Position over hole center")
-                        gcode.append(f"G0 Z{self.retract_height:.4f}")
-                        gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.plunge_rate}  ; Plunge")
-                        gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
-                    else:
-                        # Calculate ramp start height (close to material surface)
-                        ramp_start_height = self.material_top + self.ramp_start_clearance
-
-                        # Calculate helical passes using material-specific ramp angle
-                        num_passes, depth_per_pass = self._calculate_helical_passes(toolpath_radius, ramp_start_height=ramp_start_height)
-
-                        # Position at edge of toolpath
-                        start_x = x + toolpath_radius
-                        start_y = y
-                        gcode.append(f"(Helical bore: {num_passes} passes at {self.ramp_angle}°, {depth_per_pass:.4f}\" per pass)")
-                        gcode.append(f"G0 X{start_x:.4f} Y{start_y:.4f}  ; Position at hole edge")
-                        gcode.append(f"G0 Z{ramp_start_height:.4f}  ; Rapid to ramp start height")
-
-                        # Helical plunge in multiple passes using ramp feed rate
-                        for pass_num in range(num_passes):
-                            target_z = ramp_start_height - (pass_num + 1) * depth_per_pass
-                            gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-toolpath_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_passes} (CCW for climb milling)")
-
-                        # Clean up pass at final depth
-                        gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-toolpath_radius:.4f} J0 F{self.feed_rate}  ; Clean up pass (CCW for climb milling)")
-
-                        # Retract
-                        gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
-                    gcode.append("")
-            if holes_skipped > 0:
-                print(f"  ⚠️  Skipped {holes_skipped} screw hole(s) - tool too large to mill")
-        
-        # Bearing holes (spiral out from center)
+        # Holes (all circular features - helical entry + spiral clearing)
         if self.bearing_holes:
-            gcode.append("(===== BEARING HOLES =====)")
-            for i, (x, y) in enumerate(self.bearing_holes, 1):
-                gcode.append(f"(Bearing hole {i})")
-                gcode.extend(self._generate_bearing_hole_gcode(x, y))
+            gcode.append("(===== HOLES =====)")
+            for i, hole in enumerate(self.bearing_holes, 1):
+                center = hole['center']
+                diameter = hole['diameter']
+                gcode.append(f"(Hole {i} - {diameter:.3f}\" diameter)")
+                gcode.extend(self._generate_bearing_hole_gcode(center[0], center[1], diameter))
                 gcode.append("")
         
         # Pockets
@@ -1018,19 +890,23 @@ class FRCPostProcessor:
 
         return num_passes, depth_per_pass
 
-    def _generate_bearing_hole_gcode(self, cx: float, cy: float) -> List[str]:
+    def _generate_bearing_hole_gcode(self, cx: float, cy: float, diameter: float) -> List[str]:
         """
-        Generate G-code for a bearing hole using helical entry + spiral-out strategy.
+        Generate G-code for a hole using helical entry + spiral-out strategy.
         Uses helical interpolation to safely enter, then spirals outward in multiple passes.
+
+        Args:
+            cx, cy: Hole center coordinates
+            diameter: Hole diameter (from CAD)
         """
         gcode = []
 
         # Calculate target toolpath radius (hole radius minus tool radius for inside cut)
-        hole_radius = self.bearing_hole_diameter / 2
+        hole_radius = diameter / 2
         final_toolpath_radius = hole_radius - self.tool_radius
 
         if final_toolpath_radius <= 0:
-            gcode.append(f"(WARNING: Tool diameter {self.tool_diameter:.4f}\" is too large for {self.bearing_hole_diameter:.4f}\" hole!)")
+            gcode.append(f"(WARNING: Tool diameter {self.tool_diameter:.4f}\" is too large for {diameter:.4f}\" hole!)")
             return gcode
 
         # Strategy: Helical entry at small radius, then spiral outward
@@ -1045,7 +921,7 @@ class FRCPostProcessor:
         entry_radius = min(stepover, final_toolpath_radius)  # Use first stepover radius
         num_helical_passes, depth_per_pass = self._calculate_helical_passes(entry_radius, ramp_start_height=ramp_start_height)
 
-        gcode.append(f"(Bearing hole: helical entry at {entry_radius:.4f}\" radius, then {num_radial_passes} radial passes)")
+        gcode.append(f"(Hole {diameter:.3f}\" dia: helical entry at {entry_radius:.4f}\" radius, then {num_radial_passes} radial passes)")
 
         # Position at edge of entry radius
         start_x = cx + entry_radius
@@ -1336,7 +1212,7 @@ class FRCPostProcessor:
             dist = math.sqrt((point[0] - entry_x)**2 + (point[1] - entry_y)**2)
             max_radius = max(max_radius, dist)
 
-        # Calculate spiral passes (similar to bearing holes)
+        # Calculate spiral passes (similar to hole clearing)
         stepover = self.tool_diameter * self.stepover_percentage
         num_passes = max(1, int(math.ceil(max_radius / stepover)))
 
@@ -1802,8 +1678,7 @@ def main():
     print(f"  Tool radius: {pp.tool_radius:.4f}\"")
     print(f"  Perimeter: offset OUTWARD by {pp.tool_radius:.4f}\"")
     print(f"  Pockets: offset INWARD by {pp.tool_radius:.4f}\"")
-    print(f"  Bearing holes: toolpath radius reduced by {pp.tool_radius:.4f}\"")
-    print(f"  Screw holes: milled with compensation (holes < {pp.min_millable_hole:.3f}\" skipped)")
+    print(f"  Holes: toolpath radius reduced by {pp.tool_radius:.4f}\" (holes < {pp.min_millable_hole:.3f}\" skipped)")
 
 
 if __name__ == '__main__':

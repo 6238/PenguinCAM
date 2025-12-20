@@ -2,7 +2,7 @@
 
 ## Why Tool Compensation Matters
 
-When you design a part in CAD, you specify the **final dimensions** you want - like a 6" square plate with #10 screw holes. But when cutting with a CNC router, the **tool has width**. If you simply follow the CAD lines with the center of the tool, your part will be the wrong size!
+When you design a part in CAD, you specify the **final dimensions** you want - like a 6" square plate with holes and pockets. But when cutting with a CNC router, the **tool has width**. If you simply follow the CAD lines with the center of the tool, your part will be the wrong size!
 
 ### The Problem Without Compensation
 
@@ -10,7 +10,7 @@ Let's say you have a 4mm (0.157") diameter end mill:
 
 ❌ **Without compensation:**
 - A 6" square perimeter → Final part is 5.843" (too small by tool diameter)
-- A 1.125" bearing hole → Final hole is 1.282" (too large by tool diameter)
+- A 1.125" hole → Final hole is 1.282" (too large by tool diameter)
 - A 2" pocket → Final pocket is 2.157" (too large by tool diameter)
 
 ✅ **With compensation:**
@@ -44,7 +44,7 @@ The tool cuts INSIDE the CAD line by the tool radius.
 
 ### Holes (Reduced Radius)
 ```
-CAD bearing hole: 1.125" diameter (0.5625" radius)
+CAD hole: 1.125" diameter (0.5625" radius)
 Tool diameter: 0.157" (4mm)
 Tool radius: 0.0785"
 
@@ -52,7 +52,7 @@ Toolpath radius: 0.5625" - 0.0785" = 0.4840"
 Result: Final hole is exactly 1.125" diameter
 ```
 
-The tool follows a circle with radius reduced by the tool radius.
+The tool follows a circle with radius reduced by the tool radius. Works for any hole size (screw holes, bearing holes, custom).
 
 ## Using Tool Compensation
 
@@ -96,22 +96,22 @@ Tool compensation applied:
   Tool radius: 0.0785"
   Perimeter: offset OUTWARD by 0.0785"
   Pockets: offset INWARD by 0.0785"
-  Bearing holes: toolpath radius reduced by 0.0785"
-  Screw holes: milled with compensation
+  Holes: toolpath radius reduced by 0.0785" (holes < 0.188" skipped)
 ```
 
-## Screw Holes
+## Holes (All Sizes)
 
-Screw holes are milled using helical interpolation with tool compensation applied. This creates precise 0.201" diameter holes (free fit per ASME B18.2.8).
+All circular holes are milled using helical entry + spiral clearing with tool compensation applied. The exact CAD dimensions are preserved.
 
 ```bash
 python frc_cam_postprocessor.py part.dxf output.gcode
 ```
 
 **What it does:**
-- Helical interpolation around hole
+- Helical interpolation entry
+- Spiral clearing to final diameter
 - Tool compensation applied
-- Creates exact 0.201" diameter hole
+- Preserves exact CAD dimensions (0.201" screw holes, 1.125" bearing holes, or custom)
 
 **Minimum hole size:**
 - Holes must be at least 1.2× the tool diameter for chip evacuation

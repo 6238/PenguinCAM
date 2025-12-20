@@ -114,7 +114,6 @@ def process_file():
         tool_diameter = float(request.form.get('tool_diameter', 0.157))
         sacrifice_depth = float(request.form.get('sacrifice_depth', 0.02))
         tabs = int(request.form.get('tabs', 4))
-        drill_screws = request.form.get('drill_screws', 'false') == 'true'
         origin_corner = request.form.get('origin_corner', 'bottom-left')
         rotation = int(request.form.get('rotation', 0))
         suggested_filename = request.form.get('suggested_filename', '')
@@ -155,9 +154,6 @@ def process_file():
         if user_name:
             cmd.extend(['--user', user_name])
 
-        if drill_screws:
-            cmd.append('--drill-screws')
-        
         print(f"🚀 Running post-processor...")
         print(f"   Command: {' '.join(cmd)}")
         print(f"   Output will be: {output_path}")
@@ -235,7 +231,6 @@ def process_file():
                 'tool_diameter': tool_diameter,
                 'sacrifice_depth': sacrifice_depth,
                 'tabs': tabs,
-                'drill_screws': drill_screws,
                 'origin_corner': origin_corner,
                 'rotation': rotation
             }
