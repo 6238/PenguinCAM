@@ -20,7 +20,15 @@
 
 ---
 
-### 2. Orient Your Part (Setup Mode)
+### 2. Set Parameters (Setup Mode)
+
+* Select the correct material type (polycarb, plywood, or aluminum)
+* Use calipers to verify the material thickness and set the measured material thickness in PenguinCAM.  PenguinCAM will automatically determine feed height, retract height, and clearance height based on the material thickness and the material type. 
+* Ensure the tool diameter is set correctly (0.157" for a 4mm end mill)
+
+---
+
+### 3. Orient Your Part (Setup Mode)
 
 After import, you'll see a **2D top-down view** of your part:
 
@@ -30,11 +38,11 @@ After import, you'll see a **2D top-down view** of your part:
    - Like 3D printer slicers or laser cutters
    - No need to pick a corner!
 
-**Tip:** Orient your part so cutting direction matches grain or longest dimension
+**Important:** First decide how you will fixture the raw material on the machine, and then select orientation in PenguinCAM to match.
 
 ---
 
-### 3. Generate & Download
+### 4. Generate & Download
 
 1. Click **"Generate G-code"** 
 2. **Review 3D preview** - Rotate to check toolpaths
@@ -55,26 +63,16 @@ Done! 🎉
 - Material must be fully supported
 
 **Tools Needed:**
-- Endmill (usually 1/8" or 4mm)
-- Edge finder or piece of paper for zeroing
-- Calipers to verify material thickness
+- End mill (must match the end mill selected in CAM)
 
 ---
 
 ### X & Y Zeroing
 
-**Set origin at LOWER-LEFT corner of your material:**
+**Set X & Y zero at LOWER-LEFT corner of your part:**
 
-1. **Jog** tool to lower-left corner of material
-2. Use edge finder or "paper method":
-   - Lower tool until it barely touches edge
-   - Move along edge to find exact corner
-3. **Set X=0 Y=0** in your CNC controller
-
-**Why lower-left?**
-- Matches OnShape coordinate system
-- All toolpaths assume origin here
-- X increases to the right, Y increases up
+1. **Jog** tool to lower-left corner of part
+2. Click the the "Zero X" and "Zero Y" buttons
 
 ---
 
@@ -83,18 +81,13 @@ Done! 🎉
 ⚠️ **CRITICAL: Z=0 is at the SACRIFICE BOARD (bottom), NOT the material top!**
 
 **Setup:**
-1. **Remove material** temporarily
-2. **Jog tool down** to sacrifice board surface
-3. Use paper method:
-   - Place paper on sacrifice board
-   - Lower tool until it pinches paper
-   - Remove paper (adds ~0.003" - negligible)
-4. **Set Z=0** at sacrifice board surface
-5. **Replace material** on top of sacrifice board
+1. Jog end mill to location outside the raw material
+2. Touch end mill to sacrifice board
+3. Verify Z shows as zero in Mach 4.  This should not need to be changed, but nonetheless should be verified before cutting parts.
 
 **Why sacrifice board?**
 - ✅ Guaranteed cut-through (0.02" overcut built in)
-- ✅ Same zero point for all jobs
+- ✅ Same Z zero point for all jobs
 - ✅ No math when material thickness changes
 
 See [Z_COORDINATE_SYSTEM.md](Z_COORDINATE_SYSTEM.md) for detailed explanation.
@@ -111,11 +104,6 @@ See [Z_COORDINATE_SYSTEM.md](Z_COORDINATE_SYSTEM.md) for detailed explanation.
 - Diameter: **0.157"** (4mm endmill)
 - Also works: 1/8" (0.125"), 1/4" (0.250")
 
-**Feeds:**
-- Cutting: **30 IPM**
-- Plunging: **10 IPM**
-- Adjust for your material and machine
-
 **Tabs:**
 - Count: **4** (evenly spaced)
 - Width: **0.25"**
@@ -128,9 +116,10 @@ See [Z_COORDINATE_SYSTEM.md](Z_COORDINATE_SYSTEM.md) for detailed explanation.
 
 ### Holes (Automatic Detection)
 
-**#10 Screw Holes (~0.19" diameter):**
-- Center drill operation (fast!)
+**#10 Screw Holes (anything 0.185" to 0.205" diameter):**
 - Perfect for #10 screws
+- Always milled for free fit at 0.201", the size of the hole in the DXF is ignored
+- Holes too small for your tool (< 1.2× tool diameter) are skipped
 
 **1.125" Bearing Holes:**
 - Helical bore from center
@@ -183,7 +172,7 @@ In PenguinCAM web interface:
 **✅ Do:**
 - Design parts as flat plates
 - Use standard hole sizes when possible:
-  - 0.19" for #10 screws
+  - 0.201" for free fit #10 screws
   - 1.125" for bearings
 - Make perimeter a closed loop (no gaps!)
 - Put pockets fully inside the perimeter
@@ -194,14 +183,6 @@ In PenguinCAM web interface:
 - Overlapping geometry
 - Tiny features smaller than tool diameter
 
-### Hole Sizes Quick Reference:
-
-| Fastener | Clearance Hole | Tap Hole |
-|----------|----------------|----------|
-| #10 screw | 0.19" | 0.159" |
-| 1/4-20 bolt | 0.257" | 0.201" |
-| 1.125" bearing | 1.125" | - |
-| M3 screw | 0.125" (3.2mm) | 0.098" (2.5mm) |
 
 ---
 
