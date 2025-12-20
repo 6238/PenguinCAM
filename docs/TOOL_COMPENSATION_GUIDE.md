@@ -2,7 +2,7 @@
 
 ## Why Tool Compensation Matters
 
-When you design a part in CAD, you specify the **final dimensions** you want - like a 6" square plate with 0.19" screw holes. But when cutting with a CNC router, the **tool has width**. If you simply follow the CAD lines with the center of the tool, your part will be the wrong size!
+When you design a part in CAD, you specify the **final dimensions** you want - like a 6" square plate with #10 screw holes. But when cutting with a CNC router, the **tool has width**. If you simply follow the CAD lines with the center of the tool, your part will be the wrong size!
 
 ### The Problem Without Compensation
 
@@ -100,40 +100,23 @@ Tool compensation applied:
   Screw holes: milled with compensation
 ```
 
-## Screw Holes: Drill vs Mill
+## Screw Holes
 
-For small screw holes, you have two options:
+Screw holes are milled using helical interpolation with tool compensation applied. This creates precise 0.201" diameter holes (free fit per ASME B18.2.8).
 
-### Option 1: Center Drill (Faster, Default)
-```bash
-python frc_cam_postprocessor.py part.dxf output.gcode --drill-screws
-```
-
-**What it does:**
-- Positions tool center over hole center
-- Plunges straight down
-- No spiral motion
-- Much faster for small holes
-- Assumes your 4mm tool will fit through (it will for 0.19" holes)
-
-**Result:** Creates approximately a 4mm hole (close enough for #10 clearance)
-
-### Option 2: Mill Out (Precise)
 ```bash
 python frc_cam_postprocessor.py part.dxf output.gcode
-# (milling is the default when --drill-screws is not specified)
 ```
 
 **What it does:**
 - Helical interpolation around hole
 - Tool compensation applied
-- Slower but more precise
-- Creates exact 0.19" diameter hole
+- Creates exact 0.201" diameter hole
 
-**When to use:**
-- Need exact hole size
-- Tool might be too large for center drilling
-- Better surface finish required
+**Minimum hole size:**
+- Holes must be at least 1.2× the tool diameter for chip evacuation
+- Example: 4mm (0.157") tool → minimum hole is 0.188"
+- Smaller holes are automatically skipped with a warning
 
 ## Tool Size Limits
 
@@ -147,9 +130,9 @@ Your tool diameter limits what you can cut:
 - Smaller pockets will show warnings
 
 **Holes:**
-- For milling: Minimum hole diameter > tool diameter
-- For drilling: Tool must fit through hole
-- Example: 4mm tool CAN'T mill a 3mm hole
+- Minimum hole diameter is 1.2× tool diameter (for chip evacuation)
+- Example: 4mm (0.157") tool → minimum 0.188" hole
+- Smaller holes are automatically skipped
 
 **Inside Corners:**
 - Corner radius = tool radius
@@ -168,7 +151,6 @@ The post-processor will warn you:
 If you see these, either:
 1. Use a smaller tool
 2. Redesign the part with larger features
-3. Switch drill mode for holes
 
 ## Measuring Tool Diameter
 
