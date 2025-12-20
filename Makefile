@@ -5,4 +5,8 @@ install:
 	uv sync --all-extras
 
 test:
-	uv run python gcode_test.py
+	@echo "Running unit tests..."
+	@uv run python -m unittest discover -s tests --buffer
+	@echo ""
+	@echo "Running system tests..."
+	@uv run python gcode_test.py --quiet
