@@ -1,34 +1,23 @@
 from pygcode import *
 from termcolor import colored
 from frc_cam_postprocessor import FRCPostProcessor
+import argparse
+import io
 import sys
 import tempfile
+from contextlib import redirect_stdout
 
-def load_gcode_file(gcode_file_path):
-    """Load G-code file and return list of Line objects"""
-    lines = []
-    with open(gcode_file_path, "r") as f:
-        for line_num, line_text in enumerate(f.readlines(), 1):
-            try:
-                line = Line(line_text)
-                lines.append(line)
-            except Exception as e:
-                if line_text.strip() and not line_text.strip().startswith(';') and not line_text.strip().startswith('('):
-                    print(f"Warning: Could not parse line {line_num}: {line_text.strip()}")
-                    print(f"  Error: {e}")
-                continue
-    return lines
+# Import shared utilities
+from tests.gcode_utils import (
+    load_gcode_file,
+    get_machine_state,
+    get_feedrates,
+    get_gcode_boundary,
+    get_safe_heights,
+)
 
-
-def get_machine_state(gcode_lines):
-    """Process G-code through pygcode Machine to extract final state"""
-    machine = Machine()
-
-    for line in gcode_lines:
-        if line.block and line.block.gcodes:
-            machine.process_gcodes(*line.block.gcodes)
-
-    return machine
+# Global quiet mode flag
+QUIET_MODE = False
 
 
 PASS = colored("PASS", "green")
@@ -77,20 +66,6 @@ def verify_cam_settings(onshape_lines, fusion_lines):
     return units_match and spindle_match and plane_match and distance_match
 
 
-def get_feedrates(gcode_lines):
-    """Extract all unique feedrates from G-code"""
-    feedrates = []
-    
-    for line in gcode_lines:
-        if line.block and line.block.words:
-            for word in line.block.words:
-                if word.letter == "F":
-                    feedrates.append(word.value)
-                    break
-    
-    return feedrates
-
-
 def verify_feedrates(onshape_lines, fusion_lines, debug=False):
     print("\nTest: Verify Feedrates")
     
@@ -127,88 +102,6 @@ def verify_feedrates(onshape_lines, fusion_lines, debug=False):
         print(f"\t\tCutting feedrate: {onshape_cutting/25.4:.2f}")
     
     return all_passed
-
-def get_gcode_boundary(gcode_lines):
-    """Extract the bounding box (min/max X, Y, Z) from G-code"""
-    machine = Machine()
-    
-    # Track current position
-    current_pos = {'X': 0.0, 'Y': 0.0, 'Z': 0.0}
-    
-    # Track min/max for each axis
-    bounds = {
-        'X': {'min': None, 'max': None},
-        'Y': {'min': None, 'max': None},
-        'Z': {'min': None, 'max': None}
-    }
-    
-    for line in gcode_lines:
-        if line.block and line.block.gcodes:
-            machine.process_gcodes(*line.block.gcodes)
-            
-            for gcode in line.block.gcodes:
-                # Track linear and arc moves
-                if isinstance(gcode, (GCodeLinearMove, GCodeArcMoveCW, GCodeArcMoveCCW)):
-                    if line.block.words:
-                        # Extract position updates
-                        for word in line.block.words:
-                            if word.letter in ['X', 'Y', 'Z']:
-                                new_val = word.value
-                                current_pos[word.letter] = new_val
-                                
-                                # Update bounds
-                                if bounds[word.letter]['min'] is None or new_val < bounds[word.letter]['min']:
-                                    bounds[word.letter]['min'] = new_val
-                                if bounds[word.letter]['max'] is None or new_val > bounds[word.letter]['max']:
-                                    bounds[word.letter]['max'] = new_val
-    
-    return bounds
-
-
-def get_safe_heights(gcode_lines):
-    """Extract clearance and retract heights from G-code"""
-    machine = Machine()
-    
-    current_z = 0.0
-    retract_heights = []  # Upward Z moves (retracts)
-    clearance_heights = []  # Maximum Z positions reached
-    plunge_starts = []  # Z position before plunging
-    
-    for line in gcode_lines:
-        if line.block and line.block.gcodes:
-            machine.process_gcodes(*line.block.gcodes)
-            
-            for gcode in line.block.gcodes:
-                # Track moves
-                if isinstance(gcode, (GCodeLinearMove, GCodeRapidMove)):
-                    if line.block.words:
-                        has_z = any(w.letter == 'Z' for w in line.block.words)
-                        has_xy = any(w.letter in ['X', 'Y'] for w in line.block.words)
-                        
-                        if has_z:
-                            # Get new Z value
-                            new_z = current_z
-                            for w in line.block.words:
-                                if w.letter == 'Z':
-                                    new_z = w.value
-                                    break
-                            
-                            # Detect retracts (upward Z moves without XY)
-                            if new_z > current_z and not has_xy:
-                                retract_heights.append(new_z)
-                                clearance_heights.append(new_z)
-                            
-                            # Detect plunge start positions (Z before downward move)
-                            elif new_z < current_z and not has_xy:
-                                plunge_starts.append(current_z)
-                            
-                            current_z = new_z
-    
-    return {
-        'retract_heights': sorted(set(retract_heights)),
-        'max_clearance': max(clearance_heights) if clearance_heights else None,
-        'plunge_start_heights': sorted(set(plunge_starts))
-    }
 
 
 def verify_boundary(onshape_lines, fusion_lines, tolerance=0.1):
@@ -335,51 +228,57 @@ def generate_gcode_from_dxf(dxf_path, material_thickness=0.25, tool_diameter=0.1
                             material='plywood'):
     """Generate G-code from DXF using PenguinCAM"""
 
-    # Create post-processor with specified parameters
-    pp = FRCPostProcessor(material_thickness=material_thickness,
-                          tool_diameter=tool_diameter,
-                          units=units)
+    # Suppress stdout in quiet mode
+    output = io.StringIO() if QUIET_MODE else sys.stdout
 
-    # Apply material preset (sets feeds, speeds, ramp angles) - matches GUI behavior
-    pp.apply_material_preset(material)
+    with redirect_stdout(output):
+        # Create post-processor with specified parameters
+        pp = FRCPostProcessor(material_thickness=material_thickness,
+                              tool_diameter=tool_diameter,
+                              units=units)
 
-    pp.num_tabs = tabs
-    pp.sacrifice_board_depth = sacrifice_depth
+        # Apply material preset (sets feeds, speeds, ramp angles) - matches GUI behavior
+        pp.apply_material_preset(material)
 
-    # Recalculate Z positions with user-specified sacrifice depth
-    pp.cut_depth = -pp.sacrifice_board_depth
-    
-    # Process DXF file
-    pp.load_dxf(dxf_path)
-    pp.classify_holes()
-    pp.identify_perimeter_and_pockets()
-    
-    # Generate to temporary file
-    temp_gcode = tempfile.NamedTemporaryFile(mode='w', suffix='.gcode', delete=False)
-    temp_gcode_path = temp_gcode.name
-    temp_gcode.close()
-    
-    pp.generate_gcode(temp_gcode_path)
-    
+        pp.num_tabs = tabs
+        pp.sacrifice_board_depth = sacrifice_depth
+
+        # Recalculate Z positions with user-specified sacrifice depth
+        pp.cut_depth = -pp.sacrifice_board_depth
+
+        # Process DXF file
+        pp.load_dxf(dxf_path)
+        pp.classify_holes()
+        pp.identify_perimeter_and_pockets()
+
+        # Generate to temporary file
+        temp_gcode = tempfile.NamedTemporaryFile(mode='w', suffix='.gcode', delete=False)
+        temp_gcode_path = temp_gcode.name
+        temp_gcode.close()
+
+        pp.generate_gcode(temp_gcode_path)
+
     return temp_gcode_path
 
-# Update main function
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Run G-code comparison tests')
+    parser.add_argument('--quiet', '-q', action='store_true',
+                        help='Suppress verbose output, show only summary')
+    args = parser.parse_args()
+
+    QUIET_MODE = args.quiet
+
     INPUT_DXF = "./test_part.dxf"
     FUSION_REFERENCE = "./fusion_output.gcode"
-    
+
     # CAM parameters
-    MATERIAL = 'plywood'  # Material preset: 'plywood', 'aluminum', or 'polycarbonate'
+    MATERIAL = 'plywood'
     MATERIAL_THICKNESS = 6.35
     TOOL_DIAMETER = 4
     SACRIFICE_DEPTH = 0.5
     UNITS = 'mm'
     TABS = 4
 
-    # Output options
-    KEEP_GCODE = False
-    OUTPUT_GCODE_PATH = "./penguin_cam_output.gcode"
-    
     penguin_gcode_path = generate_gcode_from_dxf(
         INPUT_DXF,
         material_thickness=MATERIAL_THICKNESS,
@@ -389,20 +288,24 @@ if __name__ == "__main__":
         tabs=TABS,
         material=MATERIAL
     )
-    
+
     penguin_lines = load_gcode_file(penguin_gcode_path)
     fusion_lines = load_gcode_file(FUSION_REFERENCE)
 
-    settings_passed = verify_cam_settings(penguin_lines, fusion_lines)
-    feedrates_passed = verify_feedrates(penguin_lines, fusion_lines, debug=False)
-    # safe_heights_passed = verify_safe_heights(penguin_lines, fusion_lines)
-    
-    all_passed = settings_passed and feedrates_passed # and safe_heights_passed
-    print(f"\nOverall: {PASS if all_passed else FAIL}")
-
-    
-    # Exit with appropriate code for CI/CD
-    if not all_passed:
-        sys.exit(1)  # Non-zero exit code indicates failure
+    # Run tests, suppressing detailed output in quiet mode
+    if QUIET_MODE:
+        output = io.StringIO()
+        with redirect_stdout(output):
+            settings_passed = verify_cam_settings(penguin_lines, fusion_lines)
+            feedrates_passed = verify_feedrates(penguin_lines, fusion_lines, debug=False)
+        all_passed = settings_passed and feedrates_passed
+        print(f"CAM settings: {PASS if settings_passed else FAIL}")
+        print(f"Feedrates: {PASS if feedrates_passed else FAIL}")
     else:
-        sys.exit(0)  # Zero exit code indicates success
+        settings_passed = verify_cam_settings(penguin_lines, fusion_lines)
+        feedrates_passed = verify_feedrates(penguin_lines, fusion_lines, debug=False)
+        all_passed = settings_passed and feedrates_passed
+
+    print(f"Overall: {PASS if all_passed else FAIL}")
+
+    sys.exit(0 if all_passed else 1)
