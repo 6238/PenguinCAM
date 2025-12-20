@@ -26,7 +26,7 @@ PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC tea
 ### 🤖 **Built for FRC**
 
 ✅ **Automatic hole detection:**
-- #10 screw holes (0.19" diameter)
+- #10 screw holes (0.201" free fit clearance)
 - 1.125" bearing holes  
 - Non-standard holes milled as circular pockets
 
@@ -310,6 +310,8 @@ penguincam/
 
 ### Local Testing
 
+We use [uv](https://docs.astral.sh/uv/) for fast Python dependency management. This works well with git worktrees since packages are cached globally.
+
 1. **Clone repository:**
    ```bash
    git clone https://github.com/your-team/penguincam.git
@@ -318,10 +320,16 @@ penguincam/
 
 2. **Install dependencies:**
    ```bash
-   pip install -r requirements.txt
+   make install
+   ```
+   This installs `uv` if needed, creates a `.venv`, and installs all dependencies.
+
+3. **Run G-code tests:**
+   ```bash
+   make test
    ```
 
-3. **Set environment variables:**
+4. **Set environment variables** (for running the web app):
    ```bash
    export GOOGLE_CLIENT_ID=your-client-id
    export GOOGLE_CLIENT_SECRET=your-secret
@@ -331,12 +339,12 @@ penguincam/
    export AUTH_ENABLED=false  # Skip auth for local testing
    ```
 
-4. **Run locally:**
+5. **Run locally:**
    ```bash
-   python frc_cam_gui_app.py
+   uv run python frc_cam_gui_app.py
    ```
 
-5. **Visit:** http://localhost:6238
+6. **Visit:** http://localhost:6238
 
 ### Deployment
 
