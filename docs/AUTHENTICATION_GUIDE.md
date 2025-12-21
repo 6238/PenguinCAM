@@ -23,11 +23,6 @@ PenguinCAM uses **Google OAuth 2.0** to:
 - ✅ Access Google Drive API (for uploading G-code)
 - ✅ Maintain user sessions securely
 
-**Why OAuth instead of SAML?**
-- OAuth provides both authentication AND API access tokens
-- Allows PenguinCAM to upload files to Google Drive on behalf of users
-- Simpler integration for web apps
-
 **Important:** Even though you use Google Workspace, OAuth apps are configured in **Google Cloud Console**, not the Workspace Admin panel.
 
 ---
@@ -138,12 +133,11 @@ Click **"Add or Remove Scopes"**
 2. **Google Drive:**
    - `.../auth/drive.file`
    
-   Type in filter: `drive.file`
+   Type in filter: `drive`
    Check the box
    
-   **Important:** Use `drive.file` (limited access) not `drive` (full access)
-   - `drive.file` only accesses files created by the app
-   - More secure and appropriate for this use case
+   **Important:** Use `drive` (full access) not `drive.file` (limited access)
+   - `drive.file` only accesses files created by the app, cannot access Shared Drives
 
 **Manual entry if needed:**
 ```
@@ -498,6 +492,7 @@ GOOGLE_CLIENT_SECRET=xxxxx
 BASE_URL=https://your-domain.com
 AUTH_ENABLED=true
 ALLOWED_DOMAINS=your-workspace-domain.com
+FLASK_SECRET_KEY=random-64-character-hex-string
 ```
 
 **Scopes Required:**

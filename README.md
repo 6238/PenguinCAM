@@ -39,25 +39,21 @@ PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC tea
 - Auto-detects inner boundaries
 - Generates clearing toolpaths
 
-✅ **Tool compensation built-in:**
-- Parts come out the correct size
-- Perimeter offset outward, pockets offset inward
-
 ### 🔗 **OnShape Integration** ⭐ Preferred Workflow
 
 **One-Click Export from OnShape:**
 - Right-click part in OnShape → "Send to PenguinCAM"
-- Auto-detects top face (highest Z position)
+- Auto-detects top face
 - Opens PenguinCAM with part already loaded
 - No manual DXF export or face selection needed
 
 **How to Set Up:**
-1. Install PenguinCAM extension in your OnShape company
-2. Extension appears in right-click menu on parts
+1. Install PenguinCAM extension in your OnShape classroom
+2. Extension appears in right-click "Applications" menu on parts
 3. Click once to send part directly to PenguinCAM
 4. OAuth authentication (one-time per team member)
 
-**Alternative:** Manual DXF upload still available for offline work
+**Alternative:** Manual DXF upload available for offline work
 
 ### 🔐 **Team Access Control**
 
@@ -68,6 +64,7 @@ PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC tea
 ### 💾 **Google Drive Integration**
 
 - Upload G-code directly to team Shared Drive
+- Easily accessible from CNC computer
 - All team members can access files
 - Files persist when students graduate
 
@@ -83,7 +80,7 @@ PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC tea
 - Interactive preview with cutting tool animation
 - Scrubber to step through each move
 - See completed vs. upcoming cuts
-- Verify holes, pockets, and perimeter
+- Verify toolpath for holes, pockets, and perimeter
 
 ---
 
@@ -94,9 +91,9 @@ PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC tea
 **One-Click Workflow:**
 1. **Design your part** in OnShape (flat plate with holes/pockets)
 2. **Right-click the part** in the feature tree
-3. **Click "Send to PenguinCAM"** from the menu
+3. **Click "Send to PenguinCAM"** from the Applications menu item
 4. **Orient your part** - Rotate if needed in 2D setup view
-5. **Click "Generate G-code"** - Review 3D preview
+5. **Click "Generate Program"** - Review 3D preview
 6. **Download or save to Drive** - Ready for CNC!
 
 **First Time Setup:** You'll be asked to authenticate with Google (one time per team member)
@@ -112,7 +109,7 @@ PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC tea
 
 ### Running on the CNC
 
-- Load G-code into your CNC controller
+- Load G-code into your Mach4 on the CNC controller
 - Set up material and zero axes (see [Quick Reference](docs/quick-reference-card.md))
 - Run the program!
 
@@ -225,7 +222,7 @@ PenguinCAM generates optimized toolpaths:
 **Z=0 is at the SACRIFICE BOARD (bottom), not material top.**
 
 This ensures:
-- ✅ Consistent setup across jobs
+- ✅ Consistent Z-axis setup across jobs
 - ✅ Guaranteed cut-through (0.02" overcut)
 - ✅ No math required when changing material thickness
 
