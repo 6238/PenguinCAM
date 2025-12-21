@@ -20,6 +20,9 @@ from zoneinfo import ZoneInfo
 
 # Third-party
 import ezdxf
+
+# Local modules
+from tube_facing_toolpath import TUBE_FACING_TOOLPATH_1X1
 from shapely.geometry import Point, Polygon, LineString, MultiPolygon
 from shapely.ops import unary_union, linemerge
 
@@ -1580,13 +1583,175 @@ class FRCPostProcessor:
 
         # Retract
         gcode.append(f"G0 Z{self.safe_height:.4f}  ; Retract")
-        
+
         return gcode
+
+    def _adjust_y_coordinate(self, line: str, y_offset: float) -> str:
+        """
+        Adjust Y coordinate in a G-code line by adding offset.
+
+        Handles formats: Y-0.1234, Y0.5678, Y-0.1234 (with other coords)
+
+        Args:
+            line: G-code line to modify
+            y_offset: Offset to add to Y coordinate
+
+        Returns:
+            Modified G-code line with adjusted Y coordinate
+        """
+        def replace_y(match):
+            y_val = float(match.group(1))
+            new_y = y_val + y_offset
+            return f'Y{new_y:.4f}'
+
+        # Match Y followed by optional minus and digits
+        return re.sub(r'Y(-?\d+\.?\d*)', replace_y, line)
+
+    def generate_tube_facing_gcode(self, output_file: str, tube_size: str = '1x1'):
+        """
+        Generate G-code for tube facing operation.
+
+        Uses toolpath from tube_facing_toolpath module, wrapping with:
+        - Header with setup instructions
+        - Phase 1: Face first half (Y=-0.125 to Y=+0.125) - Y offset applied
+        - Pause for flip (M0)
+        - Phase 2: Face second half (Y=-0.25 to Y=0) - different Y offset
+        - End sequence
+
+        Args:
+            output_file: Path to output G-code file
+            tube_size: Size of tube ('1x1', '2x1-standing', '2x1-flat')
+        """
+        # Get toolpath lines from module
+        toolpath_lines = TUBE_FACING_TOOLPATH_1X1.split('\n')
+
+        # Y offsets for each pass
+        # The toolpath's finishing cut is at Y=-0.0787 (tool radius), which
+        # places the tube face at Y=0 after tool compensation.
+        # Pass 1: Shift +0.125" so tube face ends at Y=+0.125"
+        # Pass 2: No shift, tube face ends at Y=0
+        # After flip, both halves of the tube end are squared.
+        pass1_y_offset = 0.125
+        pass2_y_offset = 0.0
+
+        gcode = []
+
+        # Generate timestamp in Pacific time
+        pacific_time = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
+        timestamp = pacific_time.strftime("%Y-%m-%d %H:%M")
+
+        # === HEADER ===
+        gcode.append('( PENGUINCAM TUBE FACING OPERATION )')
+        gcode.append(f'( Generated: {timestamp} )')
+        gcode.append(f'( Tube size: {tube_size} )')
+        gcode.append(f'( Tool: {self.tool_diameter:.3f}" end mill )')
+        gcode.append('( )')
+        gcode.append('( SETUP INSTRUCTIONS: )')
+        gcode.append('( 1. Mount tube in jig with end facing spindle )')
+        gcode.append('( 2. Verify G55 is set to jig origin )')
+        gcode.append('( 3. Z=0 is at bottom of tube (jig surface) )')
+        gcode.append('( 4. Y=0 is at nominal end face of tube )')
+        gcode.append('( )')
+
+        # === INITIALIZATION ===
+        gcode.append('')
+        gcode.append('( === INITIALIZATION === )')
+        gcode.append('G90 G94 G91.1 G40 G49 G17')
+        gcode.append('G20')
+        gcode.append('G0 G28 G91 Z0.  ; Home Z axis at rapid speed')
+        gcode.append('G90  ; Back to absolute mode')
+        gcode.append('')
+        gcode.append('( Tool and spindle )')
+        gcode.append('T1 M6')
+        gcode.append(f'S{self.spindle_speed} M3')
+        gcode.append('G4 P3.0')
+        gcode.append('')
+        gcode.append('G55  ; Use jig work coordinate system')
+        gcode.append('')
+
+        # === PHASE 1: FACE FIRST HALF ===
+        gcode.append('( === PHASE 1: FACE FIRST HALF === )')
+        gcode.append('( Face from Y=-0.125 to Y=+0.125 )')
+        gcode.append('')
+        gcode.append('G53 G0 Z0.  ; Move to machine Z0 (safe clearance)')
+        gcode.append('G0 X0 Y0  ; Rapid to work origin')
+        gcode.append('')
+
+        # Add toolpath with Pass 1 Y offset
+        for line in toolpath_lines:
+            line = line.strip()
+            if line and not line.startswith('G52'):
+                adjusted_line = self._adjust_y_coordinate(line, pass1_y_offset)
+                gcode.append(adjusted_line)
+
+        # === PAUSE FOR FLIP ===
+        gcode.append('')
+        gcode.append('( === PAUSE FOR TUBE FLIP === )')
+        gcode.append('G53 G0 Z0.  ; Move to machine Z0 (safe clearance)')
+        gcode.append('G53 G0 X0.5 Y23.5  ; Park at back of machine')
+        gcode.append('M5')
+        gcode.append('G4 P5.0')
+        gcode.append('')
+        gcode.append('( *** OPERATOR ACTION REQUIRED *** )')
+        gcode.append('( Flip tube 180 degrees end-for-end )')
+        gcode.append('( Re-clamp tube in jig )')
+        gcode.append('( Press CYCLE START to continue )')
+        gcode.append('M0')
+        gcode.append('')
+
+        # === PHASE 2: FACE SECOND HALF ===
+        gcode.append('( === PHASE 2: FACE SECOND HALF === )')
+        gcode.append('( Face from Y=-0.250 to Y=0 )')
+        gcode.append('')
+        gcode.append(f'S{self.spindle_speed} M3')
+        gcode.append('G4 P3.0')
+        gcode.append('')
+        gcode.append('G53 G0 Z0.  ; Move to machine Z0 (safe clearance)')
+        gcode.append('G0 X0 Y0  ; Rapid to work origin')
+        gcode.append('')
+
+        # Add toolpath with Pass 2 Y offset
+        for line in toolpath_lines:
+            line = line.strip()
+            if line and not line.startswith('G52'):
+                adjusted_line = self._adjust_y_coordinate(line, pass2_y_offset)
+                gcode.append(adjusted_line)
+
+        # === END ===
+        gcode.append('')
+        gcode.append('( === PROGRAM END === )')
+        gcode.append('G53 G0 Z0.  ; Move to machine Z0 (safe clearance)')
+        gcode.append('G53 G0 X0.5 Y23.5  ; Park at back of machine')
+        gcode.append('M5')
+        gcode.append('M30')
+
+        # Write to file
+        with open(output_file, 'w') as f:
+            f.write('\n'.join(gcode))
+
+        print(f'OUTPUT_FILE:{output_file}')
+        print(f'Tube facing G-code generated for {tube_size} tube')
+        print(f'\nSETUP:')
+        print(f'  1. Mount tube in jig with end facing spindle')
+        print(f'  2. Verify G55 is set to jig origin')
+        print(f'  3. Z=0 is at bottom of tube (jig surface)')
+        print(f'  4. Y=0 is at nominal end face of tube')
+        print(f'\nOPERATION:')
+        print(f'  Phase 1: Face first half of tube end')
+        print(f'  -- Program pauses (M0) for tube flip --')
+        print(f'  Phase 2: Face second half of tube end')
+
 
 def main():
     parser = argparse.ArgumentParser(description='PenguinCAM - Team 6238 Post-Processor')
-    parser.add_argument('input_dxf', help='Input DXF file from OnShape')
+    parser.add_argument('input_dxf', nargs='?', help='Input DXF file from OnShape (not needed for tube-facing mode)')
     parser.add_argument('output_gcode', help='Output G-code file')
+    parser.add_argument('--mode', type=str, default='standard',
+                       choices=['standard', 'tube-facing'],
+                       help='Operation mode: standard (DXF processing) or tube-facing')
+    parser.add_argument('--tube-size', type=str, default='1x1',
+                       choices=['1x1', '2x1-standing', '2x1-flat'],
+                       help='Tube size for tube-facing mode')
     parser.add_argument('--material', type=str, default='plywood',
                        choices=['plywood', 'aluminum', 'polycarbonate'],
                        help='Material preset (default: plywood) - sets feeds, speeds, and ramp angles')
@@ -1618,72 +1783,87 @@ def main():
                        help='Plunge rate (default: 10 ipm or 339 mm/min depending on units)')
     
     args = parser.parse_args()
-    
-    # Create post-processor
-    pp = FRCPostProcessor(material_thickness=args.thickness,
-                          tool_diameter=args.tool_diameter,
-                          units=args.units)
 
-    # Apply material preset (sets feeds, speeds, ramp angles)
-    pp.apply_material_preset(args.material)
+    # Mode branching
+    if args.mode == 'tube-facing':
+        # Tube facing mode - generate G-code for squaring tube ends
+        if not args.output_gcode:
+            parser.error("output_gcode is required for tube-facing mode")
 
-    # Override with command-line parameters if specified
-    pp.num_tabs = args.tabs
-    pp.sacrifice_board_depth = args.sacrifice_depth
+        pp = FRCPostProcessor(args.thickness, args.tool_diameter)
+        pp.apply_material_preset('aluminum')  # Tube facing is always aluminum
+        pp.generate_tube_facing_gcode(args.output_gcode, args.tube_size)
 
-    # Store user name if provided
-    if args.user:
-        pp.user_name = args.user
+    else:
+        # Standard mode - DXF processing
+        if not args.input_dxf:
+            parser.error("input_dxf is required for standard mode")
 
-    # Set cutting parameters (override preset if specified)
-    if args.spindle_speed != 18000:  # Only override if user changed from default
-        pp.spindle_speed = args.spindle_speed
-    if args.feed_rate is not None:
-        pp.feed_rate = args.feed_rate
-    if args.plunge_rate is not None:
-        pp.plunge_rate = args.plunge_rate
-    
-    # Recalculate Z positions with user-specified sacrifice depth
-    pp.cut_depth = -pp.sacrifice_board_depth
-    
-    # Process file
-    pp.load_dxf(args.input_dxf)
+        # Create post-processor
+        pp = FRCPostProcessor(material_thickness=args.thickness,
+                              tool_diameter=args.tool_diameter,
+                              units=args.units)
 
-    # Apply origin and rotation transformation BEFORE processing
-    # ALWAYS transform to ensure selected corner is at (0,0)
-    pp.transform_coordinates(args.origin_corner, args.rotation)
+        # Apply material preset (sets feeds, speeds, ramp angles)
+        pp.apply_material_preset(args.material)
 
-    pp.classify_holes()
-    pp.identify_perimeter_and_pockets()
+        # Override with command-line parameters if specified
+        pp.num_tabs = args.tabs
+        pp.sacrifice_board_depth = args.sacrifice_depth
 
-    # Add timestamp to output filename (Pacific time)
-    pacific_time = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
-    timestamp = pacific_time.strftime("%Y%m%d_%H%M%S")
-    base_name = os.path.splitext(args.output_gcode)[0]
-    extension = os.path.splitext(args.output_gcode)[1]
-    output_path = f"{base_name}_{timestamp}{extension}"
+        # Store user name if provided
+        if args.user:
+            pp.user_name = args.user
 
-    pp.generate_gcode(output_path)
+        # Set cutting parameters (override preset if specified)
+        if args.spindle_speed != 18000:  # Only override if user changed from default
+            pp.spindle_speed = args.spindle_speed
+        if args.feed_rate is not None:
+            pp.feed_rate = args.feed_rate
+        if args.plunge_rate is not None:
+            pp.plunge_rate = args.plunge_rate
 
-    # Print actual output path for GUI to parse (prefixed with OUTPUT_FILE:)
-    print(f"OUTPUT_FILE:{output_path}")
-    print(f"\nDone! G-code written to: {output_path}")
-    print("Review the G-code file before running on your machine.")
-    print(f"\nCUTTING PARAMETERS:")
-    print(f"  Spindle speed: {pp.spindle_speed} RPM")
-    print(f"  Feed rate: {pp.feed_rate:.1f} {args.units}/min")
-    print(f"  Plunge rate: {pp.plunge_rate:.1f} {args.units}/min")
-    print(f"\nZ-AXIS SETUP:")
-    print(f"  ** Zero your Z-axis to the SACRIFICE BOARD surface **")
-    print(f"  Material top will be at Z={pp.material_top:.4f}\"")
-    print(f"  Cut depth: Z={pp.cut_depth:.4f}\" ({pp.sacrifice_board_depth:.4f}\" into sacrifice board)")
-    print(f"  Safe height: Z={pp.safe_height:.4f}\"")
-    print(f"\nTool compensation applied:")
-    print(f"  Tool diameter: {pp.tool_diameter:.4f}\"")
-    print(f"  Tool radius: {pp.tool_radius:.4f}\"")
-    print(f"  Perimeter: offset OUTWARD by {pp.tool_radius:.4f}\"")
-    print(f"  Pockets: offset INWARD by {pp.tool_radius:.4f}\"")
-    print(f"  Holes: toolpath radius reduced by {pp.tool_radius:.4f}\" (holes < {pp.min_millable_hole:.3f}\" skipped)")
+        # Recalculate Z positions with user-specified sacrifice depth
+        pp.cut_depth = -pp.sacrifice_board_depth
+
+        # Process file
+        pp.load_dxf(args.input_dxf)
+
+        # Apply origin and rotation transformation BEFORE processing
+        # ALWAYS transform to ensure selected corner is at (0,0)
+        pp.transform_coordinates(args.origin_corner, args.rotation)
+
+        pp.classify_holes()
+        pp.identify_perimeter_and_pockets()
+
+        # Add timestamp to output filename (Pacific time)
+        pacific_time = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
+        timestamp = pacific_time.strftime("%Y%m%d_%H%M%S")
+        base_name = os.path.splitext(args.output_gcode)[0]
+        extension = os.path.splitext(args.output_gcode)[1]
+        output_path = f"{base_name}_{timestamp}{extension}"
+
+        pp.generate_gcode(output_path)
+
+        # Print actual output path for GUI to parse (prefixed with OUTPUT_FILE:)
+        print(f"OUTPUT_FILE:{output_path}")
+        print(f"\nDone! G-code written to: {output_path}")
+        print("Review the G-code file before running on your machine.")
+        print(f"\nCUTTING PARAMETERS:")
+        print(f"  Spindle speed: {pp.spindle_speed} RPM")
+        print(f"  Feed rate: {pp.feed_rate:.1f} {args.units}/min")
+        print(f"  Plunge rate: {pp.plunge_rate:.1f} {args.units}/min")
+        print(f"\nZ-AXIS SETUP:")
+        print(f"  ** Zero your Z-axis to the SACRIFICE BOARD surface **")
+        print(f"  Material top will be at Z={pp.material_top:.4f}\"")
+        print(f"  Cut depth: Z={pp.cut_depth:.4f}\" ({pp.sacrifice_board_depth:.4f}\" into sacrifice board)")
+        print(f"  Safe height: Z={pp.safe_height:.4f}\"")
+        print(f"\nTool compensation applied:")
+        print(f"  Tool diameter: {pp.tool_diameter:.4f}\"")
+        print(f"  Tool radius: {pp.tool_radius:.4f}\"")
+        print(f"  Perimeter: offset OUTWARD by {pp.tool_radius:.4f}\"")
+        print(f"  Pockets: offset INWARD by {pp.tool_radius:.4f}\"")
+        print(f"  Holes: toolpath radius reduced by {pp.tool_radius:.4f}\" (holes < {pp.min_millable_hole:.3f}\" skipped)")
 
 
 if __name__ == '__main__':
