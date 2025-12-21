@@ -711,7 +711,7 @@ class FRCPostProcessor:
         operations_str = ", ".join(operations) if operations else "None"
 
         # Calculate helical entry angle
-        helical_angle = f"~{int(self.ramp_angle)}°"
+        helical_angle = f"~{int(self.ramp_angle)} deg"
 
         # Generate comprehensive header
         team = machine_config.get('team', {})
@@ -740,7 +740,7 @@ class FRCPostProcessor:
         else:
             material_info = f"{material_info} thick"
         gcode.append(f"(Material: {material_info})")
-        gcode.append(f"(Tool: Ø{self.tool_diameter}\" Flat End Mill)")
+        gcode.append(f"(Tool: {self.tool_diameter}\" diam Flat End Mill)")
         gcode.append(f"(Spindle: {self.spindle_speed} RPM)")
         gcode.append(f"(Coolant: {machine.get('coolant', 'None')})")
         gcode.append("")
@@ -821,6 +821,7 @@ class FRCPostProcessor:
         gcode.append("M5  ; Spindle off")
         gcode.append("G53 G0 X0.5 Y23.5  ; Move gantry to back of machine for easy access")
         gcode.append("M30  ; Program end")
+        gcode.append("")
 
         # Calculate estimated cycle time
         time_estimate = self._estimate_cycle_time(gcode)
