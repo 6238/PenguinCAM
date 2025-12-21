@@ -4,7 +4,7 @@ PenguinCAM - FRC Team 6238 CAM Tool
 A Flask-based web interface for generating G-code from DXF files
 """
 
-from flask import Flask, render_template, request, jsonify, send_file, session
+from flask import Flask, render_template, request, jsonify, send_file, session, send_from_directory, redirect
 from werkzeug.middleware.proxy_fix import ProxyFix
 import os
 import sys
@@ -14,6 +14,11 @@ import shutil
 from pathlib import Path
 import json
 import secrets
+import re
+import atexit
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from urllib.parse import urlencode
 
 # Import Google Drive integration (optional - will work without it)
 try:
@@ -82,6 +87,75 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 # Path to the post-processor script (assumed to be in same directory)
 SCRIPT_DIR = Path(__file__).parent
 POST_PROCESSOR = SCRIPT_DIR / 'frc_cam_postprocessor.py'
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+def get_current_user_id():
+    """Get the current user ID from session"""
+    return session.get('user_email', 'default_user')
+
+def get_onshape_client_or_401():
+    """
+    Get OnShape client for current user, or return 401 error response.
+    Returns: (client, error_response, status_code)
+    If client is None, return the error_response with status_code.
+    """
+    if not ONSHAPE_AVAILABLE:
+        return None, jsonify({'error': 'OnShape integration not available'}), 400
+
+    client = session_manager.get_client(get_current_user_id())
+    if not client:
+        return None, jsonify({
+            'error': 'Not authenticated with OnShape',
+            'auth_url': '/onshape/auth'
+        }), 401
+
+    return client, None, None
+
+def extract_onshape_params(params):
+    """Extract OnShape parameters from request params dict"""
+    return {
+        'document_id': params.get('documentId') or params.get('did'),
+        'workspace_id': params.get('workspaceId') or params.get('wid'),
+        'element_id': params.get('elementId') or params.get('eid'),
+        'face_id': params.get('faceId') or params.get('fid'),
+        'body_id': params.get('partId') or params.get('bodyId') or params.get('bid')
+    }
+
+def generate_pacific_timestamp():
+    """Generate timestamp string in Pacific timezone"""
+    pacific_time = datetime.now(ZoneInfo("America/Los_Angeles"))
+    return pacific_time.strftime("%Y-%m-%d_%H-%M-%S")
+
+def generate_onshape_filename(doc_name, part_name):
+    """
+    Generate a clean filename from OnShape document and part names.
+    Falls back to timestamp if names are unavailable or generic.
+    """
+    # Clean function for filename sanitization
+    def clean_name(name):
+        return re.sub(r'[^\w\s-]', '', name).strip().replace(' ', '_')[:50]
+
+    if doc_name and part_name:
+        # Best case: combine both
+        doc_clean = clean_name(doc_name)
+        part_clean = clean_name(part_name)
+        return f"{doc_clean}_{part_clean}"
+
+    elif part_name:
+        # Fallback: part name only
+        part_clean = clean_name(part_name)
+        if part_clean and part_clean != 'Unnamed_Part':
+            return part_clean
+
+    # Last resort: timestamp (Pacific time)
+    return f"OnShape_Part_{generate_pacific_timestamp()}"
+
+# ============================================================================
+# Routes
+# ============================================================================
 
 @app.route('/')
 @auth.require_auth
@@ -198,7 +272,6 @@ def process_file():
                 print(f"📄 Actual output file: {actual_output_path}")
             elif 'ESTIMATED_CYCLE_TIME:' in line:
                 # Parse: "⏱️  ESTIMATED_CYCLE_TIME: 123.4 seconds (2m 3s)"
-                import re
                 match = re.search(r'ESTIMATED_CYCLE_TIME:\s*([\d.]+)\s*seconds\s*\(([^)]+)\)', line)
                 if match:
                     cycle_time = float(match.group(1))
@@ -278,7 +351,6 @@ def download_file(filename):
 @app.route('/uploads/<filename>')
 def serve_upload(filename):
     """Serve uploaded DXF files for frontend preview"""
-    from flask import send_from_directory
     try:
         return send_from_directory(UPLOAD_FOLDER, filename)
     except Exception as e:
@@ -406,23 +478,20 @@ def onshape_auth():
         return jsonify({
             'error': 'OnShape integration not available'
         }), 400
-    
+
     try:
         client = get_onshape_client()
-        
+
         # Generate state for CSRF protection
-        import secrets
         state = secrets.token_urlsafe(32)
-        
+
         # Store state in session for verification
-        from flask import session
         session['onshape_oauth_state'] = state
-        
+
         # Get authorization URL
         auth_url = client.get_authorization_url(state=state)
-        
+
         # Redirect user to OnShape for authorization
-        from flask import redirect
         return redirect(auth_url)
         
     except Exception as e:
@@ -433,47 +502,44 @@ def onshape_oauth_callback():
     """Handle OnShape OAuth callback"""
     if not ONSHAPE_AVAILABLE:
         return "OnShape integration not available", 400
-    
+
     try:
-        from flask import session, redirect
-        
         # Get authorization code and state
         code = request.args.get('code')
         state = request.args.get('state')
-        
+
         if not code:
             return "Authorization failed: No code received", 400
-        
+
         # Verify state (CSRF protection)
         expected_state = session.get('onshape_oauth_state')
         if state != expected_state:
             return "Authorization failed: Invalid state", 400
-        
+
         # Exchange code for access token
         client = get_onshape_client()
         token_data = client.exchange_code_for_token(code)
-        
+
         if not token_data:
             return "Authorization failed: Could not get access token", 400
-        
+
         # Store client in session
         # In production, you'd want to store tokens in a database
-        user_id = session.get('user_email', 'default_user')
+        user_id = get_current_user_id()
         session_manager.create_session(user_id, client)
         session['onshape_authenticated'] = True
-        
+
         # Clean up OAuth state
         session.pop('onshape_oauth_state', None)
-        
+
         # Check if there was a pending import
         pending_import = session.pop('pending_onshape_import', None)
-        
+
         if pending_import:
             # Redirect back to import with original parameters
-            from urllib.parse import urlencode
             params = urlencode({k: v for k, v in pending_import.items() if v})
             return redirect(f'/onshape/import?{params}')
-        
+
         # Otherwise redirect to main page with success message
         return redirect('/?onshape_connected=true')
         
@@ -490,11 +556,9 @@ def onshape_status():
             'connected': False,
             'message': 'OnShape integration not installed'
         })
-    
+
     try:
-        from flask import session
-        
-        user_id = session.get('user_email', 'default_user')
+        user_id = get_current_user_id()
         client = session_manager.get_client(user_id)
         
         if client and client.access_token:
@@ -527,32 +591,23 @@ def onshape_list_faces():
     List all faces in a Part Studio element
     For debugging and exploring the OnShape API
     """
-    if not ONSHAPE_AVAILABLE:
-        return jsonify({'error': 'OnShape integration not available'}), 400
-    
     try:
-        from flask import session
-        
         # Get parameters
-        document_id = request.args.get('documentId') or request.args.get('did')
-        workspace_id = request.args.get('workspaceId') or request.args.get('wid')
-        element_id = request.args.get('elementId') or request.args.get('eid')
-        
+        params = extract_onshape_params(request.args.to_dict())
+        document_id = params['document_id']
+        workspace_id = params['workspace_id']
+        element_id = params['element_id']
+
         if not all([document_id, workspace_id, element_id]):
             return jsonify({
                 'error': 'Missing required parameters',
                 'required': ['documentId', 'workspaceId', 'elementId']
             }), 400
-        
+
         # Get OnShape client for this user
-        user_id = session.get('user_email', 'default_user')
-        client = session_manager.get_client(user_id)
-        
+        client, error_response, status_code = get_onshape_client_or_401()
         if not client:
-            return jsonify({
-                'error': 'Not authenticated with OnShape',
-                'auth_url': '/onshape/auth'
-            }), 401
+            return error_response, status_code
         
         # List faces
         faces_data = client.list_faces(document_id, workspace_id, element_id)
@@ -579,34 +634,25 @@ def onshape_body_faces():
     """
     Get all faces for all bodies (or a specific body) in an element
     """
-    if not ONSHAPE_AVAILABLE:
-        return jsonify({'error': 'OnShape integration not available'}), 400
-    
     try:
-        from flask import session
-        
         # Get parameters
-        document_id = request.args.get('documentId') or request.args.get('did')
-        workspace_id = request.args.get('workspaceId') or request.args.get('wid')
-        element_id = request.args.get('elementId') or request.args.get('eid')
-        body_id = request.args.get('bodyId') or request.args.get('bid')  # Optional
-        
+        params = extract_onshape_params(request.args.to_dict())
+        document_id = params['document_id']
+        workspace_id = params['workspace_id']
+        element_id = params['element_id']
+        body_id = params['body_id']  # Optional
+
         if not all([document_id, workspace_id, element_id]):
             return jsonify({
                 'error': 'Missing required parameters',
                 'required': ['documentId', 'workspaceId', 'elementId'],
                 'optional': ['bodyId']
             }), 400
-        
+
         # Get OnShape client for this user
-        user_id = session.get('user_email', 'default_user')
-        client = session_manager.get_client(user_id)
-        
+        client, error_response, status_code = get_onshape_client_or_401()
         if not client:
-            return jsonify({
-                'error': 'Not authenticated with OnShape',
-                'auth_url': '/onshape/auth'
-            }), 401
+            return error_response, status_code
         
         # Get faces for bodies
         faces_by_body = client.get_body_faces(document_id, workspace_id, element_id, body_id)
@@ -636,31 +682,30 @@ def onshape_import():
     """
     if not ONSHAPE_AVAILABLE:
         return jsonify({'error': 'OnShape integration not available'}), 400
-    
-    try:
-        from flask import session
 
+    try:
         # Log the complete incoming URL for debugging
         print(f"\n🔗 Complete request URL: {request.url}")
         print(f"   Method: {request.method}")
 
         # Get parameters (either from query string or JSON body)
         if request.method == 'POST':
-            params = request.json or {}
+            raw_params = request.json or {}
         else:
-            params = request.args.to_dict()
+            raw_params = request.args.to_dict()
 
-        document_id = params.get('documentId') or params.get('did')
-        workspace_id = params.get('workspaceId') or params.get('wid')
-        element_id = params.get('elementId') or params.get('eid')
-        face_id = params.get('faceId') or params.get('fid')
-        body_id = params.get('partId') or params.get('bodyId') or params.get('bid')  # Optional - for part selection
+        params = extract_onshape_params(raw_params)
+        document_id = params['document_id']
+        workspace_id = params['workspace_id']
+        element_id = params['element_id']
+        face_id = params['face_id']
+        body_id = params['body_id']  # Optional - for part selection
 
         # Get OnShape server and user info that IS being sent
-        onshape_server = params.get('server', 'https://cad.onshape.com')
-        onshape_userid = params.get('userId')
+        onshape_server = raw_params.get('server', 'https://cad.onshape.com')
+        onshape_userid = raw_params.get('userId')
 
-        print(f"OnShape params received: {params}")
+        print(f"OnShape params received: {raw_params}")
         print(f"  Extracted body_id/partId: {body_id!r}")
         if body_id:
             print(f"  ✅ User selected body/part: {body_id}")
@@ -671,29 +716,28 @@ def onshape_import():
         if (document_id and ('${' in str(document_id) or document_id.startswith('$'))):
             print("❌ OnShape variable substitution failed!")
             print(f"Received literal: documentId={document_id}")
-            
+
             # Show helpful error page
-            from flask import render_template
             return render_template('index.html',
                                  error_message='OnShape integration error: Variable substitution not working. Please contact support or use manual DXF upload.',
                                  debug_info={
                                      'issue': 'OnShape extension not substituting variables',
-                                     'received_params': str(params),
+                                     'received_params': str(raw_params),
                                      'workaround': 'Export DXF manually from OnShape and upload it here'
                                  }), 400
-        
+
         if not all([document_id, workspace_id, element_id]):
             return jsonify({
                 'error': 'Missing required parameters',
                 'required': ['documentId', 'workspaceId', 'elementId'],
-                'received': params,
+                'received': raw_params,
                 'help': 'OnShape variable substitution not working. Check extension configuration or use manual DXF upload.'
             }), 400
-        
+
         # Get OnShape client for this user
-        user_id = session.get('user_email', 'default_user')
+        user_id = get_current_user_id()
         client = session_manager.get_client(user_id)
-        
+
         if not client:
             # Store import parameters in session before redirecting to OAuth
             session['pending_onshape_import'] = {
@@ -702,9 +746,8 @@ def onshape_import():
                 'elementId': element_id,
                 'faceId': face_id
             }
-            
+
             # Redirect to OnShape OAuth
-            from flask import redirect
             return redirect('/onshape/auth')
         
         # If no face_id provided, auto-select the top face
@@ -724,7 +767,6 @@ def onshape_import():
                     print("🔍 Multiple parts detected, showing part selector...")
 
                     # Get detailed info about each part (reuse cached faces_data)
-                    from onshape_integration import OnShapeClient
                     part_selection_data = []
 
                     # Get body faces using cached data to avoid duplicate API call
@@ -764,7 +806,6 @@ def onshape_import():
                     part_selection_data.sort(key=lambda p: p['face_count'] * (1 if p['is_largest'] else 0), reverse=True)
 
                     # Render template with part selection
-                    from flask import render_template
                     return render_template('index.html',
                                          part_selection={
                                              'parts': part_selection_data,
@@ -787,7 +828,6 @@ def onshape_import():
                     error_msg += 'Try selecting a face manually in OnShape.'
 
                     # Render error page instead of JSON
-                    from flask import render_template
                     return render_template('index.html',
                                          error_message=error_msg,
                                          from_onshape=True,
@@ -839,7 +879,6 @@ def onshape_import():
         print(f"📄 DXF content received: {len(dxf_content)} bytes")
 
         # Generate filename: try to combine document name + part name
-        suggested_filename = None
         doc_name = None
 
         # Try to get document name (optional, may fail with 404)
@@ -855,38 +894,10 @@ def onshape_import():
             print(f"   ⚠️  Document API failed (will use part name only): {e}")
 
         # Build filename from whatever we have
-        import re
-        if doc_name and part_name_from_body:
-            # Best case: combine both
-            doc_clean = re.sub(r'[^\w\s-]', '', doc_name).strip().replace(' ', '_')[:50]
-            part_clean = re.sub(r'[^\w\s-]', '', part_name_from_body).strip().replace(' ', '_')[:50]
-            suggested_filename = f"{doc_clean}_{part_clean}"
-            print(f"✅ Using document + part name: {suggested_filename}.nc")
-        elif part_name_from_body:
-            # Fallback: part name only
-            part_clean = re.sub(r'[^\w\s-]', '', part_name_from_body).strip().replace(' ', '_')[:50]
-            if part_clean and part_clean != 'Unnamed_Part':
-                suggested_filename = part_clean
-                print(f"✅ Using part name only: {suggested_filename}.nc")
-            else:
-                # Part name is generic, use timestamp (Pacific time)
-                from datetime import datetime
-                from zoneinfo import ZoneInfo
-                pacific_time = datetime.now(ZoneInfo("America/Los_Angeles"))
-                timestamp = pacific_time.strftime("%Y-%m-%d_%H-%M-%S")
-                suggested_filename = f"OnShape_Part_{timestamp}"
-                print(f"⚠️  Generic part name, using timestamp: {suggested_filename}.nc")
-        else:
-            # Last resort: timestamp (Pacific time)
-            from datetime import datetime
-            from zoneinfo import ZoneInfo
-            pacific_time = datetime.now(ZoneInfo("America/Los_Angeles"))
-            timestamp = pacific_time.strftime("%Y-%m-%d_%H-%M-%S")
-            suggested_filename = f"OnShape_Part_{timestamp}"
-            print(f"⚠️  No names available, using timestamp: {suggested_filename}.nc")
-        
+        suggested_filename = generate_onshape_filename(doc_name, part_name_from_body)
+        print(f"✅ Generated filename: {suggested_filename}.nc")
+
         # Save DXF to temp file in uploads folder
-        import tempfile
         temp_dxf = tempfile.NamedTemporaryFile(
             suffix='.dxf',
             dir=UPLOAD_FOLDER,
@@ -902,10 +913,9 @@ def onshape_import():
         print(f"📂 Saved to: {dxf_path}")
         print(f"📏 File size on disk: {os.path.getsize(dxf_path)} bytes")
         print(f"🔗 Will be served at: /uploads/{dxf_filename}")
-        
+
         # Render main page with DXF auto-loaded
         # The frontend will detect the dxf_file parameter and auto-upload it
-        from flask import render_template
         return render_template('index.html', 
                              dxf_file=dxf_filename,
                              from_onshape=True,
@@ -925,7 +935,6 @@ def cleanup():
     except:
         pass
 
-import atexit
 atexit.register(cleanup)
 
 if __name__ == '__main__':
