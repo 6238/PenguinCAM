@@ -257,6 +257,18 @@
     </main>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <!-- Pass template variables to JavaScript -->
+    <script>
+        // Template variables from Flask
+        window.ONSHAPE_DATA = {
+            errorMessage: '{{ error_message if error_message else "" }}',
+            dxfFile: '{{ dxf_file if dxf_file else "" }}',
+            fromOnshape: {{ 'true' if from_onshape else 'false' }},
+            suggestedFilename: '{{ suggested_filename if suggested_filename else "" }}'
+        };
+    </script>
+
     <script src="/static/app.js"></script>
 </body>
 </html>

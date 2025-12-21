@@ -1460,7 +1460,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             
             // Check for error message from OnShape import
-            const errorMessage = '{{ error_message if error_message else "" }}';
+            const errorMessage = window.ONSHAPE_DATA?.errorMessage || '';
             if (errorMessage) {
                 const statusDiv = document.getElementById('statusMessage');
                 if (statusDiv) {
@@ -1470,11 +1470,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 return; // Don't try to load DXF
             }
-            
+
             // Auto-load DXF if coming from OnShape
-            const dxfFile = '{{ dxf_file if dxf_file else "" }}';
-            const fromOnshape = {{ 'true' if from_onshape else 'false' }};
-            const onshapeSuggestedFilename = '{{ suggested_filename if suggested_filename else "" }}';
+            const dxfFile = window.ONSHAPE_DATA?.dxfFile || '';
+            const fromOnshape = window.ONSHAPE_DATA?.fromOnshape || false;
+            const onshapeSuggestedFilename = window.ONSHAPE_DATA?.suggestedFilename || '';
             
             if (dxfFile && fromOnshape) {
                 console.log('Auto-loading DXF from OnShape:', dxfFile);
