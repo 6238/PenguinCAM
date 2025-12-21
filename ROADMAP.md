@@ -10,7 +10,7 @@ CAM Post-Processor for OnShape → G-code workflow
 PenguinCAM is **deployed and production-ready** at https://penguincam.popcornpenguins.com
 
 **Core features working:**
-- ✅ **OnShape one-click integration** - Right-click in OnShape → Send to PenguinCAM
+- ✅ **OnShape one-click integration** - Right-click "Applications" in OnShape → Send to PenguinCAM
 - ✅ OnShape OAuth integration with DXF export
 - ✅ Automatic top face detection
 - ✅ DXF → G-code post-processing
@@ -75,28 +75,13 @@ Add support for machining 1×1" and 1×2" aluminum tube extrusions with multi-fa
 
 ---
 
-### #2: G-code Validation & Testing
+### #2: Support multiple parts in a single job
 
-**Priority:** High  
+**Priority:** Medium  
 **Effort:** Medium-High
 
-#### **A. Compare vs Fusion 360 CAM**
-- Analyze Fusion 360 CAM output for identical inputs
-- Evaluate PenguinCAM approach vs Fusion approach
-- Decision: Keep current logic or match Fusion exactly
-- If beneficial, reverse-engineer Fusion's toolpath generation
-
-#### **B. Automated Testing & Regression Detection**
-- ✅ Unit tests with known DXF fixtures
-- ✅ Expected G-code outputs for comparison
-- 🔄 CI/CD integration to run tests automatically
-- 🚨 Alerts when toolpaths change unexpectedly
-
-**Benefits:**
-- Confidence in generated G-code
-- Catch bugs before they reach the CNC
-- Safe refactoring and improvements
-- Quality assurance for new features
+#### **Layout multiple instances of the same part on a single piece of stock**
+#### **Allow for multiple parts to be cut on one piece of stock in the same job**
 
 ---
 
@@ -104,10 +89,7 @@ Add support for machining 1×1" and 1×2" aluminum tube extrusions with multi-fa
 
 *(Not committed to roadmap yet, but worth exploring)*
 
-- Multi-tool support (different endmills for roughing vs finishing)
-- Material library with recommended feeds/speeds
 - Collision detection for tool holder
-- Support for more hole standards beyond #10 and 1.125"
 - Batch processing multiple DXFs
 - G-code optimization (reduce rapids, minimize tool changes)
 - Export simulation as video/animated GIF

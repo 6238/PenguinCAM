@@ -82,7 +82,7 @@ Done! 🎉
 
 **Setup:**
 1. Jog end mill to location outside the raw material
-2. Touch end mill to sacrifice board
+2. Use touch plate to set Z on the top of the sacrifice board
 3. Verify Z shows as zero in Mach 4.  This should not need to be changed, but nonetheless should be verified before cutting parts.
 
 **Why sacrifice board?**

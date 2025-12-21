@@ -2,21 +2,21 @@
 
 **For Team Admins & Mentors**
 
-This guide shows how to install the PenguinCAM extension in your OnShape company account so students can export parts with one click.
+This guide shows how to install the PenguinCAM extension in your OnShape classroom account so students can export parts with one click.
 
 ---
 
 ## Prerequisites
 
-- OnShape company account (not personal/education)
-- Admin access to manage company extensions
+- OnShape classroom account
+- Admin access to manage classroom extensions ("owner", not "admin")
 - PenguinCAM deployed and OAuth configured (see [Integrations Guide](INTEGRATIONS_GUIDE.md))
 
 ---
 
 ## Step 1: Create the Extension
 
-1. **Log into OnShape** as a company admin
+1. **Log into OnShape** as a classroom admin
 2. **Go to Company Settings** → Extensions → Integrated Extensions
 3. **Click "New Extension"** or "Add Extension"
 4. **Fill in the form** (see configuration below)
@@ -53,7 +53,7 @@ Selected part
 
 **Action URL:**
 ```
-https://penguincam.popcornpenguins.com/onshape/import?documentId={$documentId}&workspaceId={$workspaceId}&elementId={$elementId}
+https://penguincam.popcornpenguins.com/onshape/import?documentId={$documentId}&workspaceId={$workspaceId}&elementId={$elementId}&partId={$partId}
 ```
 
 ⚠️ **IMPORTANT:** Use `{$documentId}` (dollar sign INSIDE braces), not `${documentId}`
@@ -72,13 +72,13 @@ Upload an SVG icon (max 100 KB) or leave blank for default
 ## Step 3: Publish to Your Company
 
 1. **Save the extension**
-2. **Subscribe your company** to the extension
+2. **Subscribe your classroom** to the extension
    - Even private extensions require subscription
    - Go to App Store → My Company → Subscribe
 3. **Test it!**
    - Open any Part Studio
    - Right-click a part in the feature tree
-   - Look for "Send to PenguinCAM" in the menu
+   - Look for "Send to PenguinCAM" in the Applications menu
 
 ---
 
@@ -106,7 +106,7 @@ Upload an SVG icon (max 100 KB) or leave blank for default
 **Check:**
 - Is the part selected? (Extension only shows for selected parts)
 - Location set to "Tree context menu"?
-- Company subscribed to the extension?
+- Classroom subscribed to the extension?
 
 ### **Opens but shows error**
 
