@@ -120,6 +120,40 @@ document.addEventListener('DOMContentLoaded', () => {
         const errorMessage = document.getElementById('errorMessage');
         const stats = document.getElementById('stats');
         const consoleOutput = document.getElementById('consoleOutput');
+        const materialSelect = document.getElementById('material');
+        const tubeParams = document.getElementById('tubeParams');
+
+        // Handle material type selection - show/hide tube parameters
+        materialSelect.addEventListener('change', (e) => {
+            const isAluminumTube = e.target.value === 'aluminum_tube';
+            if (tubeParams) {
+                tubeParams.style.display = isAluminumTube ? 'block' : 'none';
+            }
+
+            // Update thickness label and hide tabs for aluminum tube
+            const thicknessGroup = document.getElementById('thickness')?.closest('.param-group');
+            const thicknessLabel = thicknessGroup?.querySelector('label');
+            const tabsGroup = document.getElementById('tabs')?.closest('.param-group');
+
+            if (thicknessLabel) {
+                if (isAluminumTube) {
+                    // Change label for tube mode
+                    thicknessLabel.innerHTML = `
+                        Tube Wall Thickness (inches)
+                        <span class="label-hint">1/16" = 0.0625"</span>
+                    `;
+                } else {
+                    // Standard label
+                    thicknessLabel.innerHTML = `
+                        Material Thickness (inches)
+                        <span class="label-hint">1/4" = 0.25</span>
+                    `;
+                }
+            }
+
+            // Hide tabs for aluminum tube (not used)
+            if (tabsGroup) tabsGroup.style.display = isAluminumTube ? 'none' : 'block';
+        });
 
         // Check Google Drive availability
         let driveAvailable = false;
@@ -205,12 +239,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const formData = new FormData();
             formData.append('file', uploadedFile);
-            formData.append('material', document.getElementById('material').value);
-            formData.append('thickness', document.getElementById('thickness').value);
+            const material = document.getElementById('material').value;
+            formData.append('material', material);
             formData.append('tool_diameter', document.getElementById('toolDiameter').value);
             formData.append('sacrifice_depth', document.getElementById('sacrificeDepth').value);
-            formData.append('tabs', document.getElementById('tabs').value);
             formData.append('origin_corner', 'bottom-left'); // Always bottom-left
+
+            // Add material-specific parameters
+            if (material === 'aluminum_tube') {
+                // Tube-specific parameters
+                formData.append('thickness', document.getElementById('thickness').value); // Tube wall thickness
+                formData.append('tube_height', document.getElementById('tubeHeight').value);
+                formData.append('square_end', document.getElementById('squareEnd').checked ? '1' : '0');
+                formData.append('cut_to_length', document.getElementById('cutToLength').checked ? '1' : '0');
+            } else {
+                // Standard parameters
+                formData.append('thickness', document.getElementById('thickness').value);
+                formData.append('tabs', document.getElementById('tabs').value);
+            }
             formData.append('rotation', rotationAngle); // Add rotation angle
             if (suggestedFilename) {
                 formData.append('suggested_filename', suggestedFilename); // OnShape filename

@@ -94,6 +94,7 @@
                                 <option value="polycarb">Polycarb</option>
                                 <option value="plywood">Plywood</option>
                                 <option value="aluminum">Aluminum</option>
+                                <option value="aluminum_tube">Aluminum Tube</option>
                             </select>
                         </div>
 
@@ -127,6 +128,31 @@
                                 <span class="label-hint">Holding tabs on perimeter</span>
                             </label>
                             <input type="number" id="tabs" step="1" value="4" min="0" max="20" required>
+                        </div>
+
+                        <!-- Tube-specific parameters (shown only for aluminum tube) -->
+                        <div id="tubeParams" style="display: none;">
+                            <div class="param-group">
+                                <label>
+                                    Tube Z-Height (inches)
+                                    <span class="label-hint">Height of tube in machine</span>
+                                </label>
+                                <input type="number" id="tubeHeight" step="0.001" value="1.0" min="0.1">
+                            </div>
+
+                            <div class="param-group">
+                                <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="checkbox" id="squareEnd" checked>
+                                    <span>Square the end</span>
+                                </label>
+                            </div>
+
+                            <div class="param-group">
+                                <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="checkbox" id="cutToLength">
+                                    <span>Machine tube to length (coming soon)</span>
+                                </label>
+                            </div>
                         </div>
                     </form>
                 </div>

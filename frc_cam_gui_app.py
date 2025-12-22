@@ -181,23 +181,35 @@ def process_file():
         
         # Get parameters
         material = request.form.get('material', 'plywood')
+        is_aluminum_tube = (material.lower() == 'aluminum_tube')
 
         # Map UI material names to post-processor material names
         material_mapping = {
             'polycarb': 'polycarbonate',
             'polycarbonate': 'polycarbonate',
             'plywood': 'plywood',
-            'aluminum': 'aluminum'
+            'aluminum': 'aluminum',
+            'aluminum_tube': 'aluminum'  # Use aluminum presets for tube
         }
         material = material_mapping.get(material.lower(), 'plywood')
 
-        thickness = float(request.form.get('thickness', 0.25))
         tool_diameter = float(request.form.get('tool_diameter', 0.157))
         sacrifice_depth = float(request.form.get('sacrifice_depth', 0.02))
-        tabs = int(request.form.get('tabs', 4))
         origin_corner = request.form.get('origin_corner', 'bottom-left')
         rotation = int(request.form.get('rotation', 0))
         suggested_filename = request.form.get('suggested_filename', '')
+
+        # Material-specific parameters
+        thickness = float(request.form.get('thickness', 0.25))  # Material/wall thickness (used by both modes)
+
+        if is_aluminum_tube:
+            # Tube mode parameters
+            tube_height = float(request.form.get('tube_height', 1.0))
+            square_end = request.form.get('square_end', '0') == '1'
+            cut_to_length = request.form.get('cut_to_length', '0') == '1'
+        else:
+            # Standard mode parameters
+            tabs = int(request.form.get('tabs', 4))
 
         # Save uploaded file
         input_path = os.path.join(UPLOAD_FOLDER, 'input.dxf')
@@ -215,20 +227,43 @@ def process_file():
 
         output_path = os.path.join(OUTPUT_FOLDER, output_filename)
 
-        # Build command - let post-processor handle material presets
-        cmd = [
-            sys.executable,
-            str(POST_PROCESSOR),
-            input_path,
-            output_path,
-            '--material', material,
-            '--thickness', str(thickness),
-            '--tool-diameter', str(tool_diameter),
-            '--sacrifice-depth', str(sacrifice_depth),
-            '--tabs', str(tabs),
-            '--origin-corner', origin_corner,
-            '--rotation', str(rotation),
-        ]
+        # Build command based on mode
+        if is_aluminum_tube:
+            # Tube mode - different command structure
+            cmd = [
+                sys.executable,
+                str(POST_PROCESSOR),
+                input_path,
+                output_path,
+                '--mode', 'tube-pattern',
+                '--material', material,
+                '--thickness', str(thickness),  # Tube wall thickness
+                '--tool-diameter', str(tool_diameter),
+                '--tube-height', str(tube_height),
+                '--origin-corner', origin_corner,
+                '--rotation', str(rotation),
+            ]
+
+            # Add optional tube operations
+            if square_end:
+                cmd.append('--square-end')
+            if cut_to_length:
+                cmd.append('--cut-to-length')
+        else:
+            # Standard mode - let post-processor handle material presets
+            cmd = [
+                sys.executable,
+                str(POST_PROCESSOR),
+                input_path,
+                output_path,
+                '--material', material,
+                '--thickness', str(thickness),
+                '--tool-diameter', str(tool_diameter),
+                '--sacrifice-depth', str(sacrifice_depth),
+                '--tabs', str(tabs),
+                '--origin-corner', origin_corner,
+                '--rotation', str(rotation),
+            ]
 
         # Add user name if authenticated
         user_name = session.get('user_name')

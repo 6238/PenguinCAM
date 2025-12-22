@@ -1742,17 +1742,311 @@ class FRCPostProcessor:
         print(f'  -- Program pauses (M0) for tube flip --')
         print(f'  Phase 2: Face second half of tube end')
 
+    def generate_tube_pattern_gcode(self, output_file: str, tube_height: float,
+                                   square_end: bool, cut_to_length: bool):
+        """
+        Generate G-code for machining DXF pattern on both faces of a tube.
+
+        The tube sits in a jig with the end facing the spindle. This method:
+        1. Optionally squares the tube end (if square_end=True)
+        2. Machines the DXF pattern on the first face
+        3. Pauses (M0) for the operator to flip the tube 180° around Y-axis
+        4. Machines the DXF pattern on the second face (Y-mirrored)
+        5. Optionally machines tube to length (if cut_to_length=True - stub)
+
+        The jig uses G55 work coordinate system with:
+        - Origin at bottom-left corner of tube face
+        - X-axis along tube width
+        - Y-axis pointing away from spindle (into tube)
+        - Z-axis along tube height (vertical)
+
+        Args:
+            output_file: Path to output G-code file
+            tube_height: Height of tube in Z direction (inches)
+            square_end: Whether to square the tube end before machining pattern
+            cut_to_length: Whether to cut tube to length after pattern (stub)
+        """
+        gcode = []
+
+        # Generate timestamp
+        pacific_time = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
+        timestamp = pacific_time.strftime("%Y-%m-%d %H:%M")
+
+        # === HEADER ===
+        gcode.append('( PENGUINCAM TUBE PATTERN OPERATION )')
+        gcode.append(f'( Generated: {timestamp} )')
+        if self.user_name:
+            gcode.append(f'( User: {self.user_name} )')
+        gcode.append(f'( Tube height: {tube_height:.3f}" )')
+        gcode.append(f'( Tool: {self.tool_diameter:.3f}" end mill )')
+        gcode.append(f'( Material: {self.spindle_speed} RPM, {self.feed_rate:.1f} ipm )')
+        gcode.append('( )')
+        gcode.append('( SETUP INSTRUCTIONS: )')
+        gcode.append('( 1. Mount tube in jig with end facing spindle )')
+        gcode.append('( 2. Jig uses G55 work coordinate system (fixed position) )')
+        gcode.append('( 3. G55 origin is at bottom-left corner of tube face )')
+        gcode.append('( 4. X = tube width, Y = into tube, Z = tube height )')
+        gcode.append('( )')
+
+        # === INITIALIZATION ===
+        gcode.append('')
+        gcode.append('( === INITIALIZATION === )')
+        gcode.append('G90 G94 G91.1 G40 G49 G17')
+        gcode.append('G20')
+        gcode.append('G0 G28 G91 Z0.  ; Home Z axis')
+        gcode.append('G90  ; Back to absolute mode')
+        gcode.append('')
+        gcode.append('( Tool and spindle )')
+        gcode.append('T1 M6')
+        gcode.append(f'S{self.spindle_speed} M3')
+        gcode.append('G4 P3.0')
+        gcode.append('')
+        gcode.append('G55  ; Use jig work coordinate system')
+        gcode.append('')
+
+        # === PHASE 0: SQUARE END (OPTIONAL) ===
+        if square_end:
+            gcode.append('( === PHASE 0: SQUARE TUBE END === )')
+            gcode.append('')
+            # Get toolpath lines from module
+            toolpath_lines = TUBE_FACING_TOOLPATH_1X1.split('\n')
+            pass1_y_offset = 0.125
+            pass2_y_offset = 0.0
+
+            gcode.append('( Face first half )')
+            for line in toolpath_lines:
+                line = line.strip()
+                if line and not line.startswith('G52'):
+                    adjusted_line = self._adjust_y_coordinate(line, pass1_y_offset)
+                    gcode.append(adjusted_line)
+
+            gcode.append('')
+            gcode.append('( Pause for flip )')
+            gcode.append('G53 G0 Z0.')
+            gcode.append('G53 G0 X0.5 Y23.5')
+            gcode.append('M5')
+            gcode.append('G4 P5.0')
+            gcode.append('M0  ; Flip tube 180 degrees end-for-end')
+            gcode.append('')
+            gcode.append(f'S{self.spindle_speed} M3')
+            gcode.append('G4 P3.0')
+            gcode.append('')
+
+            gcode.append('( Face second half )')
+            for line in toolpath_lines:
+                line = line.strip()
+                if line and not line.startswith('G52'):
+                    adjusted_line = self._adjust_y_coordinate(line, pass2_y_offset)
+                    gcode.append(adjusted_line)
+
+            gcode.append('')
+            gcode.append('( Return spindle to ready )')
+            gcode.append('G53 G0 Z0.')
+            gcode.append(f'S{self.spindle_speed} M3')
+            gcode.append('')
+
+        # === PHASE 1: MACHINE PATTERN ON FIRST FACE ===
+        gcode.append('( === PHASE 1: MACHINE PATTERN ON FIRST FACE === )')
+        gcode.append('( Machining holes and pockets only - perimeter is tube face )')
+        # Z offset positions bottom of upper face (standard toolpath assumes Z=0 at bottom)
+        z_offset = tube_height - self.material_thickness
+        gcode.append(f'( Z offset: +{z_offset:.3f}" (tube_height - wall_thickness) )')
+        gcode.append('')
+        gcode.extend(self._generate_toolpath_gcode(skip_perimeter=True, z_offset=z_offset))
+
+        # === PAUSE FOR FLIP ===
+        gcode.append('')
+        gcode.append('( === PAUSE FOR TUBE FLIP === )')
+        gcode.append('G53 G0 Z0.  ; Safe height')
+        gcode.append('G53 G0 X0.5 Y23.5  ; Park at back')
+        gcode.append('M5')
+        gcode.append('G4 P5.0')
+        gcode.append('')
+        gcode.append('( *** OPERATOR ACTION REQUIRED *** )')
+        gcode.append('( Flip tube 180 degrees around Y-axis )')
+        gcode.append('( Holes will be machined on opposite face )')
+        gcode.append('( Press CYCLE START to continue )')
+        gcode.append('M0')
+        gcode.append('')
+
+        # === PHASE 2: MACHINE PATTERN ON SECOND FACE (Y-MIRRORED) ===
+        gcode.append('( === PHASE 2: MACHINE PATTERN ON SECOND FACE === )')
+        gcode.append('( Pattern is Y-mirrored so holes align opposite each other )')
+        z_offset = tube_height - self.material_thickness
+        gcode.append(f'( Z offset: +{z_offset:.3f}" (tube_height - wall_thickness) )')
+        gcode.append('')
+        gcode.append(f'S{self.spindle_speed} M3')
+        gcode.append('G4 P3.0')
+        gcode.append('')
+
+        # Mirror the pattern across Y-axis by negating all Y coordinates
+        mirrored_toolpath = self._generate_toolpath_gcode_mirrored_y(z_offset=z_offset)
+        gcode.extend(mirrored_toolpath)
+
+        # === CUT TO LENGTH (STUB) ===
+        if cut_to_length:
+            gcode.append('')
+            gcode.append('( === CUT TUBE TO LENGTH === )')
+            gcode.append('( Feature not yet implemented )')
+            gcode.append('')
+            self._generate_cut_to_length_stub(gcode)
+
+        # === END ===
+        gcode.append('')
+        gcode.append('( === PROGRAM END === )')
+        gcode.append('G53 G0 Z0.')
+        gcode.append('G53 G0 X0.5 Y23.5')
+        gcode.append('M5')
+        gcode.append('M30')
+
+        # Write to file
+        with open(output_file, 'w') as f:
+            f.write('\n'.join(gcode))
+
+        print(f'OUTPUT_FILE:{output_file}')
+        print(f'Tube pattern G-code generated')
+        print(f'\nSETUP:')
+        print(f'  1. Mount tube in jig with end facing spindle')
+        print(f'  2. Verify G55 is set to jig origin')
+        print(f'  3. Origin (0,0,0) = bottom-left corner of tube face')
+        if square_end:
+            print(f'\nOPERATIONS:')
+            print(f'  Phase 0: Square tube end')
+            print(f'  -- Flip tube end-for-end (M0) --')
+            print(f'  Phase 0: Square opposite end')
+            print(f'  Phase 1: Machine pattern on first face')
+            print(f'  -- Flip tube 180° around Y-axis (M0) --')
+            print(f'  Phase 2: Machine pattern on opposite face (mirrored)')
+        else:
+            print(f'\nOPERATIONS:')
+            print(f'  Phase 1: Machine pattern on first face')
+            print(f'  -- Flip tube 180° around Y-axis (M0) --')
+            print(f'  Phase 2: Machine pattern on opposite face (mirrored)')
+        if cut_to_length:
+            print(f'  Cut to length: Not yet implemented')
+
+    def _generate_toolpath_gcode(self, skip_perimeter: bool = False, z_offset: float = 0.0) -> list[str]:
+        """
+        Generate toolpath G-code for the current DXF geometry.
+
+        Args:
+            skip_perimeter: If True, skip perimeter cutting (useful for tube faces)
+            z_offset: Offset to add to all Z coordinates (for tube mode, shifts to tube face height)
+        """
+        toolpath = []
+
+        # Generate toolpaths for holes
+        for hole in self.holes:
+            toolpath.extend(self._generate_hole_gcode(hole))
+
+        # Generate toolpaths for pockets
+        for pocket in self.pockets:
+            toolpath.extend(self._generate_pocket_gcode(pocket))
+
+        # Perimeter (only for standard mode, not tube faces)
+        if not skip_perimeter and self.perimeter:
+            toolpath.extend(self._generate_perimeter_gcode())
+
+        # Apply Z offset if needed (for tube mode)
+        if z_offset != 0.0:
+            toolpath = [self._offset_z_coordinate(line, z_offset) for line in toolpath]
+
+        return toolpath
+
+    def _generate_toolpath_gcode_mirrored_y(self, z_offset: float = 0.0) -> list[str]:
+        """
+        Generate toolpath G-code with Y coordinates mirrored across Y=0 plane.
+        This is used for the second face of tube machining.
+        Skips perimeter since we're machining on a tube face.
+
+        Args:
+            z_offset: Offset to add to all Z coordinates (for tube mode)
+        """
+        # Generate normal toolpath without perimeter, with Z offset
+        normal_toolpath = self._generate_toolpath_gcode(skip_perimeter=True, z_offset=z_offset)
+
+        # Mirror all Y coordinates
+        mirrored = []
+        for line in normal_toolpath:
+            mirrored_line = self._mirror_y_coordinate(line)
+            mirrored.append(mirrored_line)
+
+        return mirrored
+
+    def _mirror_y_coordinate(self, line: str) -> str:
+        """
+        Mirror Y coordinate in a G-code line by negating it.
+
+        Args:
+            line: G-code line to modify
+
+        Returns:
+            Modified G-code line with mirrored Y coordinate
+        """
+        def replace_y(match):
+            y_val = float(match.group(1))
+            new_y = -y_val
+            return f'Y{new_y:.4f}'
+
+        # Match Y followed by optional minus and digits
+        return re.sub(r'Y(-?\d+\.?\d*)', replace_y, line)
+
+    def _offset_z_coordinate(self, line: str, z_offset: float) -> str:
+        """
+        Offset Z coordinate in a G-code line by adding z_offset.
+
+        For standard mode: Z=0 at bottom of plate, toolpath cuts from Z=thickness (top) to Z=0 (bottom).
+        For tube mode: Z=0 at bottom of lower face. Upper face bottom is at Z=tube_height-tube_wall_thickness.
+        This method shifts Z coordinates by (tube_height - tube_wall_thickness) to position at upper face.
+
+        Args:
+            line: G-code line to modify
+            z_offset: Offset to add to Z coordinate (typically tube_height - tube_wall_thickness)
+
+        Returns:
+            Modified G-code line with offset Z coordinate
+        """
+        def replace_z(match):
+            z_val = float(match.group(1))
+            new_z = z_val + z_offset
+            return f'Z{new_z:.4f}'
+
+        # Match Z followed by optional minus and digits
+        return re.sub(r'Z(-?\d+\.?\d*)', replace_z, line)
+
+    def _generate_cut_to_length_stub(self, gcode: list):
+        """
+        Stub function for cutting tube to length.
+
+        This will be implemented in the future to:
+        1. Calculate cut position based on tube length parameter
+        2. Generate toolpath to cut through tube walls
+        3. Include appropriate retract and spinup commands
+
+        Args:
+            gcode: List to append stub G-code to
+        """
+        gcode.append('( TODO: Implement cut-to-length operation )')
+        gcode.append('( This will cut the tube to specified length )')
+        pass
+
 
 def main():
     parser = argparse.ArgumentParser(description='PenguinCAM - Team 6238 Post-Processor')
     parser.add_argument('input_dxf', nargs='?', help='Input DXF file from OnShape (not needed for tube-facing mode)')
     parser.add_argument('output_gcode', help='Output G-code file')
     parser.add_argument('--mode', type=str, default='standard',
-                       choices=['standard', 'tube-facing'],
-                       help='Operation mode: standard (DXF processing) or tube-facing')
+                       choices=['standard', 'tube-facing', 'tube-pattern'],
+                       help='Operation mode: standard (DXF processing), tube-facing (square tube ends), or tube-pattern (DXF pattern on tube faces)')
     parser.add_argument('--tube-size', type=str, default='1x1',
                        choices=['1x1', '2x1-standing', '2x1-flat'],
                        help='Tube size for tube-facing mode')
+    parser.add_argument('--tube-height', type=float, default=1.0,
+                       help='Tube Z-height in inches for tube-pattern mode (default: 1.0)')
+    parser.add_argument('--square-end', action='store_true',
+                       help='Square the tube end before machining pattern (tube-pattern mode)')
+    parser.add_argument('--cut-to-length', action='store_true',
+                       help='Machine tube to length after pattern (tube-pattern mode - not yet implemented)')
     parser.add_argument('--material', type=str, default='plywood',
                        choices=['plywood', 'aluminum', 'polycarbonate'],
                        help='Material preset (default: plywood) - sets feeds, speeds, and ramp angles')
@@ -1794,6 +2088,50 @@ def main():
         pp = FRCPostProcessor(args.thickness, args.tool_diameter)
         pp.apply_material_preset('aluminum')  # Tube facing is always aluminum
         pp.generate_tube_facing_gcode(args.output_gcode, args.tube_size)
+
+    elif args.mode == 'tube-pattern':
+        # Tube pattern mode - machine DXF pattern on both tube faces
+        if not args.input_dxf:
+            parser.error("input_dxf is required for tube-pattern mode")
+        if not args.output_gcode:
+            parser.error("output_gcode is required for tube-pattern mode")
+
+        # Create post-processor with tube WALL thickness (not height!)
+        pp = FRCPostProcessor(material_thickness=args.thickness,
+                              tool_diameter=args.tool_diameter,
+                              units=args.units)
+
+        # Store tube height for Z-offset calculations
+        pp.tube_height = args.tube_height
+
+        # Apply material preset
+        pp.apply_material_preset(args.material)
+
+        # Store user name if provided
+        if args.user:
+            pp.user_name = args.user
+
+        # Set cutting parameters (override preset if specified)
+        if args.spindle_speed != 18000:
+            pp.spindle_speed = args.spindle_speed
+        if args.feed_rate is not None:
+            pp.feed_rate = args.feed_rate
+        if args.plunge_rate is not None:
+            pp.plunge_rate = args.plunge_rate
+
+        # Load and process DXF
+        pp.load_dxf(args.input_dxf)
+
+        # Apply transformation - ALWAYS bottom-left origin for tube jig (fixed position)
+        # Only rotation is applied to orient the DXF pattern on the tube face
+        pp.transform_coordinates('bottom-left', args.rotation)
+
+        pp.classify_holes()
+        pp.identify_perimeter_and_pockets()
+
+        # Generate tube pattern G-code
+        pp.generate_tube_pattern_gcode(args.output_gcode, args.tube_height,
+                                       args.square_end, args.cut_to_length)
 
     else:
         # Standard mode - DXF processing
