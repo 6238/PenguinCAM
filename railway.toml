@@ -1,0 +1,5 @@
+[build]
+builder = "NIXPACKS"
+
+[build.nixpacks]
+nixpkgs = ["python311"]
