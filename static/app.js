@@ -130,24 +130,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 tubeParams.style.display = isAluminumTube ? 'block' : 'none';
             }
 
-            // Update thickness label and hide tabs for aluminum tube
+            // Update thickness label, default value, and hide tabs for aluminum tube
             const thicknessGroup = document.getElementById('thickness')?.closest('.param-group');
             const thicknessLabel = thicknessGroup?.querySelector('label');
+            const thicknessInput = document.getElementById('thickness');
             const tabsGroup = document.getElementById('tabs')?.closest('.param-group');
 
-            if (thicknessLabel) {
+            if (thicknessLabel && thicknessInput) {
                 if (isAluminumTube) {
-                    // Change label for tube mode
+                    // Change label and default for tube mode
                     thicknessLabel.innerHTML = `
                         Tube Wall Thickness (inches)
                         <span class="label-hint">1/8" = 0.125"</span>
                     `;
+                    thicknessInput.value = '0.125';
                 } else {
-                    // Standard label
+                    // Standard label and default
                     thicknessLabel.innerHTML = `
                         Material Thickness (inches)
                         <span class="label-hint">1/4" = 0.25</span>
                     `;
+                    thicknessInput.value = '0.25';
                 }
             }
 

@@ -194,7 +194,6 @@ def process_file():
         material = material_mapping.get(material.lower(), 'plywood')
 
         tool_diameter = float(request.form.get('tool_diameter', 0.157))
-        sacrifice_depth = float(request.form.get('sacrifice_depth', 0.02))
         origin_corner = request.form.get('origin_corner', 'bottom-left')
         rotation = int(request.form.get('rotation', 0))
         suggested_filename = request.form.get('suggested_filename', '')
@@ -300,7 +299,6 @@ def process_file():
                 '--material', material,
                 '--thickness', str(thickness),
                 '--tool-diameter', str(tool_diameter),
-                '--sacrifice-depth', str(sacrifice_depth),
                 '--tabs', str(tabs),
                 '--origin-corner', origin_corner,
                 '--rotation', str(rotation),
@@ -393,7 +391,6 @@ def process_file():
             })
         else:
             parameters.update({
-                'sacrifice_depth': sacrifice_depth,
                 'tabs': tabs
             })
 
