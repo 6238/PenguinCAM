@@ -215,6 +215,41 @@ def process_file():
         input_path = os.path.join(UPLOAD_FOLDER, 'input.dxf')
         file.save(input_path)
 
+        # For tube mode, extract DXF bounds to determine tube dimensions
+        tube_width = None
+        tube_length = None
+        if is_aluminum_tube:
+            try:
+                import ezdxf
+                doc = ezdxf.readfile(input_path)
+                msp = doc.modelspace()
+
+                # Collect all geometry bounds
+                all_x = []
+                all_y = []
+
+                for entity in msp:
+                    if entity.dxftype() == 'CIRCLE':
+                        center = entity.dxf.center
+                        radius = entity.dxf.radius
+                        all_x.extend([center.x - radius, center.x + radius])
+                        all_y.extend([center.y - radius, center.y + radius])
+                    elif entity.dxftype() in ['LWPOLYLINE', 'POLYLINE']:
+                        points = list(entity.get_points())
+                        if points:
+                            all_x.extend([p[0] for p in points])
+                            all_y.extend([p[1] for p in points])
+                    elif entity.dxftype() == 'LINE':
+                        all_x.extend([entity.dxf.start.x, entity.dxf.end.x])
+                        all_y.extend([entity.dxf.start.y, entity.dxf.end.y])
+
+                if all_x and all_y:
+                    tube_width = max(all_x) - min(all_x)
+                    tube_length = max(all_y) - min(all_y)
+                    print(f"📏 Detected tube dimensions: {tube_width:.3f}\" x {tube_length:.3f}\"")
+            except Exception as e:
+                print(f"⚠️  Could not extract tube dimensions from DXF: {e}")
+
         # Generate output filename
         if suggested_filename:
             # Use OnShape-derived name
@@ -243,6 +278,12 @@ def process_file():
                 '--origin-corner', origin_corner,
                 '--rotation', str(rotation),
             ]
+
+            # Add tube dimensions if detected
+            if tube_width is not None:
+                cmd.extend(['--tube-width', str(tube_width)])
+            if tube_length is not None:
+                cmd.extend(['--tube-length', str(tube_length)])
 
             # Add optional tube operations
             if square_end:
@@ -336,19 +377,32 @@ def process_file():
         # Get actual filename with timestamp for download/drive routes
         actual_filename = os.path.basename(actual_output_path)
 
+        # Build parameters dictionary based on mode
+        parameters = {
+            'thickness': thickness,
+            'tool_diameter': tool_diameter,
+            'origin_corner': origin_corner,
+            'rotation': rotation
+        }
+
+        if is_aluminum_tube:
+            parameters.update({
+                'tube_height': tube_height,
+                'square_end': square_end,
+                'cut_to_length': cut_to_length
+            })
+        else:
+            parameters.update({
+                'sacrifice_depth': sacrifice_depth,
+                'tabs': tabs
+            })
+
         response_data = {
             'success': True,
             'filename': actual_filename,  # Return actual filename with timestamp
             'gcode': gcode_content,
             'console': console_output,
-            'parameters': {
-                'thickness': thickness,
-                'tool_diameter': tool_diameter,
-                'sacrifice_depth': sacrifice_depth,
-                'tabs': tabs,
-                'origin_corner': origin_corner,
-                'rotation': rotation
-            }
+            'parameters': parameters
         }
 
         # Add cycle time if available

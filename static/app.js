@@ -140,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Change label for tube mode
                     thicknessLabel.innerHTML = `
                         Tube Wall Thickness (inches)
-                        <span class="label-hint">1/16" = 0.0625"</span>
+                        <span class="label-hint">1/8" = 0.125"</span>
                     `;
                 } else {
                     // Standard label
