@@ -243,9 +243,18 @@ def process_file():
                         all_y.extend([entity.dxf.start.y, entity.dxf.end.y])
 
                 if all_x and all_y:
-                    tube_width = max(all_x) - min(all_x)
-                    tube_length = max(all_y) - min(all_y)
-                    print(f"📏 Detected tube dimensions: {tube_width:.3f}\" x {tube_length:.3f}\"")
+                    dxf_width = max(all_x) - min(all_x)
+                    dxf_height = max(all_y) - min(all_y)
+
+                    # Account for rotation: swap dimensions if rotated 90° or 270°
+                    if rotation in [90, 270]:
+                        tube_width = dxf_height
+                        tube_length = dxf_width
+                        print(f"📏 Detected tube dimensions (after {rotation}° rotation): {tube_width:.3f}\" x {tube_length:.3f}\"")
+                    else:
+                        tube_width = dxf_width
+                        tube_length = dxf_height
+                        print(f"📏 Detected tube dimensions: {tube_width:.3f}\" x {tube_length:.3f}\"")
             except Exception as e:
                 print(f"⚠️  Could not extract tube dimensions from DXF: {e}")
 
