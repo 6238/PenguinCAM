@@ -636,7 +636,7 @@ class FRCPostProcessor:
     def classify_holes(self):
         """Classify holes by diameter"""
         # Classify all circles as holes (apply size check)
-        self.bearing_holes = []  # All millable holes (name kept for compatibility)
+        self.holes = []
         holes_skipped = 0
 
         for circle in self.circles:
@@ -650,10 +650,10 @@ class FRCPostProcessor:
                 continue
 
             # All millable holes use the same strategy (helical + spiral)
-            self.bearing_holes.append({'center': center, 'diameter': diameter})
+            self.holes.append({'center': center, 'diameter': diameter})
             print(f"  Hole (d={diameter:.3f}\") at ({center[0]:.3f}, {center[1]:.3f})")
 
-        print(f"\nIdentified {len(self.bearing_holes)} millable holes")
+        print(f"\nIdentified {len(self.holes)} millable holes")
         if holes_skipped > 0:
             print(f"  ⚠️  Skipped {holes_skipped} hole(s) too small for tool")
 
@@ -665,10 +665,10 @@ class FRCPostProcessor:
         Sort holes to minimize tool travel time.
         Sorts by X coordinate first, then by Y within each X group (zigzag pattern).
         """
-        if len(self.bearing_holes) > 1:
-            # Sort holes by X, then Y (bearing_holes now contains all millable holes)
-            self.bearing_holes.sort(key=lambda h: (round(h['center'][0], 2), h['center'][1]))
-            print(f"Sorted {len(self.bearing_holes)} holes for optimal travel")
+        if len(self.holes) > 1:
+            # Sort holes by X, then Y (holes now contains all millable holes)
+            self.holes.sort(key=lambda h: (round(h['center'][0], 2), h['center'][1]))
+            print(f"Sorted {len(self.holes)} holes for optimal travel")
     
     def identify_perimeter_and_pockets(self):
         """Identify the outer perimeter and any inner pockets"""
@@ -721,7 +721,7 @@ class FRCPostProcessor:
 
         # Determine operations present
         operations = []
-        if self.bearing_holes:
+        if self.holes:
             operations.append("Holes")
         if self.pockets:
             operations.append("Pockets")
@@ -811,13 +811,13 @@ class FRCPostProcessor:
         gcode.append("")
 
         # Holes (all circular features - helical entry + spiral clearing)
-        if self.bearing_holes:
+        if self.holes:
             gcode.append("(===== HOLES =====)")
-            for i, hole in enumerate(self.bearing_holes, 1):
+            for i, hole in enumerate(self.holes, 1):
                 center = hole['center']
                 diameter = hole['diameter']
                 gcode.append(f"(Hole {i} - {diameter:.3f}\" diameter)")
-                gcode.extend(self._generate_bearing_hole_gcode(center[0], center[1], diameter))
+                gcode.extend(self._generate_hole_gcode(center[0], center[1], diameter))
                 gcode.append("")
         
         # Pockets
@@ -907,7 +907,7 @@ class FRCPostProcessor:
 
         return num_passes, depth_per_pass
 
-    def _generate_bearing_hole_gcode(self, cx: float, cy: float, diameter: float) -> List[str]:
+    def _generate_hole_gcode(self, cx: float, cy: float, diameter: float) -> List[str]:
         """
         Generate G-code for a hole using helical entry + spiral-out strategy.
         Uses helical interpolation to safely enter, then spirals outward in multiple passes.
@@ -1612,7 +1612,7 @@ class FRCPostProcessor:
         Parse tube size string to width and height dimensions.
 
         Args:
-            tube_size: Size string like '1x1', '2x1-standing', '2x1-flat', '2x2'
+            tube_size: Size string like '1x1', '2x1-standing', '2x1-flat', '1.5x1.5', '2x2'
 
         Returns:
             (width, height) tuple in inches
@@ -1623,6 +1623,8 @@ class FRCPostProcessor:
             return (1.0, 2.0)  # Standing: narrow width, tall height
         elif tube_size == '2x1-flat':
             return (2.0, 1.0)  # Flat: wide width, short height
+        elif tube_size == '1.5x1.5':
+            return (1.5, 1.5)
         elif tube_size == '2x2':
             return (2.0, 2.0)
         else:
@@ -1855,7 +1857,7 @@ class FRCPostProcessor:
         gcode.append(f'( Tool: {self.tool_diameter:.3f}" end mill )')
         gcode.append('( )')
         gcode.append('( SETUP INSTRUCTIONS: )')
-        gcode.append('( 1. Mount tube in jig with end facing spindle )')
+        gcode.append('( 1. Mount tube in jig with end facing user )')
         gcode.append('( 2. Verify G55 is set to jig origin )')
         gcode.append('( 3. Z=0 is at bottom of tube (jig surface) )')
         gcode.append('( 4. Y=0 is at nominal end face of tube )')
@@ -2020,8 +2022,8 @@ class FRCPostProcessor:
             tube_width = 1.0  # Default
             if square_end:
                 all_x_coords = []
-                if hasattr(self, 'bearing_holes'):
-                    for hole in self.bearing_holes:
+                if hasattr(self, 'holes'):
+                    for hole in self.holes:
                         all_x_coords.append(hole['center'][0])
                 if hasattr(self, 'pockets'):
                     for pocket in self.pockets:
@@ -2180,9 +2182,9 @@ class FRCPostProcessor:
         toolpath = []
 
         # Generate toolpaths for holes
-        if hasattr(self, 'bearing_holes') and self.bearing_holes:
-            for hole in self.bearing_holes:
-                toolpath.extend(self._generate_bearing_hole_gcode(
+        if hasattr(self, 'holes') and self.holes:
+            for hole in self.holes:
+                toolpath.extend(self._generate_hole_gcode(
                     hole['center'][0],  # cx
                     hole['center'][1],  # cy
                     hole['diameter']    # diameter
@@ -2230,8 +2232,8 @@ class FRCPostProcessor:
         toolpath = []
 
         # Generate toolpaths for mirrored holes
-        if hasattr(self, 'bearing_holes') and self.bearing_holes:
-            for hole in self.bearing_holes:
+        if hasattr(self, 'holes') and self.holes:
+            for hole in self.holes:
                 # Mirror the hole center around tube centerline
                 original_cx = hole['center'][0]
                 original_cy = hole['center'][1]
@@ -2240,7 +2242,7 @@ class FRCPostProcessor:
 
                 # Generate fresh toolpath for the mirrored hole
                 # This preserves helical entry + outward spiral safety
-                toolpath.extend(self._generate_bearing_hole_gcode(
+                toolpath.extend(self._generate_hole_gcode(
                     mirrored_cx, mirrored_cy, hole['diameter']
                 ))
 
@@ -2464,7 +2466,7 @@ def main():
         pp.identify_perimeter_and_pockets()
 
         # Debug: Check what was classified
-        hole_count = len(pp.bearing_holes) if hasattr(pp, 'bearing_holes') else 0
+        hole_count = len(pp.holes) if hasattr(pp, 'holes') else 0
         pocket_count = len(pp.pockets) if hasattr(pp, 'pockets') else 0
         has_perimeter = bool(pp.perimeter) if hasattr(pp, 'perimeter') else False
         print(f'DEBUG: Classified {hole_count} holes, {pocket_count} pockets, perimeter={has_perimeter}')
