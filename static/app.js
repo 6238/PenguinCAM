@@ -245,7 +245,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const material = document.getElementById('material').value;
             formData.append('material', material);
             formData.append('tool_diameter', document.getElementById('toolDiameter').value);
-            formData.append('sacrifice_depth', document.getElementById('sacrificeDepth').value);
             formData.append('origin_corner', 'bottom-left'); // Always bottom-left
 
             // Add material-specific parameters
