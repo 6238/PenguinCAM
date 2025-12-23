@@ -1559,7 +1559,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         fileSize.textContent = formatFileSize(dxfContent.length);
                         fileInfo.style.display = 'flex';
                         generateBtn.disabled = false;
-                        generateBtn.textContent = '🚀 Generate G-code';
+                        generateBtn.textContent = '🚀 Generate Program';
                         hideError();
                         hideResults();
                         
