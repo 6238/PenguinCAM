@@ -1862,6 +1862,15 @@ class FRCPostProcessor:
 
         print(f'OUTPUT_FILE:{output_file}')
         print(f'Tube facing G-code generated for {tube_size} tube')
+
+        # Print stats for UI
+        print(f"\nIdentified 0 millable holes and 0 pockets")
+        print(f"Total lines: {len(gcode)}")
+
+        # Estimate cycle time
+        time_estimate = self._estimate_cycle_time(gcode)
+        print(f"\n⏱️  ESTIMATED_CYCLE_TIME: {time_estimate['total']:.1f} seconds ({self._format_time(time_estimate['total'])})")
+
         print(f'\nSETUP:')
         print(f'  1. Mount tube in jig with end facing spindle')
         print(f'  2. Verify G55 is set to jig origin')
@@ -2070,6 +2079,17 @@ class FRCPostProcessor:
 
         print(f'OUTPUT_FILE:{output_file}')
         print(f'Tube pattern G-code generated')
+
+        # Print stats for UI
+        num_holes = len(self.holes) if hasattr(self, 'holes') else 0
+        num_pockets = len(self.pockets) if hasattr(self, 'pockets') else 0
+        print(f"\nIdentified {num_holes} millable holes and {num_pockets} pockets on each face")
+        print(f"Total lines: {len(gcode)}")
+
+        # Estimate cycle time
+        time_estimate = self._estimate_cycle_time(gcode)
+        print(f"\n⏱️  ESTIMATED_CYCLE_TIME: {time_estimate['total']:.1f} seconds ({self._format_time(time_estimate['total'])})")
+
         print(f'\nSETUP:')
         print(f'  1. Mount tube in jig with end facing spindle')
         print(f'  2. Verify G55 is set to jig origin')

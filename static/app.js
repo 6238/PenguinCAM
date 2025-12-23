@@ -1247,7 +1247,14 @@ document.addEventListener('DOMContentLoaded', () => {
             scene.add(originMarker);
 
             // Get actual material thickness for visualization
+            const material = document.getElementById('material').value;
+            const isAluminumTube = (material === 'aluminum_tube');
             const materialThickness = parseFloat(document.getElementById('thickness').value);
+
+            // For tube mode, use tube height as stock height instead of wall thickness
+            const stockHeightValue = isAluminumTube ?
+                parseFloat(document.getElementById('tubeHeight').value) :
+                materialThickness;
 
             // Material boundaries (at material top surface)
             const materialOutline = new THREE.Line(
@@ -1277,7 +1284,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Add stock material as semi-transparent solid
             const stockWidth = maxX - minX;
             const stockDepth = maxY - minY;
-            const stockHeight = materialThickness; // Z=0 to Z=materialThickness (already defined above)
+            const stockHeight = stockHeightValue; // Use tube height for tubes, thickness for plates
 
             const stockGeometry = new THREE.BoxGeometry(stockWidth, stockHeight, stockDepth);
             const stockMaterial = new THREE.MeshStandardMaterial({
