@@ -278,6 +278,7 @@
     </main>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three-dxf@1.3.1/src/index.js"></script>
 
     <!-- Pass template variables to JavaScript -->
     <script>
@@ -289,7 +290,9 @@
             suggestedFilename: '{{ suggested_filename if suggested_filename else "" }}'
         };
     </script>
-
+    <script src="/static/preview.js"></script>
+    <script src="/static/setup.js"></script>
+    <script src="/static/files.js"></script>
     <script src="/static/app.js"></script>
 </body>
 </html>
