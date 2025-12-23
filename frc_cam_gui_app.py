@@ -1023,6 +1023,220 @@ def onshape_import():
             'error': f'Import failed: {str(e)}'
         }), 500
 
+@app.route('/onshape/save-dxf', methods=['GET', 'POST'])
+@auth.require_auth
+def onshape_save_dxf():
+    """
+    Save a DXF from OnShape directly to Google Drive without generating G-code.
+    Accepts parameters from OnShape extension or direct URL.
+    """
+    if not ONSHAPE_AVAILABLE:
+        return jsonify({'error': 'OnShape integration not available'}), 400
+
+    if not GOOGLE_DRIVE_AVAILABLE:
+        return jsonify({'error': 'Google Drive integration not available'}), 400
+
+    try:
+        print(f"\n💾 OnShape Save DXF request: {request.url}")
+        print(f"   Method: {request.method}")
+
+        # Get parameters (either from query string or JSON body)
+        if request.method == 'POST':
+            raw_params = request.json or {}
+        else:
+            raw_params = request.args.to_dict()
+
+        params = extract_onshape_params(raw_params)
+        document_id = params['document_id']
+        workspace_id = params['workspace_id']
+        element_id = params['element_id']
+        face_id = params['face_id']
+        body_id = params['body_id']
+
+        print(f"OnShape params: doc={document_id}, workspace={workspace_id}, element={element_id}, face={face_id}, body={body_id}")
+
+        if not all([document_id, workspace_id, element_id]):
+            return jsonify({
+                'error': 'Missing required parameters',
+                'required': ['documentId', 'workspaceId', 'elementId']
+            }), 400
+
+        # Get OnShape client
+        user_id = get_current_user_id()
+        client = session_manager.get_client(user_id)
+
+        if not client:
+            return jsonify({
+                'error': 'Not authenticated with OnShape',
+                'auth_url': '/onshape/auth'
+            }), 401
+
+        # Auto-select face if needed (reuse logic from onshape_import)
+        part_name_from_body = None
+        auto_selected_body_id = None
+        face_normal = None
+
+        if not face_id:
+            print("No face ID, auto-selecting top face...")
+            try:
+                faces_data = client.list_faces(document_id, workspace_id, element_id)
+                body_count = len(faces_data.get('bodies', [])) if faces_data else 0
+                print(f"📊 Found {body_count} bodies/parts")
+
+                if body_count > 1 and not body_id:
+                    # For save-dxf endpoint, just pick the largest part automatically
+                    # (no UI to show part selection modal)
+                    bodies_with_faces = client.get_body_faces(document_id, workspace_id, element_id, cached_faces_data=faces_data)
+
+                    largest_body = None
+                    largest_area = 0
+                    for body in bodies_with_faces:
+                        body_id_candidate = body.get('bodyId')
+                        top_faces = [f for f in body.get('faces', []) if f.get('normal', {}).get('z', 0) > 0.9]
+                        if top_faces:
+                            face_area = top_faces[0].get('area', 0)
+                            if face_area > largest_area:
+                                largest_area = face_area
+                                largest_body = body
+
+                    if largest_body:
+                        auto_selected_body_id = largest_body.get('bodyId')
+                        part_name_from_body = largest_body.get('name', 'Unnamed_Part')
+                        top_faces = [f for f in largest_body.get('faces', []) if f.get('normal', {}).get('z', 0) > 0.9]
+                        if top_faces:
+                            face_id = top_faces[0].get('faceId')
+                            face_normal = top_faces[0].get('normal')
+                        print(f"✅ Auto-selected largest part: {part_name_from_body} (body: {auto_selected_body_id})")
+
+                elif body_count == 1 or body_id:
+                    # Single part or specific body_id provided
+                    target_body_id = body_id if body_id else faces_data['bodies'][0].get('bodyId')
+                    bodies_with_faces = client.get_body_faces(document_id, workspace_id, element_id, cached_faces_data=faces_data)
+
+                    target_body = next((b for b in bodies_with_faces if b.get('bodyId') == target_body_id), None)
+                    if target_body:
+                        auto_selected_body_id = target_body_id
+                        part_name_from_body = target_body.get('name', 'Unnamed_Part')
+                        top_faces = [f for f in target_body.get('faces', []) if f.get('normal', {}).get('z', 0) > 0.9]
+                        if top_faces:
+                            face_id = top_faces[0].get('faceId')
+                            face_normal = top_faces[0].get('normal')
+                        print(f"✅ Selected part: {part_name_from_body}")
+
+                if not face_id:
+                    return jsonify({
+                        'error': 'Could not auto-select a face',
+                        'message': 'No top face found on any part'
+                    }), 400
+
+            except Exception as e:
+                print(f"Error in face detection: {str(e)}")
+                return jsonify({
+                    'error': 'Face detection failed',
+                    'message': str(e)
+                }), 400
+
+        # Export DXF from OnShape
+        export_body_id = body_id if body_id else auto_selected_body_id
+        print(f"Exporting DXF with body_id: {export_body_id}")
+
+        dxf_content = client.export_face_to_dxf(
+            document_id, workspace_id, element_id, face_id, export_body_id, face_normal
+        )
+
+        if not dxf_content:
+            return jsonify({
+                'error': 'Failed to export DXF from OnShape',
+                'details': {
+                    'face_id': face_id,
+                    'body_id': export_body_id
+                }
+            }), 500
+
+        print(f"📄 DXF exported: {len(dxf_content)} bytes")
+
+        # Generate filename with timestamp
+        doc_name = None
+        try:
+            doc_info = client.get_document_info(document_id)
+            if doc_info:
+                doc_name = doc_info.get('name')
+                print(f"📝 Document name: {doc_name}")
+        except Exception as e:
+            print(f"⚠️  Could not get document name: {e}")
+
+        base_filename = generate_onshape_filename(doc_name, part_name_from_body)
+
+        # Add timestamp
+        pacific_time = datetime.now(ZoneInfo("America/Los_Angeles"))
+        timestamp = pacific_time.strftime("%Y%m%d_%H%M%S")
+        dxf_filename = f"{base_filename}_{timestamp}.dxf"
+
+        print(f"✅ Generated filename: {dxf_filename}")
+
+        # Save DXF to temp file
+        temp_dxf = tempfile.NamedTemporaryFile(
+            suffix='.dxf',
+            dir=OUTPUT_FOLDER,  # Use OUTPUT_FOLDER so it's accessible for upload
+            delete=False
+        )
+        temp_dxf.write(dxf_content)
+        temp_dxf.close()
+
+        dxf_path = temp_dxf.name
+        print(f"💾 Saved temp DXF: {dxf_path}")
+
+        # Upload to Google Drive
+        creds = None
+        if AUTH_AVAILABLE and auth.is_enabled():
+            creds = auth.get_credentials()
+            if not creds:
+                os.unlink(dxf_path)  # Clean up temp file
+                return jsonify({
+                    'error': 'Not authenticated with Google Drive'
+                }), 401
+
+        uploader = GoogleDriveUploader(credentials=creds)
+
+        if not uploader.authenticate():
+            os.unlink(dxf_path)  # Clean up temp file
+            return jsonify({
+                'error': 'Failed to authenticate with Google Drive'
+            }), 500
+
+        print("📤 Uploading to Google Drive...")
+        result = uploader.upload_file(dxf_path, dxf_filename)
+
+        # Clean up temp file
+        try:
+            os.unlink(dxf_path)
+        except:
+            pass
+
+        if result and result.get('success'):
+            print(f"✅ Upload successful: {result.get('web_link')}")
+            return jsonify({
+                'success': True,
+                'message': f'✅ DXF saved to Google Drive: {dxf_filename}',
+                'filename': dxf_filename,
+                'file_id': result.get('file_id'),
+                'web_view_link': result.get('web_link')
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Upload to Google Drive failed',
+                'message': result.get('message') if result else 'Unknown error'
+            }), 500
+
+    except Exception as e:
+        print(f"❌ Error in save-dxf: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': f'Save DXF failed: {str(e)}'
+        }), 500
+
 def cleanup():
     """Clean up temporary files on shutdown"""
     try:
