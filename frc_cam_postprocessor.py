@@ -950,10 +950,10 @@ class FRCPostProcessor:
         gcode.append(f"(Helical entry: {num_helical_passes} passes at {self.ramp_angle}°, {depth_per_pass:.4f}\" per pass)")
         for pass_num in range(num_helical_passes):
             target_z = ramp_start_height - (pass_num + 1) * depth_per_pass
-            gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-entry_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_helical_passes} (CCW for climb milling)")
+            gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-entry_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_helical_passes} CCW for climb milling")
 
         # Clean up pass at entry radius and final depth
-        gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-entry_radius:.4f} J0 F{self.feed_rate}  ; Clean up pass at entry radius (CCW for climb milling)")
+        gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-entry_radius:.4f} J0 F{self.feed_rate}  ; Clean up pass at entry radius CCW for climb milling")
 
         # True Archimedean spiral outward from entry radius to final radius
         # Spiral equation: r = r_start + b*θ where b = stepover/(2π)
@@ -987,7 +987,7 @@ class FRCPostProcessor:
         final_y = cy
         gcode.append(f"(Final cleanup pass at exact radius)")
         gcode.append(f"G1 X{final_x:.4f} Y{final_y:.4f} F{self.feed_rate}  ; Move to final radius")
-        gcode.append(f"G3 X{final_x:.4f} Y{final_y:.4f} I{-final_toolpath_radius:.4f} J0 F{self.feed_rate}  ; Cut final circle (CCW for climb milling)")
+        gcode.append(f"G3 X{final_x:.4f} Y{final_y:.4f} I{-final_toolpath_radius:.4f} J0 F{self.feed_rate}  ; Cut final circle CCW for climb milling")
 
         # Retract
         gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
@@ -1212,7 +1212,7 @@ class FRCPostProcessor:
 
         for pass_num in range(num_helical_passes):
             target_z = ramp_start_height - (pass_num + 1) * depth_per_pass
-            gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-helix_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_helical_passes} (CCW for climb milling)")
+            gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-helix_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_helical_passes} CCW for climb milling")
 
         # Return to center after helix
         gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.feed_rate}  ; Return to pocket center")
@@ -1461,7 +1461,7 @@ class FRCPostProcessor:
                     # Perform helical loops
                     for loop_num in range(num_loops):
                         target_z = current_z - (loop_num + 1) * depth_per_loop_actual
-                        gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-helix_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical loop {loop_num + 1}/{num_loops} (CCW for climb milling)")
+                        gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-helix_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical loop {loop_num + 1}/{num_loops} CCW for climb milling")
 
                     # Return to perimeter path
                     gcode.append(f"G1 X{helix_center_x:.4f} Y{helix_center_y:.4f} F{self.feed_rate}  ; Return to perimeter")
@@ -1710,10 +1710,10 @@ class FRCPostProcessor:
 
             gcode.append(f'G1 Z{ramp_start_z:.4f} F{self.plunge_rate:.1f}')
 
-            # Helical ramp
+            # Linear ramp to depth
             if ramp_depth > 0.01:
-                gcode.append(f'G1 X{entry_x + helix_radius:.4f} Z{(ramp_start_z + z_level) / 2:.4f}')
-                gcode.append(f'G3 X{entry_x:.4f} Z{z_level:.4f} I{-helix_radius:.4f} J0.')
+                gcode.append(f'G1 X{entry_x + helix_radius:.4f} Z{z_level:.4f}')
+                gcode.append(f'G1 X{entry_x:.4f}')
             else:
                 gcode.append(f'G1 Z{z_level:.4f}')
 
@@ -1883,7 +1883,7 @@ class FRCPostProcessor:
         gcode.append('( === PHASE 1: FACE FIRST HALF === )')
         gcode.append('( Face from Y=-0.125 to Y=+0.125 )')
         gcode.append('')
-        gcode.append('G53 G0 Z0.  ; Move to machine Z0 (safe clearance)')
+        gcode.append('G53 G0 Z0.  ; Move to machine Z0 - safe clearance')
         gcode.append('G0 X0 Y0  ; Rapid to work origin')
         gcode.append('')
 
@@ -1897,7 +1897,7 @@ class FRCPostProcessor:
         # === PAUSE FOR FLIP ===
         gcode.append('')
         gcode.append('( === PAUSE FOR TUBE FLIP === )')
-        gcode.append('G53 G0 Z0.  ; Move to machine Z0 (safe clearance)')
+        gcode.append('G53 G0 Z0.  ; Move to machine Z0 - safe clearance')
         gcode.append('G53 G0 X0.5 Y23.5  ; Park at back of machine')
         gcode.append('M5')
         gcode.append('G4 P5.0')
@@ -1916,7 +1916,7 @@ class FRCPostProcessor:
         gcode.append(f'S{self.spindle_speed} M3')
         gcode.append('G4 P3.0')
         gcode.append('')
-        gcode.append('G53 G0 Z0.  ; Move to machine Z0 (safe clearance)')
+        gcode.append('G53 G0 Z0.  ; Move to machine Z0 - safe clearance')
         gcode.append('G0 X0 Y0  ; Rapid to work origin')
         gcode.append('')
 
@@ -1995,7 +1995,7 @@ class FRCPostProcessor:
         gcode.append('( )')
         gcode.append('( SETUP INSTRUCTIONS: )')
         gcode.append('( 1. Mount tube in jig with end facing spindle )')
-        gcode.append('( 2. Jig uses G55 work coordinate system (fixed position) )')
+        gcode.append('( 2. Jig uses G55 work coordinate system [fixed position] )')
         gcode.append('( 3. G55 origin is at bottom-left corner of tube face )')
         gcode.append('( 4. X = tube width, Y = into tube, Z = tube height )')
         gcode.append('( )')
@@ -2065,10 +2065,10 @@ class FRCPostProcessor:
         gcode.append('( Machine pattern on first face )')
         gcode.append('( Machining holes and pockets only - perimeter is tube face )')
         z_offset = tube_height - self.material_thickness
-        gcode.append(f'( Z offset: +{z_offset:.3f}" (tube_height - wall_thickness) )')
+        gcode.append(f'( Z offset: +{z_offset:.3f}" [tube_height - wall_thickness] )')
         # Y offset for first face: rough end against stop will be milled back by wall_thickness
         y_offset_first_face = self.material_thickness if square_end else 0.0
-        gcode.append(f'( Y offset: +{y_offset_first_face:.3f}" (rough end will be milled back) )')
+        gcode.append(f'( Y offset: +{y_offset_first_face:.3f}" [rough end will be milled back] )')
         gcode.append('')
         gcode.extend(self._generate_toolpath_gcode(skip_perimeter=True, z_offset=z_offset, y_offset=y_offset_first_face))
 
@@ -2118,9 +2118,9 @@ class FRCPostProcessor:
 
         # Machine the pattern on this face (X-mirrored, Y stays same)
         gcode.append('( Machine pattern on second face - X-mirrored )')
-        gcode.append('( Pattern is X-mirrored (tube flipped end-for-end) so holes align opposite )')
+        gcode.append('( Pattern is X-mirrored [tube flipped end-for-end] so holes align opposite )')
         z_offset = tube_height - self.material_thickness
-        gcode.append(f'( Z offset: +{z_offset:.3f}" (tube_height - wall_thickness) )')
+        gcode.append(f'( Z offset: +{z_offset:.3f}" [tube_height - wall_thickness] )')
         gcode.append('( Y coordinates same as first face - squared end now against stop )')
         gcode.append('')
 
