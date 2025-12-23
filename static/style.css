@@ -974,3 +974,19 @@ select option {
     border-color: rgba(239, 68, 68, 0.5);
     color: #ef4444;
 }
+
+/* Example CSS */
+.preview-container {
+    position: relative;
+    width: 100%; 
+    height: 500px; /* Or flex-grow, but must be constrained */
+    overflow: hidden;
+    background: #0a0e14;
+}
+
+canvas.dxf-preview-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    /* Let JS handle the attribute width/height for resolution */
+}

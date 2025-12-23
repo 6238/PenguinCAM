@@ -3,21 +3,164 @@
 /** @type {import("three")} */
 const THREE = /** @type {any} */ (window).THREE;
 
+/**
+ * GCodePreview
+ * Handles the 3D visualization, parsing, and playback of G-code toolpaths.
+ */
+function GCodePreview(config) {
+    // 1. Setup DOM & Context
+    this.container = typeof config.container === 'string' ? document.querySelector(config.container) : config.container;
+    this.canvas = typeof config.canvas === 'string' ? document.querySelector(config.canvas) : config.canvas;
+    
+    // 2. Bind UI Elements
+    this.ui = {
+        scrubber: document.querySelector(config.ui.scrubber),
+        scrubberLabel: document.querySelector(config.ui.scrubberLabel),
+        scrubberOp: document.querySelector(config.ui.scrubberOp),
+        playBtn: document.querySelector(config.ui.playBtn),
+        restartBtn: document.querySelector(config.ui.restartBtn),
+        speedSelect: document.querySelector(config.ui.speedSelect),
+        playIcon: document.querySelector(config.ui.playIcon),
+        pauseIcon: document.querySelector(config.ui.pauseIcon),
+        resetViewBtn: document.querySelector(config.ui.resetViewBtn)
+    };
 
-/** toolpathMoves is mutable and will be populated populated */
-function visualizeGcode(gcode, toolpathMoves) {
-    // Parse G-code into moves
+    // 3. Bind Material Inputs
+    this.inputs = {
+        material: document.querySelector(config.inputs.material),
+        thickness: document.querySelector(config.inputs.thickness),
+        tubeHeight: document.querySelector(config.inputs.tubeHeight)
+    };
+
+    // 4. Three.js State
+    this.scene = null;
+    this.camera = null;
+    this.renderer = null;
+    this.refs = {
+        tool: null,
+        stock: null,
+        completedLine: null,
+        upcomingLine: null,
+        grid: null
+    };
+
+    // 5. App State
+    this.moves = [];
+    this.bounds = { minX: 0, maxX: 0, minY: 0, maxY: 0, minZ: 0, maxZ: 0 };
+    this.playback = {
+        isPlaying: false,
+        interval: null,
+        speed: 40
+    };
+    this.cameraState = {
+        optimalPos: null,
+        optimalLookAt: null
+    };
+
+    this.initThree();
+    this.initEventListeners();
+    this.initResizeHandler();
+    this.animate();
+}
+
+// --- Initialization ---
+
+GCodePreview.prototype.initThree = function() {
+    // Scene
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x0A0E14);
+
+    // Camera
+    const aspect = this.container.clientWidth / this.container.clientHeight;
+    this.camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
+    this.camera.position.set(10, 10, 10);
+    this.camera.lookAt(0, 0, 0);
+
+    // Renderer
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
+    this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+    this.renderer.setPixelRatio(window.devicePixelRatio);
+
+    // Lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    this.scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(5, 10, 7.5);
+    this.scene.add(dirLight);
+};
+
+GCodePreview.prototype.initEventListeners = function() {
+    const self = this;
+
+    // Scrubber
+    if (this.ui.scrubber) {
+        this.ui.scrubber.oninput = (e) => {
+            const idx = parseInt(e.target.value);
+            self.updateToolpathDisplay(idx);
+        };
+    }
+
+    // Playback Controls
+    if (this.ui.playBtn) this.ui.playBtn.addEventListener('click', () => self.togglePlayback());
+    if (this.ui.restartBtn) this.ui.restartBtn.addEventListener('click', () => self.restartPlayback());
+    if (this.ui.speedSelect) {
+        this.ui.speedSelect.addEventListener('change', (e) => {
+            self.playback.speed = parseInt(e.target.value);
+            if (self.playback.isPlaying) {
+                self.stopPlayback();
+                self.startPlayback();
+            }
+        });
+    }
+
+    // Camera Controls
+    this.initMouseControls();
+    if (this.ui.resetViewBtn) {
+        this.ui.resetViewBtn.addEventListener('click', () => self.resetView());
+    }
+};
+
+GCodePreview.prototype.initResizeHandler = function() {
+    const observer = new ResizeObserver(() => this.handleResize());
+    observer.observe(this.container);
+};
+
+// --- Core Logic ---
+
+GCodePreview.prototype.load = function(gcode) {
+    this.parseGcode(gcode);
+    
+    if (this.moves.length === 0) return;
+
+    this.buildScene();
+    
+    // Reset Scrubber
+    if (this.ui.scrubber) {
+        this.ui.scrubber.max = this.moves.length - 1;
+        this.ui.scrubber.value = 0;
+    }
+
+    this.updateToolpathDisplay(0);
+};
+
+GCodePreview.prototype.parseGcode = function(gcode) {
     const lines = gcode.split('\n');
-    toolpathMoves = [];
-    let currentX = 0, currentY = 0, currentZ = 0;
-    let minX = Infinity, maxX = -Infinity;
-    let minY = Infinity, maxY = -Infinity;
-    let minZ = Infinity, maxZ = -Infinity;
+    this.moves = [];
+    
+    let cur = { x: 0, y: 0, z: 0 };
+    let b = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity, minZ: Infinity, maxZ: -Infinity };
+
+    const updateBounds = (x, y, z) => {
+        b.minX = Math.min(b.minX, x); b.maxX = Math.max(b.maxX, x);
+        b.minY = Math.min(b.minY, y); b.maxY = Math.max(b.maxY, y);
+        b.minZ = Math.min(b.minZ, z); b.maxZ = Math.max(b.maxZ, z);
+    };
 
     for (const line of lines) {
         const trimmed = line.trim();
         if (trimmed.startsWith('(') || trimmed.startsWith(';') || !trimmed) continue;
-
+        
         const gMatch = trimmed.match(/^(G[0-3])/);
         if (!gMatch) continue;
 
@@ -26,11 +169,13 @@ function visualizeGcode(gcode, toolpathMoves) {
         const yMatch = trimmed.match(/Y([-\d.]+)/);
         const zMatch = trimmed.match(/Z([-\d.]+)/);
 
-        const newX = xMatch ? parseFloat(xMatch[1]) : currentX;
-        const newY = yMatch ? parseFloat(yMatch[1]) : currentY;
-        const newZ = zMatch ? parseFloat(zMatch[1]) : currentZ;
+        const newPos = {
+            x: xMatch ? parseFloat(xMatch[1]) : cur.x,
+            y: yMatch ? parseFloat(yMatch[1]) : cur.y,
+            z: zMatch ? parseFloat(zMatch[1]) : cur.z
+        };
 
-        // Handle arcs (G2 = CW, G3 = CCW)
+        // Handle Arcs (G2/G3)
         if (moveType === 'G2' || moveType === 'G3') {
             const iMatch = trimmed.match(/I([-\d.]+)/);
             const jMatch = trimmed.match(/J([-\d.]+)/);
@@ -38,492 +183,303 @@ function visualizeGcode(gcode, toolpathMoves) {
             if (iMatch && jMatch) {
                 const arcI = parseFloat(iMatch[1]);
                 const arcJ = parseFloat(jMatch[1]);
-
-                // Arc center (incremental from start point - G91.1 mode)
-                const centerX = currentX + arcI;
-                const centerY = currentY + arcJ;
-
-                // Calculate arc parameters
-                const startAngle = Math.atan2(currentY - centerY, currentX - centerX);
-                const endAngle = Math.atan2(newY - centerY, newX - centerX);
+                const centerX = cur.x + arcI;
+                const centerY = cur.y + arcJ;
+                
+                const startAngle = Math.atan2(cur.y - centerY, cur.x - centerX);
+                const endAngle = Math.atan2(newPos.y - centerY, newPos.x - centerX);
                 const radius = Math.sqrt(arcI * arcI + arcJ * arcJ);
+                
+                let sweep = endAngle - startAngle;
+                const isCW = moveType === 'G2';
 
-                // Determine sweep direction and angle
-                let sweepAngle = endAngle - startAngle;
-
-                // Handle G2 (clockwise) vs G3 (counterclockwise)
-                const isClockwise = moveType === 'G2';
-
-                // Normalize sweep angle
-                if (isClockwise) {
-                    // For CW, sweep should be negative
-                    if (sweepAngle > 0) sweepAngle -= 2 * Math.PI;
-                    // Handle full circles (start == end)
-                    if (Math.abs(sweepAngle) < 0.001) sweepAngle = -2 * Math.PI;
+                if (isCW) {
+                    if (sweep > 0) sweep -= 2 * Math.PI;
+                    if (Math.abs(sweep) < 0.001) sweep = -2 * Math.PI;
                 } else {
-                    // For CCW, sweep should be positive
-                    if (sweepAngle < 0) sweepAngle += 2 * Math.PI;
-                    // Handle full circles (start == end)
-                    if (Math.abs(sweepAngle) < 0.001) sweepAngle = 2 * Math.PI;
+                    if (sweep < 0) sweep += 2 * Math.PI;
+                    if (Math.abs(sweep) < 0.001) sweep = 2 * Math.PI;
                 }
 
-                // Validate arc parameters
-                if (isNaN(radius) || radius <= 0 || isNaN(sweepAngle)) {
-                    console.warn('Invalid arc parameters:', { radius, sweepAngle, centerX, centerY });
-                    continue;
-                }
+                if (!isNaN(radius) && radius > 0) {
+                    const startZ = cur.z;
+                    const numSegs = Math.max(8, Math.ceil(Math.abs(sweep) * radius * 10));
+                    const zStep = (newPos.z - startZ) / numSegs;
 
-                // Save start position before tessellation
-                const startX = currentX;
-                const startY = currentY;
-                const startZ = currentZ;
+                    for (let i = 0; i < numSegs; i++) {
+                        const t = (i + 1) / numSegs;
+                        const angle = startAngle + sweep * t;
+                        const arcX = centerX + radius * Math.cos(angle);
+                        const arcY = centerY + radius * Math.sin(angle);
+                        const arcZ = startZ + zStep * (i + 1);
 
-                // Tessellate arc into line segments
-                const numSegments = Math.max(8, Math.ceil(Math.abs(sweepAngle) * radius * 10));
-                const zStep = (newZ - startZ) / numSegments;
-
-                for (let i = 0; i < numSegments; i++) {
-                    const t = (i + 1) / numSegments;
-                    const angle = startAngle + sweepAngle * t;
-                    const arcX = centerX + radius * Math.cos(angle);
-                    const arcY = centerY + radius * Math.sin(angle);
-                    const arcZ = startZ + zStep * (i + 1);
-
-                    // Validate segment
-                    if (isNaN(arcX) || isNaN(arcY) || isNaN(arcZ)) {
-                        console.warn('Invalid arc segment:', { arcX, arcY, arcZ });
-                        continue;
+                        this.moves.push({
+                            type: moveType,
+                            from: { ...cur },
+                            to: { x: arcX, y: arcY, z: arcZ },
+                            line: trimmed
+                        });
+                        
+                        cur = { x: arcX, y: arcY, z: arcZ };
+                        updateBounds(cur.x, cur.y, cur.z);
                     }
-
-                    toolpathMoves.push({
-                        type: moveType,
-                        from: { x: currentX, y: currentY, z: currentZ },
-                        to: { x: arcX, y: arcY, z: arcZ },
-                        line: trimmed
-                    });
-
-                    currentX = arcX;
-                    currentY = arcY;
-                    currentZ = arcZ;
-
-                    minX = Math.min(minX, currentX);
-                    maxX = Math.max(maxX, currentX);
-                    minY = Math.min(minY, currentY);
-                    maxY = Math.max(maxY, currentY);
-                    minZ = Math.min(minZ, currentZ);
-                    maxZ = Math.max(maxZ, currentZ);
+                    continue; // Skip linear add
                 }
-
-                continue; // Skip the linear move handling below
             }
         }
 
-        // Linear moves (G0, G1) or arcs without I/J
-        if (newX !== currentX || newY !== currentY || newZ !== currentZ) {
-            toolpathMoves.push({
+        // Linear Moves
+        if (newPos.x !== cur.x || newPos.y !== cur.y || newPos.z !== cur.z) {
+            this.moves.push({
                 type: moveType,
-                from: { x: currentX, y: currentY, z: currentZ },
-                to: { x: newX, y: newY, z: newZ },
+                from: { ...cur },
+                to: { ...newPos },
                 line: trimmed
             });
-
-            currentX = newX;
-            currentY = newY;
-            currentZ = newZ;
-
-            minX = Math.min(minX, currentX);
-            maxX = Math.max(maxX, currentX);
-            minY = Math.min(minY, currentY);
-            maxY = Math.max(maxY, currentY);
-            minZ = Math.min(minZ, currentZ);
-            maxZ = Math.max(maxZ, currentZ);
+            cur = { ...newPos };
+            updateBounds(cur.x, cur.y, cur.z);
         }
     }
+    
+    this.bounds = b;
+};
 
-    console.log('Arc parsing complete. Total moves:', toolpathMoves.length);
-    console.log('Bounds:', { minX, maxX, minY, maxY, minZ, maxZ });
-    console.log('First 5 moves:', toolpathMoves.slice(0, 5));
-
-    if (toolpathMoves.length === 0) return;
-
-    // Clear old visualization
+GCodePreview.prototype.buildScene = function() {
+    // Clear old dynamic children
     const toRemove = [];
-    scene.children.forEach(child => {
-        if (!(child instanceof THREE.AmbientLight) && !(child instanceof THREE.DirectionalLight)) {
+    this.scene.traverse(child => {
+        if (child.isMesh || child.isLine || child.isGridHelper || child.isAxesHelper) {
             toRemove.push(child);
         }
     });
-    toRemove.forEach(child => scene.remove(child));
-    completedLine = null;
-    upcomingLine = null;
-    toolMesh = null;
+    toRemove.forEach(c => this.scene.remove(c));
+    this.refs = { tool: null, stock: null, completedLine: null, upcomingLine: null };
 
-    // Add grid and axes
-    const maxDimension = Math.max(maxX, maxY, maxZ);
-    const gridSize = Math.max(maxX * 1.3, maxY * 1.3, 15);
+    const b = this.bounds;
+    const maxDim = Math.max(b.maxX, b.maxY, b.maxZ);
+    
+    // Grid & Axes
+    const gridSize = Math.max(b.maxX * 1.3, b.maxY * 1.3, 15);
     const gridHelper = new THREE.GridHelper(gridSize, Math.ceil(gridSize), 0x30363D, 0x1E2632);
-    gridHelper.position.set(gridSize / 3, 0, -gridSize / 3);
-    scene.add(gridHelper);
+    gridHelper.position.set(gridSize/3, 0, -gridSize/3);
+    this.scene.add(gridHelper);
 
-    const axisLength = Math.max(maxDimension, 5) * 1.2;
-    const axesHelper = new THREE.AxesHelper(axisLength);
-    scene.add(axesHelper);
+    const axesHelper = new THREE.AxesHelper(Math.max(maxDim, 5) * 1.2);
+    this.scene.add(axesHelper);
 
-    const markerSize = Math.max(0.15, maxDimension * 0.02);
-    const originMarker = new THREE.Mesh(
-        new THREE.SphereGeometry(markerSize, 16, 16),
-        new THREE.MeshBasicMaterial({ color: 0xFFFFFF })
-    );
-    scene.add(originMarker);
+    // Stock Material
+    const matType = this.inputs.material ? this.inputs.material.value : 'generic';
+    const matThick = this.inputs.thickness ? parseFloat(this.inputs.thickness.value) : 1;
+    const isTube = (matType === 'aluminum_tube');
+    const stockH = isTube && this.inputs.tubeHeight ? parseFloat(this.inputs.tubeHeight.value) : matThick;
 
-    // Get actual material thickness for visualization
-    const material = document.getElementById('material').value;
-    const isAluminumTube = (material === 'aluminum_tube');
-    const materialThickness = parseFloat(document.getElementById('thickness').value);
+    const stockW = b.maxX - b.minX;
+    const stockD = b.maxY - b.minY;
 
-    // For tube mode, use tube height as stock height instead of wall thickness
-    const stockHeightValue = isAluminumTube ?
-        parseFloat(document.getElementById('tubeHeight').value) :
-        materialThickness;
+    // Boundaries Outline
+    const outlines = new THREE.Group();
+    const outlineGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(b.minX, matThick, -b.minY),
+        new THREE.Vector3(b.maxX, matThick, -b.minY),
+        new THREE.Vector3(b.maxX, matThick, -b.maxY),
+        new THREE.Vector3(b.minX, matThick, -b.maxY),
+        new THREE.Vector3(b.minX, matThick, -b.minY)
+    ]);
+    outlines.add(new THREE.Line(outlineGeo, new THREE.LineBasicMaterial({ color: 0x8B949E, opacity: 0.5, transparent: true })));
+    this.scene.add(outlines);
 
-    // Material boundaries (at material top surface)
-    const materialOutline = new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(minX, materialThickness, -minY),
-            new THREE.Vector3(maxX, materialThickness, -minY),
-            new THREE.Vector3(maxX, materialThickness, -maxY),
-            new THREE.Vector3(minX, materialThickness, -maxY),
-            new THREE.Vector3(minX, materialThickness, -minY)
-        ]),
-        new THREE.LineBasicMaterial({ color: 0x8B949E, linewidth: 1, opacity: 0.5, transparent: true })
-    );
-    scene.add(materialOutline);
-
-    const sacrificeOutline = new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(minX, 0, -minY),
-            new THREE.Vector3(maxX, 0, -minY),
-            new THREE.Vector3(maxX, 0, -maxY),
-            new THREE.Vector3(minX, 0, -maxY),
-            new THREE.Vector3(minX, 0, -minY)
-        ]),
-        new THREE.LineBasicMaterial({ color: 0x8B949E, linewidth: 1, opacity: 0.3, transparent: true })
-    );
-    scene.add(sacrificeOutline);
-
-    // Add stock material as semi-transparent solid
-    const stockWidth = maxX - minX;
-    const stockDepth = maxY - minY;
-    const stockHeight = stockHeightValue; // Use tube height for tubes, thickness for plates
-
-    const stockGeometry = new THREE.BoxGeometry(stockWidth, stockHeight, stockDepth);
-    const stockMaterial = new THREE.MeshStandardMaterial({
-        color: 0xE8F0FF, // Light blue-white (aluminum-ish)
-        transparent: true,
-        opacity: 0.15, // More transparent so toolpaths show through
-        metalness: 0.3,
-        roughness: 0.7,
-        side: THREE.DoubleSide,
-        depthWrite: false // Critical! Allows lines to render through transparent material
+    // Solid Stock Body
+    const stockGeo = new THREE.BoxGeometry(stockW, stockH, stockD);
+    const stockMat = new THREE.MeshStandardMaterial({
+        color: 0xE8F0FF, transparent: true, opacity: 0.15,
+        metalness: 0.3, roughness: 0.7, side: THREE.DoubleSide, depthWrite: false
     });
-    
-    const stockMesh = new THREE.Mesh(stockGeometry, stockMaterial);
-    // Position at center of stock, halfway up from sacrifice board
-    stockMesh.position.set(
-        (minX + maxX) / 2,
-        stockHeight / 2,
-        -(minY + maxY) / 2
-    );
-    stockMesh.renderOrder = -1; // Render stock before toolpaths
-    scene.add(stockMesh);
+    const stockMesh = new THREE.Mesh(stockGeo, stockMat);
+    stockMesh.position.set((b.minX + b.maxX)/2, stockH/2, -(b.minY + b.maxY)/2);
+    stockMesh.renderOrder = -1;
+    this.scene.add(stockMesh);
 
-    // Create tool representation (endmill)
-    const toolDiameter = 0.157; // 4mm default
-    const toolLength = Math.max(maxZ * 1.5, 1.0);
-    const toolGeometry = new THREE.CylinderGeometry(
-        toolDiameter / 2, 
-        toolDiameter / 2, 
-        toolLength, 
-        16
-    );
-    const toolMaterial = new THREE.MeshStandardMaterial({
-        color: 0xC0C0C0, // Silver
-        metalness: 0.8,
-        roughness: 0.2,
-        emissive: 0x404040
-    });
-    toolMesh = new THREE.Mesh(toolGeometry, toolMaterial);
-    toolMesh.userData.toolLength = toolLength; // Store for positioning
-    scene.add(toolMesh);
+    // Tool
+    const toolLen = Math.max(b.maxZ * 1.5, 1.0);
+    const toolGeo = new THREE.CylinderGeometry(0.08, 0.08, toolLen, 16); // radius ~2mm
+    const toolMat = new THREE.MeshStandardMaterial({ color: 0xC0C0C0, metalness: 0.8, roughness: 0.2 });
+    this.refs.tool = new THREE.Mesh(toolGeo, toolMat);
+    this.refs.tool.userData.len = toolLen;
+    this.scene.add(this.refs.tool);
 
-    // Initialize toolpath lines
-    updateToolpathDisplay(0);
+    // Camera Positioning
+    const viewDist = maxDim * 2;
+    this.cameraState.optimalPos = new THREE.Vector3(viewDist * 0.7, viewDist * 0.7, viewDist * 0.7);
+    this.cameraState.optimalLookAt = new THREE.Vector3(b.maxX/3, b.maxZ/3, -b.maxY/3);
+    this.resetView();
+};
 
-    // Setup scrubber
-    const scrubber = document.getElementById('toolpathScrubber');
-    const scrubberContainer = document.getElementById('scrubberContainer');
-    scrubberContainer.style.display = 'block';
-    
-    scrubber.max = toolpathMoves.length - 1;
-    scrubber.value = 0;
-    
-    scrubber.oninput = (e) => {
-        const moveIndex = parseInt(e.target.value);
-        updateToolpathDisplay(moveIndex);
-    };
+GCodePreview.prototype.updateToolpathDisplay = function(moveIndex) {
+    if (this.moves.length === 0) return;
 
-    // Show playback controls
-    document.getElementById('playbackControls').style.display = 'flex';
-
-    let isPlaying = false;
-    let playbackInterval = null;
-    let playbackSpeed = 40; // moves per second (default 1x speed)
-
-    // Get playback controls
-    const playButton = document.getElementById('playButton');
-    const restartButton = document.getElementById('restartButton');
-    const playbackSpeedSelect = document.getElementById('playbackSpeed');
-    const playIcon = playButton.querySelector('.play-icon');
-    const pauseIcon = playButton.querySelector('.pause-icon');
-
-    // Play/Pause button handler
-    playButton.addEventListener('click', () => {
-        if (isPlaying) {
-            stopPlayback();
-        } else {
-            startPlayback();
-        }
-    });
-
-    // Restart button handler
-    restartButton.addEventListener('click', () => {
-        scrubber.value = 0;
-        updateToolpathDisplay(0);
-        if (isPlaying) {
-            stopPlayback();
-            setTimeout(startPlayback, 100); // Brief pause before restart
-        }
-    });
-
-    // Speed selector handler
-    playbackSpeedSelect.addEventListener('change', (e) => {
-        playbackSpeed = parseInt(e.target.value);
-        if (isPlaying) {
-            // Restart playback with new speed
-            stopPlayback();
-            startPlayback();
-        }
-    });
-
-    function startPlayback() {
-        isPlaying = true;
-        playButton.classList.add('playing');
-        playIcon.style.display = 'none';
-        pauseIcon.style.display = 'block';
-
-        // Calculate interval based on speed (moves per second)
-        const intervalMs = 1000 / playbackSpeed;
-
-        playbackInterval = setInterval(() => {
-            const currentValue = parseInt(scrubber.value);
-            const maxValue = parseInt(scrubber.max);
-
-            if (currentValue >= maxValue) {
-                stopPlayback();
-                return;
-            }
-
-            scrubber.value = currentValue + 1;
-            updateToolpathDisplay(currentValue + 1);
-        }, intervalMs);
+    // UI Updates
+    if (this.ui.scrubberLabel) this.ui.scrubberLabel.textContent = `Move ${moveIndex + 1} of ${this.moves.length}`;
+    if (this.ui.scrubberOp) {
+        const move = this.moves[moveIndex];
+        const type = move.type === 'G0' ? 'Rapid' : 'Cut';
+        this.ui.scrubberOp.textContent = `${type}: ${move.line.substring(0, 40)}`;
     }
 
-    function stopPlayback() {
-        isPlaying = false;
-        playButton.classList.remove('playing');
-        playIcon.style.display = 'block';
-        pauseIcon.style.display = 'none';
+    // Tool Position
+    if (this.refs.tool) {
+        const pos = this.moves[moveIndex].to;
+        const len = this.refs.tool.userData.len;
+        this.refs.tool.position.set(pos.x, pos.z + len/2, -pos.y);
+    }
 
-        if (playbackInterval) {
-            clearInterval(playbackInterval);
-            playbackInterval = null;
+    // Lines
+    if (this.refs.completedLine) this.scene.remove(this.refs.completedLine);
+    if (this.refs.upcomingLine) this.scene.remove(this.refs.upcomingLine);
+
+    // 1. Upcoming (Gold)
+    if (moveIndex < this.moves.length - 1) {
+        const pts = [];
+        // Add current point
+        pts.push(new THREE.Vector3(this.moves[moveIndex].from.x, this.moves[moveIndex].from.z, -this.moves[moveIndex].from.y));
+        for (let i = moveIndex; i < this.moves.length; i++) {
+            pts.push(new THREE.Vector3(this.moves[i].to.x, this.moves[i].to.z, -this.moves[i].to.y));
         }
+        const geo = new THREE.BufferGeometry().setFromPoints(pts);
+        this.refs.upcomingLine = new THREE.Line(geo, new THREE.LineBasicMaterial({ 
+            color: 0xFDB515, linewidth: 3, opacity: 0.8, transparent: true 
+        }));
+        this.scene.add(this.refs.upcomingLine);
     }
 
-    // Camera positioning
-    const viewDist = Math.max(maxX, maxY, maxZ) * 2;
-    camera.position.set(viewDist * 0.7, viewDist * 0.7, viewDist * 0.7);
-    camera.lookAt(maxX / 3, maxZ / 3, -maxY / 3);
-
-    optimalCameraPosition = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
-    optimalLookAtPosition = { x: maxX / 3, y: maxZ / 3, z: -maxY / 3 };
-
-    document.querySelector('.empty-state').style.display = 'none';
-}
-
-function updateToolpathDisplay(moveIndex) {
-    if (toolpathMoves.length === 0) return;
-
-    // Update scrubber labels
-    document.getElementById('scrubberLabel').textContent = 
-        `Move ${moveIndex + 1} of ${toolpathMoves.length}`;
-    
-    const currentMove = toolpathMoves[moveIndex];
-    const moveType = currentMove.type === 'G0' ? 'Rapid' : 'Cut';
-    document.getElementById('scrubberOperation').textContent = 
-        `${moveType}: ${currentMove.line.substring(0, 40)}`;
-
-    // Update tool position
-    if (toolMesh) {
-        const pos = currentMove.to;
-        // Position tool so BOTTOM is at Z coordinate, not center
-        // Cylinder center needs to be offset up by half its length
-        const toolLength = toolMesh.userData.toolLength;
-        toolMesh.position.set(pos.x, pos.z + toolLength / 2, -pos.y);
-    }
-
-    // Remove old toolpath lines
-    if (completedLine) scene.remove(completedLine);
-    if (upcomingLine) scene.remove(upcomingLine);
-
-    // Build upcoming path first (gold) - draw this first so completed renders on top
-    if (moveIndex < toolpathMoves.length - 1) {
-        const upcomingPoints = [];
-        for (let i = moveIndex; i < toolpathMoves.length; i++) {
-            const move = toolpathMoves[i];
-            if (i === moveIndex) {
-                upcomingPoints.push(new THREE.Vector3(move.from.x, move.from.z, -move.from.y));
-            }
-            upcomingPoints.push(new THREE.Vector3(move.to.x, move.to.z, -move.to.y));
-        }
-        const upcomingGeometry = new THREE.BufferGeometry().setFromPoints(upcomingPoints);
-        upcomingLine = new THREE.Line(
-            upcomingGeometry,
-            new THREE.LineBasicMaterial({ 
-                color: 0xFDB515, 
-                linewidth: 3,
-                opacity: 0.8, 
-                transparent: true 
-            })
-        );
-        scene.add(upcomingLine);
-    }
-
-    // Build completed path (green) - draw this last so it's on top
+    // 2. Completed (Green)
     if (moveIndex > 0) {
-        const completedPoints = [];
+        const pts = [];
+        pts.push(new THREE.Vector3(this.moves[0].from.x, this.moves[0].from.z, -this.moves[0].from.y));
         for (let i = 0; i <= moveIndex; i++) {
-            const move = toolpathMoves[i];
-            if (i === 0) {
-                completedPoints.push(new THREE.Vector3(move.from.x, move.from.z, -move.from.y));
-            }
-            completedPoints.push(new THREE.Vector3(move.to.x, move.to.z, -move.to.y));
+            pts.push(new THREE.Vector3(this.moves[i].to.x, this.moves[i].to.z, -this.moves[i].to.y));
         }
-        const completedGeometry = new THREE.BufferGeometry().setFromPoints(completedPoints);
-        completedLine = new THREE.Line(
-            completedGeometry,
-            new THREE.LineBasicMaterial({ color: 0x2EA043, linewidth: 3 })
-        );
-        scene.add(completedLine);
+        const geo = new THREE.BufferGeometry().setFromPoints(pts);
+        this.refs.completedLine = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x2EA043, linewidth: 3 }));
+        this.scene.add(this.refs.completedLine);
     }
-}
+};
 
+// --- Playback Logic ---
 
-function initVisualization() {
-    const container = document.getElementById('canvas-container');
-    const canvas = document.getElementById('gcodeCanvas');
+GCodePreview.prototype.togglePlayback = function() {
+    if (this.playback.isPlaying) this.stopPlayback();
+    else this.startPlayback();
+};
 
-    // Scene
-    scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0A0E14);
+GCodePreview.prototype.startPlayback = function() {
+    if (!this.ui.scrubber) return;
+    
+    this.playback.isPlaying = true;
+    if (this.ui.playBtn) this.ui.playBtn.classList.add('playing');
+    if (this.ui.playIcon) this.ui.playIcon.style.display = 'none';
+    if (this.ui.pauseIcon) this.ui.pauseIcon.style.display = 'block';
 
-    // Camera
-    camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
-    camera.position.set(10, 10, 10);
-    camera.lookAt(0, 0, 0);
+    const intervalMs = 1000 / this.playback.speed;
+    
+    this.playback.interval = setInterval(() => {
+        const current = parseInt(this.ui.scrubber.value);
+        const max = parseInt(this.ui.scrubber.max);
+        
+        if (current >= max) {
+            this.stopPlayback();
+            return;
+        }
 
-    // Renderer
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+        this.ui.scrubber.value = current + 1;
+        this.updateToolpathDisplay(current + 1);
+    }, intervalMs);
+};
 
-    // Lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambientLight);
+GCodePreview.prototype.stopPlayback = function() {
+    this.playback.isPlaying = false;
+    if (this.ui.playBtn) this.ui.playBtn.classList.remove('playing');
+    if (this.ui.playIcon) this.ui.playIcon.style.display = 'block';
+    if (this.ui.pauseIcon) this.ui.pauseIcon.style.display = 'none';
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(5, 10, 7.5);
-    scene.add(directionalLight);
+    if (this.playback.interval) {
+        clearInterval(this.playback.interval);
+        this.playback.interval = null;
+    }
+};
 
-    // Grid, axes, and origin marker will be added when G-code is loaded
-    // (sized appropriately for the part)
+GCodePreview.prototype.restartPlayback = function() {
+    if (this.ui.scrubber) {
+        this.ui.scrubber.value = 0;
+        this.updateToolpathDisplay(0);
+    }
+    if (this.playback.isPlaying) {
+        this.stopPlayback();
+        setTimeout(() => this.startPlayback(), 100);
+    }
+};
 
-    // Mouse controls
-    addMouseControls();
+// --- View & Controls ---
 
-    // Animate
-    animate();
-}
+GCodePreview.prototype.resetView = function() {
+    if (this.cameraState.optimalPos) {
+        this.camera.position.copy(this.cameraState.optimalPos);
+        this.camera.lookAt(this.cameraState.optimalLookAt);
+    }
+};
 
-function addAxisLabels() {
-    // Not needed - origin marker added in visualizeGcode with proper sizing
-}
+GCodePreview.prototype.handleResize = function() {
+    if (!this.container || !this.camera || !this.renderer) return;
+    
+    const w = this.container.clientWidth;
+    const h = this.container.clientHeight;
+    
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(w, h);
+};
 
-function addMouseControls() {
-    const canvas = document.getElementById('gcodeCanvas');
+GCodePreview.prototype.animate = function() {
+    requestAnimationFrame(() => this.animate());
+    if (this.renderer && this.scene && this.camera) {
+        this.renderer.render(this.scene, this.camera);
+    }
+};
+
+GCodePreview.prototype.initMouseControls = function() {
     let isDragging = false;
-    let previousMousePosition = { x: 0, y: 0 };
+    let prevPos = { x: 0, y: 0 };
+    const canvas = this.canvas;
+    const camera = this.camera;
 
     canvas.addEventListener('mousedown', (e) => {
         isDragging = true;
-        previousMousePosition = { x: e.clientX, y: e.clientY };
+        prevPos = { x: e.clientX, y: e.clientY };
     });
 
-    canvas.addEventListener('mousemove', (e) => {
+    window.addEventListener('mousemove', (e) => {
         if (!isDragging) return;
+        const dx = e.clientX - prevPos.x;
+        const dy = e.clientY - prevPos.y;
 
-        const deltaX = e.clientX - previousMousePosition.x;
-        const deltaY = e.clientY - previousMousePosition.y;
-
-        // Rotate camera
-        const rotationSpeed = 0.005;
-        camera.position.x = camera.position.x * Math.cos(deltaX * rotationSpeed) - camera.position.z * Math.sin(deltaX * rotationSpeed);
-        camera.position.z = camera.position.x * Math.sin(deltaX * rotationSpeed) + camera.position.z * Math.cos(deltaX * rotationSpeed);
-        camera.position.y += deltaY * rotationSpeed * 5;
-
+        // Manual orbit logic to match original behavior
+        const rotSpeed = 0.005;
+        const x = camera.position.x;
+        const z = camera.position.z;
+        
+        camera.position.x = x * Math.cos(dx * rotSpeed) - z * Math.sin(dx * rotSpeed);
+        camera.position.z = x * Math.sin(dx * rotSpeed) + z * Math.cos(dx * rotSpeed);
+        camera.position.y += dy * rotSpeed * 5;
         camera.lookAt(0, 0, 0);
 
-        previousMousePosition = { x: e.clientX, y: e.clientY };
+        prevPos = { x: e.clientX, y: e.clientY };
     });
 
-    canvas.addEventListener('mouseup', () => {
-        isDragging = false;
-    });
+    window.addEventListener('mouseup', () => isDragging = false);
 
     canvas.addEventListener('wheel', (e) => {
         e.preventDefault();
-        const zoomSpeed = 0.1;
-        const distance = camera.position.length();
-        const newDistance = distance * (1 + e.deltaY * zoomSpeed * 0.01);
-        camera.position.multiplyScalar(newDistance / distance);
-    });
-
-    // Reset view button
-    document.getElementById('resetView').addEventListener('click', () => {
-        camera.position.set(
-            optimalCameraPosition.x,
-            optimalCameraPosition.y,
-            optimalCameraPosition.z
-        );
-        camera.lookAt(
-            optimalLookAtPosition.x,
-            optimalLookAtPosition.y,
-            optimalLookAtPosition.z
-        );
-    });
-}
-
-function animate() {
-    requestAnimationFrame(animate);
-    renderer.render(scene, camera);
-}
+        const dist = camera.position.length();
+        const newDist = dist * (1 + e.deltaY * 0.001);
+        camera.position.multiplyScalar(newDist / dist);
+    }, { passive: false });
+};
