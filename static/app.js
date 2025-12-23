@@ -439,6 +439,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const scrubberContainer = document.getElementById('scrubberContainer');
             const previewControls = document.getElementById('previewControls');
             const gcodeButtons = document.getElementById('gcodeButtons');
+            const playbackControl = document.getElementById('playbackControls')
             
             if (mode === 'setup') {
                 setupContainer.style.display = 'block';
@@ -446,6 +447,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 scrubberContainer.style.display = 'none';
                 previewControls.style.display = 'none';
                 gcodeButtons.style.display = 'none';
+                playbackControl.style.display = 'none';
                 
                 // Resize canvas now that it's visible
                 if (dxfCanvas2D && dxfGeometry) {
@@ -461,6 +463,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     renderDxfSetup();
                 }
             } else {
+                playbackControl.style.display = 'flex';
                 setupContainer.style.display = 'none';
                 previewContainer.style.display = 'block';
                 previewControls.style.display = 'flex';
