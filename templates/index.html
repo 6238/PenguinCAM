@@ -53,28 +53,32 @@
             <div>
                 <!-- Step 1: File Upload -->
                 <div class="panel">
-                    <div class="panel-header">
-                        <div class="step-number">1</div>
-                        <div class="panel-title">Upload DXF File</div>
-                    </div>
-
-                    <div class="drop-zone" id="dropZone">
-                        <div class="drop-zone-icon">📄</div>
-                        <div class="drop-zone-text">Drag & drop your DXF file here</div>
-                        <div class="drop-zone-hint">or click to browse</div>
-                        <input type="file" id="fileInput" accept=".dxf" style="display: none;">
-                    </div>
-
-                    <div id="fileInfo" style="display: none;" class="file-info">
-                        <div class="file-info-icon">📄</div>
-                        <div class="file-info-details">
-                            <div class="file-info-name" id="fileName"></div>
-                            <div class="file-info-size" id="fileSize"></div>
+                    <div class="panel upload-panel">
+                        <div class="panel-header">
+                            <div class="step-number">1</div>
+                            <div class="panel-title">Upload DXF Files</div>
                         </div>
-                    </div>
 
-                    <!-- Status message for OnShape imports -->
-                    <div id="statusMessage" style="display: none; margin-top: 1rem; padding: 0.75rem; border-radius: 6px; font-size: 0.9rem;"></div>
+                        <div class="drop-zone" id="dropZone">
+                            <div class="drop-zone-content">
+                                <div class="drop-zone-icon">📄</div>
+                                <div class="drop-zone-text">Drag & drop DXF files here</div>
+                                <div class="drop-zone-hint">Multiple files allowed • Click to browse</div>
+                            </div>
+                            <input type="file" id="fileInput" accept=".dxf" multiple style="display: none;">
+                        </div>
+
+                        <div class="uploads-section" id="uploadsSection" style="display: none;">
+                            <div class="uploads-header">
+                                <span class="uploads-title">Uploaded Parts</span>
+                            </div>
+                            
+                            <div id="fileList" class="file-list">
+                                </div>
+                        </div>
+
+                        <div id="statusMessage" style="display: none; margin-top: 1rem;"></div>
+                    </div>
                 </div>
 
                 <!-- Step 2: Parameters -->
@@ -210,10 +214,29 @@
 
                         <!-- Origin & Rotation Controls -->
                         <div class="setup-controls">
-                            <div class="control-group">
+                                <div class="control-group">
                                 <label>Rotation:</label>
                                 <button class="icon-button" id="rotateBtn">↻ Rotate 90° CW</button>
                                 <span id="rotationDisplay" class="rotation-display">0°</span>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div class="control-group">
+                                    <label for="setupX">X Offset</label>
+                                    <input type="number" id="setupX" value="0" step="0.1" style="width: 100%; padding: 0.5rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 4px;">
+                                </div>
+                                <div class="control-group">
+                                    <label for="setupY">Y Offset</label>
+                                    <input type="number" id="setupY" value="0" step="0.1" style="width: 100%; padding: 0.5rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 4px;">
+                                </div>
+
+                                <div class="control-group">
+                                    <label for="setupR">Rotation (°)</label>
+                                    <input type="number" id="setupR" value="0" step="90" style="width: 100%; padding: 0.5rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 4px;">
+                                </div>
+                                <div class="control-group">
+                                    <label for="setupS">Scale</label>
+                                    <input type="number" id="setupS" value="1" step="0.1" min="0.01" style="width: 100%; padding: 0.5rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 4px;">
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -278,19 +301,19 @@
     </main>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three-dxf@1.3.1/src/index.js"></script>
 
     <!-- Pass template variables to JavaScript -->
     <script>
         // Template variables from Flask
         window.ONSHAPE_DATA = {
             errorMessage: '{{ error_message if error_message else "" }}',
-            dxfFile: '{{ dxf_file if dxf_file else "" }}',
+            dxfFile: '{{ dxf_file if dxf_file else "" }}', 
             fromOnshape: {{ 'true' if from_onshape else 'false' }},
             suggestedFilename: '{{ suggested_filename if suggested_filename else "" }}'
         };
     </script>
-    <script src="/static/preview.js"></script>
+    <!-- TODO: switch to modules bc nicefly defined imports -->
+    <script src="/static/previewer.js"></script>
     <script src="/static/setup.js"></script>
     <script src="/static/files.js"></script>
     <script src="/static/app.js"></script>

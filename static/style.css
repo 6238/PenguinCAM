@@ -882,3 +882,95 @@ select option {
 .modal-actions button.secondary:hover {
     background: var(--border);
 }
+
+/* --- File List Items --- */
+.file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.file-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #1e2024;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem; /* Slightly reduced vertical padding */
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.file-item:hover {
+    border-color: rgba(255, 255, 255, 0.3);
+    background: #25282d;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+}
+
+.file-item-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-grow: 1; /* Forces this section to take up all space */
+    min-width: 0; /* Critical: allows text to truncate instead of breaking layout */
+    margin-right: 1rem; /* Gap between text and the X button */
+}
+
+.file-icon-small {
+    font-size: 1.2rem;
+    color: var(--primary-color, #4ade80);
+    flex-shrink: 0; /* Icon won't shrink */
+}
+
+.file-info-group {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* Helps with text truncation */
+}
+
+.file-name {
+    font-weight: 500;
+    color: #eee;
+    font-size: 0.95rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis; /* Adds "..." if filename is too long */
+}
+
+.file-size {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.5);
+    margin-top: 1px;
+}
+
+/* --- The Square X Button --- */
+.remove-file-btn {
+    /* Fixed Dimensions for Square Shape */
+    width: 32px;
+    height: 32px;
+    
+    /* Center the X */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    
+    /* Styling */
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 1.1rem; /* Adjusted for better centering */
+    cursor: pointer;
+    
+    /* Layout Safety */
+    flex-shrink: 0; /* Prevents button from being squished */
+    transition: all 0.2s;
+}
+
+.remove-file-btn:hover {
+    background: rgba(239, 68, 68, 0.15); /* Red tint on hover */
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #ef4444;
+}

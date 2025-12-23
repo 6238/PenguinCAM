@@ -3,6 +3,27 @@
 // ============================================================================
 // Part Selection Modal
 // ============================================================================
+const _dxfUploader = new FileUploader({
+selectors: {
+        dropZone: '#dropZone',
+        fileInput: '#fileInput',
+        fileList: '#fileList',
+        uploadsSection: '#uploadsSection', // New
+        errorDisplay: '#errorMessage'
+    },
+    onFileChanged: (id, file, action) => {
+        // if (action !== 'added') {
+        generateBtn.disabled = false;
+        generateBtn.textContent = '🚀 Generate Program';
+        hideError();
+        hideResults();
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            parseDxfForSetup(e.target.result);
+        };
+        reader.readAsText(file);
+    },
+});
 
 function selectPart() {
     const selected = document.querySelector('input[name="partSelection"]:checked');
