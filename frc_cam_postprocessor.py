@@ -109,8 +109,9 @@ class FRCPostProcessor:
         self.traverse_rate = 100.0 if units == "inch" else 2540  # Lateral moves above material (IPM or mm/min)
         self.approach_rate = 50.0 if units == "inch" else 1270  # Z approach to ramp start height (IPM or mm/min)
         self.ramp_angle = 20.0  # Ramp angle in degrees (for helical bores and perimeter ramps)
+        self.ramp_start_clearance = 0.15 if units == "inch" else 3.8  # Clearance above material to start ramping
         self.stepover_percentage = 0.6  # Radial stepover as fraction of tool diameter (default 60%)
-        
+
         # Tab parameters
         self.tab_width = 0.25  # Width of tabs (inches)
         self.tab_height = 0.1  # How much material to leave in tab (inches) - per team standards
@@ -2002,6 +2003,13 @@ class FRCPostProcessor:
         gcode.append('')
         gcode.extend(self._generate_toolpath_gcode(skip_perimeter=True, z_offset=z_offset, y_offset=y_offset_first_face))
 
+        # === CUT TO LENGTH - PHASE 1 ===
+        if cut_to_length:
+            gcode.append('')
+            gcode.append('( === CUT TUBE TO LENGTH - PHASE 1 === )')
+            cut_gcode = self._generate_cut_to_length(tube_width, tube_height, tube_length, phase=1)
+            gcode.extend(cut_gcode)
+
         # === PAUSE FOR FLIP ===
         gcode.append('')
         gcode.append('( === PAUSE FOR TUBE FLIP === )')
@@ -2057,13 +2065,12 @@ class FRCPostProcessor:
         mirrored_toolpath = self._generate_toolpath_gcode_mirrored_x(z_offset=z_offset, tube_width=tube_width)
         gcode.extend(mirrored_toolpath)
 
-        # === CUT TO LENGTH (STUB) ===
+        # === CUT TO LENGTH - PHASE 2 ===
         if cut_to_length:
             gcode.append('')
-            gcode.append('( === CUT TUBE TO LENGTH === )')
-            gcode.append('( Feature not yet implemented )')
-            gcode.append('')
-            self._generate_cut_to_length_stub(gcode)
+            gcode.append('( === CUT TUBE TO LENGTH - PHASE 2 === )')
+            cut_gcode = self._generate_cut_to_length(tube_width, tube_height, tube_length, phase=2)
+            gcode.extend(cut_gcode)
 
         # === END ===
         gcode.append('')
@@ -2282,21 +2289,143 @@ class FRCPostProcessor:
 
         return re.sub(r'Y(-?\d+\.?\d*)', replace_y, line)
 
-    def _generate_cut_to_length_stub(self, gcode: list):
+    def _generate_cut_to_length(self, tube_width: float, tube_height: float,
+                                 tube_length: float, phase: int) -> list[str]:
         """
-        Stub function for cutting tube to length.
+        Generate G-code to cut tube to length.
 
-        This will be implemented in the future to:
-        1. Calculate cut position based on tube length parameter
-        2. Generate toolpath to cut through tube walls
-        3. Include appropriate retract and spinup commands
+        Cuts across the width of the tube at Y=tube_length (plus offset for phase 1).
+        Makes multiple passes stepping down through the wall thickness, then trims
+        the sides down to just past halfway.
 
         Args:
-            gcode: List to append stub G-code to
+            tube_width: Width of tube (X dimension)
+            tube_height: Height of tube (Z dimension)
+            tube_length: Desired tube length (Y dimension)
+            phase: 1 (before flip) or 2 (after flip)
+
+        Returns:
+            List of G-code lines
         """
-        gcode.append('( TODO: Implement cut-to-length operation )')
-        gcode.append('( This will cut the tube to specified length )')
-        pass
+        gcode = []
+
+        # Calculate Y position for cut
+        if phase == 1:
+            # Phase 1: Cut at tube_length + facing offset
+            y_cut = tube_length + self.material_thickness
+            z_start = tube_height  # Top of tube (tube sits on sacrifice board at Z=0)
+            gcode.append(f'( Cut to length at Y={y_cut:.4f}" [Phase 1: before flip] )')
+        else:
+            # Phase 2: Cut at tube_length
+            y_cut = tube_length
+            z_start = tube_height  # Top of tube
+            gcode.append(f'( Cut to length at Y={y_cut:.4f}" [Phase 2: after flip] )')
+
+        # Cut parameters
+        plunge_clearance = 0.03  # Extra clearance to avoid plunging into stock with runout
+        x_start = -(self.tool_diameter + plunge_clearance)
+        x_end = tube_width + self.tool_diameter + plunge_clearance
+        stepdown = 0.0625  # 1/16" per pass
+
+        # Calculate ramp distance using material-specific ramp angle
+        ramp_start_height = z_start + self.ramp_start_clearance
+
+        gcode.append(f'( Cutting side-to-side from X={x_start:.4f}" to X={x_end:.4f}" )')
+        gcode.append(f'( Using ramp entry at {self.ramp_angle}° angle )')
+        gcode.append(f'( Stepdown: {stepdown}" per pass through wall thickness )')
+        gcode.append('')
+
+        # Position at start
+        gcode.append(f'G0 Z{self.safe_height:.4f}  ; Retract')
+        gcode.append(f'G0 X{x_start:.4f} Y{y_cut:.4f}  ; Position at cut start')
+
+        # Cut through the wall thickness with ramping
+        current_z = z_start
+        pass_num = 1
+
+        while current_z > (z_start - self.material_thickness - 0.01):  # Cut through wall + small margin
+            target_z = max(current_z - stepdown, z_start - self.material_thickness - 0.01)
+            ramp_depth = ramp_start_height - target_z
+            ramp_distance = ramp_depth / math.tan(math.radians(self.ramp_angle))
+
+            # Ensure ramp distance doesn't exceed cut width
+            cut_width = x_end - x_start
+            if ramp_distance > cut_width:
+                # If ramp is too long, use multiple passes or steeper angle
+                ramp_distance = cut_width * 0.9  # Use 90% of width for ramp
+
+            gcode.append(f'( Pass {pass_num}: ramping to Z={target_z:.4f}" over {ramp_distance:.4f}" )')
+
+            # Approach above ramp start
+            gcode.append(f'G0 Z{ramp_start_height:.4f}  ; Approach to ramp start')
+
+            # Calculate ramp end position
+            x_ramp_end = x_start + ramp_distance
+
+            # Ramp down while cutting
+            gcode.append(f'G1 X{x_ramp_end:.4f} Z{target_z:.4f} F{self.ramp_feed_rate}  ; Ramp down')
+
+            # Continue cutting to end at full depth
+            gcode.append(f'G1 X{x_end:.4f} F{self.feed_rate}  ; Cut to end')
+
+            # Finishing pass: cut back from right to left at full depth
+            gcode.append(f'G1 X{x_start:.4f} F{self.feed_rate}  ; Finishing pass (right to left)')
+
+            # Retract
+            gcode.append(f'G0 Z{self.safe_height:.4f}  ; Retract')
+            gcode.append(f'G0 X{x_start:.4f}  ; Return to start X')
+
+            current_z = target_z
+            pass_num += 1
+
+        gcode.append('')
+
+        # Trim sides down to just past halfway
+        # Cut through wall thickness on left and right sides
+        z_halfway = tube_height / 2.0 - 0.05  # Just past halfway
+        gcode.append(f'( Trim sides down to Z={z_halfway:.4f}" [just past halfway] )')
+        gcode.append(f'( Cut through wall thickness: {self.material_thickness:.4f}" )')
+
+        # Trim left side (cut through wall from outside to inside)
+        x_left_start = -(self.tool_diameter + plunge_clearance)
+        x_left_end = self.material_thickness + self.tool_diameter + plunge_clearance
+        gcode.append(f'( Trim left side: X from {x_left_start:.4f}" through wall to {x_left_end:.4f}" )')
+        gcode.append(f'G0 Y{y_cut:.4f}')
+        gcode.append(f'G0 X{x_left_start:.4f}')
+
+        current_z = z_start
+        while current_z > z_halfway:
+            target_z = max(current_z - stepdown, z_halfway)
+            gcode.append(f'G0 Z{target_z + 0.1:.4f}')
+            gcode.append(f'G1 Z{target_z:.4f} F{self.plunge_rate}')
+            gcode.append(f'G1 X{x_left_end:.4f} F{self.feed_rate}  ; Cut through left wall')
+            gcode.append(f'G0 Z{self.safe_height:.4f}')
+            gcode.append(f'G0 X{x_left_start:.4f}')
+            current_z = target_z
+
+        gcode.append('')
+
+        # Trim right side (mirror of left side, offset by tube_width)
+        # Start outside right wall and cut inward through wall thickness
+        x_right_start = tube_width + self.tool_diameter + plunge_clearance
+        x_right_end = tube_width - self.material_thickness - self.tool_diameter - plunge_clearance
+        gcode.append(f'( Trim right side: X from {x_right_start:.4f}" through wall to {x_right_end:.4f}" )')
+        gcode.append(f'G0 X{x_right_start:.4f}')
+
+        current_z = z_start
+        while current_z > z_halfway:
+            target_z = max(current_z - stepdown, z_halfway)
+            gcode.append(f'G0 Z{target_z + 0.1:.4f}')
+            gcode.append(f'G1 Z{target_z:.4f} F{self.plunge_rate}')
+            gcode.append(f'G1 X{x_right_end:.4f} F{self.feed_rate}  ; Cut through right wall')
+            gcode.append(f'G0 Z{self.safe_height:.4f}')
+            gcode.append(f'G0 X{x_right_start:.4f}')
+            current_z = target_z
+
+        gcode.append(f'G0 Z{self.safe_height:.4f}')
+        gcode.append('')
+
+        return gcode
 
 
 def add_timestamp_to_filename(filename: str) -> str:
