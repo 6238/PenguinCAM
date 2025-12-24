@@ -1071,7 +1071,7 @@ def onshape_save_dxf():
                 'auth_url': '/onshape/auth'
             }), 401
 
-        # Auto-select face if needed (reuse logic from onshape_import)
+        # Auto-select face if needed (use existing helper function)
         part_name_from_body = None
         auto_selected_body_id = None
         face_normal = None
@@ -1079,49 +1079,10 @@ def onshape_save_dxf():
         if not face_id:
             print("No face ID, auto-selecting top face...")
             try:
-                faces_data = client.list_faces(document_id, workspace_id, element_id)
-                body_count = len(faces_data.get('bodies', [])) if faces_data else 0
-                print(f"📊 Found {body_count} bodies/parts")
-
-                if body_count > 1 and not body_id:
-                    # For save-dxf endpoint, just pick the largest part automatically
-                    # (no UI to show part selection modal)
-                    bodies_with_faces = client.get_body_faces(document_id, workspace_id, element_id, cached_faces_data=faces_data)
-
-                    largest_body = None
-                    largest_area = 0
-                    for body in bodies_with_faces:
-                        body_id_candidate = body.get('bodyId')
-                        top_faces = [f for f in body.get('faces', []) if f.get('normal', {}).get('z', 0) > 0.9]
-                        if top_faces:
-                            face_area = top_faces[0].get('area', 0)
-                            if face_area > largest_area:
-                                largest_area = face_area
-                                largest_body = body
-
-                    if largest_body:
-                        auto_selected_body_id = largest_body.get('bodyId')
-                        part_name_from_body = largest_body.get('name', 'Unnamed_Part')
-                        top_faces = [f for f in largest_body.get('faces', []) if f.get('normal', {}).get('z', 0) > 0.9]
-                        if top_faces:
-                            face_id = top_faces[0].get('faceId')
-                            face_normal = top_faces[0].get('normal')
-                        print(f"✅ Auto-selected largest part: {part_name_from_body} (body: {auto_selected_body_id})")
-
-                elif body_count == 1 or body_id:
-                    # Single part or specific body_id provided
-                    target_body_id = body_id if body_id else faces_data['bodies'][0].get('bodyId')
-                    bodies_with_faces = client.get_body_faces(document_id, workspace_id, element_id, cached_faces_data=faces_data)
-
-                    target_body = next((b for b in bodies_with_faces if b.get('bodyId') == target_body_id), None)
-                    if target_body:
-                        auto_selected_body_id = target_body_id
-                        part_name_from_body = target_body.get('name', 'Unnamed_Part')
-                        top_faces = [f for f in target_body.get('faces', []) if f.get('normal', {}).get('z', 0) > 0.9]
-                        if top_faces:
-                            face_id = top_faces[0].get('faceId')
-                            face_normal = top_faces[0].get('normal')
-                        print(f"✅ Selected part: {part_name_from_body}")
+                # Use existing auto_select_top_face helper
+                face_id, auto_selected_body_id, part_name_from_body, face_normal = client.auto_select_top_face(
+                    document_id, workspace_id, element_id, body_id
+                )
 
                 if not face_id:
                     return jsonify({
