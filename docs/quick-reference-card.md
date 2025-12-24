@@ -22,7 +22,7 @@
 
 ### 2. Set Parameters (Setup Mode)
 
-* Select the correct material type (polycarb, plywood, or aluminum)
+* Select the correct material type (polycarb, plywood, or aluminum, or aluminum tube)
 * Use calipers to verify the material thickness and set the measured material thickness in PenguinCAM.  PenguinCAM will automatically determine feed height, retract height, and clearance height based on the material thickness and the material type. 
 * Ensure the tool diameter is set correctly (0.157" for a 4mm end mill)
 
@@ -58,9 +58,9 @@ Done! 🎉
 ### Before You Start
 
 **Material:**
-- Clamp material flat to sacrifice board
+- Clamp material flat to sacrifice board (or to tubing jig for tubing)
 - No gaps between material and sacrifice board
-- Material must be fully supported
+- Material must be fully supported and clamped
 
 **Tools Needed:**
 - End mill (must match the end mill selected in CAM)
@@ -69,7 +69,7 @@ Done! 🎉
 
 ### X & Y Zeroing
 
-**Set X & Y zero at LOWER-LEFT corner of your part:**
+**For plates: Set X & Y zero at LOWER-LEFT corner of your part:**
 
 1. **Jog** tool to lower-left corner of part
 2. Click the the "Zero X" and "Zero Y" buttons
@@ -144,7 +144,7 @@ In PenguinCAM web interface:
 **Material Thickness:**
 - Measure with calipers!
 - Don't guess - accuracy matters
-- Common: 0.125" (1/8"), 0.25" (1/4"), 0.5" (1/2")
+- Common: .0875 (1/16"), 0.125" (1/8"), 0.25" (1/4"), 0.5" (1/2")
 
 **Tool Diameter:**
 - Check your actual endmill
@@ -163,7 +163,7 @@ In PenguinCAM web interface:
 ### For Best Results:
 
 **✅ Do:**
-- Design parts as flat plates
+- Design parts as flat plates (or rectangular tubes)
 - Use standard hole sizes when possible:
   - 0.201" for free fit #10 screws
   - 1.125" for bearings

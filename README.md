@@ -30,14 +30,21 @@ PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC tea
 - #10 screw holes, bearing holes, or custom sizes
 - Helical entry + spiral clearing strategy
 
-✅ **Smart perimeter cutting:**
+✅ **Smart perimeter cutting of plates:**
 - Holding tabs prevent parts from flying away
-- Tabs only on straight sections (avoids curves)
 - Configurable tab count
 
 ✅ **Pocket recognition:**
 - Auto-detects inner boundaries
 - Generates clearing toolpaths
+
+✅ **Aluminum tubing support:**
+- Tube mounts in tubing jig
+- No X/Y zeroing required
+- Flip part halfway through
+- Automatically squares off near end
+- Automatically cuts tube to CAD length
+- Pattern mirrored and cut in both top and bottom faces
 
 ### 🔗 **OnShape Integration** ⭐ Preferred Workflow
 
@@ -133,7 +140,6 @@ PenguinCAM is deployed on Railway with automatic GitHub integration.
 - [Quick Reference Card](docs/quick-reference-card.md) - Cheat sheet for students and mentors
 
 **Technical references:**
-- [Tool Compensation Guide](docs/TOOL_COMPENSATION_GUIDE.md) - How tool offsets work
 - [Z-Coordinate System](docs/Z_COORDINATE_SYSTEM.md) - Sacrifice board zeroing explained
 
 **Planning:**
@@ -215,7 +221,6 @@ PenguinCAM generates optimized toolpaths:
 3. **Perimeter:**
    - Offset outward by tool radius
    - Cut with holding tabs
-   - Tabs only on straight sections
 
 ### Z-Axis Coordinate System
 
@@ -227,16 +232,6 @@ This ensures:
 - ✅ No math required when changing material thickness
 
 See [Z_COORDINATE_SYSTEM.md](docs/Z_COORDINATE_SYSTEM.md) for details.
-
-### Tool Compensation
-
-All toolpaths are automatically compensated:
-
-- **Perimeter:** Offset OUT by tool radius → final part matches CAD size
-- **Pockets:** Offset IN by tool radius → pockets match CAD size  
-- **Holes:** Reduced radius → final holes match CAD diameter
-
-See [TOOL_COMPENSATION_GUIDE.md](docs/TOOL_COMPENSATION_GUIDE.md) for math and examples.
 
 ---
 
@@ -351,10 +346,8 @@ See [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for complete setup.
 PenguinCAM was built for FRC Team 6238 but is open for other teams to use and improve!
 
 **Ideas welcome:**
-- Additional hole sizes
+- Multiple parts in a single job
 - More sophisticated pocket clearing
-- Multi-tool support
-- Material presets
 - Better tab algorithms
 
 See [ROADMAP.md](ROADMAP.md) for planned features.
@@ -363,7 +356,7 @@ See [ROADMAP.md](ROADMAP.md) for planned features.
 
 ## License
 
-[Add your license here]
+This project is licensed under the [MIT License](LICENSE.txt).
 
 ---
 
@@ -372,8 +365,8 @@ See [ROADMAP.md](ROADMAP.md) for planned features.
 **Built by FRC Team 6238 Popcorn Penguins**
 
 For questions or support:
-- GitHub Issues: [Your repo URL]
-- Team mentor: [Your contact]
+- GitHub Issues: https://github.com/6238/PenguinCAM/issues
+- Team mentor: Josh Sirota <josh@popcornpenguins.com>
 
 ---
 
