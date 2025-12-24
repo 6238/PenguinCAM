@@ -619,7 +619,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!inEntitiesSection) continue;
                 
                 // Detect entity type
-                if (line === 'CIRCLE' || line === 'ARC' || line === 'LINE' || line === 'LWPOLYLINE') {
+                if (line === 'CIRCLE' || line === 'ARC' || line === 'LINE' || line === 'LWPOLYLINE' || line === 'SPLINE') {
                     if (currentEntity) {
                         entities.push(createEntity(currentEntity, entityData));
                     }
@@ -627,6 +627,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     entityData = { type: line };
                     if (line === 'LWPOLYLINE') {
                         entityData.vertices = [];
+                    }
+                    if (line === 'SPLINE') {
+                        entityData.controlPoints = [];
                     }
                 }
                 
@@ -639,6 +642,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         } else if (currentEntity === 'LINE') {
                             entityData.x1 = val;
                         } else if (currentEntity === 'LWPOLYLINE') {
+                            entityData.tempX = val;
+                        } else if (currentEntity === 'SPLINE') {
                             entityData.tempX = val;
                         }
                         minX = Math.min(minX, val);
@@ -653,6 +658,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             entityData.y1 = val;
                         } else if (currentEntity === 'LWPOLYLINE' && entityData.tempX !== undefined) {
                             entityData.vertices.push({ x: entityData.tempX, y: val });
+                            delete entityData.tempX;
+                        } else if (currentEntity === 'SPLINE' && entityData.tempX !== undefined) {
+                            entityData.controlPoints.push({ x: entityData.tempX, y: val });
                             delete entityData.tempX;
                         }
                         minY = Math.min(minY, val);
@@ -752,6 +760,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     type: 'LWPOLYLINE',
                     vertices: data.vertices || [],
                     shape: data.closed || false  // 'shape' property is used by renderer to close path
+                };
+            } else if (type === 'SPLINE') {
+                return {
+                    type: 'SPLINE',
+                    controlPoints: data.controlPoints || []
                 };
             }
             return null;
