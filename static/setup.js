@@ -17,6 +17,7 @@ class DXFSetupPreview {
             r: document.querySelector(config.inputs.rotation),
             s: document.querySelector(config.inputs.scale)
         };
+        this.toolDiameter = config.toolDiameter || 1.0;
 
         // State
         this.parts = [];
@@ -65,11 +66,13 @@ class DXFSetupPreview {
         const width = maxX - minX;
         const height = maxY - minY;
 
-        // Stack to right of last part
-        let startX = 0;
+        // Calculate Stack Position (Start next to previous, aligned to Y=0)
+        let visualStartX = 0;
         if (this.parts.length > 0) {
             const last = this.parts[this.parts.length - 1];
-            startX = last.transform.x + (last.bounds.width * last.transform.s / 2) + (width / 2) + 1.0;
+            // Calculate where the last part visually ends in World Space
+            const lastHalfWidth = (last.bounds.width * last.transform.s) / 2;
+            visualStartX = last.transform.x + lastHalfWidth + 2.0; // +2.0 padding
         }
 
         const part = {
@@ -78,7 +81,13 @@ class DXFSetupPreview {
             entities: entities,
             bounds: { width, height, minX, maxX, minY, maxY },
             center: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
-            transform: { x: startX, y: 0, r: 0, s: 1 },
+            // Position center so bottom-left is at (visualStartX, 0)
+            transform: { 
+                x: visualStartX + (width / 2), 
+                y: 0 + (height / 2), 
+                r: 0, 
+                s: 1 
+            },
             color: this.colors[this.parts.length % this.colors.length],
             isColliding: false
         };
@@ -401,6 +410,8 @@ class DXFSetupPreview {
             ctx.fillText("No parts loaded", w / 2, h / 2);
             return;
         }
+        this.drawOverallBounds();
+
 
         this.drawGrid();
 
@@ -429,8 +440,79 @@ class DXFSetupPreview {
         ctx.stroke();
 
         const org = this.worldToScreen(0, 0);
+        ctx.lineWidth = 3;
         ctx.strokeStyle = '#DA3633'; ctx.beginPath(); ctx.moveTo(org.x, org.y); ctx.lineTo(org.x + 20, org.y); ctx.stroke();
         ctx.strokeStyle = '#2EA043'; ctx.beginPath(); ctx.moveTo(org.x, org.y); ctx.lineTo(org.x, org.y - 20); ctx.stroke();
+        ctx.lineWidth = 1;
+
+    }
+    drawOverallBounds() {
+        let globalMaxX = 0;
+        let globalMaxY = 0;
+        let hasParts = false;
+
+        this.parts.forEach(p => {
+            const tf = p.transform;
+            const rad = (-tf.r * Math.PI) / 180;
+            const cos = Math.cos(rad), sin = Math.sin(rad);
+
+            p.entities.forEach(ent => {
+                // Get precise points along the entity edges
+                const pts = this.discretizeEntity(ent);
+
+                pts.forEach(pt => {
+                    // Transform point to World Space
+                    const lx = (pt.x - p.center.x) * tf.s;
+                    const ly = (pt.y - p.center.y) * tf.s;
+                    
+                    const wx = tf.x + (lx * cos - ly * sin);
+                    const wy = tf.y + (lx * sin + ly * cos);
+
+                    // Track the furthest positive extent from (0,0)
+                    globalMaxX = Math.max(globalMaxX, wx);
+                    globalMaxY = Math.max(globalMaxY, wy);
+                });
+            });
+
+            if (p.entities.length > 0) hasParts = true;
+        });
+
+        // Only draw if we have parts and they extend into the positive area
+        if (!hasParts || (globalMaxX <= 0 && globalMaxY <= 0)) return;
+
+        const ctx = this.ctx;
+        
+        // Anchor the start point to World (0,0)
+        const sOrigin = this.worldToScreen(0, 0); 
+        // Set end point to the calculated Max Extent
+        const sMax = this.worldToScreen(globalMaxX, globalMaxY); 
+
+        // Calculate screen dimensions
+        // Note: Canvas Y is inverted, so sMax.y is visually "higher" (smaller value)
+        const sWidth = sMax.x - sOrigin.x;
+        const sHeight = sOrigin.y - sMax.y; 
+
+        ctx.save();
+        
+        // 1. Draw Dashed Box from (0,0) to Max Extent
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([10, 5]);
+        ctx.strokeRect(sOrigin.x, sMax.y, sWidth, sHeight);
+
+        // 2. Annotate Dimensions
+        const dimText = `${globalMaxX.toFixed(2)} × ${globalMaxY.toFixed(2)}`;
+
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#00ffff';
+        ctx.textBaseline = 'bottom';
+        
+        // Draw text centered above the top edge
+        ctx.fillText(dimText, sOrigin.x + sWidth / 2, sMax.y - 8);
+
+        ctx.restore();
     }
     drawPart(p) {
         const ctx = this.ctx;
@@ -494,6 +576,7 @@ class DXFSetupPreview {
             { x: w / 2, y: h / 2 }, { x: -w / 2, y: h / 2 }
         ];
 
+        // 1. Draw Dashed Bounding Box
         ctx.beginPath();
         ctx.strokeStyle = '#FDB515';
         ctx.setLineDash([5, 5]);
@@ -507,23 +590,54 @@ class DXFSetupPreview {
         ctx.stroke();
         ctx.setLineDash([]);
 
+        // 2. Draw Corner Handles
         ctx.fillStyle = '#FDB515';
         corners.forEach(c => {
             const s = toScreen(c.x, c.y);
             ctx.fillRect(s.x - 4, s.y - 4, 8, 8);
         });
 
+        // 3. Draw Rotation Handle
         const topMid = toScreen(0, h / 2);
         const rotHandle = toScreen(0, h / 2 + 0.5);
+        
         ctx.beginPath();
         ctx.moveTo(topMid.x, topMid.y);
         ctx.lineTo(rotHandle.x, rotHandle.y);
         ctx.stroke();
+        
         ctx.beginPath();
         ctx.arc(rotHandle.x, rotHandle.y, 5, 0, Math.PI * 2);
-        ctx.fillStyle = '#2188ff';
+        ctx.fillStyle = '#FDB515';
         ctx.fill();
+
+        // 4. Draw ROTATING Center Crosshair
+        const center = toScreen(0, 0); 
+        const cSize = 6;
+        
+        // Calculate screen-space rotation components
+        // Note: Canvas Y is inverted relative to World Y, effectively flipping sin component
+        const sCos = Math.cos(rad);
+        const sSin = Math.sin(rad); 
+
+        ctx.beginPath();
+        ctx.strokeStyle = '#FDB515';
+        ctx.lineWidth = 2;
+
+        // Local X Axis (Rotated)
+        // Mathematically: (x * cos - y * sin), but simplified for pure axis lines
+        ctx.moveTo(center.x - cSize * sCos, center.y + cSize * sSin);
+        ctx.lineTo(center.x + cSize * sCos, center.y - cSize * sSin);
+        
+        // Local Y Axis (Rotated)
+        // Perpendicular to X
+        ctx.moveTo(center.x + cSize * sSin, center.y + cSize * sCos);
+        ctx.lineTo(center.x - cSize * sSin, center.y - cSize * sCos);
+        
+        ctx.stroke();
+        ctx.lineWidth = 1; // Reset
     }
+        
     discretizeEntity(ent) {
         const pts = [];
         if (ent.type === 'LINE') {
