@@ -1,6 +1,6 @@
 """
-OnShape Integration for PenguinCAM
-Handles OAuth authentication and DXF export from OnShape
+Onshape Integration for PenguinCAM
+Handles OAuth authentication and DXF export from Onshape
 """
 
 import os
@@ -10,8 +10,8 @@ import base64
 from urllib.parse import urlencode, parse_qs
 from datetime import datetime, timedelta
 
-class OnShapeClient:
-    """Client for interacting with OnShape API"""
+class OnshapeClient:
+    """Client for interacting with Onshape API"""
     
     BASE_URL = "https://cad.onshape.com"
     API_BASE = "https://cad.onshape.com/api/v12"
@@ -23,7 +23,7 @@ class OnShapeClient:
         self.token_expires = None
     
     def _load_config(self):
-        """Load OnShape OAuth configuration, prioritizing environment variables"""
+        """Load Onshape OAuth configuration, prioritizing environment variables"""
         # Try to load from file first
         config_file = 'onshape_config.json'
         config = {}
@@ -86,7 +86,7 @@ class OnShapeClient:
             dict with token info or None if failed
         """
         if not self.config.get('client_secret'):
-            raise ValueError("OnShape client_secret not configured")
+            raise ValueError("Onshape client_secret not configured")
         
         # Create Basic Auth header
         credentials = f"{self.config['client_id']}:{self.config['client_secret']}"
@@ -180,7 +180,7 @@ class OnShapeClient:
     
     def _make_api_request(self, method, endpoint, **kwargs):
         """
-        Make an authenticated API request to OnShape
+        Make an authenticated API request to Onshape
         
         Args:
             method: HTTP method (GET, POST, etc.)
@@ -218,7 +218,7 @@ class OnShapeClient:
             normal: Dict with 'x', 'y', 'z' keys for the face normal vector
 
         Returns:
-            String representing a 4x4 view matrix in OnShape format
+            String representing a 4x4 view matrix in Onshape format
         """
         nx = normal.get('x', 0)
         ny = normal.get('y', 0)
@@ -264,7 +264,7 @@ class OnShapeClient:
         Export a face from a Part Studio as DXF
 
         Args:
-            document_id: OnShape document ID (from URL: /documents/d/{did})
+            document_id: Onshape document ID (from URL: /documents/d/{did})
             workspace_id: Workspace ID (from URL: /w/{wid})
             element_id: Element ID (from URL: /e/{eid})
             face_id: The face ID (used for logging/backwards compatibility)
@@ -283,13 +283,13 @@ class OnShapeClient:
         if face_normal:
             print(f"Normal: ({face_normal.get('x', 0):.3f}, {face_normal.get('y', 0):.3f}, {face_normal.get('z', 0):.3f})")
         
-        # Try the internal export endpoint that OnShape's web UI uses
+        # Try the internal export endpoint that Onshape's web UI uses
         print("\n[Method 1] Trying exportinternal endpoint (web UI method)...")
         endpoint = f"/documents/d/{document_id}/w/{workspace_id}/e/{element_id}/exportinternal"
         
         try:
-            # For Part Studios, OnShape's "partIds" parameter actually expects face IDs, not body IDs
-            # (Confusing naming by OnShape!)
+            # For Part Studios, Onshape's "partIds" parameter actually expects face IDs, not body IDs
+            # (Confusing naming by Onshape!)
             export_id = face_id  # Always use face_id for Part Studio exports
             print(f"Using face_id for export: {export_id}")
 
@@ -406,7 +406,7 @@ class OnShapeClient:
             
             body = {
                 "formatName": "DXF",
-                "storeInDocument": False,  # Don't store in OnShape, just export
+                "storeInDocument": False,  # Don't store in Onshape, just export
                 "flattenAssemblies": True
             }
             
@@ -648,9 +648,9 @@ class OnShapeClient:
         Automatically select the largest planar face
 
         Args:
-            document_id: OnShape document ID
-            workspace_id: OnShape workspace ID
-            element_id: OnShape element ID
+            document_id: Onshape document ID
+            workspace_id: Onshape workspace ID
+            element_id: Onshape element ID
             body_id: Optional body/part ID to filter to a specific part
             cached_faces_data: Optional pre-fetched faces data to avoid duplicate API calls
 
@@ -764,10 +764,10 @@ class OnShapeClient:
     
     def parse_onshape_url(self, url):
         """
-        Parse an OnShape URL to extract document/workspace/element IDs
+        Parse an Onshape URL to extract document/workspace/element IDs
         
         Args:
-            url: OnShape URL (e.g., https://cad.onshape.com/documents/d/abc.../w/def.../e/ghi...)
+            url: Onshape URL (e.g., https://cad.onshape.com/documents/d/abc.../w/def.../e/ghi...)
             
         Returns:
             dict with 'document_id', 'workspace_id', 'element_id' or None if invalid
@@ -795,40 +795,40 @@ class OnShapeClient:
             return result if len(result) == 3 else None
             
         except Exception as e:
-            print(f"Error parsing OnShape URL: {e}")
+            print(f"Error parsing Onshape URL: {e}")
             return None
 
 
-class OnShapeSessionManager:
-    """Manages OnShape OAuth sessions for users"""
+class OnshapeSessionManager:
+    """Manages Onshape OAuth sessions for users"""
     
     def __init__(self):
         self.sessions = {}  # In-memory storage (use Redis/DB in production)
     
     def create_session(self, user_id, client):
-        """Store OnShape client for a user session"""
+        """Store Onshape client for a user session"""
         self.sessions[user_id] = {
             'client': client,
             'created': datetime.now()
         }
     
     def get_client(self, user_id):
-        """Get OnShape client for a user"""
+        """Get Onshape client for a user"""
         session = self.sessions.get(user_id)
         if session:
             return session['client']
         return None
     
     def clear_session(self, user_id):
-        """Remove user's OnShape session"""
+        """Remove user's Onshape session"""
         if user_id in self.sessions:
             del self.sessions[user_id]
 
 
 # Global session manager
-session_manager = OnShapeSessionManager()
+session_manager = OnshapeSessionManager()
 
 
 def get_onshape_client():
-    """Get a new OnShape client instance"""
-    return OnShapeClient()
+    """Get a new Onshape client instance"""
+    return OnshapeClient()

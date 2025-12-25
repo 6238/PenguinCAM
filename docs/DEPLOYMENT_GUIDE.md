@@ -22,7 +22,7 @@ Before deploying, you need:
 - ✅ GitHub account with PenguinCAM repository
 - ✅ Railway account (free tier available)
 - ✅ Google Cloud Console credentials (see [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md))
-- ✅ OnShape OAuth credentials (see [INTEGRATIONS_GUIDE.md](INTEGRATIONS_GUIDE.md))
+- ✅ Onshape OAuth credentials (see [INTEGRATIONS_GUIDE.md](INTEGRATIONS_GUIDE.md))
 - ✅ (Optional) Custom domain for branding
 
 ---
@@ -56,7 +56,7 @@ web: gunicorn frc_cam_gui_app:app --bind 0.0.0.0:$PORT
 
 **Requirements:**
 - Flask, gunicorn, requests
-- OnShape/Google API libraries
+- Onshape/Google API libraries
 - DXF processing (ezdxf, shapely)
 
 ### Step 4: Wait for Build
@@ -91,7 +91,7 @@ ALLOWED_DOMAINS=your-workspace-domain.com
 # Example: ALLOWED_DOMAINS=popcornpenguins.com
 ```
 
-#### **OnShape Integration**
+#### **Onshape Integration**
 ```bash
 ONSHAPE_CLIENT_ID=your-onshape-client-id
 ONSHAPE_CLIENT_SECRET=your-onshape-client-secret
@@ -170,7 +170,7 @@ Once domain is active, update:
 BASE_URL=https://penguincam.yourdomain.com
 ```
 
-Also update in Google Cloud Console and OnShape:
+Also update in Google Cloud Console and Onshape:
 - OAuth redirect URIs
 - Authorized JavaScript origins
 
@@ -298,10 +298,10 @@ Before launching to students:
 - [ ] Custom domain active with SSL
 - [ ] Google OAuth consent screen approved
 - [ ] Test authentication with student account
-- [ ] Test OnShape import with sample part
+- [ ] Test Onshape import with sample part
 - [ ] Test Google Drive upload
 - [ ] Verify shared drive access for all team members
-- [ ] Update OnShape OAuth redirect URIs to production domain
+- [ ] Update Onshape OAuth redirect URIs to production domain
 - [ ] Update Google Cloud OAuth redirect URIs to production domain
 - [ ] Test on mobile devices (responsive design)
 
@@ -358,7 +358,7 @@ Railway dashboard shows current usage and costs in real-time.
 - GitHub Issues: [Your repo URL]
 - Team mentor: [Your contact]
 
-**Google/OnShape OAuth:**
+**Google/Onshape OAuth:**
 - See [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md)
 - See [INTEGRATIONS_GUIDE.md](INTEGRATIONS_GUIDE.md)
 

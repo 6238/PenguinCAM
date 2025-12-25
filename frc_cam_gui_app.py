@@ -37,13 +37,13 @@ except ImportError:
     AUTH_AVAILABLE = False
     print("⚠️  Authentication module not available")
 
-# Import OnShape integration (optional - will work without it)
+# Import Onshape integration (optional - will work without it)
 try:
     from onshape_integration import get_onshape_client, session_manager
     ONSHAPE_AVAILABLE = True
 except ImportError:
     ONSHAPE_AVAILABLE = False
-    print("⚠️  OnShape integration not available")
+    print("⚠️  Onshape integration not available")
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
@@ -52,7 +52,7 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
 # This tells Flask it's behind HTTPS even if internal requests are HTTP
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# Set secret key for session management (required by auth and OnShape integration)
+# Set secret key for session management (required by auth and Onshape integration)
 # Check environment variable first for persistent sessions across deployments
 secret_key = os.environ.get('FLASK_SECRET_KEY')
 if secret_key:
@@ -98,24 +98,24 @@ def get_current_user_id():
 
 def get_onshape_client_or_401():
     """
-    Get OnShape client for current user, or return 401 error response.
+    Get Onshape client for current user, or return 401 error response.
     Returns: (client, error_response, status_code)
     If client is None, return the error_response with status_code.
     """
     if not ONSHAPE_AVAILABLE:
-        return None, jsonify({'error': 'OnShape integration not available'}), 400
+        return None, jsonify({'error': 'Onshape integration not available'}), 400
 
     client = session_manager.get_client(get_current_user_id())
     if not client:
         return None, jsonify({
-            'error': 'Not authenticated with OnShape',
+            'error': 'Not authenticated with Onshape',
             'auth_url': '/onshape/auth'
         }), 401
 
     return client, None, None
 
 def extract_onshape_params(params):
-    """Extract OnShape parameters from request params dict"""
+    """Extract Onshape parameters from request params dict"""
     return {
         'document_id': params.get('documentId') or params.get('did'),
         'workspace_id': params.get('workspaceId') or params.get('wid'),
@@ -131,7 +131,7 @@ def generate_pacific_timestamp():
 
 def generate_onshape_filename(doc_name, part_name):
     """
-    Generate a clean filename from OnShape document and part names.
+    Generate a clean filename from Onshape document and part names.
     Falls back to timestamp if names are unavailable or generic.
     """
     # Clean function for filename sanitization
@@ -151,7 +151,7 @@ def generate_onshape_filename(doc_name, part_name):
             return part_clean
 
     # Last resort: timestamp (Pacific time)
-    return f"OnShape_Part_{generate_pacific_timestamp()}"
+    return f"Onshape_Part_{generate_pacific_timestamp()}"
 
 # ============================================================================
 # Routes
@@ -260,9 +260,9 @@ def process_file():
 
         # Generate output filename
         if suggested_filename:
-            # Use OnShape-derived name
+            # Use Onshape-derived name
             output_filename = suggested_filename + '.nc'
-            print(f"📝 Using OnShape filename: {output_filename}")
+            print(f"📝 Using Onshape filename: {output_filename}")
         else:
             # Use DXF filename
             output_filename = Path(file.filename).stem + '.nc'
@@ -562,16 +562,16 @@ def upload_to_drive(filename):
         }), 500
 
 # ============================================================================
-# OnShape Integration Routes
+# Onshape Integration Routes
 # ============================================================================
 
 @app.route('/onshape/auth')
 @auth.require_auth
 def onshape_auth():
-    """Start OnShape OAuth flow"""
+    """Start Onshape OAuth flow"""
     if not ONSHAPE_AVAILABLE:
         return jsonify({
-            'error': 'OnShape integration not available'
+            'error': 'Onshape integration not available'
         }), 400
 
     try:
@@ -586,7 +586,7 @@ def onshape_auth():
         # Get authorization URL
         auth_url = client.get_authorization_url(state=state)
 
-        # Redirect user to OnShape for authorization
+        # Redirect user to Onshape for authorization
         return redirect(auth_url)
         
     except Exception as e:
@@ -594,9 +594,9 @@ def onshape_auth():
 
 @app.route('/onshape/oauth/callback')
 def onshape_oauth_callback():
-    """Handle OnShape OAuth callback"""
+    """Handle Onshape OAuth callback"""
     if not ONSHAPE_AVAILABLE:
-        return "OnShape integration not available", 400
+        return "Onshape integration not available", 400
 
     try:
         # Get authorization code and state
@@ -644,12 +644,12 @@ def onshape_oauth_callback():
 @app.route('/onshape/status')
 @auth.require_auth
 def onshape_status():
-    """Check OnShape connection status"""
+    """Check Onshape connection status"""
     if not ONSHAPE_AVAILABLE:
         return jsonify({
             'available': False,
             'connected': False,
-            'message': 'OnShape integration not installed'
+            'message': 'Onshape integration not installed'
         })
 
     try:
@@ -669,7 +669,7 @@ def onshape_status():
             return jsonify({
                 'available': True,
                 'connected': False,
-                'message': 'Not connected to OnShape'
+                'message': 'Not connected to Onshape'
             })
             
     except Exception as e:
@@ -684,7 +684,7 @@ def onshape_status():
 def onshape_list_faces():
     """
     List all faces in a Part Studio element
-    For debugging and exploring the OnShape API
+    For debugging and exploring the Onshape API
     """
     try:
         # Get parameters
@@ -699,7 +699,7 @@ def onshape_list_faces():
                 'required': ['documentId', 'workspaceId', 'elementId']
             }), 400
 
-        # Get OnShape client for this user
+        # Get Onshape client for this user
         client, error_response, status_code = get_onshape_client_or_401()
         if not client:
             return error_response, status_code
@@ -744,7 +744,7 @@ def onshape_body_faces():
                 'optional': ['bodyId']
             }), 400
 
-        # Get OnShape client for this user
+        # Get Onshape client for this user
         client, error_response, status_code = get_onshape_client_or_401()
         if not client:
             return error_response, status_code
@@ -772,11 +772,11 @@ def onshape_body_faces():
 @auth.require_auth
 def onshape_import():
     """
-    Import a DXF from OnShape
-    Accepts parameters from OnShape extension or direct URL
+    Import a DXF from Onshape
+    Accepts parameters from Onshape extension or direct URL
     """
     if not ONSHAPE_AVAILABLE:
-        return jsonify({'error': 'OnShape integration not available'}), 400
+        return jsonify({'error': 'Onshape integration not available'}), 400
 
     try:
         # Log the complete incoming URL for debugging
@@ -796,11 +796,11 @@ def onshape_import():
         face_id = params['face_id']
         body_id = params['body_id']  # Optional - for part selection
 
-        # Get OnShape server and user info that IS being sent
+        # Get Onshape server and user info that IS being sent
         onshape_server = raw_params.get('server', 'https://cad.onshape.com')
         onshape_userid = raw_params.get('userId')
 
-        print(f"OnShape params received: {raw_params}")
+        print(f"Onshape params received: {raw_params}")
         print(f"  Extracted body_id/partId: {body_id!r}")
         if body_id:
             print(f"  ✅ User selected body/part: {body_id}")
@@ -809,16 +809,16 @@ def onshape_import():
         
         # WORKAROUND: If params have placeholder strings, we can't proceed
         if (document_id and ('${' in str(document_id) or document_id.startswith('$'))):
-            print("❌ OnShape variable substitution failed!")
+            print("❌ Onshape variable substitution failed!")
             print(f"Received literal: documentId={document_id}")
 
             # Show helpful error page
             return render_template('index.html',
-                                 error_message='OnShape integration error: Variable substitution not working. Please contact support or use manual DXF upload.',
+                                 error_message='Onshape integration error: Variable substitution not working. Please contact support or use manual DXF upload.',
                                  debug_info={
-                                     'issue': 'OnShape extension not substituting variables',
+                                     'issue': 'Onshape extension not substituting variables',
                                      'received_params': str(raw_params),
-                                     'workaround': 'Export DXF manually from OnShape and upload it here'
+                                     'workaround': 'Export DXF manually from Onshape and upload it here'
                                  }), 400
 
         if not all([document_id, workspace_id, element_id]):
@@ -826,10 +826,10 @@ def onshape_import():
                 'error': 'Missing required parameters',
                 'required': ['documentId', 'workspaceId', 'elementId'],
                 'received': raw_params,
-                'help': 'OnShape variable substitution not working. Check extension configuration or use manual DXF upload.'
+                'help': 'Onshape variable substitution not working. Check extension configuration or use manual DXF upload.'
             }), 400
 
-        # Get OnShape client for this user
+        # Get Onshape client for this user
         user_id = get_current_user_id()
         client = session_manager.get_client(user_id)
 
@@ -842,7 +842,7 @@ def onshape_import():
                 'faceId': face_id
             }
 
-            # Redirect to OnShape OAuth
+            # Redirect to Onshape OAuth
             return redirect('/onshape/auth')
         
         # If no face_id provided, auto-select the top face
@@ -911,7 +911,7 @@ def onshape_import():
                                          from_onshape=True)
 
                 # This now returns (face_id, body_id, part_name, normal)
-                # Pass body_id if user selected a specific part in OnShape, and cached data to avoid duplicate API call
+                # Pass body_id if user selected a specific part in Onshape, and cached data to avoid duplicate API call
                 face_id, auto_selected_body_id, part_name_from_body, face_normal = client.auto_select_top_face(document_id, workspace_id, element_id, body_id, faces_data)
 
                 if not face_id:
@@ -920,7 +920,7 @@ def onshape_import():
                     if faces_data:
                         face_count = len(faces_data.get('bodies', []))
                         error_msg += f'Found {face_count} bodies total. '
-                    error_msg += 'Try selecting a face manually in OnShape.'
+                    error_msg += 'Try selecting a face manually in Onshape.'
 
                     # Render error page instead of JSON
                     return render_template('index.html',
@@ -943,7 +943,7 @@ def onshape_import():
                     'debug_url': f'/onshape/list-faces?documentId={document_id}&workspaceId={workspace_id}&elementId={element_id}'
                 }), 400
         
-        # Fetch DXF from OnShape
+        # Fetch DXF from Onshape
         # Use body_id from URL parameter if provided, otherwise use the one from auto-selection
         export_body_id = body_id if body_id else auto_selected_body_id
         print(f"Exporting with body_id: {export_body_id} (from {'URL param' if body_id else 'auto-selection'})")
@@ -953,15 +953,15 @@ def onshape_import():
         )
 
         if not dxf_content:
-            error_msg = f"Failed to export DXF from OnShape. "
+            error_msg = f"Failed to export DXF from Onshape. "
             if export_body_id:
                 error_msg += f"Attempted to export body/part: {export_body_id}. "
             else:
                 error_msg += "No body/part ID available for export. "
-            error_msg += "Check OnShape API logs above for details."
+            error_msg += "Check Onshape API logs above for details."
 
             return jsonify({
-                'error': 'Failed to export DXF from OnShape',
+                'error': 'Failed to export DXF from Onshape',
                 'message': error_msg,
                 'details': {
                     'face_id': face_id,
@@ -1004,7 +1004,7 @@ def onshape_import():
         dxf_filename = os.path.basename(temp_dxf.name)
         dxf_path = temp_dxf.name
         
-        print(f"✅ DXF imported from OnShape: {dxf_filename}")
+        print(f"✅ DXF imported from Onshape: {dxf_filename}")
         print(f"📂 Saved to: {dxf_path}")
         print(f"📏 File size on disk: {os.path.getsize(dxf_path)} bytes")
         print(f"🔗 Will be served at: /uploads/{dxf_filename}")
@@ -1027,17 +1027,17 @@ def onshape_import():
 @auth.require_auth
 def onshape_save_dxf():
     """
-    Save a DXF from OnShape directly to Google Drive without generating G-code.
-    Accepts parameters from OnShape extension or direct URL.
+    Save a DXF from Onshape directly to Google Drive without generating G-code.
+    Accepts parameters from Onshape extension or direct URL.
     """
     if not ONSHAPE_AVAILABLE:
-        return jsonify({'error': 'OnShape integration not available'}), 400
+        return jsonify({'error': 'Onshape integration not available'}), 400
 
     if not GOOGLE_DRIVE_AVAILABLE:
         return jsonify({'error': 'Google Drive integration not available'}), 400
 
     try:
-        print(f"\n💾 OnShape Save DXF request: {request.url}")
+        print(f"\n💾 Onshape Save DXF request: {request.url}")
         print(f"   Method: {request.method}")
 
         # Get parameters (either from query string or JSON body)
@@ -1053,7 +1053,7 @@ def onshape_save_dxf():
         face_id = params['face_id']
         body_id = params['body_id']
 
-        print(f"OnShape params: doc={document_id}, workspace={workspace_id}, element={element_id}, face={face_id}, body={body_id}")
+        print(f"Onshape params: doc={document_id}, workspace={workspace_id}, element={element_id}, face={face_id}, body={body_id}")
 
         if not all([document_id, workspace_id, element_id]):
             return jsonify({
@@ -1061,13 +1061,13 @@ def onshape_save_dxf():
                 'required': ['documentId', 'workspaceId', 'elementId']
             }), 400
 
-        # Get OnShape client
+        # Get Onshape client
         user_id = get_current_user_id()
         client = session_manager.get_client(user_id)
 
         if not client:
             return jsonify({
-                'error': 'Not authenticated with OnShape',
+                'error': 'Not authenticated with Onshape',
                 'auth_url': '/onshape/auth'
             }), 401
 
@@ -1097,7 +1097,7 @@ def onshape_save_dxf():
                     'message': str(e)
                 }), 400
 
-        # Export DXF from OnShape
+        # Export DXF from Onshape
         export_body_id = body_id if body_id else auto_selected_body_id
         print(f"Exporting DXF with body_id: {export_body_id}")
 
@@ -1107,7 +1107,7 @@ def onshape_save_dxf():
 
         if not dxf_content:
             return jsonify({
-                'error': 'Failed to export DXF from OnShape',
+                'error': 'Failed to export DXF from Onshape',
                 'details': {
                     'face_id': face_id,
                     'body_id': export_body_id

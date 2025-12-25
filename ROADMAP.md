@@ -1,7 +1,7 @@
 # PenguinCAM Roadmap
 
 **FRC Team 6238 Popcorn Penguins**  
-CAM Post-Processor for OnShape → G-code workflow
+CAM Post-Processor for Onshape → G-code workflow
 
 ---
 
@@ -10,8 +10,8 @@ CAM Post-Processor for OnShape → G-code workflow
 PenguinCAM is **deployed and production-ready** at https://penguincam.popcornpenguins.com
 
 **Core features working:**
-- ✅ **OnShape one-click integration** - Right-click "Applications" in OnShape → Send to PenguinCAM
-- ✅ OnShape OAuth integration with DXF export
+- ✅ **Onshape one-click integration** - Right-click "Applications" in Onshape → Send to PenguinCAM
+- ✅ Onshape OAuth integration with DXF export
 - ✅ Automatic top face detection
 - ✅ DXF → G-code post-processing
 - ✅ Google Workspace authentication (domain restriction)
@@ -26,14 +26,14 @@ PenguinCAM is **deployed and production-ready** at https://penguincam.popcornpen
 - ✅ Tubing support - makes square ends and mirror-image pattern in opposing faces
 - ✅ Tool compensation
 
-**Preferred workflow:** One-click from OnShape (manual DXF upload also available)
+**Preferred workflow:** One-click from Onshape (manual DXF upload also available)
 
 ---
 
 ## 🎓 Ready for Student Testing
 
 PenguinCAM is ready for real-world use:
-- Students can export parts from OnShape with one click
+- Students can export parts from Onshape with one click
 - Part orientation system matches 3D slicer/laser cutter workflows
 - Visual preview before committing to G-code
 - Direct save to team Google Drive

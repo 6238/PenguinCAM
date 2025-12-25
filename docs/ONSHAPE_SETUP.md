@@ -1,14 +1,14 @@
-# OnShape Extension Setup Guide
+# Onshape Extension Setup Guide
 
 **For Team Admins & Mentors**
 
-This guide shows how to install the PenguinCAM extension in your OnShape classroom account so students can export parts with one click.
+This guide shows how to install the PenguinCAM extension in your Onshape classroom account so students can export parts with one click.
 
 ---
 
 ## Prerequisites
 
-- OnShape classroom account
+- Onshape classroom account
 - Admin access to manage classroom extensions ("owner", not "admin")
 - PenguinCAM deployed and OAuth configured (see [Integrations Guide](INTEGRATIONS_GUIDE.md))
 
@@ -16,7 +16,7 @@ This guide shows how to install the PenguinCAM extension in your OnShape classro
 
 ## Step 1: Create the Extension
 
-1. **Log into OnShape** as a classroom admin
+1. **Log into Onshape** as a classroom admin
 2. **Go to Company Settings** → Extensions → Integrated Extensions
 3. **Click "New Extension"** or "Add Extension"
 4. **Fill in the form** (see configuration below)
@@ -87,7 +87,7 @@ Upload an SVG icon (max 100 KB) or leave blank for default
 ### **First Time:**
 1. Right-click part → "Send to PenguinCAM"
 2. Sign in with team Google account (one-time)
-3. Approve OnShape access (one-time)
+3. Approve Onshape access (one-time)
 4. Part loads automatically in PenguinCAM!
 
 ### **After Setup:**
@@ -113,7 +113,7 @@ Upload an SVG icon (max 100 KB) or leave blank for default
 **Check:**
 - Action URL correct? (`{$documentId}` not `${documentId}`)
 - PenguinCAM URL correct? (https://penguincam.popcornpenguins.com)
-- OnShape OAuth configured? (See [Integrations Guide](INTEGRATIONS_GUIDE.md))
+- Onshape OAuth configured? (See [Integrations Guide](INTEGRATIONS_GUIDE.md))
 
 ### **Authentication fails**
 
@@ -131,7 +131,7 @@ Railway Dashboard → Deployments → View Logs
 
 Look for:
 - DXF import messages
-- OnShape API errors
+- Onshape API errors
 - Face detection warnings
 
 ---
@@ -149,7 +149,7 @@ Look for:
 
 If you can't install company extensions, students can still use PenguinCAM:
 
-1. Right-click face in OnShape → Export → DXF
+1. Right-click face in Onshape → Export → DXF
 2. Go to https://penguincam.popcornpenguins.com
 3. Upload DXF file
 4. Orient, generate, download
@@ -160,7 +160,7 @@ Less convenient but fully functional!
 
 ## Related Documentation
 
-- [Integrations Guide](INTEGRATIONS_GUIDE.md) - OnShape OAuth setup
+- [Integrations Guide](INTEGRATIONS_GUIDE.md) - Onshape OAuth setup
 - [Deployment Guide](DEPLOYMENT_GUIDE.md) - Railway deployment
 - [Authentication Guide](AUTHENTICATION_GUIDE.md) - Google Workspace auth
 

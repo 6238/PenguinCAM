@@ -6,10 +6,10 @@
 
 ## 🚀 Quick Start (3 Steps)
 
-### 1. Send Part from OnShape ⭐
+### 1. Send Part from Onshape ⭐
 
 **Easiest Method - One Click:**
-1. Open your Part Studio in OnShape
+1. Open your Part Studio in Onshape
 2. **Right-click the part** in the feature tree (left sidebar)
 3. Click **"Send to PenguinCAM"** from the menu
 4. Part opens automatically in PenguinCAM!
@@ -158,7 +158,7 @@ In PenguinCAM web interface:
 
 ---
 
-## 🎯 Design Tips for OnShape
+## 🎯 Design Tips for Onshape
 
 ### For Best Results:
 
@@ -315,7 +315,7 @@ In PenguinCAM web interface:
 - Don't guess - ask for help!
 
 **For Design Questions:**
-- Review OnShape part - is it 2D?
+- Review Onshape part - is it 2D?
 - Check hole sizes match table above
 - Ask mentor for CAD review
 
@@ -358,9 +358,9 @@ In PenguinCAM web interface:
 
 ## 📤 Alternative: Manual DXF Upload
 
-**If OnShape extension isn't available:**
+**If Onshape extension isn't available:**
 
-1. **In OnShape:**
+1. **In Onshape:**
    - Right-click the face you want to machine
    - Export → DXF
    - Save the file

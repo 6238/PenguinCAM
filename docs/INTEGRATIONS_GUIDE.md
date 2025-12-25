@@ -1,16 +1,16 @@
 # PenguinCAM Integrations Guide
 
-**Complete guide to setting up OnShape API and Google Drive integration**
+**Complete guide to setting up Onshape API and Google Drive integration**
 
 ---
 
 ## Table of Contents
 
-1. [OnShape Integration](#onshape-integration)
+1. [Onshape Integration](#onshape-integration)
    - [Creating OAuth Application](#creating-onshape-oauth-application)
    - [Configuring PenguinCAM](#configuring-penguincam-for-onshape)
    - [Browser Extension Setup](#onshape-browser-extension)
-   - [Testing OnShape Import](#testing-onshape-import)
+   - [Testing Onshape Import](#testing-onshape-import)
 2. [Google Drive Integration](#google-drive-integration)
    - [Shared Drive Setup](#shared-drive-setup)
    - [Configuration](#configuring-drive-uploads)
@@ -19,18 +19,18 @@
 
 ---
 
-## OnShape Integration
+## Onshape Integration
 
-PenguinCAM integrates with OnShape to:
+PenguinCAM integrates with Onshape to:
 - ✅ Export DXF files directly from Part Studios
 - ✅ Auto-detect the top face of parts
 - ✅ Streamline workflow (no manual DXF export)
 
-### Creating OnShape OAuth Application
+### Creating Onshape OAuth Application
 
 #### Step 1: Access Developer Portal
 
-1. Log in to OnShape: https://cad.onshape.com
+1. Log in to Onshape: https://cad.onshape.com
 2. Click your profile picture (top-right)
 3. Select **"Preferences"**
 4. Navigate to: **"API & Developer Settings"** tab
@@ -74,7 +74,7 @@ Click **"Show"** next to Client Secret to reveal it, then copy.
 
 ---
 
-### Configuring PenguinCAM for OnShape
+### Configuring PenguinCAM for Onshape
 
 Add these environment variables in Railway:
 
@@ -85,7 +85,7 @@ BASE_URL=https://penguincam.popcornpenguins.com
 ```
 
 **Replace:**
-- `your-onshape-client-id` with actual Client ID from OnShape
+- `your-onshape-client-id` with actual Client ID from Onshape
 - `your-onshape-client-secret` with actual Client Secret
 - Domain with your actual domain
 
@@ -93,15 +93,15 @@ Railway will automatically redeploy with new variables.
 
 ---
 
-### OnShape Browser Extension
+### Onshape Browser Extension
 
-**Status:** Currently blocked pending OnShape support resolution
+**Status:** Currently blocked pending Onshape support resolution
 
-The browser extension would allow right-clicking parts in OnShape and selecting "Export to PenguinCAM". Configuration exists but visibility issues are being resolved with OnShape support.
+The browser extension would allow right-clicking parts in Onshape and selecting "Export to PenguinCAM". Configuration exists but visibility issues are being resolved with Onshape support.
 
 #### Current Configuration (for reference)
 
-In OnShape Developer Portal → OAuth app → **Extensions** tab:
+In Onshape Developer Portal → OAuth app → **Extensions** tab:
 
 **Extension Name:** `Export to PenguinCAM`
 
@@ -125,25 +125,25 @@ https://penguincam.popcornpenguins.com/onshape/import
 
 #### Workaround (While Extension is Unavailable)
 
-**Users can still process OnShape parts via direct URL:**
+**Users can still process Onshape parts via direct URL:**
 
-1. Open Part Studio in OnShape
+1. Open Part Studio in Onshape
 2. Copy the URL from browser address bar
    - Example: `https://cad.onshape.com/documents/abc123.../w/xyz789.../e/def456...`
-3. In PenguinCAM, there will be an "Import from OnShape" option
+3. In PenguinCAM, there will be an "Import from Onshape" option
 4. Paste the URL
 5. PenguinCAM extracts document/workspace/element IDs automatically
 
 ---
 
-### Testing OnShape Import
+### Testing Onshape Import
 
-#### Step 1: Authenticate with OnShape
+#### Step 1: Authenticate with Onshape
 
 1. Visit PenguinCAM: `https://penguincam.popcornpenguins.com`
-2. You should see "Connect to OnShape" button or link
+2. You should see "Connect to Onshape" button or link
 3. Click it
-4. OnShape authorization page appears
+4. Onshape authorization page appears
 5. Review permissions:
    - Read your documents
    - Read user information
@@ -154,7 +154,7 @@ https://penguincam.popcornpenguins.com/onshape/import
 
 **Using Direct API (Workaround):**
 
-1. Create a simple test part in OnShape
+1. Create a simple test part in Onshape
    - Rectangle with a couple holes
    - Make sure it's a flat plate
 2. Copy the Part Studio URL
@@ -250,7 +250,7 @@ Only set these if you want different names/paths.
 #### Step 1: Process a Test File
 
 1. Log in to PenguinCAM
-2. Upload a sample DXF or import from OnShape
+2. Upload a sample DXF or import from Onshape
 3. Generate G-code
 4. Preview looks correct
 
@@ -282,32 +282,32 @@ Have another team member:
 
 ## Troubleshooting
 
-### OnShape Issues
+### Onshape Issues
 
 #### OAuth Authorization Fails
 
-**Problem:** Can't authorize OnShape or get error during OAuth
+**Problem:** Can't authorize Onshape or get error during OAuth
 
 **Solutions:**
-1. Verify redirect URLs in OnShape app settings match exactly:
+1. Verify redirect URLs in Onshape app settings match exactly:
    ```
    https://penguincam.yourdomain.com/onshape/oauth/callback
    ```
 2. Check `ONSHAPE_CLIENT_ID` and `ONSHAPE_CLIENT_SECRET` in Railway
 3. Ensure `BASE_URL` matches your domain exactly
-4. Try logging out of OnShape, clearing cookies, and trying again
+4. Try logging out of Onshape, clearing cookies, and trying again
 
 ---
 
 #### "Failed to Export DXF"
 
-**Problem:** OnShape connection works but DXF export fails
+**Problem:** Onshape connection works but DXF export fails
 
 **Possible Causes:**
 1. Part Studio has no faces to export
 2. User lacks permissions to document
 3. Document is in a shared workspace without access
-4. OnShape API endpoint changed
+4. Onshape API endpoint changed
 
 **Solutions:**
 1. Verify Part Studio has actual geometry
@@ -412,18 +412,18 @@ Have another team member:
 
 ---
 
-#### OnShape Document Access
+#### Onshape Document Access
 
-**Problem:** Can't import from OnShape document
+**Problem:** Can't import from Onshape document
 
 **Causes:**
 - Document is private
 - User not in share list
-- Wrong OnShape account
+- Wrong Onshape account
 
 **Solutions:**
-1. Share document with user's OnShape account
-2. Verify user logged into correct OnShape account
+1. Share document with user's Onshape account
+2. Verify user logged into correct Onshape account
 3. Try with a public document first (test)
 
 ---
@@ -438,11 +438,11 @@ Here's how everything works together:
    - Google Workspace authentication
    - Gets Drive access tokens
 
-2. **Student authorizes OnShape (first time)**
-   - Click "Connect to OnShape"
+2. **Student authorizes Onshape (first time)**
+   - Click "Connect to Onshape"
    - Authorize read access
 
-3. **Student designs part in OnShape**
+3. **Student designs part in Onshape**
    - Creates flat plate in Part Studio
    - Adds holes, pockets, perimeter
 
@@ -453,7 +453,7 @@ Here's how everything works together:
 
 5. **PenguinCAM processes part**
    - Auto-detects top face
-   - Exports DXF from OnShape
+   - Exports DXF from Onshape
    - Generates G-code
    - Shows 3D preview
 
@@ -471,7 +471,7 @@ Here's how everything works together:
 
 ## Best Practices
 
-### OnShape Organization
+### Onshape Organization
 
 **Folder structure:**
 ```
@@ -516,9 +516,9 @@ Popcorn Penguins/
 - **Contributor:** All team members
 - **Commenter:** Alumni, supporters
 
-**OnShape Sharing:**
+**Onshape Sharing:**
 - Share design folders with whole team
-- Use OnShape Teams for organization
+- Use Onshape Teams for organization
 
 ---
 
@@ -526,7 +526,7 @@ Popcorn Penguins/
 
 Before going live with students:
 
-**OnShape:**
+**Onshape:**
 - [ ] OAuth app created
 - [ ] Client ID/Secret in Railway
 - [ ] Test authorization with mentor account
@@ -543,7 +543,7 @@ Before going live with students:
 - [ ] Check permissions are correct
 
 **Integration:**
-- [ ] End-to-end: OnShape → PenguinCAM → Drive
+- [ ] End-to-end: Onshape → PenguinCAM → Drive
 - [ ] Test with student account
 - [ ] Verify on mobile (responsive)
 - [ ] Check error messages are helpful
@@ -562,7 +562,7 @@ Once integrations are working:
 
 ## Quick Reference
 
-**OnShape OAuth App:**
+**Onshape OAuth App:**
 - Developer Portal: Profile → Preferences → API & Developer Settings
 - Redirect URL: `https://your-domain.com/onshape/oauth/callback`
 - Permissions: Read documents, Read user info

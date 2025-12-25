@@ -175,7 +175,7 @@ def main():
         description='FRC Robotics CAM Post-Processor - SAFE TEST MODE',
         epilog='This version disables spindle and raises tool for safe testing'
     )
-    parser.add_argument('input_dxf', help='Input DXF file from OnShape')
+    parser.add_argument('input_dxf', help='Input DXF file from Onshape')
     parser.add_argument('output_gcode', help='Output G-code file (TEST VERSION)')
     parser.add_argument('--thickness', type=float, default=0.25, 
                        help='Material thickness in inches (default: 0.25)')

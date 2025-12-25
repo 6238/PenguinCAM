@@ -472,7 +472,7 @@ Further restrict to specific users
 
 Once authentication is working:
 
-1. ✅ Configure OnShape integration → [INTEGRATIONS_GUIDE.md](INTEGRATIONS_GUIDE.md)
+1. ✅ Configure Onshape integration → [INTEGRATIONS_GUIDE.md](INTEGRATIONS_GUIDE.md)
 2. ✅ Set up Google Drive → Already done if Drive upload works!
 3. ✅ Test with students → [quick-reference-card.md](quick-reference-card.md)
 

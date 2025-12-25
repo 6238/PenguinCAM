@@ -97,7 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
         // Global state
         let uploadedFile = null;
-        let suggestedFilename = null; // For OnShape imports
+        let suggestedFilename = null; // For Onshape imports
         let gcodeContent = null;
         let outputFilename = null;
         let scene, camera, renderer, controls;
@@ -261,7 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             formData.append('rotation', rotationAngle); // Add rotation angle
             if (suggestedFilename) {
-                formData.append('suggested_filename', suggestedFilename); // OnShape filename
+                formData.append('suggested_filename', suggestedFilename); // Onshape filename
             }
 
             showLoading();
@@ -1517,17 +1517,17 @@ document.addEventListener('DOMContentLoaded', () => {
             initVisualization();
             initDxfSetup();
             
-            // DEBUG: Check if OnShape provides context via JavaScript
-            console.log('=== OnShape Context Debug ===');
+            // DEBUG: Check if Onshape provides context via JavaScript
+            console.log('=== Onshape Context Debug ===');
             console.log('window.opener:', window.opener);
             console.log('window.parent:', window.parent);
             console.log('URL params:', new URLSearchParams(window.location.search));
-            console.log('OnShape globals:', {
+            console.log('Onshape globals:', {
                 onshape: typeof window.onshape !== 'undefined' ? window.onshape : 'undefined',
                 OnshapeClient: typeof window.OnshapeClient !== 'undefined' ? window.OnshapeClient : 'undefined'
             });
             
-            // Check for error message from OnShape import
+            // Check for error message from Onshape import
             const errorMessage = window.ONSHAPE_DATA?.errorMessage || '';
             if (errorMessage) {
                 const statusDiv = document.getElementById('statusMessage');
@@ -1539,13 +1539,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 return; // Don't try to load DXF
             }
 
-            // Auto-load DXF if coming from OnShape
+            // Auto-load DXF if coming from Onshape
             const dxfFile = window.ONSHAPE_DATA?.dxfFile || '';
             const fromOnshape = window.ONSHAPE_DATA?.fromOnshape || false;
             const onshapeSuggestedFilename = window.ONSHAPE_DATA?.suggestedFilename || '';
             
             if (dxfFile && fromOnshape) {
-                console.log('Auto-loading DXF from OnShape:', dxfFile);
+                console.log('Auto-loading DXF from Onshape:', dxfFile);
                 console.log('Fetching from:', `/uploads/${dxfFile}`);
                 
                 // Fetch the DXF and load it
@@ -1582,7 +1582,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Show success message
                         const statusDiv = document.getElementById('statusMessage');
                         if (statusDiv) {
-                            statusDiv.textContent = '✅ Imported from OnShape! Orient your part and click Generate G-code.';
+                            statusDiv.textContent = '✅ Imported from Onshape! Orient your part and click Generate G-code.';
                             statusDiv.style.display = 'block';
                             statusDiv.className = 'success';
                         }

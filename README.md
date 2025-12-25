@@ -2,7 +2,7 @@
 
 **FRC Team 6238 Popcorn Penguins CAM Post-Processor**
 
-A web-based tool for FRC robotics teams to automatically generate CNC G-code from OnShape designs. No CAM software required!
+A web-based tool for FRC robotics teams to automatically generate CNC G-code from Onshape designs. No CAM software required!
 
 🔗 **Live App:** https://penguincam.popcornpenguins.com
 
@@ -12,8 +12,8 @@ A web-based tool for FRC robotics teams to automatically generate CNC G-code fro
 
 PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC teams:
 
-1. **Design in OnShape** → Create flat plates with holes and pockets
-2. **Right-click → "Send to PenguinCAM"** → One-click export from OnShape
+1. **Design in Onshape** → Create flat plates with holes and pockets
+2. **Right-click → "Send to PenguinCAM"** → One-click export from Onshape
 3. **Orient & Generate** → Rotate part, auto-generate toolpaths
 4. **Download or Save to Drive** → Ready to run on your CNC router
 
@@ -46,16 +46,16 @@ PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC tea
 - Automatically cuts tube to CAD length
 - Pattern mirrored and cut in both top and bottom faces
 
-### 🔗 **OnShape Integration** ⭐ Preferred Workflow
+### 🔗 **Onshape Integration** ⭐ Preferred Workflow
 
-**One-Click Export from OnShape:**
-- Right-click part in OnShape → "Send to PenguinCAM"
+**One-Click Export from Onshape:**
+- Right-click part in Onshape → "Send to PenguinCAM"
 - Auto-detects top face
 - Opens PenguinCAM with part already loaded
 - No manual DXF export or face selection needed
 
 **How to Set Up:**
-1. Install PenguinCAM extension in your OnShape classroom
+1. Install PenguinCAM extension in your Onshape classroom
 2. Extension appears in right-click "Applications" menu on parts
 3. Click once to send part directly to PenguinCAM
 4. OAuth authentication (one-time per team member)
@@ -93,10 +93,10 @@ PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC tea
 
 ## Quick Start for Students
 
-### Method 1: From OnShape (Recommended) ⭐
+### Method 1: From Onshape (Recommended) ⭐
 
 **One-Click Workflow:**
-1. **Design your part** in OnShape (flat plate with holes/pockets)
+1. **Design your part** in Onshape (flat plate with holes/pockets)
 2. **Right-click the part** in the feature tree
 3. **Click "Send to PenguinCAM"** from the Applications menu item
 4. **Orient your part** - Rotate if needed in 2D setup view
@@ -107,7 +107,7 @@ PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC tea
 
 ### Method 2: Manual DXF Upload
 
-**For offline work or non-OnShape files:**
+**For offline work or non-Onshape files:**
 1. **Export DXF** from your CAD software
 2. **Visit** https://penguincam.popcornpenguins.com
 3. **Upload DXF file** via drag-and-drop
@@ -131,8 +131,8 @@ PenguinCAM is deployed on Railway with automatic GitHub integration.
 **Setup guides:**
 - [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Deploy to Railway, environment variables
 - [Authentication Guide](docs/AUTHENTICATION_GUIDE.md) - Google OAuth and Workspace setup
-- [Integrations Guide](docs/INTEGRATIONS_GUIDE.md) - OnShape and Google Drive configuration
-- [OnShape Extension Setup](docs/ONSHAPE_SETUP.md) - Install one-click export in OnShape ⭐
+- [Integrations Guide](docs/INTEGRATIONS_GUIDE.md) - Onshape and Google Drive configuration
+- [Onshape Extension Setup](docs/ONSHAPE_SETUP.md) - Install one-click export in Onshape ⭐
 
 ### Documentation
 
@@ -168,7 +168,7 @@ See `requirements.txt` for complete list.
 ### The Pipeline
 
 ```
-OnShape Part Studio
+Onshape Part Studio
     ↓ (OAuth API)
 DXF Export
     ↓ (Automatic face detection)
@@ -186,7 +186,7 @@ Google Drive Upload
 **Backend (Python):**
 - `frc_cam_gui_app.py` - Flask web server
 - `frc_cam_postprocessor.py` - G-code generation engine
-- `onshape_integration.py` - OnShape API client
+- `onshape_integration.py` - Onshape API client
 - `google_drive_integration.py` - Drive uploads
 - `penguincam_auth.py` - Google OAuth authentication
 
@@ -271,7 +271,7 @@ penguincam/
 ├── docs/                          # Documentation
 │   ├── DEPLOYMENT_GUIDE.md        # Setup & deployment
 │   ├── AUTHENTICATION_GUIDE.md    # Google OAuth
-│   ├── INTEGRATIONS_GUIDE.md      # OnShape & Drive
+│   ├── INTEGRATIONS_GUIDE.md      # Onshape & Drive
 │   ├── quick-reference-card.md    # Quick start
 │   ├── TOOL_COMPENSATION_GUIDE.md # Technical reference
 │   └── Z_COORDINATE_SYSTEM.md     # Zeroing guide
@@ -284,7 +284,7 @@ penguincam/
 │
 ├── frc_cam_gui_app.py            # Flask web server
 ├── frc_cam_postprocessor.py      # G-code generator
-├── onshape_integration.py        # OnShape API
+├── onshape_integration.py        # Onshape API
 ├── google_drive_integration.py   # Drive uploads
 ├── penguincam_auth.py            # OAuth authentication
 │
@@ -378,7 +378,7 @@ Interested in using PenguinCAM for your team? Great!
 1. Fork this repository
 2. Follow [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) to deploy on Railway
 3. Configure Google OAuth for your Workspace
-4. Set up OnShape API credentials
+4. Set up Onshape API credentials
 5. Customize for your team (logo, domain, etc.)
 
 The setup takes about 1-2 hours but then requires minimal maintenance. Your students will love the streamlined workflow!

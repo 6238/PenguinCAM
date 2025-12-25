@@ -211,7 +211,7 @@ class FRCPostProcessor:
                     self.polylines.append(points)
         
         # Method 3: Collect individual LINE, ARC, SPLINE entities and try to form closed paths
-        # This is needed for OnShape exports which use individual entities
+        # This is needed for Onshape exports which use individual entities
         lines = list(msp.query('LINE'))
         arcs = list(msp.query('ARC'))
         splines = list(msp.query('SPLINE'))
@@ -226,7 +226,7 @@ class FRCPostProcessor:
     def _chain_entities_to_paths(self, lines, arcs, splines):
         """
         Chain individual LINE, ARC, and SPLINE entities into closed paths.
-        This handles DXF exports from OnShape and other CAD programs that don't use polylines.
+        This handles DXF exports from Onshape and other CAD programs that don't use polylines.
         """
         # First, try the graph-based approach for exact geometry
         print("  Attempting to connect segments into exact paths...")
@@ -2439,7 +2439,7 @@ def add_timestamp_to_filename(filename: str) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description='PenguinCAM - Team 6238 Post-Processor')
-    parser.add_argument('input_dxf', nargs='?', help='Input DXF file from OnShape (not needed for tube-facing mode)')
+    parser.add_argument('input_dxf', nargs='?', help='Input DXF file from Onshape (not needed for tube-facing mode)')
     parser.add_argument('output_gcode', help='Output G-code file')
     parser.add_argument('--mode', type=str, default='standard',
                        choices=['standard', 'tube-facing', 'tube-pattern'],
