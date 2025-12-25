@@ -543,9 +543,70 @@ class DXFSetupPreview {
                     y: ent.center.y + Math.sin(theta) * ent.radius
                 });
             }
+        } else if (ent.type === 'SPLINE') {
+            const degree = ent.degreeOfSplineCurve || 3;
+            const knots = ent.knotValues;
+            const cp = ent.controlPoints;
+
+            if (knots && cp && cp.length >= degree + 1) {
+                // Determine range of t (domain)
+                // Standard domain is [knots[degree], knots[knots.length - 1 - degree]]
+                const tStart = knots[degree];
+                const tEnd = knots[knots.length - 1 - degree];
+                
+                // Resolution: Increase steps for smoother curves
+                const steps = 40; 
+                
+                for (let i = 0; i <= steps; i++) {
+                    const t = tStart + (tEnd - tStart) * (i / steps);
+                    // Avoid floating point overshoot on the last point
+                    const safeT = Math.min(t, tEnd - 1e-9); 
+                    const pt = this.interpolateBSpline(i === steps ? tEnd : safeT, degree, knots, cp);
+                    pts.push(pt);
+                }
+            } else if (cp) {
+                // Fallback: just draw control points if invalid spline data
+                cp.forEach(p => pts.push(p));
+            }
         }
         return pts;
     }
+    interpolateBSpline(t, degree, knots, cp) {
+            // 1. Find knot span index 'k' such that knots[k] <= t < knots[k+1]
+            let k = -1;
+            for (let i = degree; i < knots.length - 1 - degree; i++) {
+                if (t >= knots[i] && t <= knots[i + 1]) {
+                    k = i;
+                    // If we hit the exact end knot, allow it (for closed curves)
+                    if (t < knots[i+1]) break; 
+                }
+            }
+            // Safety fallback if t is out of bounds
+            if (k === -1) k = knots.length - degree - 2;
+    
+            // 2. De Boor's Algorithm
+            // Copy initial control points for this span
+            const d = [];
+            for (let j = 0; j <= degree; j++) {
+                d[j] = { x: cp[k - degree + j].x, y: cp[k - degree + j].y };
+            }
+    
+            // Iteratively interpolate
+            for (let r = 1; r <= degree; r++) {
+                for (let j = degree; j >= r; j--) {
+                    const knotIndex = k + j - degree;
+                    const denom = knots[knotIndex + degree + 1 - r] - knots[knotIndex];
+                    
+                    // If denominator is 0, alpha is 0
+                    const alpha = denom === 0 ? 0 : (t - knots[knotIndex]) / denom;
+    
+                    d[j].x = (1 - alpha) * d[j - 1].x + alpha * d[j].x;
+                    d[j].y = (1 - alpha) * d[j - 1].y + alpha * d[j].y;
+                }
+            }
+    
+            return d[degree]; // The final interpolated point
+        }
     stitchPartsTogether() {
         const parts = this.parts;
         function transformPoint(x, y, t) {
@@ -636,6 +697,32 @@ class DXFSetupPreview {
                         dxfString += `40\n${aRadius.toFixed(4)}\n`;
                         dxfString += `50\n${startAngle.toFixed(4)}\n`;
                         dxfString += `51\n${endAngle.toFixed(4)}\n`;
+                        break;
+                    case 'SPLINE':
+                        dxfString += `100\nAcDbSpline\n`;
+                        
+                        // Flags: 8 = Planar. Add 1 if closed.
+                        const flags = 8 + (entity.closed ? 1 : 0);
+                        dxfString += `70\n${flags}\n`;
+                        dxfString += `71\n${entity.degreeOfSplineCurve || 3}\n`; // Degree
+                        dxfString += `72\n${(entity.knotValues || []).length}\n`; // Num Knots
+                        dxfString += `73\n${(entity.controlPoints || []).length}\n`; // Num Control Points
+                        dxfString += `74\n0\n`; // Num Fit Points (usually 0 if CPs exist)
+
+                        // Knots
+                        if (entity.knotValues) {
+                            entity.knotValues.forEach(k => {
+                                dxfString += `40\n${k}\n`;
+                            });
+                        }
+
+                        // Control Points
+                        if (entity.controlPoints) {
+                            entity.controlPoints.forEach(cp => {
+                                const pt = transformPoint(cp.x, cp.y, t);
+                                dxfString += `10\n${pt.x.toFixed(4)}\n20\n${pt.y.toFixed(4)}\n`;
+                            });
+                        }
                         break;
                 }
             });
