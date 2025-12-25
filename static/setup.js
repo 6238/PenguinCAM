@@ -394,32 +394,6 @@ class DXFSetupPreview {
         );
         this.render();
     }
-    render() {
-        const ctx = this.ctx;
-        const w = this.canvas.width;
-        const h = this.canvas.height;
-
-        ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = '#0a0e14';
-        ctx.fillRect(0, 0, w, h);
-
-        if (this.parts.length === 0) {
-            ctx.fillStyle = '#30363d';
-            ctx.font = '16px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText("No parts loaded", w / 2, h / 2);
-            return;
-        }
-        this.drawOverallBounds();
-
-
-        this.drawGrid();
-
-        // Draw Parts
-        this.parts.forEach(p => {
-            this.drawPart(p);
-        });
-    }
     drawGrid() {
         const ctx = this.ctx;
         const p0 = this.screenToWorld(0, this.canvas.height);
@@ -514,6 +488,67 @@ class DXFSetupPreview {
 
         ctx.restore();
     }
+    // --- Updates & Rendering ---
+
+    // 1. REPLACEMENT: Main Render Function
+    render() {
+        const ctx = this.ctx;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = '#0a0e14';
+        ctx.fillRect(0, 0, w, h);
+
+        if (this.parts.length === 0) {
+            ctx.fillStyle = '#30363d';
+            ctx.font = '16px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText("No parts loaded", w / 2, h / 2);
+            return;
+        }
+
+        // Optimization: Pre-calculate world points for all parts once per frame
+        // This prevents O(N^2) heavy transformation calculations inside the draw loops
+        this.cacheGlobalPartVertices();
+
+        this.drawOverallBounds();
+        this.drawGrid();
+
+        // Draw Parts
+        this.parts.forEach(p => {
+            this.drawPart(p);
+        });
+    }
+
+    // 2. NEW: Helper to cache world coordinates for proximity checks
+    cacheGlobalPartVertices() {
+        this.cachedVertices = [];
+        
+        this.parts.forEach(p => {
+            const tf = p.transform;
+            const rad = (-tf.r * Math.PI) / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+
+            p.entities.forEach(ent => {
+                const localPts = this.discretizeEntity(ent);
+                // Sub-sample points for performance if the resolution is very high
+                // For collision detection, we map local points to world space
+                localPts.forEach(pt => {
+                    const lx = (pt.x - p.center.x) * tf.s;
+                    const ly = (pt.y - p.center.y) * tf.s;
+                    this.cachedVertices.push({
+                        x: tf.x + (lx * cos - ly * sin),
+                        y: tf.y + (lx * sin + ly * cos),
+                        partId: p.id
+                    });
+                });
+            });
+        });
+    }
+
+    // 3. REPLACEMENT: Draw Part with collision/bounds highlighting
     drawPart(p) {
         const ctx = this.ctx;
         const tf = p.transform;
@@ -521,42 +556,96 @@ class DXFSetupPreview {
         const cos = Math.cos(rad);
         const sin = Math.sin(rad);
 
-        ctx.beginPath();
+        // Pre-calculate the World Transform function for this part
+        const toWorld = (lx, ly) => {
+            const dx = (lx - p.center.x) * tf.s;
+            const dy = (ly - p.center.y) * tf.s;
+            return {
+                x: tf.x + (dx * cos - dy * sin),
+                y: tf.y + (dx * sin + dy * cos)
+            };
+        };
 
         p.entities.forEach(ent => {
             const pts = this.discretizeEntity(ent);
             if (pts.length < 2) return;
 
-            const tp = (pt) => {
-                const lx = (pt.x - p.center.x) * tf.s;
-                const ly = (pt.y - p.center.y) * tf.s;
-                const wx = tf.x + (lx * cos - ly * sin);
-                const wy = tf.y + (lx * sin + ly * cos);
-                return this.worldToScreen(wx, wy);
-            };
+            // To highlight specific sections, we must draw segment by segment
+            // instead of one continuous ctx.stroke() path.
+            
+            // Calculate world positions for the whole entity first
+            const worldPts = pts.map(pt => toWorld(pt.x, pt.y));
 
-            const start = tp(pts[0]);
-            ctx.moveTo(start.x, start.y);
-            for (let i = 1; i < pts.length; i++) {
-                const next = tp(pts[i]);
-                ctx.lineTo(next.x, next.y);
+            for (let i = 0; i < worldPts.length - 1; i++) {
+                const wp1 = worldPts[i];
+                const wp2 = worldPts[i+1];
+                
+                // Check errors for this specific segment
+                const isError = this.isSegmentInvalid(wp1, wp2, p.id);
+
+                // Convert to Screen Space for drawing
+                const sp1 = this.worldToScreen(wp1.x, wp1.y);
+                const sp2 = this.worldToScreen(wp2.x, wp2.y);
+
+                ctx.beginPath();
+                ctx.moveTo(sp1.x, sp1.y);
+                ctx.lineTo(sp2.x, sp2.y);
+
+                if (isError) {
+                    ctx.strokeStyle = '#FF3333'; // Bright Red for error
+                    ctx.lineWidth = 3;           // Thicker line
+                    ctx.shadowBlur = 5;
+                    ctx.shadowColor = '#FF0000';
+                } else {
+                    ctx.strokeStyle = (p.id === this.selectedPartId) ? '#FDB515' : p.color;
+                    ctx.lineWidth = (p.id === this.selectedPartId) ? 2 : 1;
+                    ctx.shadowBlur = 0;
+                }
+
+                ctx.stroke();
+                
+                // Reset shadow for next iteration
+                ctx.shadowBlur = 0; 
             }
         });
-
-        if (p.isColliding) {
-            ctx.fillStyle = 'rgba(218, 54, 51, 0.3)';
-            ctx.fill();
-            ctx.strokeStyle = '#DA3633';
-            ctx.lineWidth = 2;
-        } else {
-            ctx.strokeStyle = (p.id === this.selectedPartId) ? '#FDB515' : p.color;
-            ctx.lineWidth = (p.id === this.selectedPartId) ? 2 : 1;
-        }
-        ctx.stroke();
 
         if (p.id === this.selectedPartId) {
             this.drawControls(p);
         }
+    }
+
+    // 4. NEW: Logic to check bounds and tool spacing
+    isSegmentInvalid(p1, p2, currentPartId) {
+        // 1. Check Negative Space (Build Surface is Positive only)
+        // If any part of the segment is in negative coordinates
+        if (p1.x < 0 || p1.y < 0 || p2.x < 0 || p2.y < 0) {
+            return true;
+        }
+
+        // 2. Check Proximity (Tool Diameter)
+        // We check if the midpoint of this segment is too close to any point of another part
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+        const safeDist = this.toolDiameter || 1.0; 
+        const safeDistSq = safeDist * safeDist;
+
+        // Optimization: Use a classic loop for performance over .find() or .some()
+        // We iterate over the cached global vertices
+        for (let i = 0; i < this.cachedVertices.length; i++) {
+            const other = this.cachedVertices[i];
+            
+            // Don't check against self
+            if (other.partId === currentPartId) continue;
+
+            // Fast Distance Squared check
+            const distSq = (midX - other.x) ** 2 + (midY - other.y) ** 2;
+
+            if (distSq < safeDistSq) {
+                return true; // Collision or too close
+            }
+        }
+
+        return false;
     }
     drawControls(part) {
         const ctx = this.ctx;
