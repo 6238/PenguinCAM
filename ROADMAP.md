@@ -23,6 +23,7 @@ PenguinCAM is **deployed and production-ready** at https://penguincam.popcornpen
 - ✅ Hole detection (#10 screws, 1.125" bearings)
 - ✅ Non-standard holes milled as circular pockets
 - ✅ Smart tab placement
+- ✅ Tubing support - makes square ends and mirror-image pattern in opposing faces
 - ✅ Tool compensation
 
 **Preferred workflow:** One-click from OnShape (manual DXF upload also available)
@@ -43,39 +44,7 @@ PenguinCAM is ready for real-world use:
 
 ## 🚀 Future Enhancements
 
-### #1: Tube Mode for Aluminum Extrusions
-
-**Priority:** High  
-**Effort:** High
-
-Add support for machining 1×1" and 1×2" aluminum tube extrusions with multi-face operations.
-
-#### **Requirements:**
-- Process 3D models (not just flat DXFs)
-- Handle 4-face machining with pauses between faces
-- Squaring operations on both ends
-- Face-specific geometry (different features per side)
-- Length cutting to final dimension
-
-#### **Workflow:**
-1. Import 3D tube model from OnShape
-2. Extract geometry for each face (top, bottom, left, right)
-3. Generate facing operations to square ends
-4. Generate features for each face (holes, slots)
-5. Insert M0 pauses between face rotations
-6. G-code includes instructions for manual tube rotation
-
-#### **Challenges:**
-- Fixture limits (can't cut full depth)
-- Reference surface creation (first face squared)
-- Coordinate system per face
-- User instructions for rotation sequence
-
-**Impact:** Covers ~30% of FRC machining needs (plates + tubes = ~90% coverage)
-
----
-
-### #2: Support multiple parts in a single job
+### #1: Support multiple parts in a single job
 
 **Priority:** Medium  
 **Effort:** Medium-High
@@ -94,6 +63,8 @@ Add support for machining 1×1" and 1×2" aluminum tube extrusions with multi-fa
 - G-code optimization (reduce rapids, minimize tool changes)
 - Export simulation as video/animated GIF
 - Integration with other CAD platforms (Fusion 360, Inventor)
+- Library of CNC machines
+- Hosting for other teams
 
 ---
 
@@ -106,13 +77,7 @@ If you're interested in contributing:
 2. Fork the repo and make your changes
 3. Submit a pull request
 
-Questions? Contact: [your contact info here]
-
----
-
-## 📜 License
-
-[Add your license here]
+Questions? Contact: Josh Sirota <josh@popcornpenguins.com>
 
 ---
 
