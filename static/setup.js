@@ -811,129 +811,150 @@ class DXFSetupPreview {
             return d[degree]; // The final interpolated point
         }
     stitchPartsTogether() {
-        const parts = this.parts;
-        function transformPoint(x, y, t) {
-            const rad = (t.r * Math.PI) / 180; // Convert degrees to radians
+        // 1. Helper for safe DXF formatting
+        const lines = [];
+        const add = (code, value) => {
+            lines.push(code);
+            lines.push(value);
+        };
+
+        // Helper to format floats to avoid scientific notation
+        const fmt = (num) => parseFloat(num).toFixed(6);
+
+        // 2. Transformation Logic (Matches your Render logic exactly)
+        const transform = (x, y, tf) => {
+            const rad = (-tf.r * Math.PI) / 180; // Match render rotation direction
             const cos = Math.cos(rad);
             const sin = Math.sin(rad);
 
-            // 1. Scale
-            const sx = x * t.s;
-            const sy = y * t.s;
+            // Scale relative to part center
+            const dx = (x - tf.partCenter.x) * tf.s;
+            const dy = (y - tf.partCenter.y) * tf.s;
 
-            // 2. Rotate & 3. Translate
+            // Rotate and Translate
             return {
-                x: (sx * cos - sy * sin) + t.x,
-                y: (sx * sin + sy * cos) + t.y
+                x: tf.x + (dx * cos - dy * sin),
+                y: tf.y + (dx * sin + dy * cos)
             };
-        }
-        function transformAngle(angleDegrees, rotationDegrees) {
-            let newAngle = angleDegrees + rotationDegrees;
-            return newAngle % 360;
-        }
-        let dxfString = "";
+        };
 
-        // --- DXF HEADER ---
-        // Minimal header to satisfy CAD programs
-        dxfString += "0\nSECTION\n2\nHEADER\n0\nENDSEC\n";
-        dxfString += "0\nSECTION\n2\nENTITIES\n";
+        // 3. Header Section
+        add(0, "SECTION");
+        add(2, "HEADER");
+        add(9, "$ACADVER");
+        add(1, "AC1015"); // AutoCAD 2000
+        add(0, "ENDSEC");
 
-        parts.forEach(part => {
-            if (!part.entities) return;
+        // 4. Entities Section
+        add(0, "SECTION");
+        add(2, "ENTITIES");
 
-            part.entities.forEach(entity => {
-                const t = part.transform;
+        this.parts.forEach(p => {
+            // Capture transform state including the original center for pivot calculations
+            const tf = { 
+                ...p.transform, 
+                partCenter: p.center 
+            };
+            
+            // Sanitize layer name
+            const layer = (p.name || "0").replace(/[^a-zA-Z0-9_ -]/g, "");
 
-                // Common Group Codes (Entity Type & Layer)
-                // We use the part name as the layer name for organization
-                dxfString += `0\n${entity.type}\n`;
-                dxfString += `8\n${part.name || '0'}\n`;
+            p.entities.forEach(ent => {
+                // Common Entity Start
+                add(0, ent.type);
+                add(100, "AcDbEntity");
+                add(8, layer); 
+                // Color (62) can be added here if needed, but usually handled by layer
 
-                switch (entity.type) {
-                    case 'LINE':
-                        // Transform Start
-                        const start = transformPoint(entity.vertices[0].x, entity.vertices[0].y, t);
-                        // Transform End
-                        const end = transformPoint(entity.vertices[1].x, entity.vertices[1].y, t);
+                if (ent.type === 'LINE') {
+                    add(100, "AcDbLine");
+                    const start = transform(ent.vertices[0].x, ent.vertices[0].y, tf);
+                    const end = transform(ent.vertices[1].x, ent.vertices[1].y, tf);
 
-                        dxfString += `10\n${start.x.toFixed(4)}\n20\n${start.y.toFixed(4)}\n`;
-                        dxfString += `11\n${end.x.toFixed(4)}\n21\n${end.y.toFixed(4)}\n`;
-                        break;
+                    add(10, fmt(start.x)); add(20, fmt(start.y)); add(30, 0.0);
+                    add(11, fmt(end.x));   add(21, fmt(end.y));   add(31, 0.0);
 
-                    case 'LWPOLYLINE':
-                        // Polyline Header
-                        dxfString += `66\n1\n`; // Entities follow (if needed, usually 0 for LW)
-                        dxfString += `90\n${entity.vertices.length}\n`; // Number of vertices
-                        dxfString += `70\n${entity.closed ? 1 : 0}\n`; // Closed flag
+                } else if (ent.type === 'LWPOLYLINE') {
+                    add(100, "AcDbPolyline");
+                    add(90, ent.vertices.length);
+                    // Group 70: 1 = Closed, 0 = Open
+                    add(70, ent.closed ? 1 : 0);
+                    add(43, 0.0); // Constant width
 
+                    ent.vertices.forEach(v => {
+                        const pt = transform(v.x, v.y, tf);
+                        add(10, fmt(pt.x));
+                        add(20, fmt(pt.y));
+                        if (v.bulge) add(42, fmt(v.bulge));
+                    });
 
-                        // Transform and write each vertex
-                        entity.vertices.forEach(v => {
-                            const pt = transformPoint(v.x, v.y, t);
-                            dxfString += `10\n${pt.x.toFixed(4)}\n`;
-                            dxfString += `20\n${pt.y.toFixed(4)}\n`;
+                } else if (ent.type === 'CIRCLE') {
+                    add(100, "AcDbCircle");
+                    const c = transform(ent.center.x, ent.center.y, tf);
+                    add(10, fmt(c.x)); add(20, fmt(c.y)); add(30, 0.0);
+                    add(40, fmt(ent.radius * tf.s));
 
-                            // Handle bulge (curved polyline segments) if present
-                            // Note: Bulge scaling is invariant, but mirroring would flip sign. 
-                            // Assuming uniform scale > 0 here.
-                            if (v.bulge) {
-                                dxfString += `42\n${v.bulge}\n`;
-                            }
-                        });
-                        break;
+                } else if (ent.type === 'ARC') {
+                    add(100, "AcDbCircle");
+                    const c = transform(ent.center.x, ent.center.y, tf);
+                    add(10, fmt(c.x)); add(20, fmt(c.y)); add(30, 0.0);
+                    add(40, fmt(ent.radius * tf.s));
 
-                    case 'CIRCLE':
-                        const cCenter = transformPoint(entity.center.x, entity.center.y, t);
-                        const cRadius = entity.radius * t.s;
+                    add(100, "AcDbArc");
+                    
+                    // Rotate angles. Note: DXF is Counter-Clockwise (CCW).
+                    // If part rotation 'r' is in degrees:
+                    // We subtract 'r' because in your system positive 'r' seems to be visual CW?
+                    // Adjust this sign if your arcs rotate the wrong way.
+                    let start = (ent.startAngle * 180 / Math.PI) - tf.r;
+                    let end = (ent.endAngle * 180 / Math.PI) - tf.r;
 
-                        dxfString += `10\n${cCenter.x.toFixed(4)}\n20\n${cCenter.y.toFixed(4)}\n`;
-                        dxfString += `40\n${cRadius.toFixed(4)}\n`;
-                        break;
+                    // Normalize to 0-360
+                    start = ((start % 360) + 360) % 360;
+                    end = ((end % 360) + 360) % 360;
 
-                    case 'ARC':
-                        const aCenter = transformPoint(entity.center.x, entity.center.y, t);
-                        const aRadius = entity.radius * t.s;
-                        const startAngle = transformAngle(entity.startAngle, t.r);
-                        const endAngle = transformAngle(entity.endAngle, t.r);
+                    add(50, fmt(start));
+                    add(51, fmt(end));
 
-                        dxfString += `10\n${aCenter.x.toFixed(4)}\n20\n${aCenter.y.toFixed(4)}\n`;
-                        dxfString += `40\n${aRadius.toFixed(4)}\n`;
-                        dxfString += `50\n${startAngle.toFixed(4)}\n`;
-                        dxfString += `51\n${endAngle.toFixed(4)}\n`;
-                        break;
-                    case 'SPLINE':
-                        dxfString += `100\nAcDbSpline\n`;
-                        
-                        // Flags: 8 = Planar. Add 1 if closed.
-                        const flags = 8 + (entity.closed ? 1 : 0);
-                        dxfString += `70\n${flags}\n`;
-                        dxfString += `71\n${entity.degreeOfSplineCurve || 3}\n`; // Degree
-                        dxfString += `72\n${(entity.knotValues || []).length}\n`; // Num Knots
-                        dxfString += `73\n${(entity.controlPoints || []).length}\n`; // Num Control Points
-                        dxfString += `74\n0\n`; // Num Fit Points (usually 0 if CPs exist)
+                } else if (ent.type === 'SPLINE') {
+                    add(100, "AcDbSpline");
+                    
+                    const degree = ent.degreeOfSplineCurve || 3;
+                    const knots = ent.knotValues || [];
+                    const cps = ent.controlPoints || [];
 
-                        // Knots
-                        if (entity.knotValues) {
-                            entity.knotValues.forEach(k => {
-                                dxfString += `40\n${k}\n`;
-                            });
-                        }
+                    add(210, 0.0); add(220, 0.0); add(230, 1.0); // Normal vector
 
-                        // Control Points
-                        if (entity.controlPoints) {
-                            entity.controlPoints.forEach(cp => {
-                                const pt = transformPoint(cp.x, cp.y, t);
-                                dxfString += `10\n${pt.x.toFixed(4)}\n20\n${pt.y.toFixed(4)}\n`;
-                            });
-                        }
-                        break;
+                    // Flags: 8 = Planar, 1 = Closed (Bitmask)
+                    let flags = 8;
+                    if (ent.closed) flags += 1;
+                    add(70, flags); 
+
+                    add(71, degree);
+                    add(72, knots.length);
+                    add(73, cps.length);
+                    add(74, 0); // No fit points
+
+                    // Knots
+                    knots.forEach(k => add(40, fmt(k)));
+
+                    // Control Points
+                    cps.forEach(cp => {
+                        const pt = transform(cp.x, cp.y, tf);
+                        add(10, fmt(pt.x));
+                        add(20, fmt(pt.y));
+                        add(30, 0.0);
+                    });
                 }
             });
         });
 
-        // --- DXF FOOTER ---
-        dxfString += "0\nENDSEC\n0\nEOF\n";
+        // 5. Footer
+        add(0, "ENDSEC");
+        add(0, "EOF");
 
-        return dxfString;
+        // 6. Join and Download
+        const result = lines.join('\n');
+        return result;
     }
 }
