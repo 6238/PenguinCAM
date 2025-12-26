@@ -19,6 +19,8 @@ PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC tea
 
 **No CAM software, no manual exports, no face selection required!** PenguinCAM knows what FRC teams need.
 
+Designed to feel like 3D Printer slicers or laser cutter software. Get the design, orient it on the machine, and go. Launching directly from Onshape means no export/import steps, lost files or inconsistent naming.
+
 ---
 
 ## Features
