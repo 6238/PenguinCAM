@@ -45,6 +45,17 @@
             <h1><span class="accent">Penguin</span>CAM</h1>
             <p class="subtitle">FRC Team 6238 • Generate G-code from Onshape for CNC machining</p>
         </div>
+
+        <!-- User info (only shown when authenticated) -->
+        {% if session.get('user_name') %}
+        <div class="user-info">
+            <div class="user-details">
+                <span class="user-icon">👤</span>
+                <span class="user-name">{{ session.get('user_name') }}</span>
+            </div>
+            <a href="/auth/logout" class="logout-btn">Logout</a>
+        </div>
+        {% endif %}
     </header>
 
     <main>

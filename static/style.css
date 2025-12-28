@@ -75,6 +75,52 @@
             margin-top: 0.25rem;
         }
 
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-left: auto;
+            padding-left: 2rem;
+            border-left: 1px solid var(--border);
+        }
+
+        .user-details {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .user-icon {
+            font-size: 1.25rem;
+            opacity: 0.8;
+        }
+
+        .user-name {
+            color: var(--text);
+            font-size: 0.875rem;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+
+        .logout-btn {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-family: 'Monaco', 'Courier New', monospace;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .logout-btn:hover {
+            background: var(--surface);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
         main {
             max-width: 1400px;
             margin: 0 auto;
@@ -655,6 +701,34 @@
 
             .visualizer {
                 position: static;
+            }
+
+            .user-info {
+                padding-left: 1rem;
+            }
+
+            .user-name {
+                display: none;
+            }
+
+            .logout-btn {
+                padding: 0.5rem 0.75rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            header {
+                flex-wrap: wrap;
+                gap: 1rem;
+            }
+
+            .user-info {
+                border-left: none;
+                border-top: 1px solid var(--border);
+                padding-left: 0;
+                padding-top: 1rem;
+                width: 100%;
+                justify-content: flex-end;
             }
         }
 
