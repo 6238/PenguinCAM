@@ -4,7 +4,9 @@
 
 A web-based tool for FRC robotics teams to automatically generate CNC G-code from Onshape designs. No CAM software required!
 
-🔗 **Demo video:** https://youtu.be/gFReFDz-_LI
+🔗 **Demo video:**
+[![Demo video](https://img.youtube.com/vi/gFReFDz-_LI/0.jpg)](https://www.youtube.com/watch?v=gFReFDz-_LI)
+
 
 🔗 **Live app:** https://penguincam.popcornpenguins.com
 
