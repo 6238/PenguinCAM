@@ -144,7 +144,7 @@ class SafeTestPostProcessor(FRCPostProcessor):
         report.append("="*60)
         report.append("")
         report.append(f"Material thickness: {self.material_thickness}\"")
-        report.append(f"Holes: {len(self.bearing_holes)}")
+        report.append(f"Holes: {len(self.holes)}")
         report.append(f"Pockets: {len(self.pockets)}")
         report.append(f"Perimeter: {'Yes' if self.perimeter else 'No'}")
         report.append(f"Tabs: {self.num_tabs if self.perimeter else 0}")

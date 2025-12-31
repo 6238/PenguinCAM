@@ -38,7 +38,7 @@ MATERIAL_PRESETS = {
         'ramp_start_clearance': 0.150,  # Clearance above material to start ramping (inches)
         'stepover_percentage': 0.65,    # Radial stepover as fraction of tool diameter (65% for plywood)
         'tab_width': 0.25,        # Tab width (inches)
-        'tab_height': 0.1,        # Tab height (inches)
+        'tab_height': 0.15,        # Tab height (inches)
         'description': 'Standard plywood settings - 18K RPM, 75 IPM cutting'
     },
     'aluminum': {
@@ -51,7 +51,7 @@ MATERIAL_PRESETS = {
         'ramp_start_clearance': 0.050,  # Clearance above material to start ramping (inches)
         'stepover_percentage': 0.25,    # Radial stepover as fraction of tool diameter (25% conservative for aluminum)
         'tab_width': 0.160,       # Tab width (inches) - smaller for aluminum
-        'tab_height': 0.040,      # Tab height (inches) - thinner for aluminum
+        'tab_height': 0.1,      # Tab height (inches) - thinner for aluminum
         'description': 'Aluminum box tubing - 18K RPM, 55 IPM cutting, 4° ramp'
     },
     'polycarbonate': {
@@ -64,7 +64,7 @@ MATERIAL_PRESETS = {
         'ramp_start_clearance': 0.100,  # Clearance above material to start ramping (inches)
         'stepover_percentage': 0.55,    # Radial stepover as fraction of tool diameter (55% moderate for polycarbonate)
         'tab_width': 0.25,        # Tab width (inches) - same as plywood
-        'tab_height': 0.1,        # Tab height (inches) - same as plywood
+        'tab_height': 0.15,        # Tab height (inches) - same as plywood
         'description': 'Polycarbonate - same as plywood settings'
     }
 }
