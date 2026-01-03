@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    <style>
+      .bucket-red { fill: #E74C3C; }
+      .bucket-white { fill: #FFFFFF; }
+      .bucket-outline { fill: none; stroke: #2C3E50; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+      .penguin-body { fill: #34495E; }
+      .penguin-belly { fill: #FFFFFF; }
+      .penguin-beak { fill: #F39C12; }
+      .penguin-detail { fill: #2C3E50; }
+      .tool { fill: #95A5A6; }
+      .popcorn { fill: #F9E79F; }
+      .glasses { fill: #E74C3C; }
+      .text { fill: #2C3E50; font-family: Arial, sans-serif; font-weight: bold; }
+    </style>
+  </defs>
+
+  <!-- Popcorn Bucket Base -->
+  <g id="bucket">
+    <!-- Red stripe 1 -->
+    <path class="bucket-red" d="M120 250 L100 380 L155 380 L140 250 Z"/>
+    <!-- White stripe 1 -->
+    <path class="bucket-white" d="M140 250 L155 380 L210 380 L190 250 Z"/>
+    <!-- Red stripe 2 -->
+    <path class="bucket-red" d="M190 250 L210 380 L265 380 L245 250 Z"/>
+    <!-- White stripe 2 -->
+    <path class="bucket-white" d="M245 250 L265 380 L320 380 L300 250 Z"/>
+    <!-- Red stripe 3 -->
+    <path class="bucket-red" d="M300 250 L320 380 L300 380 L280 250 Z"/>
+
+    <!-- Bucket outline -->
+    <path class="bucket-outline" d="M120 250 L100 380 L320 380 L300 250"/>
+    <ellipse class="bucket-outline" cx="210" cy="250" rx="90" ry="15"/>
+  </g>
+
+  <!-- Team Number on Bucket -->
+  <text class="text" font-size="60" x="125" y="345">6</text>
+  <text class="text" font-size="60" x="175" y="345">2</text>
+  <text class="text" font-size="60" x="225" y="345">3</text>
+  <text class="text" font-size="60" x="275" y="345">8</text>
+
+  <!-- Popcorn pieces -->
+  <g id="popcorn">
+    <ellipse class="popcorn" cx="140" cy="240" rx="18" ry="22"/>
+    <ellipse class="popcorn" cx="155" cy="230" rx="20" ry="25"/>
+    <ellipse class="popcorn" cx="170" cy="235" rx="16" ry="20"/>
+    <circle class="popcorn" cx="148" cy="220" r="12"/>
+  </g>
+
+  <!-- Penguin Head -->
+  <g id="penguin">
+    <!-- Main head -->
+    <ellipse class="penguin-body" cx="260" cy="160" rx="55" ry="60"/>
+
+    <!-- Belly/face -->
+    <ellipse class="penguin-belly" cx="260" cy="170" rx="35" ry="45"/>
+
+    <!-- Eyes -->
+    <ellipse fill="#FFFFFF" cx="245" cy="150" rx="12" ry="16"/>
+    <ellipse fill="#FFFFFF" cx="275" cy="150" rx="12" ry="16"/>
+    <circle fill="#2C3E50" cx="245" cy="155" r="6"/>
+    <circle fill="#2C3E50" cx="275" cy="155" r="6"/>
+
+    <!-- Safety glasses -->
+    <path class="glasses" d="M230 145 L235 148 M285 145 L280 148" stroke-width="3" fill="none" stroke="#E74C3C"/>
+    <ellipse class="glasses" cx="245" cy="150" rx="15" ry="18" fill="none" stroke="#E74C3C" stroke-width="3" opacity="0.6"/>
+    <ellipse class="glasses" cx="275" cy="150" rx="15" ry="18" fill="none" stroke="#E74C3C" stroke-width="3" opacity="0.6"/>
+
+    <!-- Beak -->
+    <polygon class="penguin-beak" points="260,165 250,175 270,175"/>
+
+    <!-- Body -->
+    <ellipse class="penguin-body" cx="240" cy="220" rx="45" ry="55"/>
+    <ellipse class="penguin-belly" cx="240" cy="225" rx="30" ry="40"/>
+
+    <!-- Crown/hat detail -->
+    <polygon class="penguin-beak" points="255,120 260,100 265,120"/>
+    <path class="penguin-beak" d="M260 100 Q270 95 275 100 Q280 105 275 110" fill="#F39C12"/>
+  </g>
+
+  <!-- Tools -->
+  <g id="tools">
+    <!-- Wrench -->
+    <path class="tool" d="M190 200 L195 210 L200 208 L195 198 Z"/>
+    <circle class="tool" cx="192" cy="195" r="6"/>
+    <path class="tool" stroke="#2C3E50" stroke-width="2" fill="none" d="M192 195 L195 210"/>
+
+    <!-- Screwdriver -->
+    <rect class="penguin-beak" x="168" y="180" width="4" height="35" rx="1" transform="rotate(-20 170 200)"/>
+    <rect class="tool" x="167" y="165" width="6" height="18" transform="rotate(-20 170 175)"/>
+  </g>
+
+  <!-- Popping popcorn on top -->
+  <g id="pop">
+    <ellipse class="popcorn" cx="280" cy="90" rx="14" ry="18"/>
+    <ellipse class="popcorn" cx="290" cy="85" rx="12" ry="16"/>
+    <circle class="popcorn" cx="285" cy="78" r="10"/>
+
+    <!-- Motion lines -->
+    <path stroke="#F39C12" stroke-width="3" fill="none" d="M265 105 Q260 95 258 85" stroke-linecap="round" opacity="0.6"/>
+    <path stroke="#F39C12" stroke-width="2" fill="none" d="M270 108 Q268 100 267 92" stroke-linecap="round" opacity="0.6"/>
+  </g>
+
+  <!-- Outlines for definition -->
+  <g id="outlines">
+    <ellipse class="bucket-outline" cx="260" cy="160" rx="55" ry="60"/>
+    <ellipse class="bucket-outline" cx="240" cy="220" rx="45" ry="55"/>
+    <path class="bucket-outline" d="M190 200 L195 210"/>
+  </g>
+</svg>

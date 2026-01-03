@@ -1198,6 +1198,25 @@ def onshape_save_dxf():
             'error': f'Save DXF failed: {str(e)}'
         }), 500
 
+@app.route('/onshape/element-panel')
+def onshape_element_panel():
+    """
+    Serve the Onshape element right panel extension
+    This page will be embedded as an iframe in Onshape
+    """
+    # Get Onshape context from query parameters
+    # These are passed by Onshape when the iframe loads
+    document_id = request.args.get('documentId', '')
+    workspace_id = request.args.get('workspaceId', '')
+    element_id = request.args.get('elementId', '')
+    server = request.args.get('server', 'https://cad.onshape.com')
+
+    return render_template('onshape_panel.html',
+                         document_id=document_id,
+                         workspace_id=workspace_id,
+                         element_id=element_id,
+                         server=server)
+
 def cleanup():
     """Clean up temporary files on shutdown"""
     try:
