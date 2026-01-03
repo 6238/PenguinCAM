@@ -136,8 +136,8 @@
         const url = buildUrl('/onshape/import');
         console.log('Opening PenguinCAM:', url);
 
-        // Open in new window (full interface)
-        window.open(url, '_blank', 'width=1400,height=900');
+        // Open in new tab (without window features to make it a tab, not popup)
+        window.open(url, '_blank');
     }
 
     /**

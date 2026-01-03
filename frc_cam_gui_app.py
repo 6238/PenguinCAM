@@ -848,6 +848,7 @@ def onshape_import():
         # If no face_id provided, auto-select the top face
         part_name_from_body = None
         auto_selected_body_id = None
+        face_normal = None  # Initialize face_normal for when face_id is provided
         if not face_id:
             print("No face ID provided, auto-selecting top face...")
 
