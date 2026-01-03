@@ -124,6 +124,53 @@ def extract_onshape_params(params):
         'body_id': params.get('partId') or params.get('bodyId') or params.get('bid')
     }
 
+def fetch_face_normal_and_body(client, document_id, workspace_id, element_id, face_id, body_id):
+    """
+    Fetch face normal and body information for a given face_id.
+
+    Returns:
+        tuple: (face_normal dict, auto_selected_body_id, part_name_from_body)
+    """
+    print(f"Face ID provided: {face_id}, fetching face normal...")
+
+    face_normal = None
+    auto_selected_body_id = None
+    part_name_from_body = None
+
+    try:
+        # Get all faces to find the normal for the selected face
+        faces_data = client.list_faces(document_id, workspace_id, element_id)
+
+        if faces_data and 'bodies' in faces_data:
+            # Search through all bodies and faces to find the matching face_id
+            for body in faces_data['bodies']:
+                bid = body.get('id')
+                for face in body.get('faces', []):
+                    if face.get('id') == face_id:
+                        # Found the matching face! Extract its normal
+                        surface = face.get('surface', {})
+                        face_normal = surface.get('normal', {})
+                        part_name_from_body = body.get('properties', {}).get('name', 'Unnamed')
+
+                        # Set body_id if not already provided
+                        if not body_id:
+                            auto_selected_body_id = bid
+
+                        print(f"✅ Found face {face_id} in body {bid} ({part_name_from_body})")
+                        print(f"   Normal: ({face_normal.get('x', 0):.3f}, {face_normal.get('y', 0):.3f}, {face_normal.get('z', 0):.3f})")
+                        break
+                if face_normal:
+                    break
+
+        if not face_normal:
+            print(f"⚠️  Warning: Could not find normal for face {face_id}, using default view")
+
+    except Exception as e:
+        print(f"⚠️  Warning: Error fetching face normal: {e}")
+        print("   Continuing with default view matrix")
+
+    return face_normal, auto_selected_body_id, part_name_from_body
+
 def generate_pacific_timestamp():
     """Generate timestamp string in Pacific timezone"""
     pacific_time = datetime.now(ZoneInfo("America/Los_Angeles"))
@@ -945,39 +992,9 @@ def onshape_import():
                 }), 400
         else:
             # face_id was provided (e.g., from element panel), but we need to fetch the face normal
-            print(f"Face ID provided: {face_id}, fetching face normal...")
-
-            try:
-                # Get all faces to find the normal for the selected face
-                faces_data = client.list_faces(document_id, workspace_id, element_id)
-
-                if faces_data and 'bodies' in faces_data:
-                    # Search through all bodies and faces to find the matching face_id
-                    for body in faces_data['bodies']:
-                        bid = body.get('id')
-                        for face in body.get('faces', []):
-                            if face.get('id') == face_id:
-                                # Found the matching face! Extract its normal
-                                surface = face.get('surface', {})
-                                face_normal = surface.get('normal', {})
-                                part_name_from_body = body.get('properties', {}).get('name', 'Unnamed')
-
-                                # Set body_id if not already provided
-                                if not body_id:
-                                    auto_selected_body_id = bid
-
-                                print(f"✅ Found face {face_id} in body {bid} ({part_name_from_body})")
-                                print(f"   Normal: ({face_normal.get('x', 0):.3f}, {face_normal.get('y', 0):.3f}, {face_normal.get('z', 0):.3f})")
-                                break
-                        if face_normal:
-                            break
-
-                if not face_normal:
-                    print(f"⚠️  Warning: Could not find normal for face {face_id}, using default view")
-
-            except Exception as e:
-                print(f"⚠️  Warning: Error fetching face normal: {e}")
-                print("   Continuing with default view matrix")
+            face_normal, auto_selected_body_id, part_name_from_body = fetch_face_normal_and_body(
+                client, document_id, workspace_id, element_id, face_id, body_id
+            )
 
         # Fetch DXF from Onshape
         # Use body_id from URL parameter if provided, otherwise use the one from auto-selection
@@ -1134,39 +1151,9 @@ def onshape_save_dxf():
                 }), 400
         else:
             # face_id was provided (e.g., from element panel), but we need to fetch the face normal
-            print(f"Face ID provided: {face_id}, fetching face normal...")
-
-            try:
-                # Get all faces to find the normal for the selected face
-                faces_data = client.list_faces(document_id, workspace_id, element_id)
-
-                if faces_data and 'bodies' in faces_data:
-                    # Search through all bodies and faces to find the matching face_id
-                    for body in faces_data['bodies']:
-                        bid = body.get('id')
-                        for face in body.get('faces', []):
-                            if face.get('id') == face_id:
-                                # Found the matching face! Extract its normal
-                                surface = face.get('surface', {})
-                                face_normal = surface.get('normal', {})
-                                part_name_from_body = body.get('properties', {}).get('name', 'Unnamed')
-
-                                # Set body_id if not already provided
-                                if not body_id:
-                                    auto_selected_body_id = bid
-
-                                print(f"✅ Found face {face_id} in body {bid} ({part_name_from_body})")
-                                print(f"   Normal: ({face_normal.get('x', 0):.3f}, {face_normal.get('y', 0):.3f}, {face_normal.get('z', 0):.3f})")
-                                break
-                        if face_normal:
-                            break
-
-                if not face_normal:
-                    print(f"⚠️  Warning: Could not find normal for face {face_id}, using default view")
-
-            except Exception as e:
-                print(f"⚠️  Warning: Error fetching face normal: {e}")
-                print("   Continuing with default view matrix")
+            face_normal, auto_selected_body_id, part_name_from_body = fetch_face_normal_and_body(
+                client, document_id, workspace_id, element_id, face_id, body_id
+            )
 
         # Export DXF from Onshape
         export_body_id = body_id if body_id else auto_selected_body_id
