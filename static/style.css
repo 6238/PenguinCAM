@@ -633,6 +633,30 @@
             font-weight: 500;
         }
 
+        /* Stock Size Display */
+        .stock-size-display {
+            background: var(--surface-light);
+            border-radius: 6px;
+            padding: 0.6rem 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .stock-size-label {
+            color: var(--text-dim);
+            font-size: 0.85rem;
+        }
+
+        .stock-size-value {
+            color: var(--primary);
+            font-weight: 600;
+            font-size: 0.95rem;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+
         /* DXF Setup View */
         #dxf-setup-container {
             background: var(--surface);
