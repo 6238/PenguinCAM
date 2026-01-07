@@ -419,7 +419,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // DXF Setup State
         let currentMode = 'setup'; // 'setup' or 'preview'
         let dxfGeometry = null; // Parsed DXF geometry
-        let rotationAngle = 0; // 0, 90, 180, 270 degrees
+        let rotationAngle = 0; // Rotation in degrees (0-359)
         let dxfCanvas2D = null;
         let dxfCtx2D = null;
         let dxfBounds = null;
@@ -488,16 +488,125 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             // Setup event listeners
-            document.getElementById('rotateBtn').addEventListener('click', () => {
-                rotationAngle = (rotationAngle + 90) % 360;
-                document.getElementById('rotationDisplay').textContent = rotationAngle + '°';
+            const rotationInput = document.getElementById('rotationInput');
+
+            rotationInput.addEventListener('input', () => {
+                let value = parseInt(rotationInput.value) || 0;
+                // Normalize to 0-359 range
+                value = ((value % 360) + 360) % 360;
+                rotationAngle = value;
                 renderDxfSetup();
             });
-            
+
+            rotationInput.addEventListener('blur', () => {
+                // Normalize displayed value on blur
+                rotationInput.value = rotationAngle;
+            });
+
+            document.getElementById('optimizeRotationBtn').addEventListener('click', () => {
+                if (!dxfGeometry || !dxfBounds) return;
+
+                const optimalAngle = findMinAreaRotation();
+                rotationAngle = optimalAngle;
+                rotationInput.value = rotationAngle;
+                renderDxfSetup();
+            });
+
             // Mode toggle listeners
             document.querySelectorAll('.mode-button').forEach(btn => {
                 btn.addEventListener('click', () => switchMode(btn.dataset.mode));
             });
+        }
+
+        // Find the rotation angle that minimizes bounding box area
+        function findMinAreaRotation() {
+            if (!dxfGeometry || !dxfBounds) return 0;
+
+            // Helper to rotate a point
+            function rotatePoint(x, y, angle) {
+                const rad = -angle * Math.PI / 180;
+                const cos = Math.cos(rad);
+                const sin = Math.sin(rad);
+                return {
+                    x: x * cos - y * sin,
+                    y: x * sin + y * cos
+                };
+            }
+
+            // Calculate bounding box area for a given angle
+            function getBoundsArea(angle) {
+                let minX = Infinity, maxX = -Infinity;
+                let minY = Infinity, maxY = -Infinity;
+
+                function updateBounds(x, y) {
+                    const dx = x - dxfBounds.centerX;
+                    const dy = y - dxfBounds.centerY;
+                    const rotated = rotatePoint(dx, dy, angle);
+                    minX = Math.min(minX, rotated.x);
+                    maxX = Math.max(maxX, rotated.x);
+                    minY = Math.min(minY, rotated.y);
+                    maxY = Math.max(maxY, rotated.y);
+                }
+
+                function addCircleBounds(cx, cy, radius) {
+                    const dx = cx - dxfBounds.centerX;
+                    const dy = cy - dxfBounds.centerY;
+                    const rotatedCenter = rotatePoint(dx, dy, angle);
+                    minX = Math.min(minX, rotatedCenter.x - radius);
+                    maxX = Math.max(maxX, rotatedCenter.x + radius);
+                    minY = Math.min(minY, rotatedCenter.y - radius);
+                    maxY = Math.max(maxY, rotatedCenter.y + radius);
+                }
+
+                if (dxfGeometry.entities) {
+                    dxfGeometry.entities.forEach(entity => {
+                        switch(entity.type) {
+                            case 'CIRCLE':
+                                addCircleBounds(entity.center.x, entity.center.y, entity.radius);
+                                break;
+                            case 'ARC':
+                                addCircleBounds(entity.center.x, entity.center.y, entity.radius);
+                                break;
+                            case 'LINE':
+                                entity.vertices.forEach(v => updateBounds(v.x, v.y));
+                                break;
+                            case 'LWPOLYLINE':
+                            case 'POLYLINE':
+                                if (entity.vertices) {
+                                    entity.vertices.forEach(v => updateBounds(v.x, v.y));
+                                }
+                                break;
+                            case 'SPLINE':
+                                if (entity.controlPoints) {
+                                    entity.controlPoints.forEach(p => updateBounds(p.x, p.y));
+                                }
+                                break;
+                            case 'ELLIPSE':
+                                const majorRadius = Math.sqrt(entity.majorAxisEndPoint.x ** 2 + entity.majorAxisEndPoint.y ** 2);
+                                addCircleBounds(entity.center.x, entity.center.y, majorRadius);
+                                break;
+                        }
+                    });
+                }
+
+                const width = maxX - minX;
+                const height = maxY - minY;
+                return width * height;
+            }
+
+            // Search angles 0-179 (180° gives same bounding box dimensions)
+            let minArea = Infinity;
+            let bestAngle = 0;
+
+            for (let angle = 0; angle < 180; angle++) {
+                const area = getBoundsArea(angle);
+                if (area < minArea) {
+                    minArea = area;
+                    bestAngle = angle;
+                }
+            }
+
+            return bestAngle;
         }
 
         // Parse DXF geometry from file using dxf-parser library
@@ -794,20 +903,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const availWidth = width - 2 * padding;
             const availHeight = height - 2 * padding;
             
-            // Apply rotation to bounds for calculating display size
-            let displayWidth = dxfBounds.width;
-            let displayHeight = dxfBounds.height;
-            if (rotationAngle === 90 || rotationAngle === 270) {
-                [displayWidth, displayHeight] = [displayHeight, displayWidth];
-            }
-            
-            const scale = Math.min(availWidth / displayWidth, availHeight / displayHeight);
-            
-            // Center position (no rotation of entire canvas)
-            const centerX = width / 2;
-            const centerY = height / 2;
-            
-            // Helper functions to transform coordinates
+            // Helper function to rotate a point around the part center
             function rotatePoint(x, y, angle) {
                 const rad = -angle * Math.PI / 180; // Negative for clockwise
                 const cos = Math.cos(rad);
@@ -817,19 +913,103 @@ document.addEventListener('DOMContentLoaded', () => {
                     y: x * sin + y * cos
                 };
             }
-            
+
+            // Calculate actual bounding box of rotated geometry
+            // by iterating through all points and finding min/max
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+
+            function updateBounds(x, y) {
+                // Translate to center, rotate, then track bounds
+                const dx = x - dxfBounds.centerX;
+                const dy = y - dxfBounds.centerY;
+                const rotated = rotatePoint(dx, dy, rotationAngle);
+                minX = Math.min(minX, rotated.x);
+                maxX = Math.max(maxX, rotated.x);
+                minY = Math.min(minY, rotated.y);
+                maxY = Math.max(maxY, rotated.y);
+            }
+
+            // Process all geometry to find rotated bounds
+            // For circles/arcs: rotate center first, then add ±radius to rotated center
+            // For lines/polylines: rotate each vertex
+            function addCircleBounds(cx, cy, radius) {
+                // Rotate the center point
+                const dx = cx - dxfBounds.centerX;
+                const dy = cy - dxfBounds.centerY;
+                const rotatedCenter = rotatePoint(dx, dy, rotationAngle);
+                // Circle bounds are at rotated center ± radius
+                minX = Math.min(minX, rotatedCenter.x - radius);
+                maxX = Math.max(maxX, rotatedCenter.x + radius);
+                minY = Math.min(minY, rotatedCenter.y - radius);
+                maxY = Math.max(maxY, rotatedCenter.y + radius);
+            }
+
+            if (dxfGeometry.entities) {
+                dxfGeometry.entities.forEach(entity => {
+                    switch(entity.type) {
+                        case 'CIRCLE':
+                            addCircleBounds(entity.center.x, entity.center.y, entity.radius);
+                            break;
+                        case 'ARC':
+                            // Use full circle bounds as conservative estimate
+                            addCircleBounds(entity.center.x, entity.center.y, entity.radius);
+                            break;
+                        case 'LINE':
+                            entity.vertices.forEach(v => updateBounds(v.x, v.y));
+                            break;
+                        case 'LWPOLYLINE':
+                        case 'POLYLINE':
+                            if (entity.vertices) {
+                                entity.vertices.forEach(v => updateBounds(v.x, v.y));
+                            }
+                            break;
+                        case 'SPLINE':
+                            if (entity.controlPoints) {
+                                entity.controlPoints.forEach(p => updateBounds(p.x, p.y));
+                            }
+                            break;
+                        case 'ELLIPSE':
+                            const majorRadius = Math.sqrt(entity.majorAxisEndPoint.x ** 2 + entity.majorAxisEndPoint.y ** 2);
+                            addCircleBounds(entity.center.x, entity.center.y, majorRadius);
+                            break;
+                    }
+                });
+            }
+
+            // Calculate display dimensions from rotated bounds
+            let displayWidth = maxX - minX;
+            let displayHeight = maxY - minY;
+
+            // Fallback if no geometry found
+            if (!isFinite(displayWidth) || displayWidth <= 0) {
+                displayWidth = dxfBounds.width;
+                displayHeight = dxfBounds.height;
+            }
+
+            const scale = Math.min(availWidth / displayWidth, availHeight / displayHeight);
+
+            // Canvas center
+            const centerX = width / 2;
+            const centerY = height / 2;
+
+            // Center of the rotated bounding box (used to keep origin fixed)
+            const boundsCenterX = (minX + maxX) / 2;
+            const boundsCenterY = (minY + maxY) / 2;
+
             function toCanvasCoords(x, y) {
-                // Translate to center origin
+                // Translate to part center
                 let dx = x - dxfBounds.centerX;
                 let dy = y - dxfBounds.centerY;
-                
+
                 // Apply rotation
                 const rotated = rotatePoint(dx, dy, rotationAngle);
-                
-                // Scale and flip Y, then translate to canvas center
+
+                // Offset by bounds center so the BOUNDING BOX is centered on canvas
+                // This keeps the origin (bottom-left of box) at a fixed position
                 return {
-                    x: centerX + rotated.x * scale,
-                    y: centerY - rotated.y * scale
+                    x: centerX + (rotated.x - boundsCenterX) * scale,
+                    y: centerY - (rotated.y - boundsCenterY) * scale
                 };
             }
             
@@ -915,17 +1095,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
             
-            // Calculate bounding box corners in SCREEN coordinates (NOT rotated)
-            const boxLeft = centerX - (displayWidth * scale) / 2;
-            const boxRight = centerX + (displayWidth * scale) / 2;
-            const boxTop = centerY - (displayHeight * scale) / 2;
-            const boxBottom = centerY + (displayHeight * scale) / 2;
+            // Calculate bounding box corners - box is centered on canvas
+            const boxLeft = centerX - displayWidth * scale / 2;
+            const boxRight = centerX + displayWidth * scale / 2;
+            const boxTop = centerY - displayHeight * scale / 2;
+            const boxBottom = centerY + displayHeight * scale / 2;
             
             // Draw bounding box (dashed, NOT rotated)
             ctx.strokeStyle = '#8B949E';
             ctx.lineWidth = 2;
             ctx.setLineDash([5, 5]);
-            ctx.strokeRect(boxLeft, boxTop, displayWidth * scale, displayHeight * scale);
+            ctx.strokeRect(boxLeft, boxTop, boxRight - boxLeft, boxBottom - boxTop);
             ctx.setLineDash([]);
             
             // Draw origin marker at bottom-left (ALWAYS)
