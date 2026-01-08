@@ -2555,10 +2555,10 @@ class FRCPostProcessor:
         # With positive J, G3 arc bulges toward +Y (into waste) by arc_bulge amount
         # At arc peak: tool center Y = roughing_y + arc_bulge
         # At arc peak: tool -Y edge = roughing_y + arc_bulge - tool_radius
-        # For roughing to cut up to (y_cut - finish_stock):
-        #   roughing_y + arc_bulge - tool_radius = y_cut - finish_stock
-        #   roughing_y = y_cut - finish_stock - arc_bulge + tool_radius
-        roughing_y = (y_cut - finish_stock) - arc_bulge + tool_radius
+        # For roughing to LEAVE finish_stock, cut to (y_cut + finish_stock):
+        #   roughing_y + arc_bulge - tool_radius = y_cut + finish_stock
+        #   roughing_y = y_cut + finish_stock - arc_bulge + tool_radius
+        roughing_y = (y_cut + finish_stock) - arc_bulge + tool_radius
         finishing_y = y_cut + tool_radius
 
         # X positions (outside tube by 1.5x tool diameter)
