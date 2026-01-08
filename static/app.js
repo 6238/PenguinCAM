@@ -101,6 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let suggestedFilename = null; // For Onshape imports
         let gcodeContent = null;
         let outputFilename = null;
+        let perimeterPoints = null; // Perimeter outline from postprocessor for 3D visualization
         let scene, camera, renderer, controls;
         let optimalCameraPosition = { x: 10, y: 10, z: 10 };
         let optimalLookAtPosition = { x: 0, y: 0, z: 0 };
@@ -286,6 +287,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 gcodeContent = data.gcode;
                 outputFilename = data.filename;
+                perimeterPoints = data.perimeter_points || null; // Store perimeter for 3D visualization
 
                 // Show results
                 showResults(data);
@@ -1095,6 +1097,278 @@ document.addEventListener('DOMContentLoaded', () => {
             renderer.render(scene, camera);
         }
 
+        // Create 3D part geometry from DXF entities (for plates)
+        // Uses actual part outline from DXF polylines, with holes from circles
+        function createPartFromDxf(dxfData, thickness, gcodeMinX, gcodeMinY, gcodeMaxX, gcodeMaxY) {
+            console.log('createPartFromDxf: G-code bounds', { gcodeMinX, gcodeMinY, gcodeMaxX, gcodeMaxY });
+
+            // Calculate transformation from DXF coordinates to G-code coordinates
+            const dxfCenterX = dxfData ? (dxfData.minX + dxfData.maxX) / 2 : 0;
+            const dxfCenterY = dxfData ? (dxfData.minY + dxfData.maxY) / 2 : 0;
+            const gcodeCenterX = (gcodeMinX + gcodeMaxX) / 2;
+            const gcodeCenterY = (gcodeMinY + gcodeMaxY) / 2;
+            const rad = -rotationAngle * Math.PI / 180;
+
+            function transformDxfToGcode(x, y) {
+                let dx = x - dxfCenterX;
+                let dy = y - dxfCenterY;
+                const rotatedX = dx * Math.cos(rad) - dy * Math.sin(rad);
+                const rotatedY = dx * Math.sin(rad) + dy * Math.cos(rad);
+                return {
+                    x: rotatedX + gcodeCenterX,
+                    y: rotatedY + gcodeCenterY
+                };
+            }
+
+            // Find the outer perimeter from closed polylines
+            let outerShape = null;
+            let largestArea = 0;
+
+            if (dxfData && dxfData.entities) {
+                // Helper to check if a polyline is closed (by flag or by vertices)
+                function isPolylineClosed(poly) {
+                    if (!poly.vertices || poly.vertices.length < 3) return false;
+                    // Check closed flag
+                    if (poly.shape) return true;
+                    // Check if first and last vertices are the same (within tolerance)
+                    const first = poly.vertices[0];
+                    const last = poly.vertices[poly.vertices.length - 1];
+                    const tolerance = 0.001;
+                    return Math.abs(first.x - last.x) < tolerance && Math.abs(first.y - last.y) < tolerance;
+                }
+
+                // Look for LWPOLYLINE entities that are closed
+                const allPolylines = dxfData.entities.filter(e => e.type === 'LWPOLYLINE');
+                console.log('createPartFromDxf: Total polylines:', allPolylines.length);
+
+                const closedPolylines = allPolylines.filter(isPolylineClosed);
+                console.log('createPartFromDxf: Closed polylines:', closedPolylines.length);
+
+                // Find the largest closed polyline (outer perimeter)
+                for (const poly of closedPolylines) {
+                    // Calculate approximate area using bounding box
+                    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                    for (const v of poly.vertices) {
+                        minX = Math.min(minX, v.x);
+                        maxX = Math.max(maxX, v.x);
+                        minY = Math.min(minY, v.y);
+                        maxY = Math.max(maxY, v.y);
+                    }
+                    const area = (maxX - minX) * (maxY - minY);
+                    console.log('createPartFromDxf: Polyline with', poly.vertices.length, 'vertices, area:', area.toFixed(2));
+
+                    if (area > largestArea) {
+                        largestArea = area;
+                        // Create shape from this polyline
+                        outerShape = new THREE.Shape();
+                        const firstPt = transformDxfToGcode(poly.vertices[0].x, poly.vertices[0].y);
+                        outerShape.moveTo(firstPt.x, firstPt.y);
+                        for (let i = 1; i < poly.vertices.length; i++) {
+                            const pt = transformDxfToGcode(poly.vertices[i].x, poly.vertices[i].y);
+                            outerShape.lineTo(pt.x, pt.y);
+                        }
+                        outerShape.closePath();
+                    }
+                }
+            }
+
+            // Fallback: use perimeter points from postprocessor, or rectangular bounds
+            if (!outerShape) {
+                if (perimeterPoints && perimeterPoints.length > 2) {
+                    // Use perimeter points from postprocessor (already in G-code coordinates)
+                    console.log('createPartFromDxf: Using perimeter from postprocessor with', perimeterPoints.length, 'points');
+                    outerShape = new THREE.Shape();
+                    outerShape.moveTo(perimeterPoints[0][0], perimeterPoints[0][1]);
+                    for (let i = 1; i < perimeterPoints.length; i++) {
+                        outerShape.lineTo(perimeterPoints[i][0], perimeterPoints[i][1]);
+                    }
+                    outerShape.closePath();
+                } else {
+                    console.log('createPartFromDxf: No closed polyline or perimeter found, using rectangular bounds');
+                    console.log('createPartFromDxf: DXF entities:', dxfData?.entities?.map(e => e.type));
+                    outerShape = new THREE.Shape();
+                    outerShape.moveTo(gcodeMinX, gcodeMinY);
+                    outerShape.lineTo(gcodeMaxX, gcodeMinY);
+                    outerShape.lineTo(gcodeMaxX, gcodeMaxY);
+                    outerShape.lineTo(gcodeMinX, gcodeMaxY);
+                    outerShape.closePath();
+                }
+            } else {
+                console.log('createPartFromDxf: Using polyline outline with area', largestArea.toFixed(2));
+            }
+
+            // Add circles as holes from DXF, transformed to G-code coordinates
+            if (dxfData && dxfData.entities) {
+                const circles = dxfData.entities.filter(e => e.type === 'CIRCLE');
+                for (const circle of circles) {
+                    if (circle.center && circle.radius) {
+                        const transformed = transformDxfToGcode(circle.center.x, circle.center.y);
+                        const holePath = new THREE.Path();
+                        // true = clockwise (required for holes - opposite of outer shape)
+                        holePath.absarc(transformed.x, transformed.y, circle.radius, 0, Math.PI * 2, true);
+                        outerShape.holes.push(holePath);
+                    }
+                }
+                console.log('createPartFromDxf: Added', outerShape.holes.length, 'holes');
+            }
+
+            const geometry = new THREE.ExtrudeGeometry(outerShape, {
+                depth: thickness,
+                bevelEnabled: false
+            });
+
+            // Rotate so extrusion goes up (Y axis in Three.js)
+            // rotateX(-90°): (x, y, z) -> (x, z, -y)
+            // So shape at (gX, gY) with Z extrusion becomes (gX, 0..thickness, -gY)
+            geometry.rotateX(-Math.PI / 2);
+
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xC0C8D0,
+                metalness: 0.6,
+                roughness: 0.4,
+                side: THREE.DoubleSide
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            // No position offset needed - geometry is already at correct coordinates
+
+            return mesh;
+        }
+
+        // Create 3D tube geometry (hollow box tube with holes in top and bottom faces)
+        // Uses G-code bounds to ensure alignment with toolpath
+        // dxfData contains circles that represent holes to cut through walls
+        function createTubeGeometry(tubeWidth, tubeHeight, tubeLength, wallThickness, gcodeMinX, gcodeMinY, gcodeMaxX, gcodeMaxY, dxfData) {
+            if (!tubeWidth || !tubeHeight || !tubeLength || tubeWidth <= 0 || tubeHeight <= 0 || tubeLength <= 0) {
+                console.warn('Invalid tube dimensions:', { tubeWidth, tubeHeight, tubeLength });
+                return null;
+            }
+
+            console.log('createTubeGeometry:', { tubeWidth, tubeHeight, tubeLength, wallThickness });
+            console.log('createTubeGeometry G-code bounds:', { gcodeMinX, gcodeMinY, gcodeMaxX, gcodeMaxY });
+
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xC0C8D0,
+                metalness: 0.6,
+                roughness: 0.4,
+                side: THREE.DoubleSide
+            });
+
+            const group = new THREE.Group();
+
+            // Build tube from 4 wall panels:
+            // - Left and right walls: solid vertical panels
+            // - Top and bottom walls: horizontal panels with holes from DXF
+            // - No end caps: open ends show hollow interior
+
+            const width = gcodeMaxX - gcodeMinX;
+            const length = gcodeMaxY - gcodeMinY;
+
+            // Calculate transformation from DXF coordinates to G-code coordinates
+            // DXF may be rotated and/or translated
+            const dxfCenterX = dxfData ? (dxfData.minX + dxfData.maxX) / 2 : 0;
+            const dxfCenterY = dxfData ? (dxfData.minY + dxfData.maxY) / 2 : 0;
+            const gcodeCenterX = (gcodeMinX + gcodeMaxX) / 2;
+            const gcodeCenterY = (gcodeMinY + gcodeMaxY) / 2;
+            const rad = -rotationAngle * Math.PI / 180; // Negative for clockwise rotation
+
+            console.log('createTubeGeometry: DXF center', { dxfCenterX, dxfCenterY });
+            console.log('createTubeGeometry: G-code center', { gcodeCenterX, gcodeCenterY });
+            console.log('createTubeGeometry: Rotation angle', rotationAngle);
+
+            // Transform a point from DXF space to G-code space
+            function transformDxfToGcode(x, y) {
+                // Translate to DXF center
+                let dx = x - dxfCenterX;
+                let dy = y - dxfCenterY;
+                // Rotate
+                const rotatedX = dx * Math.cos(rad) - dy * Math.sin(rad);
+                const rotatedY = dx * Math.sin(rad) + dy * Math.cos(rad);
+                // Translate to G-code center
+                return {
+                    x: rotatedX + gcodeCenterX,
+                    y: rotatedY + gcodeCenterY
+                };
+            }
+
+            // Helper: create a horizontal wall shape with holes from DXF circles
+            function createWallWithHoles() {
+                const shape = new THREE.Shape();
+                // Counter-clockwise outer boundary
+                shape.moveTo(gcodeMinX, gcodeMinY);
+                shape.lineTo(gcodeMaxX, gcodeMinY);
+                shape.lineTo(gcodeMaxX, gcodeMaxY);
+                shape.lineTo(gcodeMinX, gcodeMaxY);
+                shape.closePath();
+
+                // Add circles from DXF as holes, transformed to G-code coordinates
+                if (dxfData && dxfData.entities) {
+                    const circles = dxfData.entities.filter(e => e.type === 'CIRCLE');
+                    for (const circle of circles) {
+                        if (circle.center && circle.radius) {
+                            // Transform circle center from DXF to G-code coordinates
+                            const transformed = transformDxfToGcode(circle.center.x, circle.center.y);
+                            const holePath = new THREE.Path();
+                            // true = clockwise (required for holes - opposite of outer shape)
+                            holePath.absarc(transformed.x, transformed.y, circle.radius,
+                                           0, Math.PI * 2, true);
+                            shape.holes.push(holePath);
+                            console.log('Hole at DXF', circle.center, '-> G-code', transformed);
+                        }
+                    }
+                }
+                return shape;
+            }
+
+            // LEFT WALL (solid) - vertical panel at gcodeMinX, full height
+            const leftGeom = new THREE.BoxGeometry(wallThickness, tubeHeight, length);
+            const leftMesh = new THREE.Mesh(leftGeom, material);
+            leftMesh.position.set(
+                gcodeMinX + wallThickness / 2,
+                tubeHeight / 2,
+                -(gcodeMinY + length / 2)
+            );
+            group.add(leftMesh);
+
+            // RIGHT WALL (solid) - vertical panel at gcodeMaxX, full height
+            const rightGeom = new THREE.BoxGeometry(wallThickness, tubeHeight, length);
+            const rightMesh = new THREE.Mesh(rightGeom, material);
+            rightMesh.position.set(
+                gcodeMaxX - wallThickness / 2,
+                tubeHeight / 2,
+                -(gcodeMinY + length / 2)
+            );
+            group.add(rightMesh);
+
+            // TOP WALL (with holes) - horizontal panel at top of tube
+            const topShape = createWallWithHoles();
+            const topGeom = new THREE.ExtrudeGeometry(topShape, {
+                depth: wallThickness,
+                bevelEnabled: false
+            });
+            // Rotate so extrusion goes up (Y axis): (x, y, z) -> (x, z, -y)
+            topGeom.rotateX(-Math.PI / 2);
+            const topMesh = new THREE.Mesh(topGeom, material);
+            topMesh.position.set(0, tubeHeight - wallThickness, 0);
+            group.add(topMesh);
+            console.log('createTubeGeometry: Top wall has', topShape.holes.length, 'holes');
+
+            // BOTTOM WALL (with holes) - horizontal panel at Y = 0
+            const bottomShape = createWallWithHoles();
+            const bottomGeom = new THREE.ExtrudeGeometry(bottomShape, {
+                depth: wallThickness,
+                bevelEnabled: false
+            });
+            // Rotate so extrusion goes up (Y axis)
+            bottomGeom.rotateX(-Math.PI / 2);
+            const bottomMesh = new THREE.Mesh(bottomGeom, material);
+            bottomMesh.position.set(0, 0, 0);
+            group.add(bottomMesh);
+            console.log('createTubeGeometry: Bottom wall has', bottomShape.holes.length, 'holes');
+
+            return group;
+        }
+
         function visualizeGcode(gcode) {
             // Parse G-code into moves
             const lines = gcode.split('\n');
@@ -1276,32 +1550,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 parseFloat(document.getElementById('tubeHeight').value) :
                 materialThickness;
 
-            // Material boundaries (at material top surface)
-            const materialOutline = new THREE.Line(
-                new THREE.BufferGeometry().setFromPoints([
-                    new THREE.Vector3(minX, materialThickness, -minY),
-                    new THREE.Vector3(maxX, materialThickness, -minY),
-                    new THREE.Vector3(maxX, materialThickness, -maxY),
-                    new THREE.Vector3(minX, materialThickness, -maxY),
-                    new THREE.Vector3(minX, materialThickness, -minY)
-                ]),
-                new THREE.LineBasicMaterial({ color: 0x8B949E, linewidth: 1, opacity: 0.5, transparent: true })
-            );
-            scene.add(materialOutline);
+            // Material boundaries - only show for tubes (plates show actual part shape)
+            if (isAluminumTube) {
+                const materialOutline = new THREE.Line(
+                    new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(minX, materialThickness, -minY),
+                        new THREE.Vector3(maxX, materialThickness, -minY),
+                        new THREE.Vector3(maxX, materialThickness, -maxY),
+                        new THREE.Vector3(minX, materialThickness, -maxY),
+                        new THREE.Vector3(minX, materialThickness, -minY)
+                    ]),
+                    new THREE.LineBasicMaterial({ color: 0x8B949E, linewidth: 1, opacity: 0.5, transparent: true })
+                );
+                scene.add(materialOutline);
 
-            const sacrificeOutline = new THREE.Line(
-                new THREE.BufferGeometry().setFromPoints([
-                    new THREE.Vector3(minX, 0, -minY),
-                    new THREE.Vector3(maxX, 0, -minY),
-                    new THREE.Vector3(maxX, 0, -maxY),
-                    new THREE.Vector3(minX, 0, -maxY),
-                    new THREE.Vector3(minX, 0, -minY)
-                ]),
-                new THREE.LineBasicMaterial({ color: 0x8B949E, linewidth: 1, opacity: 0.3, transparent: true })
-            );
-            scene.add(sacrificeOutline);
+                const sacrificeOutline = new THREE.Line(
+                    new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(minX, 0, -minY),
+                        new THREE.Vector3(maxX, 0, -minY),
+                        new THREE.Vector3(maxX, 0, -maxY),
+                        new THREE.Vector3(minX, 0, -maxY),
+                        new THREE.Vector3(minX, 0, -minY)
+                    ]),
+                    new THREE.LineBasicMaterial({ color: 0x8B949E, linewidth: 1, opacity: 0.3, transparent: true })
+                );
+                scene.add(sacrificeOutline);
+            }
 
-            // Add stock material as semi-transparent solid
+            // Add 3D part geometry
             const stockWidth = maxX - minX;
             const stockDepth = maxY - minY;
             const stockHeight = stockHeightValue; // Use tube height for tubes, thickness for plates
@@ -1351,26 +1627,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            const stockGeometry = new THREE.BoxGeometry(stockWidth, stockHeight, stockDepth);
-            const stockMaterial = new THREE.MeshStandardMaterial({
-                color: 0xE8F0FF, // Light blue-white (aluminum-ish)
-                transparent: true,
-                opacity: 0.15, // More transparent so toolpaths show through
-                metalness: 0.3,
-                roughness: 0.7,
-                side: THREE.DoubleSide,
-                depthWrite: false // Critical! Allows lines to render through transparent material
-            });
-            
-            const stockMesh = new THREE.Mesh(stockGeometry, stockMaterial);
-            // Position at center of stock, halfway up from sacrifice board
-            stockMesh.position.set(
-                (minX + maxX) / 2,
-                stockHeight / 2,
-                -(minY + maxY) / 2
-            );
-            stockMesh.renderOrder = -1; // Render stock before toolpaths
-            scene.add(stockMesh);
+            // Create 3D part geometry (hollow tubes or plates with holes)
+            let partMesh = null;
+
+            if (isAluminumTube) {
+                // Create hollow box tube with holes from DXF, using G-code bounds
+                partMesh = createTubeGeometry(stockWidth, stockHeight, stockDepth, materialThickness, minX, minY, maxX, maxY, dxfGeometry);
+            } else {
+                // Create plate with holes from DXF, aligned to G-code bounds
+                partMesh = createPartFromDxf(dxfGeometry, materialThickness, minX, minY, maxX, maxY);
+            }
+
+            if (partMesh) {
+                partMesh.renderOrder = -1;
+                scene.add(partMesh);
+            } else {
+                // Fallback to simple stock box
+                const stockGeometry = new THREE.BoxGeometry(stockWidth, stockHeight, stockDepth);
+                const stockMaterial = new THREE.MeshStandardMaterial({
+                    color: 0xE8F0FF,
+                    transparent: true,
+                    opacity: 0.15,
+                    metalness: 0.3,
+                    roughness: 0.7,
+                    side: THREE.DoubleSide,
+                    depthWrite: false
+                });
+
+                const stockMesh = new THREE.Mesh(stockGeometry, stockMaterial);
+                stockMesh.position.set(
+                    (minX + maxX) / 2,
+                    stockHeight / 2,
+                    -(minY + maxY) / 2
+                );
+                stockMesh.renderOrder = -1;
+                scene.add(stockMesh);
+            }
 
             // Create tool representation (endmill)
             const toolLength = Math.max(maxZ * 1.5, 1.0);

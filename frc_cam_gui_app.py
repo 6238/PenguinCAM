@@ -345,14 +345,22 @@ def process_file():
                 'details': result.stderr
             }), 500
 
-        # Parse actual output filename and cycle time from stdout
+        # Parse actual output filename, cycle time, and perimeter from stdout
         actual_output_path = output_path  # Default fallback
         cycle_time = None
         cycle_time_display = None
+        perimeter_points = None
         for line in result.stdout.split('\n'):
             if line.startswith('OUTPUT_FILE:'):
                 actual_output_path = line.split('OUTPUT_FILE:', 1)[1].strip()
                 print(f"📄 Actual output file: {actual_output_path}")
+            elif line.startswith('PERIMETER_POINTS:'):
+                try:
+                    import json
+                    perimeter_points = json.loads(line.split('PERIMETER_POINTS:', 1)[1].strip())
+                    print(f"📐 Parsed perimeter with {len(perimeter_points)} points")
+                except Exception as e:
+                    print(f"⚠️  Failed to parse perimeter points: {e}")
             elif 'ESTIMATED_CYCLE_TIME:' in line:
                 # Parse: "⏱️  ESTIMATED_CYCLE_TIME: 123.4 seconds (2m 3s)"
                 match = re.search(r'ESTIMATED_CYCLE_TIME:\s*([\d.]+)\s*seconds\s*\(([^)]+)\)', line)
@@ -415,6 +423,10 @@ def process_file():
         if cycle_time_display:
             response_data['cycle_time'] = cycle_time_display
             response_data['cycle_time_seconds'] = cycle_time
+
+        # Add perimeter points for 3D visualization (plates only)
+        if perimeter_points:
+            response_data['perimeter_points'] = perimeter_points
 
         return jsonify(response_data)
         
