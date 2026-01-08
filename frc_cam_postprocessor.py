@@ -1683,11 +1683,26 @@ class FRCPostProcessor:
         import math
         half_advance = arc_advance / 2
         j_offset = math.sqrt(arc_radius**2 - half_advance**2)
-        arc_dip = arc_radius - j_offset  # How much tool dips below start Y during arc
 
-        # Tool CENTER positions = tool edge - tool radius
-        # For roughing: offset by arc_dip so tool edge at arc's lowest point = roughing_tool_edge
-        roughing_y = roughing_tool_edge - tool_radius + arc_dip
+        # Tool CENTER positions for tube facing:
+        # - Coordinate system: +Y is INTO the tube (toward tube body)
+        # - Kept material (tube body) is at +Y, tube face is at Y≈0
+        # - Tool's +Y edge (toward tube body) defines the face position
+        #
+        # With positive J, G3 (CCW) arc goes through TOP of circle (max Y).
+        # Arc center Y = roughing_y + j_offset
+        # Top of circle Y = center_y + arc_radius = roughing_y + j_offset + arc_radius
+        #
+        # At arc CHORD (start/end): tool center Y = roughing_y
+        # At arc PEAK (top of circle): tool center Y = roughing_y + j_offset + arc_radius
+        #
+        # The PEAK is where the tool cuts deepest into the tube (maximum +Y edge).
+        # Roughing should never exceed roughing_tool_edge, so we set PEAK at that limit.
+        #
+        # For roughing +Y edge at PEAK to equal roughing_tool_edge:
+        #   (roughing_y + j_offset + arc_radius) + tool_radius = roughing_tool_edge
+        #   roughing_y = roughing_tool_edge - tool_radius - j_offset - arc_radius
+        roughing_y = roughing_tool_edge - tool_radius - j_offset - arc_radius
         finishing_y = finishing_tool_edge - tool_radius
 
         # X positions (outside tube on each side by 1.5x tool diameter)
@@ -1700,10 +1715,13 @@ class FRCPostProcessor:
         z_safe = tube_height + 0.25  # Safe height above tube
         z_cut = z_top - plunge_depth  # Bottom of cut (just over half height)
 
+        chord_face = roughing_y + tool_radius  # Face position at chord (start/end of arc)
         gcode.append(f'( Tube facing: {tube_width:.2f}" wide x {tube_height:.2f}" tall )')
         gcode.append(f'( Tool: {self.tool_diameter:.3f}" )')
         gcode.append(f'( Plunge depth: {plunge_depth:.3f}" (just over half height) )')
-        gcode.append(f'( Roughing tool edge at Y={roughing_tool_edge:.4f}", Finishing at Y={finishing_tool_edge:.4f}" )')
+        gcode.append(f'( Roughing: tool center Y={roughing_y:.4f}", +Y edge at Y={roughing_tool_edge:.4f}" [max, at peak] )')
+        gcode.append(f'( Roughing arcs bulge toward +Y, face ranges from {chord_face:.4f}" [chord] to {roughing_tool_edge:.4f}" [peak] )')
+        gcode.append(f'( Finishing: tool center Y={finishing_y:.4f}", +Y edge (final face) at Y={finishing_tool_edge:.4f}" )')
 
         # === ROUGHING PASS ===
         # Use arc clearing pattern to reduce chip load
@@ -1721,9 +1739,11 @@ class FRCPostProcessor:
         gcode.append(f'G1 Z{z_cut:.4f} F{self.plunge_rate}  ; Plunge down to cut depth')
 
         # Arc clearing pattern across tube width
-        # Each arc: G3 (CCW) dips into material (-Y) and advances in -X
+        # Each arc: G3 (CCW) bulges toward +Y and advances in -X
         # I offset = -half_advance (center is halfway between start and end in X)
-        # J offset = +j_offset (center is above chord, so arc dips down into material)
+        # J offset = +j_offset (center is ABOVE chord, so G3 CCW bulges toward +Y)
+        # At chord (start/end): face at roughing_tool_edge - arc_dip (less deep)
+        # At peak (middle): face at roughing_tool_edge (max cut, the limit)
         current_x = start_x
         arc_count = 0
         while current_x > end_x + arc_advance:
@@ -2487,19 +2507,28 @@ class FRCPostProcessor:
         arc_radius = 0.05  # Arc radius
         half_advance = arc_advance / 2
         j_offset = math.sqrt(arc_radius**2 - half_advance**2)
-        arc_bulge = j_offset + arc_radius  # How much arc bulges beyond chord toward +Y
 
         # Tool CENTER positions for cut to length:
         # - The kept part is at Y < y_cut, waste is at Y > y_cut
-        # - Tool's -Y edge should be at the cut line
-        # With positive J, G3 arc bulges toward +Y (into waste) by arc_bulge amount
-        # At arc peak: tool center Y = roughing_y + arc_bulge
-        # At arc peak: tool -Y edge = roughing_y + arc_bulge - tool_radius
-        # For roughing to LEAVE finish_stock, cut to (y_cut + finish_stock):
-        #   roughing_y + arc_bulge - tool_radius = y_cut + finish_stock
-        #   roughing_y = y_cut + finish_stock - arc_bulge + tool_radius
-        roughing_y = (y_cut + finish_stock) - arc_bulge + tool_radius
+        # - Tool's -Y edge (toward kept part) defines the cut boundary
+        #
+        # With positive J, G3 (CCW) arc goes through TOP of circle (max Y, into waste).
+        # Arc center Y = roughing_y + j_offset
+        # Top of circle Y = center_y + arc_radius = roughing_y + j_offset + arc_radius
+        #
+        # At arc CHORD (start/end): tool center Y = roughing_y, tool -Y edge = roughing_y - tool_radius
+        # At arc PEAK (top of circle): tool center Y = roughing_y + j_offset + arc_radius (in waste)
+        #
+        # The CHORD is where tool -Y edge is closest to kept part (the limit for roughing).
+        # For roughing to leave finish_stock, the -Y edge at chord = y_cut + finish_stock:
+        #   roughing_y - tool_radius = y_cut + finish_stock
+        #   roughing_y = y_cut + finish_stock + tool_radius
+        roughing_y = y_cut + finish_stock + tool_radius
         finishing_y = y_cut + tool_radius
+
+        # Calculate peak position for comments
+        peak_y = roughing_y + j_offset + arc_radius  # Tool center at peak
+        peak_minus_edge = peak_y - tool_radius  # Tool -Y edge at peak (in waste)
 
         # X positions (outside tube by 1.5x tool diameter)
         clearance = 1.5 * self.tool_diameter
@@ -2515,8 +2544,9 @@ class FRCPostProcessor:
         gcode.append(f'( Tool: {self.tool_diameter:.3f}" )')
         gcode.append(f'( Plunge depth: {plunge_depth:.3f}" (just over half height) )')
         gcode.append(f'( Roughing leaves {finish_stock:.4f}" for finishing pass )')
-        gcode.append(f'( Roughing chord Y={roughing_y:.4f}", arc peaks at Y={roughing_y + arc_bulge:.4f}" )')
-        gcode.append(f'( Finishing Y={finishing_y:.4f}" [tool center, -Y edge at Y={y_cut:.4f}] )')
+        gcode.append(f'( Roughing chord: tool -Y edge at Y={roughing_y - tool_radius:.4f}" [closest to kept part] )')
+        gcode.append(f'( Roughing peak: tool -Y edge at Y={peak_minus_edge:.4f}" [into waste] )')
+        gcode.append(f'( Finishing: tool -Y edge at Y={y_cut:.4f}" [final cut line] )')
         gcode.append('')
 
         # === ROUGHING PASS ===
@@ -2537,8 +2567,8 @@ class FRCPostProcessor:
         # Arc clearing pattern across tube width
         # Each arc: G3 (CCW) bulges into waste material (+Y direction) and advances in -X
         # I offset = -half_advance (center is halfway between start and end in X)
-        # J offset = +j_offset (center is above chord, G3 takes long path bulging toward +Y)
-        # This matches the facing pattern for consistent visual appearance
+        # J offset = +j_offset (center is ABOVE chord, G3 goes through TOP, bulging toward +Y into waste)
+        # Same technique as tube facing but mirrored: roughing on waste side (+Y), finishing on kept side
         current_x = start_x
         arc_count = 0
         while current_x > end_x + arc_advance:
