@@ -202,17 +202,20 @@ class TestTubeFacingGeneration(unittest.TestCase):
         finally:
             os.unlink(output_path)
 
-    def test_contains_helical_profile_cut(self):
-        """Test that the helical profile cut is included (G19 plane)."""
+    def test_contains_straight_facing_passes(self):
+        """Test that straight facing passes are generated (G1 cuts across tube)."""
         with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as f:
             output_path = f.name
         try:
             self.pp.generate_tube_facing_gcode(output_path, '1x1')
             with open(output_path) as f:
                 content = f.read()
-            # The original toolpath uses G19 (YZ plane) for helical profile cut
-            self.assertIn("G19", content)
-            # Should switch back to G17 (XY plane)
+            # Should have G1 linear moves for cutting
+            self.assertIn("G1 X", content)
+            # Should have roughing and finishing sections
+            self.assertIn("ROUGHING", content)
+            self.assertIn("FINISHING", content)
+            # Should have default G17 (XY plane) in header
             self.assertIn("G17", content)
         finally:
             os.unlink(output_path)
@@ -281,29 +284,28 @@ class TestTubeFacingGeneration(unittest.TestCase):
             os.unlink(output_path)
 
 
-class TestTubeFacingYOffsetCalculation(unittest.TestCase):
-    """Test the Y offset calculation logic."""
+class TestTubeFacingToolEdgePositions(unittest.TestCase):
+    """Test the tool edge positions for each phase."""
 
-    def test_pass1_offset_is_0125(self):
-        """Pass 1 should use offset of 0.125 to place tube face at Y=+0.125."""
-        # The toolpath finishing cut is at Y=-0.0787 (tool radius)
-        # With +0.125 offset, the finishing cut moves to Y=0.0463
-        # After tool compensation, tube face is at Y=0.125
-        pass1_offset = 0.125
-        self.assertAlmostEqual(pass1_offset, 0.125, places=3)
+    def test_phase1_roughing_edge_at_005(self):
+        """Phase 1 roughing tool edge should be at Y=+0.05"."""
+        phase1_roughing_edge = 0.05
+        self.assertAlmostEqual(phase1_roughing_edge, 0.05, places=3)
 
-    def test_pass2_offset_is_zero(self):
-        """Pass 2 should use offset of 0.0 to place tube face at Y=0."""
-        # With 0.0 offset, the finishing cut stays at Y=-0.0787
-        # After tool compensation, tube face is at Y=0
-        pass2_offset = 0.0
-        self.assertAlmostEqual(pass2_offset, 0.0, places=3)
+    def test_phase1_finishing_edge_at_00625(self):
+        """Phase 1 finishing tool edge should be at Y=+0.0625"."""
+        phase1_finishing_edge = 0.0625
+        self.assertAlmostEqual(phase1_finishing_edge, 0.0625, places=3)
 
-    def test_pass1_offset_greater_than_pass2(self):
-        """Pass 1 offset should be greater than Pass 2 offset."""
-        pass1_offset = 0.125
-        pass2_offset = 0.0
-        self.assertGreater(pass1_offset, pass2_offset)
+    def test_phase2_roughing_edge_at_negative_00125(self):
+        """Phase 2 roughing tool edge should be at Y=-0.0125"."""
+        phase2_roughing_edge = -0.0125
+        self.assertAlmostEqual(phase2_roughing_edge, -0.0125, places=3)
+
+    def test_phase2_finishing_edge_at_zero(self):
+        """Phase 2 finishing tool edge should be at Y=0."""
+        phase2_finishing_edge = 0.0
+        self.assertAlmostEqual(phase2_finishing_edge, 0.0, places=3)
 
 
 if __name__ == '__main__':
