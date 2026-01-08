@@ -85,8 +85,9 @@ function selectPart() {
     }
 }
 
-// Handle part option selection (visual feedback)
+// Main application initialization
 document.addEventListener('DOMContentLoaded', () => {
+    // Handle part option selection (visual feedback)
     const partOptions = document.querySelectorAll('.part-option');
     partOptions.forEach(option => {
         option.addEventListener('click', () => {
@@ -94,8 +95,8 @@ document.addEventListener('DOMContentLoaded', () => {
             option.classList.add('selected');
         });
     });
-});
-        // Global state
+
+    // Global state
         let uploadedFile = null;
         let suggestedFilename = null; // For Onshape imports
         let gcodeContent = null;
@@ -427,25 +428,27 @@ document.addEventListener('DOMContentLoaded', () => {
         // Mode Switching
         function switchMode(mode) {
             currentMode = mode;
-            
+
             // Update mode buttons
             document.querySelectorAll('.mode-button').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.mode === mode);
             });
-            
+
             // Show/hide appropriate views
             const setupContainer = document.getElementById('dxf-setup-container');
             const previewContainer = document.getElementById('canvas-container');
             const scrubberContainer = document.getElementById('scrubberContainer');
             const previewControls = document.getElementById('previewControls');
             const gcodeButtons = document.getElementById('gcodeButtons');
-            
+            const stockSizeDisplay = document.getElementById('stockSizeDisplay');
+
             if (mode === 'setup') {
                 setupContainer.style.display = 'block';
                 previewContainer.style.display = 'none';
                 scrubberContainer.style.display = 'none';
                 previewControls.style.display = 'none';
                 gcodeButtons.style.display = 'none';
+                if (stockSizeDisplay) stockSizeDisplay.style.display = 'none';
                 
                 // Resize canvas now that it's visible
                 if (dxfCanvas2D && dxfGeometry) {
@@ -465,6 +468,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 previewContainer.style.display = 'block';
                 previewControls.style.display = 'flex';
                 gcodeButtons.style.display = 'flex';
+                // Stock size display shown if G-code has been generated
+                if (stockSizeDisplay && toolpathMoves.length > 0) {
+                    stockSizeDisplay.style.display = 'flex';
+                }
                 // Scrubber visibility handled by visualizeGcode
             }
         }
@@ -1299,6 +1306,51 @@ document.addEventListener('DOMContentLoaded', () => {
             const stockDepth = maxY - minY;
             const stockHeight = stockHeightValue; // Use tube height for tubes, thickness for plates
 
+            // Calculate and display stock size
+            const toolDiameter = parseFloat(document.getElementById('toolDiameter').value) || 0.157;
+            const stockSizeDisplay = document.getElementById('stockSizeDisplay');
+            const stockSizeValue = document.getElementById('stockSizeValue');
+
+            if (isAluminumTube) {
+                // For tube: show profile dimensions × length (no margin)
+                // Tube height from form input, tube width from DXF short dimension
+                const tubeHeightInput = parseFloat(document.getElementById('tubeHeight').value) || 1.0;
+                const dxfShort = dxfBounds ? Math.min(dxfBounds.width, dxfBounds.height) : Math.min(stockWidth, stockDepth);
+                const tubeLength = dxfBounds ? Math.max(dxfBounds.width, dxfBounds.height) : Math.max(stockWidth, stockDepth);
+
+                if (stockSizeDisplay && stockSizeValue) {
+                    // Display as: width × height × length
+                    stockSizeValue.textContent = `${dxfShort.toFixed(0)}" × ${tubeHeightInput.toFixed(0)}" × ${tubeLength.toFixed(3)}"`;
+                    stockSizeDisplay.style.display = 'flex';
+                }
+            } else {
+                // For plates: DXF bounding box + tool margin only if cutting perimeter
+                // Account for rotation - swap DXF dimensions if rotated 90 or 270 degrees
+                let dxfWidth = dxfBounds ? dxfBounds.width : stockWidth;
+                let dxfHeight = dxfBounds ? dxfBounds.height : stockDepth;
+                if (rotationAngle === 90 || rotationAngle === 270) {
+                    [dxfWidth, dxfHeight] = [dxfHeight, dxfWidth];
+                }
+
+                // Check if toolpath extends beyond DXF bounds (indicating perimeter cutting)
+                const tolerance = 0.01;
+                const toolpathWidth = maxX - minX;
+                const toolpathHeight = maxY - minY;
+
+                // If toolpath is larger than DXF bounds, tool is cutting outside the part on that axis
+                const cutsOutsideX = toolpathWidth > dxfWidth + tolerance;
+                const cutsOutsideY = toolpathHeight > dxfHeight + tolerance;
+
+                // Only add margin on axes where tool cuts outside the part
+                const fullStockWidth = dxfWidth + (cutsOutsideX ? 2 * toolDiameter : 0);
+                const fullStockDepth = dxfHeight + (cutsOutsideY ? 2 * toolDiameter : 0);
+
+                if (stockSizeDisplay && stockSizeValue) {
+                    stockSizeValue.textContent = `${fullStockWidth.toFixed(3)}" × ${fullStockDepth.toFixed(3)}"`;
+                    stockSizeDisplay.style.display = 'flex';
+                }
+            }
+
             const stockGeometry = new THREE.BoxGeometry(stockWidth, stockHeight, stockDepth);
             const stockMaterial = new THREE.MeshStandardMaterial({
                 color: 0xE8F0FF, // Light blue-white (aluminum-ish)
@@ -1321,7 +1373,6 @@ document.addEventListener('DOMContentLoaded', () => {
             scene.add(stockMesh);
 
             // Create tool representation (endmill)
-            const toolDiameter = 0.157; // 4mm default
             const toolLength = Math.max(maxZ * 1.5, 1.0);
             const toolGeometry = new THREE.CylinderGeometry(
                 toolDiameter / 2, 
@@ -1614,3 +1665,4 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderDxfSetup(); // Re-render with new size
             }
         });
+});
