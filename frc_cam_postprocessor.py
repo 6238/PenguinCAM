@@ -671,12 +671,13 @@ class FRCPostProcessor:
             print(f"Sorted {len(self.holes)} holes for optimal travel")
     
     def identify_perimeter_and_pockets(self):
-        """Identify the outer perimeter and any inner pockets"""
-        if not self.polylines:
-            self.perimeter = None
-            self.pockets = []
-            return
+        """Identify outer perimeters and inner pockets based on topology"""
+        self.perimeters = []  # Changed from single self.perimeter to list
+        self.pockets = []
         
+        if not self.polylines:
+            return
+    
         # Convert to Shapely polygons
         polygons = []
         for points in self.polylines:
@@ -688,16 +689,24 @@ class FRCPostProcessor:
                 pass
         
         if not polygons:
-            self.perimeter = None
-            self.pockets = []
             return
         
-        # Find the largest polygon (perimeter)
-        polygons.sort(key=lambda x: x[0].area, reverse=True)
-        self.perimeter = polygons[0][1]  # Get the original points
-        self.pockets = [p[1] for p in polygons[1:]]
+        for i, (poly_i, points_i) in enumerate(polygons):
+            is_inside_another = False
+            for j, (poly_j, _) in enumerate(polygons):
+                if i == j: 
+                    continue
+                # If poly_i is inside poly_j, then poly_i is a pocket
+                if poly_j.contains(poly_i):
+                    is_inside_another = True
+                    break
+            
+            if is_inside_another:
+                self.pockets.append(points_i)
+            else:
+                self.perimeters.append(points_i)
 
-        print(f"\nIdentified perimeter and {len(self.pockets)} pockets")
+        print(f"\nIdentified {len(self.perimeters)} perimeter(s) and {len(self.pockets)} pocket(s)")
     
     def generate_gcode(self, output_file: str):
         """Generate complete G-code file"""
@@ -725,7 +734,7 @@ class FRCPostProcessor:
             operations.append("Holes")
         if self.pockets:
             operations.append("Pockets")
-        if self.perimeter:
+        if self.perimeters:
             operations.append("Profile")
         operations_str = ", ".join(operations) if operations else "None"
 
@@ -828,11 +837,13 @@ class FRCPostProcessor:
                 gcode.extend(self._generate_pocket_gcode(pocket))
                 gcode.append("")
         
-        # Perimeter with tabs
-        if self.perimeter:
-            gcode.append("(===== PERIMETER WITH TABS =====)")
-            gcode.extend(self._generate_perimeter_gcode(self.perimeter))
-            gcode.append("")
+        # Perimeters with tabs (Handle multiple parts)
+        if hasattr(self, 'perimeters') and self.perimeters:
+            gcode.append("(===== PERIMETERS WITH TABS =====)")
+            for i, perimeter_points in enumerate(self.perimeters, 1):
+                gcode.append(f"(Perimeter Part {i})")
+                gcode.extend(self._generate_perimeter_gcode(perimeter_points))
+                gcode.append("")
         
         # Footer
         gcode.append("(===== FINISH =====)")
@@ -2136,8 +2147,9 @@ class FRCPostProcessor:
                 toolpath.extend(self._generate_pocket_gcode(pocket))
 
         # Perimeter (only for standard mode, not tube faces)
-        if not skip_perimeter and hasattr(self, 'perimeter') and self.perimeter:
-            toolpath.extend(self._generate_perimeter_gcode(self.perimeter))
+        if not skip_perimeter and hasattr(self, 'perimeters') and self.perimeters:
+            for perimeter_points in self.perimeters:
+                toolpath.extend(self._generate_perimeter_gcode(perimeter_points))
 
         # Apply offsets if needed (for tube mode)
         if z_offset != 0.0:
