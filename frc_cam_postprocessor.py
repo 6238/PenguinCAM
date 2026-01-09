@@ -2311,13 +2311,13 @@ class FRCPostProcessor:
 
         # Calculate Y position for cut
         if phase == 1:
-            # Phase 1: Cut at tube_length + facing offset
-            y_cut = tube_length + self.material_thickness
+            # Phase 1: Cut at tube_length + facing offset + tool radius compensation
+            y_cut = tube_length + self.material_thickness + self.tool_radius
             z_start = tube_height  # Top of tube (tube sits on sacrifice board at Z=0)
             gcode.append(f'( Cut to length at Y={y_cut:.4f}" [Phase 1: before flip] )')
         else:
-            # Phase 2: Cut at tube_length
-            y_cut = tube_length
+            # Phase 2: Cut at tube_length + tool radius compensation
+            y_cut = tube_length + self.tool_radius
             z_start = tube_height  # Top of tube
             gcode.append(f'( Cut to length at Y={y_cut:.4f}" [Phase 2: after flip] )')
 
