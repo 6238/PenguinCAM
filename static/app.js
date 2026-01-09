@@ -102,6 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let gcodeContent = null;
         let outputFilename = null;
         let perimeterPoints = null; // Perimeter outline from postprocessor for 3D visualization
+        let tubeDimensions = null; // Tube width/length from backend for 3D visualization
         let scene, camera, renderer, controls;
         let optimalCameraPosition = { x: 10, y: 10, z: 10 };
         let optimalLookAtPosition = { x: 0, y: 0, z: 0 };
@@ -288,6 +289,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 gcodeContent = data.gcode;
                 outputFilename = data.filename;
                 perimeterPoints = data.perimeter_points || null; // Store perimeter for 3D visualization
+
+                // Store tube dimensions from backend for accurate 3D visualization
+                if (data.parameters && data.parameters.tube_width !== undefined) {
+                    tubeDimensions = {
+                        width: data.parameters.tube_width,
+                        length: data.parameters.tube_length,
+                        height: data.parameters.tube_height
+                    };
+                    console.log('Tube dimensions from backend:', tubeDimensions);
+                } else {
+                    tubeDimensions = null;
+                }
 
                 // Show results
                 showResults(data);
@@ -1440,83 +1453,103 @@ document.addEventListener('DOMContentLoaded', () => {
             // - Left and right walls: solid vertical panels
             // - Top and bottom walls: horizontal panels with holes from DXF
             // - No end caps: open ends show hollow interior
+            //
+            // Tube coordinate system (in Three.js space):
+            // - X: 0 to tubeWidth (matches G-code X)
+            // - Y: 0 to tubeHeight (tube height, vertical)
+            // - Z: 0 to -tubeLength (tube extends backward from front face)
+            //
+            // The G-code toolpath is at the front face (Z ≈ 0 in Three.js, Y ≈ 0 in G-code)
+            // G-code Y is small (facing depth) but tube extends full length backward
 
-            const width = gcodeMaxX - gcodeMinX;
-            const length = gcodeMaxY - gcodeMinY;
+            // Use actual tube dimensions, positioned at origin
+            // The tube should be at X=0 to tubeWidth, regardless of G-code toolpath bounds
+            // (G-code may have lead-in/out moves that extend beyond the tube)
+            const actualTubeMinX = 0;  // Tube starts at origin
+            const actualTubeMaxX = tubeWidth;  // Tube ends at tube width
+            const actualTubeMinY = 0;  // Front face at Y=0
+            const actualTubeMaxY = tubeLength;  // Tube extends to full length
 
-            // Calculate transformation from DXF coordinates to G-code coordinates
+            console.log('createTubeGeometry: Actual tube bounds:', {
+                x: [actualTubeMinX, actualTubeMaxX],
+                y: [actualTubeMinY, actualTubeMaxY]
+            });
+
+            // Calculate transformation from DXF coordinates to tube coordinates
             // DXF may be rotated and/or translated
             const dxfCenterX = dxfData ? (dxfData.minX + dxfData.maxX) / 2 : 0;
             const dxfCenterY = dxfData ? (dxfData.minY + dxfData.maxY) / 2 : 0;
-            const gcodeCenterX = (gcodeMinX + gcodeMaxX) / 2;
-            const gcodeCenterY = (gcodeMinY + gcodeMaxY) / 2;
+            // Transform to tube center (using actual tube bounds)
+            const tubeCenterX = (actualTubeMinX + actualTubeMaxX) / 2;
+            const tubeCenterY = (actualTubeMinY + actualTubeMaxY) / 2;
             const rad = -rotationAngle * Math.PI / 180; // Negative for clockwise rotation
 
             console.log('createTubeGeometry: DXF center', { dxfCenterX, dxfCenterY });
-            console.log('createTubeGeometry: G-code center', { gcodeCenterX, gcodeCenterY });
+            console.log('createTubeGeometry: Tube center', { tubeCenterX, tubeCenterY });
             console.log('createTubeGeometry: Rotation angle', rotationAngle);
 
-            // Transform a point from DXF space to G-code space
-            function transformDxfToGcode(x, y) {
+            // Transform a point from DXF space to tube space
+            function transformDxfToTube(x, y) {
                 // Translate to DXF center
                 let dx = x - dxfCenterX;
                 let dy = y - dxfCenterY;
                 // Rotate
                 const rotatedX = dx * Math.cos(rad) - dy * Math.sin(rad);
                 const rotatedY = dx * Math.sin(rad) + dy * Math.cos(rad);
-                // Translate to G-code center
+                // Translate to tube center
                 return {
-                    x: rotatedX + gcodeCenterX,
-                    y: rotatedY + gcodeCenterY
+                    x: rotatedX + tubeCenterX,
+                    y: rotatedY + tubeCenterY
                 };
             }
 
             // Helper: create a horizontal wall shape with holes from DXF circles
+            // Uses actual tube dimensions for the outer boundary
             function createWallWithHoles() {
                 const shape = new THREE.Shape();
-                // Counter-clockwise outer boundary
-                shape.moveTo(gcodeMinX, gcodeMinY);
-                shape.lineTo(gcodeMaxX, gcodeMinY);
-                shape.lineTo(gcodeMaxX, gcodeMaxY);
-                shape.lineTo(gcodeMinX, gcodeMaxY);
+                // Counter-clockwise outer boundary using actual tube dimensions
+                shape.moveTo(actualTubeMinX, actualTubeMinY);
+                shape.lineTo(actualTubeMaxX, actualTubeMinY);
+                shape.lineTo(actualTubeMaxX, actualTubeMaxY);
+                shape.lineTo(actualTubeMinX, actualTubeMaxY);
                 shape.closePath();
 
-                // Add circles from DXF as holes, transformed to G-code coordinates
+                // Add circles from DXF as holes, transformed to tube coordinates
                 if (dxfData && dxfData.entities) {
                     const circles = dxfData.entities.filter(e => e.type === 'CIRCLE');
                     for (const circle of circles) {
                         if (circle.center && circle.radius) {
-                            // Transform circle center from DXF to G-code coordinates
-                            const transformed = transformDxfToGcode(circle.center.x, circle.center.y);
+                            // Transform circle center from DXF to tube coordinates
+                            const transformed = transformDxfToTube(circle.center.x, circle.center.y);
                             const holePath = new THREE.Path();
                             // true = clockwise (required for holes - opposite of outer shape)
                             holePath.absarc(transformed.x, transformed.y, circle.radius,
                                            0, Math.PI * 2, true);
                             shape.holes.push(holePath);
-                            console.log('Hole at DXF', circle.center, '-> G-code', transformed);
+                            console.log('Hole at DXF', circle.center, '-> tube', transformed);
                         }
                     }
                 }
                 return shape;
             }
 
-            // LEFT WALL (solid) - vertical panel at gcodeMinX, full height
-            const leftGeom = new THREE.BoxGeometry(wallThickness, tubeHeight, length);
+            // LEFT WALL (solid) - vertical panel at tube left edge, full height
+            const leftGeom = new THREE.BoxGeometry(wallThickness, tubeHeight, tubeLength);
             const leftMesh = new THREE.Mesh(leftGeom, material);
             leftMesh.position.set(
-                gcodeMinX + wallThickness / 2,
+                actualTubeMinX + wallThickness / 2,
                 tubeHeight / 2,
-                -(gcodeMinY + length / 2)
+                -(actualTubeMinY + tubeLength / 2)
             );
             group.add(leftMesh);
 
-            // RIGHT WALL (solid) - vertical panel at gcodeMaxX, full height
-            const rightGeom = new THREE.BoxGeometry(wallThickness, tubeHeight, length);
+            // RIGHT WALL (solid) - vertical panel at tube right edge, full height
+            const rightGeom = new THREE.BoxGeometry(wallThickness, tubeHeight, tubeLength);
             const rightMesh = new THREE.Mesh(rightGeom, material);
             rightMesh.position.set(
-                gcodeMaxX - wallThickness / 2,
+                actualTubeMaxX - wallThickness / 2,
                 tubeHeight / 2,
-                -(gcodeMinY + length / 2)
+                -(actualTubeMinY + tubeLength / 2)
             );
             group.add(rightMesh);
 
@@ -1768,15 +1801,26 @@ document.addEventListener('DOMContentLoaded', () => {
             const stockSizeValue = document.getElementById('stockSizeValue');
 
             if (isAluminumTube) {
-                // For tube: show profile dimensions × length (no margin)
-                // Tube height from form input, tube width from DXF short dimension
-                const tubeHeightInput = parseFloat(document.getElementById('tubeHeight').value) || 1.0;
-                const dxfShort = dxfBounds ? Math.min(dxfBounds.width, dxfBounds.height) : Math.min(stockWidth, stockDepth);
-                const tubeLength = dxfBounds ? Math.max(dxfBounds.width, dxfBounds.height) : Math.max(stockWidth, stockDepth);
+                // For tube: use dimensions from backend if available, otherwise fallback to DXF bounds
+                let tubeWidthDisplay, tubeLengthDisplay, tubeHeightDisplay;
+
+                if (tubeDimensions) {
+                    // Use accurate dimensions from backend
+                    tubeWidthDisplay = tubeDimensions.width;
+                    tubeLengthDisplay = tubeDimensions.length;
+                    tubeHeightDisplay = tubeDimensions.height;
+                    console.log('Using tube dimensions from backend:', tubeDimensions);
+                } else {
+                    // Fallback to DXF bounds estimation
+                    const tubeHeightInput = parseFloat(document.getElementById('tubeHeight').value) || 1.0;
+                    tubeWidthDisplay = dxfBounds ? Math.min(dxfBounds.width, dxfBounds.height) : Math.min(stockWidth, stockDepth);
+                    tubeLengthDisplay = dxfBounds ? Math.max(dxfBounds.width, dxfBounds.height) : Math.max(stockWidth, stockDepth);
+                    tubeHeightDisplay = tubeHeightInput;
+                }
 
                 if (stockSizeDisplay && stockSizeValue) {
                     // Display as: width × height × length
-                    stockSizeValue.textContent = `${dxfShort.toFixed(0)}" × ${tubeHeightInput.toFixed(0)}" × ${tubeLength.toFixed(3)}"`;
+                    stockSizeValue.textContent = `${tubeWidthDisplay.toFixed(3)}" × ${tubeHeightDisplay.toFixed(3)}" × ${tubeLengthDisplay.toFixed(3)}"`;
                     stockSizeDisplay.style.display = 'flex';
                 }
             } else {
@@ -1811,8 +1855,20 @@ document.addEventListener('DOMContentLoaded', () => {
             let partMesh = null;
 
             if (isAluminumTube) {
-                // Create hollow box tube with holes from DXF, using G-code bounds
-                partMesh = createTubeGeometry(stockWidth, stockHeight, stockDepth, materialThickness, minX, minY, maxX, maxY, dxfGeometry);
+                // Create hollow box tube with holes from DXF
+                // Use actual tube dimensions from backend if available, otherwise fall back to G-code bounds
+                const actualTubeWidth = tubeDimensions ? tubeDimensions.width : stockWidth;
+                const actualTubeHeight = tubeDimensions ? tubeDimensions.height : stockHeight;
+                const actualTubeLength = tubeDimensions ? tubeDimensions.length : stockDepth;
+
+                console.log('Creating tube with dimensions:', {
+                    width: actualTubeWidth,
+                    height: actualTubeHeight,
+                    length: actualTubeLength,
+                    fromBackend: !!tubeDimensions
+                });
+
+                partMesh = createTubeGeometry(actualTubeWidth, actualTubeHeight, actualTubeLength, materialThickness, minX, minY, maxX, maxY, dxfGeometry);
             } else {
                 // Create plate with holes from DXF, aligned to G-code bounds
                 partMesh = createPartFromDxf(dxfGeometry, materialThickness, minX, minY, maxX, maxY);

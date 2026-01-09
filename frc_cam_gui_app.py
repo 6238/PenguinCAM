@@ -450,6 +450,8 @@ def process_file():
         if is_aluminum_tube:
             parameters.update({
                 'tube_height': tube_height,
+                'tube_width': tube_width,
+                'tube_length': tube_length,
                 'square_end': square_end,
                 'cut_to_length': cut_to_length
             })
