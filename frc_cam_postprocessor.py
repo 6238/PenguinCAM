@@ -1776,8 +1776,8 @@ class FRCPostProcessor:
         roughing_y = roughing_tool_edge - tool_radius - j_offset - arc_radius
         finishing_y = finishing_tool_edge - tool_radius
 
-        # X positions (tool edge 0.1" from material edge)
-        clearance = tool_radius + 0.1
+        # X positions (tool edge 0.05" from material edge)
+        clearance = tool_radius + 0.05
         start_x = tube_width + clearance  # Far side
         end_x = -clearance  # Near side
 
@@ -2692,8 +2692,8 @@ class FRCPostProcessor:
         peak_y = roughing_y + j_offset + arc_radius  # Tool center at peak
         peak_minus_edge = peak_y - tool_radius  # Tool -Y edge at peak (in waste)
 
-        # X positions (tool edge 0.1" from material edge)
-        clearance = tool_radius + 0.1
+        # X positions (tool edge 0.05" from material edge)
+        clearance = tool_radius + 0.05
         start_x = tube_width + clearance  # Far side
         end_x = -clearance  # Near side
 
