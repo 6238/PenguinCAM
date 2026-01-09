@@ -1776,8 +1776,8 @@ class FRCPostProcessor:
         roughing_y = roughing_tool_edge - tool_radius - j_offset - arc_radius
         finishing_y = finishing_tool_edge - tool_radius
 
-        # X positions (outside tube on each side by 1.5x tool diameter)
-        clearance = 1.5 * self.tool_diameter
+        # X positions (tool edge 0.1" from material edge)
+        clearance = tool_radius + 0.1
         start_x = tube_width + clearance  # Far side
         end_x = -clearance  # Near side
 
@@ -1817,7 +1817,7 @@ class FRCPostProcessor:
                 gcode.append(f'G0 Z{z_safe:.4f}')
 
                 # Plunge to cut depth
-                gcode.append(f'G1 Z{z_cut:.4f} F{self.plunge_rate}')
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
 
                 # Arc clearing pattern across tube width
                 gcode.append(f'G1 F{arc_feed}')
@@ -1842,7 +1842,7 @@ class FRCPostProcessor:
                 gcode.append(f'G0 Z{z_safe:.4f}')
 
                 # Plunge to cut depth
-                gcode.append(f'G1 Z{z_cut:.4f} F{self.plunge_rate}')
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
 
                 # Arc clearing through back wall only
                 gcode.append(f'G1 F{arc_feed}')
@@ -1861,7 +1861,7 @@ class FRCPostProcessor:
                 gcode.append(f'G0 X{front_wall_inner_x:.4f}')
 
                 # Plunge inside (material already removed on pass 1)
-                gcode.append(f'G1 Z{z_cut:.4f} F{self.plunge_rate}')
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
 
                 # Arc clearing through front wall
                 gcode.append(f'G1 F{arc_feed}')
@@ -1896,7 +1896,7 @@ class FRCPostProcessor:
                 gcode.append(f'G0 X{start_x:.4f} Y{finishing_y:.4f}')
 
                 # Plunge to cut depth
-                gcode.append(f'G1 Z{z_cut:.4f} F{self.plunge_rate}')
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
 
                 # Single horizontal cut across
                 gcode.append(f'G1 X{end_x:.4f} F{self.feed_rate}')
@@ -1911,7 +1911,7 @@ class FRCPostProcessor:
                 gcode.append(f'G0 X{start_x:.4f} Y{finishing_y:.4f}')
 
                 # Plunge to cut depth
-                gcode.append(f'G1 Z{z_cut:.4f} F{self.plunge_rate}')
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
 
                 # Cut through back wall only
                 gcode.append(f'G1 X{back_wall_inner_x:.4f} F{self.feed_rate}')
@@ -1921,7 +1921,7 @@ class FRCPostProcessor:
                 gcode.append(f'G0 X{front_wall_inner_x:.4f}')
 
                 # Plunge inside (material already removed on pass 1)
-                gcode.append(f'G1 Z{z_cut:.4f} F{self.plunge_rate}')
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
 
                 # Cut through front wall
                 gcode.append(f'G1 X{end_x:.4f} F{self.feed_rate}')
@@ -2692,8 +2692,8 @@ class FRCPostProcessor:
         peak_y = roughing_y + j_offset + arc_radius  # Tool center at peak
         peak_minus_edge = peak_y - tool_radius  # Tool -Y edge at peak (in waste)
 
-        # X positions (outside tube by 1.5x tool diameter)
-        clearance = 1.5 * self.tool_diameter
+        # X positions (tool edge 0.1" from material edge)
+        clearance = tool_radius + 0.1
         start_x = tube_width + clearance  # Far side
         end_x = -clearance  # Near side
 
@@ -2734,7 +2734,7 @@ class FRCPostProcessor:
                 gcode.append(f'G0 Z{z_safe:.4f}')
 
                 # Plunge to cut depth
-                gcode.append(f'G1 Z{z_cut:.4f} F{self.plunge_rate}')
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
 
                 # Arc clearing pattern across tube width
                 gcode.append(f'G1 F{arc_feed}')
@@ -2759,7 +2759,7 @@ class FRCPostProcessor:
                 gcode.append(f'G0 Z{z_safe:.4f}')
 
                 # Plunge to cut depth
-                gcode.append(f'G1 Z{z_cut:.4f} F{self.plunge_rate}')
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
 
                 # Arc clearing through back wall only
                 gcode.append(f'G1 F{arc_feed}')
@@ -2778,7 +2778,7 @@ class FRCPostProcessor:
                 gcode.append(f'G0 X{front_wall_inner_x:.4f}')
 
                 # Plunge inside (material already removed on pass 1)
-                gcode.append(f'G1 Z{z_cut:.4f} F{self.plunge_rate}')
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
 
                 # Arc clearing through front wall
                 gcode.append(f'G1 F{arc_feed}')
@@ -2812,7 +2812,7 @@ class FRCPostProcessor:
                 gcode.append(f'G0 X{start_x:.4f} Y{finishing_y:.4f}')
 
                 # Plunge to cut depth
-                gcode.append(f'G1 Z{z_cut:.4f} F{self.plunge_rate}')
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
 
                 # Single horizontal cut across
                 gcode.append(f'G1 X{end_x:.4f} F{self.feed_rate}')
@@ -2827,7 +2827,7 @@ class FRCPostProcessor:
                 gcode.append(f'G0 X{start_x:.4f} Y{finishing_y:.4f}')
 
                 # Plunge to cut depth
-                gcode.append(f'G1 Z{z_cut:.4f} F{self.plunge_rate}')
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
 
                 # Cut through back wall only
                 gcode.append(f'G1 X{back_wall_inner_x:.4f} F{self.feed_rate}')
@@ -2837,7 +2837,7 @@ class FRCPostProcessor:
                 gcode.append(f'G0 X{front_wall_inner_x:.4f}')
 
                 # Plunge inside (material already removed on pass 1)
-                gcode.append(f'G1 Z{z_cut:.4f} F{self.plunge_rate}')
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
 
                 # Cut through front wall
                 gcode.append(f'G1 X{end_x:.4f} F{self.feed_rate}')
