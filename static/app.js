@@ -1,3 +1,4 @@
+// @ts-check
 
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
@@ -81,6 +82,62 @@ const dxfUploader = new FileUploader({
     onFileClick: (id, file) => {
         dxf_preview.selectPart(id);
     }
+});
+
+generateBtn.disabled = false;
+generateBtn.textContent = '🚀 Generate G-code';
+// Generate G-code
+generateBtn.addEventListener('click', async () => {
+    const dxfString = dxf_preview.stitchPartsTogether();
+    const blob = new Blob([dxfString], { type: 'application/dxf' });
+    const file = new File([blob], "nested_layout.dxf", { type: "application/dxf" });
+
+    const formData = new FormData();
+    formData.append('file', file);
+    const material = document.getElementById('material').value;
+    formData.append('material', material);
+    formData.append('tool_diameter', document.getElementById('toolDiameter').value);
+    formData.append('origin_corner', 'bottom-left'); // Always bottom-left
+
+    // Add material-specific parameters
+    if (material === 'aluminum_tube') {
+        // Tube-specific parameters
+        formData.append('thickness', document.getElementById('thickness').value); // Tube wall thickness
+        formData.append('tube_height', document.getElementById('tubeHeight').value);
+        formData.append('square_end', document.getElementById('squareEnd').checked ? '1' : '0');
+        formData.append('cut_to_length', document.getElementById('cutToLength').checked ? '1' : '0');
+    } else {
+        // Standard parameters
+        formData.append('thickness', document.getElementById('thickness').value);
+        formData.append('tabs', document.getElementById('tabs').value);
+    }
+    formData.append('rotation', 0); // me when i lie
+
+    try {
+        const response = await fetch('/process', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            // Include details if available
+            const errorMsg = data.error || 'Unknown error';
+            const details = data.details ? `\n\n${data.details}` : '';
+            throw new Error(errorMsg + details);
+        }
+
+    } catch (error) {
+        if (Object.hasOwn(error, "details")) {
+            console.error(error.details);
+        }
+        showError('Generation Failed', error.message);
+    } finally {
+        // hideLoading();
+    }
+toggleSectionShowGcode('gcode');
+
 });
 
 
