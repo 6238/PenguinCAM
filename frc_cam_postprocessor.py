@@ -50,8 +50,8 @@ MATERIAL_PRESETS = {
         'ramp_angle': 4.0,        # Ramp angle in degrees
         'ramp_start_clearance': 0.050,  # Clearance above material to start ramping (inches)
         'stepover_percentage': 0.25,    # Radial stepover as fraction of tool diameter (25% conservative for aluminum)
-        'tab_width': 0.160,       # Tab width (inches) - smaller for aluminum
-        'tab_height': 0.1,      # Tab height (inches) - thinner for aluminum
+        'tab_width': 0.25,        # Tab width (inches) - same as plywood
+        'tab_height': 0.15,       # Tab height (inches) - same as plywood
         'description': 'Aluminum box tubing - 18K RPM, 55 IPM cutting, 4° ramp'
     },
     'polycarbonate': {
@@ -1479,6 +1479,10 @@ class FRCPostProcessor:
         tab_number = 0
         current_z = self.cut_depth  # Track current Z height to avoid unnecessary moves
 
+        # Store tab positions for the tab removal pass
+        # List of (tab_idx, start_x, start_y, end_x, end_y) tuples
+        tab_positions = []
+
         # Create perimeter points list starting from where ramp ended
         # Continue from ramp_end_segment to end, then wrap around to start
         remaining_points = offset_points[ramp_end_segment:] + offset_points[:ramp_end_segment]
@@ -1486,7 +1490,7 @@ class FRCPostProcessor:
 
         # Helper function to process a segment with tab checking
         def process_segment(p1, p2, seg_start_dist, seg_length):
-            nonlocal tab_number, current_z
+            nonlocal tab_number, current_z, tab_positions
 
             if seg_length == 0:
                 return
@@ -1545,6 +1549,9 @@ class FRCPostProcessor:
                     start_x = p1[0] + t_start * (p2[0] - p1[0])
                     start_y = p1[1] + t_start * (p2[1] - p1[1])
 
+                    # Store tab position for removal pass
+                    tab_positions.append((tab_idx, start_x, start_y, end_x, end_y))
+
                     # Move to tab start in XY
                     gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.feed_rate}")
 
@@ -1587,6 +1594,55 @@ class FRCPostProcessor:
 
         # Retract
         gcode.append(f"G0 Z{self.safe_height:.4f}  ; Retract")
+
+        # ===== TAB REMOVAL PASS =====
+        # Remove tabs in star pattern to gradually release the part
+        if tab_positions:
+            gcode.append("")
+            gcode.append("(===== TAB REMOVAL PASS =====)")
+            gcode.append(f"(Removing {len(tab_positions)} tabs in star pattern)")
+
+            # Sort tabs by their index to ensure consistent ordering
+            tab_positions.sort(key=lambda x: x[0])
+
+            # Generate star pattern order: alternates between first and second half
+            # For 4 tabs (0,1,2,3): order is 0,2,1,3
+            # For 6 tabs (0,1,2,3,4,5): order is 0,3,1,4,2,5
+            num_tabs = len(tab_positions)
+            star_order = []
+            half = num_tabs // 2
+            for i in range(half):
+                star_order.append(i)
+                if i + half < num_tabs:
+                    star_order.append(i + half)
+            # Handle odd number of tabs
+            if num_tabs % 2 == 1:
+                star_order.append(num_tabs - 1)
+
+            gcode.append(f"(Star pattern order: {[i+1 for i in star_order]})")
+            gcode.append("")
+
+            # Remove each tab in star order
+            for removal_num, tab_order_idx in enumerate(star_order, 1):
+                tab_idx, start_x, start_y, end_x, end_y = tab_positions[tab_order_idx]
+
+                gcode.append(f"(Tab {tab_order_idx + 1} removal - #{removal_num} in sequence)")
+
+                # Rapid to safe height (should already be there, but be safe)
+                gcode.append(f"G0 Z{self.safe_height:.4f}")
+
+                # Rapid to position just before the tab (in the kerf)
+                gcode.append(f"G0 X{start_x:.4f} Y{start_y:.4f}  ; Move to tab start (in kerf)")
+
+                # Plunge to cut depth in empty kerf (safe - no material)
+                gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.plunge_rate}  ; Plunge in kerf")
+
+                # Cut across the tab at contour feed rate
+                gcode.append(f"G1 X{end_x:.4f} Y{end_y:.4f} F{self.feed_rate}  ; Cut through tab")
+
+                # Retract after each tab
+                gcode.append(f"G0 Z{self.safe_height:.4f}  ; Retract")
+                gcode.append("")
 
         return gcode
 
