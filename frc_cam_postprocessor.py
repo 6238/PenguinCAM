@@ -117,6 +117,9 @@ class FRCPostProcessor:
         self.tab_height = 0.1  # How much material to leave in tab (inches) - per team standards
         self.num_tabs = 4  # Number of tabs around perimeter
 
+        # Tube facing parameters
+        self.tube_facing_offset = 0.125  # Amount to remove when squaring tube ends (inches)
+
     def apply_material_preset(self, material: str):
         """
         Apply a material preset to set feeds, speeds, and ramp angles.
@@ -1986,7 +1989,7 @@ class FRCPostProcessor:
             )
 
             # First side: face back to leave wall_thickness for second side
-            y_offset_phase1 = self.material_thickness
+            y_offset_phase1 = self.tube_facing_offset
             for line in facing_toolpath:
                 adjusted_line = self._adjust_y_coordinate(line, y_offset_phase1)
                 gcode.append(adjusted_line)
@@ -1998,7 +2001,7 @@ class FRCPostProcessor:
         z_offset = tube_height - self.material_thickness
         gcode.append(f'( Z offset: +{z_offset:.3f}" [tube_height - wall_thickness] )')
         # Y offset for first face: matches facing offset so holes align with face
-        y_offset_first_face = self.material_thickness if square_end else 0.0
+        y_offset_first_face = self.tube_facing_offset if square_end else 0.0
         gcode.append(f'( Y offset: +{y_offset_first_face:.3f}" [rough end will be milled back] )')
         gcode.append('')
         gcode.extend(self._generate_toolpath_gcode(skip_perimeter=True, z_offset=z_offset, y_offset=y_offset_first_face))
@@ -2312,7 +2315,7 @@ class FRCPostProcessor:
         # Calculate Y position for cut
         if phase == 1:
             # Phase 1: Cut at tube_length + facing offset + tool radius compensation
-            y_cut = tube_length + self.material_thickness + self.tool_radius
+            y_cut = tube_length + self.tube_facing_offset + self.tool_radius
             z_start = tube_height  # Top of tube (tube sits on sacrifice board at Z=0)
             gcode.append(f'( Cut to length at Y={y_cut:.4f}" [Phase 1: before flip] )')
         else:
