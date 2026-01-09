@@ -115,8 +115,8 @@ class TestHoleClassification(unittest.TestCase):
             {'center': (2, 2), 'radius': 0.05, 'diameter': 0.1},  # 0.1" < 0.1884" - skip
         ]
         self.pp.classify_holes()
-        self.assertEqual(len(self.pp.bearing_holes), 1)
-        self.assertEqual(self.pp.bearing_holes[0]['center'], (1, 1))
+        self.assertEqual(len(self.pp.holes), 1)
+        self.assertEqual(self.pp.holes[0]['center'], (1, 1))
 
     def test_all_large_holes_are_kept(self):
         self.pp.circles = [
@@ -125,7 +125,7 @@ class TestHoleClassification(unittest.TestCase):
             {'center': (3, 3), 'radius': 0.375, 'diameter': 0.75},
         ]
         self.pp.classify_holes()
-        self.assertEqual(len(self.pp.bearing_holes), 3)
+        self.assertEqual(len(self.pp.holes), 3)
 
     def test_holes_at_exactly_min_millable_are_kept(self):
         # Holes at exactly min_millable_hole are kept (code uses < not <=)
@@ -134,7 +134,7 @@ class TestHoleClassification(unittest.TestCase):
             {'center': (1, 1), 'radius': exact_min / 2, 'diameter': exact_min},
         ]
         self.pp.classify_holes()
-        self.assertEqual(len(self.pp.bearing_holes), 1)
+        self.assertEqual(len(self.pp.holes), 1)
 
 
 class TestHoleSorting(unittest.TestCase):
@@ -153,7 +153,7 @@ class TestHoleSorting(unittest.TestCase):
         self.pp.classify_holes()
 
         # Should be sorted by X first, then Y
-        centers = [h['center'] for h in self.pp.bearing_holes]
+        centers = [h['center'] for h in self.pp.holes]
         self.assertEqual(centers[0], (1, 1))  # x=1, y=1
         self.assertEqual(centers[1], (1, 3))  # x=1, y=3
         self.assertEqual(centers[2], (3, 2))  # x=3
@@ -164,8 +164,8 @@ class TestHoleSorting(unittest.TestCase):
             {'center': (5, 5), 'radius': 0.25, 'diameter': 0.5},
         ]
         self.pp.classify_holes()
-        self.assertEqual(len(self.pp.bearing_holes), 1)
-        self.assertEqual(self.pp.bearing_holes[0]['center'], (5, 5))
+        self.assertEqual(len(self.pp.holes), 1)
+        self.assertEqual(self.pp.holes[0]['center'], (5, 5))
 
 
 class TestPocketCircularDetection(unittest.TestCase):
