@@ -1931,67 +1931,6 @@ class FRCPostProcessor:
 
         return gcode
 
-    def _scale_tube_facing_toolpath(self, tube_width: float, tube_height: float) -> list[str]:
-        """
-        Scale the Fusion 360 reference toolpath (1x1 tube) to match actual tube dimensions.
-        Also replaces feed rates with material-specific values.
-
-        Args:
-            tube_width: Target tube width in inches
-            tube_height: Target tube height in inches
-
-        Returns:
-            List of scaled G-code lines
-        """
-        from tube_facing_toolpath import TUBE_FACING_TOOLPATH_1X1
-
-        # Scale factors (reference is 1x1 tube)
-        x_scale = tube_width / 1.0
-        z_scale = tube_height / 1.0
-
-        scaled_lines = []
-
-        for line in TUBE_FACING_TOOLPATH_1X1.split('\n'):
-            line = line.strip()
-            if not line:
-                continue
-
-            # Parse and scale coordinates
-            def scale_coord(match):
-                axis = match.group(1)
-                value = float(match.group(2))
-
-                if axis == 'X' or axis == 'I':
-                    # Scale X and I (X-axis arc offsets)
-                    scaled = value * x_scale
-                elif axis == 'Z' or axis == 'K':
-                    # Scale Z and K (Z-axis arc offsets)
-                    scaled = value * z_scale
-                else:
-                    # Y and J stay the same (depth into material)
-                    scaled = value
-
-                return f'{axis}{scaled:.4f}'
-
-            # Replace all coordinate values
-            scaled_line = re.sub(r'([XYZIJK])(-?\d+\.?\d*)', scale_coord, line)
-
-            # Replace feed rates with material-specific values
-            # F75 (plunge/ramp) -> use ramp_feed_rate
-            # F100 (plunge) -> use plunge_rate
-            # F24 (slow arc) -> use feed_rate * 0.5
-            # No F code -> leave as-is
-            if 'F75' in scaled_line:
-                scaled_line = re.sub(r'F75\.?', f'F{self.ramp_feed_rate:.1f}', scaled_line)
-            elif 'F100' in scaled_line:
-                scaled_line = re.sub(r'F100\.?', f'F{self.plunge_rate:.1f}', scaled_line)
-            elif 'F24' in scaled_line:
-                scaled_line = re.sub(r'F24\.?', f'F{self.feed_rate * 0.5:.1f}', scaled_line)
-
-            scaled_lines.append(scaled_line)
-
-        return scaled_lines
-
     def _generate_tube_facing_toolpath(self, tube_width: float, tube_height: float,
                                        tool_radius: float, stepover: float,
                                        stepdown: float, facing_depth: float,
@@ -2017,15 +1956,6 @@ class FRCPostProcessor:
             List of G-code lines for the facing operation
         """
         return self._generate_parametric_tube_facing(tube_width, tube_height, phase)
-
-    def _generate_roughing_passes(self, *args, **kwargs):
-        """Deprecated - kept for compatibility. Use _generate_tube_facing_toolpath instead."""
-        return []
-
-    def _generate_finishing_pass(self, *args, **kwargs):
-        """Deprecated - kept for compatibility. Use _generate_tube_facing_toolpath instead."""
-        return []
-
 
     def generate_tube_facing_gcode(self, output_file: str, tube_size: str = '1x1'):
         """
