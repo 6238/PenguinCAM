@@ -2291,14 +2291,12 @@ class FRCPostProcessor:
         gcode.append('( Pattern is X-mirrored [tube flipped end-for-end] so holes align opposite )')
         z_offset = tube_height - self.material_thickness
         gcode.append(f'( Z offset: +{z_offset:.3f}" [tube_height - wall_thickness] )')
-        # Y offset: -1/16" (-0.0625") to shift back after flip
-        # Phase 1 shifted +0.0625", Phase 2 shifts -0.0625" to return work zero to origin
-        y_offset_phase2 = -0.0625 if square_end else 0.0
-        gcode.append(f'( Y offset: {y_offset_phase2:.4f}" [shift back to origin] )')
+        # Y offset: 0 for Phase 2 - work zero is re-established after flip, face is at Y=0"
+        y_offset_phase2 = 0.0
+        gcode.append(f'( Y offset: {y_offset_phase2:.4f}" [face at Y=0, no offset needed] )')
         gcode.append('')
 
         # Mirror X coordinates around tube centerline (tube flipped end-for-end)
-        # Apply negative Y offset to bring work coordinates back to zero
         mirrored_toolpath = self._generate_toolpath_gcode_mirrored_x(
             z_offset=z_offset, tube_width=tube_width, y_offset=y_offset_phase2
         )
