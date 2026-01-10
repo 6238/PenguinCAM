@@ -6,3 +6,7 @@ interface HTMLElement {
 interface Element {
   style?: any;
 }
+
+interface Window {
+  DxfParser: any;
+}
