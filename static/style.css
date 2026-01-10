@@ -704,12 +704,20 @@
             font-size: 0.9rem;
         }
 
-        .rotation-display {
-            color: var(--primary);
-            font-weight: 600;
+        .rotation-input {
+            width: 60px;
+            padding: 8px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--surface);
+            color: var(--text);
             font-size: 1rem;
-            min-width: 40px;
             text-align: center;
+        }
+
+        .rotation-input:focus {
+            outline: none;
+            border-color: var(--primary);
         }
 
         .icon-button:hover {

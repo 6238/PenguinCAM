@@ -229,8 +229,8 @@
                         <div class="setup-controls">
                             <div class="control-group">
                                 <label>Rotation:</label>
-                                <button class="icon-button" id="rotateBtn">↻ Rotate 90° CW</button>
-                                <span id="rotationDisplay" class="rotation-display">0°</span>
+                                <input type="number" id="rotationInput" class="rotation-input" value="0" min="0" max="359" step="1" title="Rotation angle in degrees">
+                                <button class="icon-button" id="optimizeRotationBtn" title="Find rotation with smallest bounding box">⊡ Min</button>
                             </div>
                         </div>
                     </div>

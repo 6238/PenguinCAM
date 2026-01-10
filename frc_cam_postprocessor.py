@@ -118,7 +118,7 @@ class FRCPostProcessor:
         self.num_tabs = 4  # Number of tabs around perimeter
 
         # Tube facing parameters
-        self.tube_facing_offset = 0.125  # Amount to remove when squaring tube ends (inches)
+        self.tube_facing_offset = 0.0625  # Hole offset to align with faced surface at Y=+1/16" (inches)
 
     def apply_material_preset(self, material: str):
         """
