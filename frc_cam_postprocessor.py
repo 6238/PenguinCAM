@@ -118,7 +118,7 @@ class FRCPostProcessor:
         self.num_tabs = 4  # Number of tabs around perimeter
 
         # Tube facing parameters
-        self.tube_facing_offset = 0.125  # Amount to remove when squaring tube ends (inches)
+        self.tube_facing_offset = 0.0625  # Hole offset to align with faced surface at Y=+1/16" (inches)
 
     def apply_material_preset(self, material: str):
         """
@@ -1681,10 +1681,10 @@ class FRCPostProcessor:
         """
         if tube_size == '1x1':
             return (1.0, 1.0)
+        elif tube_size == '2x1' or tube_size == '2x1-flat':
+            return (2.0, 1.0)  # Flat: wide width, short height (most common)
         elif tube_size == '2x1-standing':
             return (1.0, 2.0)  # Standing: narrow width, tall height
-        elif tube_size == '2x1-flat':
-            return (2.0, 1.0)  # Flat: wide width, short height
         elif tube_size == '1.5x1.5':
             return (1.5, 1.5)
         elif tube_size == '2x2':
@@ -1693,99 +1693,271 @@ class FRCPostProcessor:
             # Default to 1x1 if unknown
             return (1.0, 1.0)
 
-    def _scale_tube_facing_toolpath(self, tube_width: float, tube_height: float) -> list[str]:
+    def _generate_parametric_tube_facing(self, tube_width: float, tube_height: float,
+                                          phase: int = 1) -> list[str]:
         """
-        Scale the Fusion 360 reference toolpath (1x1 tube) to match actual tube dimensions.
-        Also replaces feed rates with material-specific values.
+        Generate tube facing toolpath - face the end of box tubing.
+
+        Squares the end of box tubing with one vertical plunge and two
+        horizontal passes (roughing + finishing).
+
+        Coordinate system (tube lying horizontal, end facing spindle):
+        - X: across tube width (cut direction)
+        - Z: tube height (plunge direction, vertical)
+        - Y: facing depth (material removal from tube end, negative = into tube)
+
+        Phase 1 (first end):
+        - Roughing tool edge at Y=+0.05"
+        - Finishing tool edge at Y=+0.0625"
+
+        Phase 2 (after flip):
+        - Roughing tool edge at Y=-0.0125"
+        - Finishing tool edge at Y=0"
 
         Args:
-            tube_width: Target tube width in inches
-            tube_height: Target tube height in inches
-
-        Returns:
-            List of scaled G-code lines
-        """
-        from tube_facing_toolpath import TUBE_FACING_TOOLPATH_1X1
-
-        # Scale factors (reference is 1x1 tube)
-        x_scale = tube_width / 1.0
-        z_scale = tube_height / 1.0
-
-        scaled_lines = []
-
-        for line in TUBE_FACING_TOOLPATH_1X1.split('\n'):
-            line = line.strip()
-            if not line:
-                continue
-
-            # Parse and scale coordinates
-            def scale_coord(match):
-                axis = match.group(1)
-                value = float(match.group(2))
-
-                if axis == 'X' or axis == 'I':
-                    # Scale X and I (X-axis arc offsets)
-                    scaled = value * x_scale
-                elif axis == 'Z' or axis == 'K':
-                    # Scale Z and K (Z-axis arc offsets)
-                    scaled = value * z_scale
-                else:
-                    # Y and J stay the same (depth into material)
-                    scaled = value
-
-                return f'{axis}{scaled:.4f}'
-
-            # Replace all coordinate values
-            scaled_line = re.sub(r'([XYZIJK])(-?\d+\.?\d*)', scale_coord, line)
-
-            # Replace feed rates with material-specific values
-            # F75 (plunge/ramp) -> use ramp_feed_rate
-            # F100 (plunge) -> use plunge_rate
-            # F24 (slow arc) -> use feed_rate * 0.5
-            # No F code -> leave as-is
-            if 'F75' in scaled_line:
-                scaled_line = re.sub(r'F75\.?', f'F{self.ramp_feed_rate:.1f}', scaled_line)
-            elif 'F100' in scaled_line:
-                scaled_line = re.sub(r'F100\.?', f'F{self.plunge_rate:.1f}', scaled_line)
-            elif 'F24' in scaled_line:
-                scaled_line = re.sub(r'F24\.?', f'F{self.feed_rate * 0.5:.1f}', scaled_line)
-
-            scaled_lines.append(scaled_line)
-
-        return scaled_lines
-
-    def _generate_tube_facing_toolpath(self, tube_width: float, tube_height: float,
-                                       tool_radius: float, stepover: float,
-                                       stepdown: float, facing_depth: float,
-                                       finish_allowance: float) -> list[str]:
-        """
-        Generate complete tube facing toolpath by scaling Fusion 360 reference toolpath.
-
-        The reference toolpath is from Fusion 360 for a 1x1 tube. We scale it to match
-        the actual tube dimensions. Other parameters are unused but kept for API compatibility.
-
-        Args:
-            tube_width: Width of tube (X dimension) in inches
-            tube_height: Height of tube (Z dimension) in inches
-            tool_radius: Unused (toolpath has its own tool compensation)
-            stepover: Unused
-            stepdown: Unused
-            facing_depth: Unused
-            finish_allowance: Unused
+            tube_width: Tube width in inches (X dimension)
+            tube_height: Tube height in inches (Z dimension, typically 1" or 2")
+            phase: 1 for first end (with stepover), 2 for second end (no stepover)
 
         Returns:
             List of G-code lines for the facing operation
         """
-        return self._scale_tube_facing_toolpath(tube_width, tube_height)
+        gcode = []
+        tool_radius = self.tool_diameter / 2.0
 
-    def _generate_roughing_passes(self, *args, **kwargs):
-        """Deprecated - kept for compatibility. Use _generate_tube_facing_toolpath instead."""
-        return []
+        # Cutting parameters
+        total_depth = tube_height / 2 + 0.005  # Just over half the tube height (half + 5 thou)
+        wall_thickness = self.material_thickness  # Wall thickness of box tubing
 
-    def _generate_finishing_pass(self, *args, **kwargs):
-        """Deprecated - kept for compatibility. Use _generate_tube_facing_toolpath instead."""
-        return []
+        # Roughing: respects flute length limit (0.3" max per pass)
+        # 1" tube (0.505"): 2 passes, 2" tube (1.005"): 4 passes
+        max_roughing_depth = 0.3
+        num_roughing_passes = max(1, int(math.ceil(total_depth / max_roughing_depth)))
+        roughing_depth_per_pass = total_depth / num_roughing_passes
 
+        # Finishing: light stepover allows deeper passes (0.51" max per pass)
+        # 1" tube (0.505"): 1 pass, 2" tube (1.005"): 2 passes
+        max_finishing_depth = 0.51
+        num_finishing_passes = max(1, int(math.ceil(total_depth / max_finishing_depth)))
+        finishing_depth_per_pass = total_depth / num_finishing_passes
+
+        # Tool edge positions for each phase (these are the final face positions)
+        if phase == 1:
+            # Phase 1: Roughing at +0.05", finishing at +0.0625"
+            roughing_tool_edge = 0.05
+            finishing_tool_edge = 0.0625
+        else:
+            # Phase 2: Roughing at -0.0125", finishing at 0"
+            roughing_tool_edge = -0.0125
+            finishing_tool_edge = 0.0
+
+        # Arc clearing parameters (needed to calculate roughing_y offset)
+        arc_advance = 0.04  # How far each arc advances in X
+        arc_radius = 0.05  # Arc radius
+        half_advance = arc_advance / 2
+        j_offset = math.sqrt(arc_radius**2 - half_advance**2)
+
+        # Tool CENTER positions for tube facing:
+        # - Coordinate system: +Y is INTO the tube (toward tube body)
+        # - Kept material (tube body) is at +Y, tube face is at Y≈0
+        # - Tool's +Y edge (toward tube body) defines the face position
+        #
+        # With positive J, G3 (CCW) arc goes through TOP of circle (max Y).
+        # Arc center Y = roughing_y + j_offset
+        # Top of circle Y = center_y + arc_radius = roughing_y + j_offset + arc_radius
+        #
+        # At arc CHORD (start/end): tool center Y = roughing_y
+        # At arc PEAK (top of circle): tool center Y = roughing_y + j_offset + arc_radius
+        #
+        # The PEAK is where the tool cuts deepest into the tube (maximum +Y edge).
+        # Roughing should never exceed roughing_tool_edge, so we set PEAK at that limit.
+        #
+        # For roughing +Y edge at PEAK to equal roughing_tool_edge:
+        #   (roughing_y + j_offset + arc_radius) + tool_radius = roughing_tool_edge
+        #   roughing_y = roughing_tool_edge - tool_radius - j_offset - arc_radius
+        roughing_y = roughing_tool_edge - tool_radius - j_offset - arc_radius
+        finishing_y = finishing_tool_edge - tool_radius
+
+        # X positions (tool edge 0.05" from material edge)
+        clearance = tool_radius + 0.05
+        start_x = tube_width + clearance  # Far side
+        end_x = -clearance  # Near side
+
+        # Z positions
+        z_top = tube_height  # Top of tube
+        z_safe = tube_height + 0.25  # Safe height above tube
+        z_final = z_top - total_depth  # Final depth (just over half height)
+
+        chord_face = roughing_y + tool_radius  # Face position at chord (start/end of arc)
+        gcode.append(f'( Tube facing: {tube_width:.2f}" wide x {tube_height:.2f}" tall )')
+        gcode.append(f'( Tool: {self.tool_diameter:.3f}" )')
+        gcode.append(f'( Total depth: {total_depth:.3f}" )')
+        gcode.append(f'( Roughing: {num_roughing_passes} passes of {roughing_depth_per_pass:.3f}" each, +Y edge at Y={roughing_tool_edge:.4f}" )')
+        gcode.append(f'( Finishing: {num_finishing_passes} passes of {finishing_depth_per_pass:.3f}" each, +Y edge at Y={finishing_tool_edge:.4f}" )')
+
+        # === ROUGHING PASSES ===
+        arc_feed = self.feed_rate
+
+        gcode.append('( === ROUGHING PASSES === )')
+        gcode.append(f'( {num_roughing_passes} depth passes with arc clearing )')
+
+        # Calculate wall boundaries for subsequent passes (box tubing is hollow)
+        # Back wall (far side): from start_x to inner edge
+        back_wall_inner_x = tube_width - wall_thickness - clearance
+        # Front wall (near side): from inner edge to end_x
+        front_wall_inner_x = wall_thickness + clearance
+
+        for pass_num in range(num_roughing_passes):
+            z_cut = z_top - (pass_num + 1) * roughing_depth_per_pass
+
+            if pass_num == 0:
+                # First pass: full arc pattern across entire width
+                gcode.append(f'( Roughing pass {pass_num + 1}/{num_roughing_passes} to Z={z_cut:.3f}" - full width )')
+
+                # Position at start
+                gcode.append(f'G0 X{start_x:.4f} Y{roughing_y:.4f}')
+                gcode.append(f'G0 Z{z_safe:.4f}')
+
+                # Plunge to cut depth
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
+
+                # Arc clearing pattern across tube width
+                gcode.append(f'G1 F{arc_feed}')
+                current_x = start_x
+                while current_x > end_x + arc_advance:
+                    next_x = current_x - arc_advance
+                    gcode.append(f'G3 X{next_x:.4f} Y{roughing_y:.4f} I{-half_advance:.4f} J{j_offset:.4f}')
+                    current_x = next_x
+
+                # Final linear move to end position if needed
+                if current_x > end_x:
+                    gcode.append(f'G1 X{end_x:.4f}')
+
+                # Retract after this pass
+                gcode.append(f'G0 Z{z_safe:.4f}')
+            else:
+                # Subsequent passes: cut walls only, rapid across hollow middle
+                gcode.append(f'( Roughing pass {pass_num + 1}/{num_roughing_passes} to Z={z_cut:.3f}" - walls only )')
+
+                # Position at start (back wall)
+                gcode.append(f'G0 X{start_x:.4f} Y{roughing_y:.4f}')
+                gcode.append(f'G0 Z{z_safe:.4f}')
+
+                # Plunge to cut depth
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
+
+                # Arc clearing through back wall only
+                gcode.append(f'G1 F{arc_feed}')
+                current_x = start_x
+                while current_x > back_wall_inner_x + arc_advance:
+                    next_x = current_x - arc_advance
+                    gcode.append(f'G3 X{next_x:.4f} Y{roughing_y:.4f} I{-half_advance:.4f} J{j_offset:.4f}')
+                    current_x = next_x
+
+                # Finish back wall
+                if current_x > back_wall_inner_x:
+                    gcode.append(f'G1 X{back_wall_inner_x:.4f}')
+
+                # Retract, rapid across hollow middle
+                gcode.append(f'G0 Z{z_safe:.4f}')
+                gcode.append(f'G0 X{front_wall_inner_x:.4f}')
+
+                # Plunge inside (material already removed on pass 1)
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
+
+                # Arc clearing through front wall
+                gcode.append(f'G1 F{arc_feed}')
+                current_x = front_wall_inner_x
+                while current_x > end_x + arc_advance:
+                    next_x = current_x - arc_advance
+                    gcode.append(f'G3 X{next_x:.4f} Y{roughing_y:.4f} I{-half_advance:.4f} J{j_offset:.4f}')
+                    current_x = next_x
+
+                # Final linear move to end position if needed
+                if current_x > end_x:
+                    gcode.append(f'G1 X{end_x:.4f}')
+
+                # Retract after this pass
+                gcode.append(f'G0 Z{z_safe:.4f}')
+
+        gcode.append(f'( Roughing complete: {num_roughing_passes} passes )')
+
+        # === FINISHING PASSES ===
+        stepover = finishing_tool_edge - roughing_tool_edge
+        gcode.append('( === FINISHING PASSES === )')
+        gcode.append(f'( {num_finishing_passes} depth passes, stepover {stepover:.4f}" )')
+
+        for pass_num in range(num_finishing_passes):
+            z_cut = z_top - (pass_num + 1) * finishing_depth_per_pass
+
+            if pass_num == 0:
+                # First pass: full cut across entire width
+                gcode.append(f'( Finishing pass {pass_num + 1}/{num_finishing_passes} to Z={z_cut:.3f}" - full width )')
+
+                # Position for finishing
+                gcode.append(f'G0 X{start_x:.4f} Y{finishing_y:.4f}')
+
+                # Plunge to cut depth
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
+
+                # Single horizontal cut across
+                gcode.append(f'G1 X{end_x:.4f} F{self.feed_rate}')
+
+                # Retract
+                gcode.append(f'G0 Z{z_safe:.4f}')
+            else:
+                # Subsequent passes: cut walls only, rapid across hollow middle
+                gcode.append(f'( Finishing pass {pass_num + 1}/{num_finishing_passes} to Z={z_cut:.3f}" - walls only )')
+
+                # Position at start (back wall)
+                gcode.append(f'G0 X{start_x:.4f} Y{finishing_y:.4f}')
+
+                # Plunge to cut depth
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
+
+                # Cut through back wall only
+                gcode.append(f'G1 X{back_wall_inner_x:.4f} F{self.feed_rate}')
+
+                # Retract, rapid across hollow middle
+                gcode.append(f'G0 Z{z_safe:.4f}')
+                gcode.append(f'G0 X{front_wall_inner_x:.4f}')
+
+                # Plunge inside (material already removed on pass 1)
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
+
+                # Cut through front wall
+                gcode.append(f'G1 X{end_x:.4f} F{self.feed_rate}')
+
+                # Retract
+                gcode.append(f'G0 Z{z_safe:.4f}')
+
+        return gcode
+
+    def _generate_tube_facing_toolpath(self, tube_width: float, tube_height: float,
+                                       tool_radius: float, stepover: float,
+                                       stepdown: float, facing_depth: float,
+                                       finish_allowance: float, phase: int = 1) -> list[str]:
+        """
+        Generate complete tube facing toolpath using parametric side-entry approach.
+
+        This method generates toolpaths from scratch for any tube size using
+        side-entry (plunge outside tube, arc into material) and contour clearing.
+        The approach allows for 0.55" deep facing in a single pass per Z level.
+
+        Args:
+            tube_width: Width of tube (X dimension) in inches
+            tube_height: Height of tube (Z dimension) in inches
+            tool_radius: Unused (calculated internally)
+            stepover: Unused (uses stepover_percentage)
+            stepdown: Unused (single pass per Z level)
+            facing_depth: Unused (hardcoded to 0.55")
+            finish_allowance: Unused
+            phase: 1 for first end (with stepover), 2 for second end (no stepover)
+
+        Returns:
+            List of G-code lines for the facing operation
+        """
+        return self._generate_parametric_tube_facing(tube_width, tube_height, phase)
 
     def generate_tube_facing_gcode(self, output_file: str, tube_size: str = '1x1'):
         """
@@ -1812,20 +1984,24 @@ class FRCPostProcessor:
         facing_depth = 0.25  # How much material to remove
         finish_allowance = 0.01  # Leave this much for finish pass
 
-        # Generate complete facing toolpath for one half
-        toolpath_lines = self._generate_tube_facing_toolpath(
+        # Generate separate toolpaths for each phase
+        # Phase 1: Roughing and finishing at different Y depths (stepover)
+        # Phase 2: Roughing and finishing at same Y depth (no stepover)
+        phase1_toolpath = self._generate_tube_facing_toolpath(
             tube_width, tube_height, tool_radius, stepover,
-            stepdown, facing_depth, finish_allowance
+            stepdown, facing_depth, finish_allowance, phase=1
+        )
+        phase2_toolpath = self._generate_tube_facing_toolpath(
+            tube_width, tube_height, tool_radius, stepover,
+            stepdown, facing_depth, finish_allowance, phase=2
         )
 
-        # Y offsets for each pass
-        # The toolpath's finishing cut is at Y=-tool_radius, which
-        # places the tube face at Y=0 after tool compensation.
-        # Pass 1: Shift +0.125" so tube face ends at Y=+0.125"
-        # Pass 2: Shift -0.125" so tube face ends at Y=-0.125"
-        # After flip, total material removed = 0.250", both ends squared
-        pass1_y_offset = 0.125
-        pass2_y_offset = -0.125
+        # Tool edge positions are now directly specified in the toolpath generation
+        # Phase 1: Roughing at +0.05", Finishing at +0.0625"
+        # Phase 2: Roughing at -0.0125", Finishing at 0"
+        # No Y offset needed - positions are absolute
+        pass1_y_offset = 0
+        pass2_y_offset = 0
 
         gcode = []
 
@@ -1842,7 +2018,7 @@ class FRCPostProcessor:
         gcode.append('( SETUP INSTRUCTIONS: )')
         gcode.append('( 1. Mount tube in jig with end facing user )')
         gcode.append('( 2. Verify G55 is set to jig origin )')
-        gcode.append('( 3. Z=0 is at bottom of tube (jig surface) )')
+        gcode.append('( 3. Z=0 is at bottom of tube [jig surface] )')
         gcode.append('( 4. Y=0 is at nominal end face of tube )')
         gcode.append('( )')
 
@@ -1871,8 +2047,8 @@ class FRCPostProcessor:
         gcode.append('G0 X0 Y0  ; Rapid to work origin')
         gcode.append('')
 
-        # Add toolpath with Pass 1 Y offset
-        for line in toolpath_lines:
+        # Add Phase 1 toolpath with Pass 1 Y offset
+        for line in phase1_toolpath:
             line = line.strip()
             if line and not line.startswith('G52'):
                 adjusted_line = self._adjust_y_coordinate(line, pass1_y_offset)
@@ -1906,8 +2082,8 @@ class FRCPostProcessor:
         gcode.append('G0 X0 Y0  ; Rapid to work origin')
         gcode.append('')
 
-        # Add toolpath with Pass 2 Y offset
-        for line in toolpath_lines:
+        # Add Phase 2 toolpath with Pass 2 Y offset (no stepover - same Y for roughing/finishing)
+        for line in phase2_toolpath:
             line = line.strip()
             if line and not line.startswith('G52'):
                 adjusted_line = self._adjust_y_coordinate(line, pass2_y_offset)
@@ -2052,11 +2228,10 @@ class FRCPostProcessor:
                 stepdown, facing_depth, finish_allowance
             )
 
-            # First side: face back to leave wall_thickness for second side
-            y_offset_phase1 = self.tube_facing_offset
+            # Facing toolpath Y coordinates are already absolute (calculated in _generate_parametric_tube_facing)
+            # No additional offset needed - the face positions are set by roughing_tool_edge/finishing_tool_edge
             for line in facing_toolpath:
-                adjusted_line = self._adjust_y_coordinate(line, y_offset_phase1)
-                gcode.append(adjusted_line)
+                gcode.append(line)
             gcode.append('')
 
         # Machine the pattern on this face
@@ -2112,26 +2287,29 @@ class FRCPostProcessor:
 
             facing_toolpath = self._generate_tube_facing_toolpath(
                 tube_width, tube_height, tool_radius, stepover,
-                stepdown, facing_depth, finish_allowance
+                stepdown, facing_depth, finish_allowance, phase=2
             )
 
-            # Second side: face to final depth
-            y_offset_phase2 = 0.0
+            # Facing toolpath Y coordinates are already absolute (calculated in _generate_parametric_tube_facing)
+            # No additional offset needed - the face positions are set by roughing_tool_edge/finishing_tool_edge
             for line in facing_toolpath:
-                adjusted_line = self._adjust_y_coordinate(line, y_offset_phase2)
-                gcode.append(adjusted_line)
+                gcode.append(line)
             gcode.append('')
 
-        # Machine the pattern on this face (X-mirrored, Y stays same)
+        # Machine the pattern on this face (X-mirrored, Y offset for facing alignment)
         gcode.append('( Machine pattern on second face - X-mirrored )')
         gcode.append('( Pattern is X-mirrored [tube flipped end-for-end] so holes align opposite )')
         z_offset = tube_height - self.material_thickness
         gcode.append(f'( Z offset: +{z_offset:.3f}" [tube_height - wall_thickness] )')
-        gcode.append('( Y coordinates: holes at Y=0, face milled back to expose them )')
+        # Y offset: 0 for Phase 2 - work zero is re-established after flip, face is at Y=0"
+        y_offset_phase2 = 0.0
+        gcode.append(f'( Y offset: {y_offset_phase2:.4f}" [face at Y=0, no offset needed] )')
         gcode.append('')
 
         # Mirror X coordinates around tube centerline (tube flipped end-for-end)
-        mirrored_toolpath = self._generate_toolpath_gcode_mirrored_x(z_offset=z_offset, tube_width=tube_width)
+        mirrored_toolpath = self._generate_toolpath_gcode_mirrored_x(
+            z_offset=z_offset, tube_width=tube_width, y_offset=y_offset_phase2
+        )
         gcode.extend(mirrored_toolpath)
 
         # === CUT TO LENGTH - PHASE 2 ===
@@ -2186,7 +2364,7 @@ class FRCPostProcessor:
             print(f'  -- Flip tube 180° around Y-axis (M0) --')
             print(f'  Phase 2: Machine pattern on opposite face (mirrored)')
         if cut_to_length:
-            print(f'  Cut to length: Not yet implemented')
+            print(f'  Cut to length: Y={tube_length}" (each phase)')
 
     def _generate_toolpath_gcode(self, skip_perimeter: bool = False, z_offset: float = 0.0, y_offset: float = 0.0) -> list[str]:
         """
@@ -2225,7 +2403,8 @@ class FRCPostProcessor:
 
         return toolpath
 
-    def _generate_toolpath_gcode_mirrored_x(self, z_offset: float = 0.0, tube_width: float = 1.0) -> list[str]:
+    def _generate_toolpath_gcode_mirrored_x(self, z_offset: float = 0.0, tube_width: float = 1.0,
+                                            y_offset: float = 0.0) -> list[str]:
         """
         Generate toolpath G-code for mirrored features (second tube face).
 
@@ -2240,12 +2419,13 @@ class FRCPostProcessor:
 
         When flipping a tube 180° around Y-axis (end-for-end):
         - Feature X coordinates mirror around centerline: X_new = tube_width - X_old
-        - Feature Y coordinates stay the same
+        - Feature Y coordinates get offset to account for facing: Y_new = Y_old + y_offset
         - Toolpaths are regenerated from mirrored geometry
 
         Args:
             z_offset: Offset to add to all Z coordinates (for tube mode)
             tube_width: Width of tube face for mirroring X around centerline
+            y_offset: Offset to add to all Y coordinates (for tube facing alignment)
         """
         toolpath = []
 
@@ -2256,7 +2436,7 @@ class FRCPostProcessor:
                 original_cx = hole['center'][0]
                 original_cy = hole['center'][1]
                 mirrored_cx = tube_width - original_cx
-                mirrored_cy = original_cy  # Y stays the same
+                mirrored_cy = original_cy + y_offset  # Apply Y offset for facing alignment
 
                 # Generate fresh toolpath for the mirrored hole
                 # This preserves helical entry + outward spiral safety
@@ -2267,8 +2447,8 @@ class FRCPostProcessor:
         # Generate toolpaths for mirrored pockets
         if hasattr(self, 'pockets') and self.pockets:
             for pocket in self.pockets:
-                # Mirror all pocket points around tube centerline
-                mirrored_pocket = [(tube_width - x, y) for x, y in pocket]
+                # Mirror all pocket points around tube centerline and apply Y offset
+                mirrored_pocket = [(tube_width - x, y + y_offset) for x, y in pocket]
                 toolpath.extend(self._generate_pocket_gcode(mirrored_pocket))
 
         # Perimeter is not machined on tube faces (skip)
@@ -2363,11 +2543,19 @@ class FRCPostProcessor:
     def _generate_cut_to_length(self, tube_width: float, tube_height: float,
                                  tube_length: float, phase: int) -> list[str]:
         """
-        Generate G-code to cut tube to length.
+        Generate G-code to cut tube to length using arc clearing pattern.
 
-        Cuts across the width of the tube at Y=tube_length (plus offset for phase 1).
-        Makes multiple passes stepping down through the wall thickness, then trims
-        the sides down to just past halfway.
+        Uses the same technique as tube facing:
+        - Arc clearing pattern for roughing (reduces chip load)
+        - Straight finishing pass
+        - Single plunge to just over half tube height
+        - 1.5x tool diameter clearance outside tube
+        - Phase-specific Y offsets for alignment
+
+        Coordinate system:
+        - X: across tube width (cut direction)
+        - Z: tube height (plunge direction, vertical)
+        - Y: along tube length (cut position)
 
         Args:
             tube_width: Width of tube (X dimension)
@@ -2379,8 +2567,27 @@ class FRCPostProcessor:
             List of G-code lines
         """
         gcode = []
+        tool_radius = self.tool_diameter / 2.0
 
-        # Calculate Y position for cut
+        # Depth parameters: just over half the tube height (half + 5 thou), with multiple passes
+        total_depth = tube_height / 2 + 0.005
+        wall_thickness = self.material_thickness  # Wall thickness of box tubing
+
+        # Roughing: respects flute length limit (0.3" max per pass)
+        # 1" tube (0.505"): 2 passes, 2" tube (1.005"): 4 passes
+        max_roughing_depth = 0.3
+        num_roughing_passes = max(1, int(math.ceil(total_depth / max_roughing_depth)))
+        roughing_depth_per_pass = total_depth / num_roughing_passes
+
+        # Finishing: light stepover allows deeper passes (0.51" max per pass)
+        # 1" tube (0.505"): 1 pass, 2" tube (1.005"): 2 passes
+        max_finishing_depth = 0.51
+        num_finishing_passes = max(1, int(math.ceil(total_depth / max_finishing_depth)))
+        finishing_depth_per_pass = total_depth / num_finishing_passes
+
+        # Y offset for cut position
+        # Phase 1: +0.0625" to account for facing material removal from front
+        # Phase 2: 0 (coordinate system reset after flip)
         if phase == 1:
             # Phase 1: Cut at tube_length + facing offset + tool radius compensation
             y_cut = tube_length + self.tube_facing_offset + self.tool_radius
@@ -2392,109 +2599,191 @@ class FRCPostProcessor:
             z_start = tube_height  # Top of tube
             gcode.append(f'( Cut to length at Y={y_cut:.4f}" [Phase 2: after flip] )')
 
-        # Cut parameters
-        plunge_clearance = 0.03  # Extra clearance to avoid plunging into stock with runout
-        x_start = -(self.tool_diameter + plunge_clearance)
-        x_end = tube_width + self.tool_diameter + plunge_clearance
-        stepdown = 0.0625  # 1/16" per pass
+        # For cut to length, the tool's -Y edge defines the kept part boundary
+        # (opposite of tube facing where +Y edge defines the face)
+        # Roughing leaves 0.0125" for finishing pass
+        finish_stock = 0.0125  # Material left for finishing
 
-        # Calculate ramp distance using material-specific ramp angle
-        ramp_start_height = z_start + self.ramp_start_clearance
+        # Arc clearing parameters (same as tube facing)
+        arc_advance = 0.04  # How far each arc advances in X
+        arc_radius = 0.05  # Arc radius
+        half_advance = arc_advance / 2
+        j_offset = math.sqrt(arc_radius**2 - half_advance**2)
 
-        gcode.append(f'( Cutting side-to-side from X={x_start:.4f}" to X={x_end:.4f}" )')
-        gcode.append(f'( Using ramp entry at {self.ramp_angle}° angle )')
-        gcode.append(f'( Stepdown: {stepdown}" per pass through wall thickness )')
+        # Tool CENTER positions for cut to length:
+        # - The kept part is at Y < y_cut, waste is at Y > y_cut
+        # - Tool's -Y edge (toward kept part) defines the cut boundary
+        #
+        # With positive J, G3 (CCW) arc goes through TOP of circle (max Y, into waste).
+        # Arc center Y = roughing_y + j_offset
+        # Top of circle Y = center_y + arc_radius = roughing_y + j_offset + arc_radius
+        #
+        # At arc CHORD (start/end): tool center Y = roughing_y, tool -Y edge = roughing_y - tool_radius
+        # At arc PEAK (top of circle): tool center Y = roughing_y + j_offset + arc_radius (in waste)
+        #
+        # The CHORD is where tool -Y edge is closest to kept part (the limit for roughing).
+        # For roughing to leave finish_stock, the -Y edge at chord = y_cut + finish_stock:
+        #   roughing_y - tool_radius = y_cut + finish_stock
+        #   roughing_y = y_cut + finish_stock + tool_radius
+        roughing_y = y_cut + finish_stock + tool_radius
+        finishing_y = y_cut + tool_radius
+
+        # Calculate peak position for comments
+        peak_y = roughing_y + j_offset + arc_radius  # Tool center at peak
+        peak_minus_edge = peak_y - tool_radius  # Tool -Y edge at peak (in waste)
+
+        # X positions (tool edge 0.05" from material edge)
+        clearance = tool_radius + 0.05
+        start_x = tube_width + clearance  # Far side
+        end_x = -clearance  # Near side
+
+        # Z positions
+        z_top = tube_height  # Top of tube
+        z_safe = tube_height + 0.25  # Safe height above tube
+        z_final = z_top - total_depth  # Final depth (just over half height)
+
+        gcode.append(f'( Tube width: {tube_width:.2f}" x height: {tube_height:.2f}" )')
+        gcode.append(f'( Tool: {self.tool_diameter:.3f}" )')
+        gcode.append(f'( Total depth: {total_depth:.3f}" )')
+        gcode.append(f'( Roughing: {num_roughing_passes} passes of {roughing_depth_per_pass:.3f}" each, leaves {finish_stock:.4f}" for finishing )')
+        gcode.append(f'( Finishing: {num_finishing_passes} passes of {finishing_depth_per_pass:.3f}" each, -Y edge at Y={y_cut:.4f}" )')
         gcode.append('')
 
-        # Position at start
-        gcode.append(f'G0 Z{self.safe_height:.4f}  ; Retract')
-        gcode.append(f'G0 X{x_start:.4f} Y{y_cut:.4f}  ; Position at cut start')
+        # === ROUGHING PASSES ===
+        # Use arc clearing pattern to reduce chip load
+        arc_feed = self.feed_rate  # Full feed rate
 
-        # Cut through the wall thickness with ramping
-        current_z = z_start
-        pass_num = 1
+        gcode.append('( === ROUGHING PASSES === )')
+        gcode.append(f'( {num_roughing_passes} depth passes with arc clearing )')
 
-        while current_z > (z_start - self.material_thickness - 0.01):  # Cut through wall + small margin
-            target_z = max(current_z - stepdown, z_start - self.material_thickness - 0.01)
-            ramp_depth = ramp_start_height - target_z
-            ramp_distance = ramp_depth / math.tan(math.radians(self.ramp_angle))
+        # Calculate wall boundaries for subsequent passes (box tubing is hollow)
+        # Back wall (far side): from start_x to inner edge
+        back_wall_inner_x = tube_width - wall_thickness - clearance
+        # Front wall (near side): from inner edge to end_x
+        front_wall_inner_x = wall_thickness + clearance
 
-            # Ensure ramp distance doesn't exceed cut width
-            cut_width = x_end - x_start
-            if ramp_distance > cut_width:
-                # If ramp is too long, use multiple passes or steeper angle
-                ramp_distance = cut_width * 0.9  # Use 90% of width for ramp
+        for pass_num in range(num_roughing_passes):
+            z_cut = z_top - (pass_num + 1) * roughing_depth_per_pass
 
-            gcode.append(f'( Pass {pass_num}: ramping to Z={target_z:.4f}" over {ramp_distance:.4f}" )')
+            if pass_num == 0:
+                # First pass: full arc pattern across entire width
+                gcode.append(f'( Roughing pass {pass_num + 1}/{num_roughing_passes} to Z={z_cut:.3f}" - full width )')
 
-            # Approach above ramp start
-            gcode.append(f'G0 Z{ramp_start_height:.4f}  ; Approach to ramp start')
+                # Position at start (combine X Y for cleaner G-code)
+                gcode.append(f'G0 X{start_x:.4f} Y{roughing_y:.4f}')
+                gcode.append(f'G0 Z{z_safe:.4f}')
 
-            # Calculate ramp end position
-            x_ramp_end = x_start + ramp_distance
+                # Plunge to cut depth
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
 
-            # Ramp down while cutting
-            gcode.append(f'G1 X{x_ramp_end:.4f} Z{target_z:.4f} F{self.ramp_feed_rate}  ; Ramp down')
+                # Arc clearing pattern across tube width
+                gcode.append(f'G1 F{arc_feed}')
+                current_x = start_x
+                while current_x > end_x + arc_advance:
+                    next_x = current_x - arc_advance
+                    gcode.append(f'G3 X{next_x:.4f} Y{roughing_y:.4f} I{-half_advance:.4f} J{j_offset:.4f}')
+                    current_x = next_x
 
-            # Continue cutting to end at full depth
-            gcode.append(f'G1 X{x_end:.4f} F{self.feed_rate}  ; Cut to end')
+                # Final linear move to end position if needed
+                if current_x > end_x:
+                    gcode.append(f'G1 X{end_x:.4f}')
 
-            # Finishing pass: cut back from right to left at full depth
-            gcode.append(f'G1 X{x_start:.4f} F{self.feed_rate}  ; Finishing pass (right to left)')
+                # Retract after this pass
+                gcode.append(f'G0 Z{z_safe:.4f}')
+            else:
+                # Subsequent passes: cut walls only, rapid across hollow middle
+                gcode.append(f'( Roughing pass {pass_num + 1}/{num_roughing_passes} to Z={z_cut:.3f}" - walls only )')
 
-            # Retract
-            gcode.append(f'G0 Z{self.safe_height:.4f}  ; Retract')
-            gcode.append(f'G0 X{x_start:.4f}  ; Return to start X')
+                # Position at start (back wall)
+                gcode.append(f'G0 X{start_x:.4f} Y{roughing_y:.4f}')
+                gcode.append(f'G0 Z{z_safe:.4f}')
 
-            current_z = target_z
-            pass_num += 1
+                # Plunge to cut depth
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
 
-        gcode.append('')
+                # Arc clearing through back wall only
+                gcode.append(f'G1 F{arc_feed}')
+                current_x = start_x
+                while current_x > back_wall_inner_x + arc_advance:
+                    next_x = current_x - arc_advance
+                    gcode.append(f'G3 X{next_x:.4f} Y{roughing_y:.4f} I{-half_advance:.4f} J{j_offset:.4f}')
+                    current_x = next_x
 
-        # Trim sides down to just past halfway
-        # Cut through wall thickness on left and right sides
-        z_halfway = tube_height / 2.0 - 0.05  # Just past halfway
-        gcode.append(f'( Trim sides down to Z={z_halfway:.4f}" [just past halfway] )')
-        gcode.append(f'( Cut through wall thickness: {self.material_thickness:.4f}" )')
+                # Finish back wall
+                if current_x > back_wall_inner_x:
+                    gcode.append(f'G1 X{back_wall_inner_x:.4f}')
 
-        # Trim left side (cut through wall from outside to inside)
-        x_left_start = -(self.tool_diameter + plunge_clearance)
-        x_left_end = self.material_thickness + self.tool_diameter + plunge_clearance
-        gcode.append(f'( Trim left side: X from {x_left_start:.4f}" through wall to {x_left_end:.4f}" )')
-        gcode.append(f'G0 Y{y_cut:.4f}')
-        gcode.append(f'G0 X{x_left_start:.4f}')
+                # Retract, rapid across hollow middle
+                gcode.append(f'G0 Z{z_safe:.4f}')
+                gcode.append(f'G0 X{front_wall_inner_x:.4f}')
 
-        current_z = z_start
-        while current_z > z_halfway:
-            target_z = max(current_z - stepdown, z_halfway)
-            gcode.append(f'G0 Z{target_z + 0.1:.4f}')
-            gcode.append(f'G1 Z{target_z:.4f} F{self.plunge_rate}')
-            gcode.append(f'G1 X{x_left_end:.4f} F{self.feed_rate}  ; Cut through left wall')
-            gcode.append(f'G0 Z{self.safe_height:.4f}')
-            gcode.append(f'G0 X{x_left_start:.4f}')
-            current_z = target_z
+                # Plunge inside (material already removed on pass 1)
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
 
-        gcode.append('')
+                # Arc clearing through front wall
+                gcode.append(f'G1 F{arc_feed}')
+                current_x = front_wall_inner_x
+                while current_x > end_x + arc_advance:
+                    next_x = current_x - arc_advance
+                    gcode.append(f'G3 X{next_x:.4f} Y{roughing_y:.4f} I{-half_advance:.4f} J{j_offset:.4f}')
+                    current_x = next_x
 
-        # Trim right side (mirror of left side, offset by tube_width)
-        # Start outside right wall and cut inward through wall thickness
-        x_right_start = tube_width + self.tool_diameter + plunge_clearance
-        x_right_end = tube_width - self.material_thickness - self.tool_diameter - plunge_clearance
-        gcode.append(f'( Trim right side: X from {x_right_start:.4f}" through wall to {x_right_end:.4f}" )')
-        gcode.append(f'G0 X{x_right_start:.4f}')
+                # Final linear move to end position if needed
+                if current_x > end_x:
+                    gcode.append(f'G1 X{end_x:.4f}')
 
-        current_z = z_start
-        while current_z > z_halfway:
-            target_z = max(current_z - stepdown, z_halfway)
-            gcode.append(f'G0 Z{target_z + 0.1:.4f}')
-            gcode.append(f'G1 Z{target_z:.4f} F{self.plunge_rate}')
-            gcode.append(f'G1 X{x_right_end:.4f} F{self.feed_rate}  ; Cut through right wall')
-            gcode.append(f'G0 Z{self.safe_height:.4f}')
-            gcode.append(f'G0 X{x_right_start:.4f}')
-            current_z = target_z
+                # Retract after this pass
+                gcode.append(f'G0 Z{z_safe:.4f}')
 
-        gcode.append(f'G0 Z{self.safe_height:.4f}')
-        gcode.append('')
+        gcode.append(f'( Roughing complete: {num_roughing_passes} passes )')
+
+        # === FINISHING PASSES ===
+        gcode.append('( === FINISHING PASSES === )')
+        gcode.append(f'( {num_finishing_passes} depth passes, removes {finish_stock:.4f}" )')
+
+        for pass_num in range(num_finishing_passes):
+            z_cut = z_top - (pass_num + 1) * finishing_depth_per_pass
+
+            if pass_num == 0:
+                # First pass: full cut across entire width
+                gcode.append(f'( Finishing pass {pass_num + 1}/{num_finishing_passes} to Z={z_cut:.3f}" - full width )')
+
+                # Position for finishing
+                gcode.append(f'G0 X{start_x:.4f} Y{finishing_y:.4f}')
+
+                # Plunge to cut depth
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
+
+                # Single horizontal cut across
+                gcode.append(f'G1 X{end_x:.4f} F{self.feed_rate}')
+
+                # Retract
+                gcode.append(f'G0 Z{z_safe:.4f}')
+            else:
+                # Subsequent passes: cut walls only, rapid across hollow middle
+                gcode.append(f'( Finishing pass {pass_num + 1}/{num_finishing_passes} to Z={z_cut:.3f}" - walls only )')
+
+                # Position at start (back wall)
+                gcode.append(f'G0 X{start_x:.4f} Y{finishing_y:.4f}')
+
+                # Plunge to cut depth
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
+
+                # Cut through back wall only
+                gcode.append(f'G1 X{back_wall_inner_x:.4f} F{self.feed_rate}')
+
+                # Retract, rapid across hollow middle
+                gcode.append(f'G0 Z{z_safe:.4f}')
+                gcode.append(f'G0 X{front_wall_inner_x:.4f}')
+
+                # Plunge inside (material already removed on pass 1)
+                gcode.append(f'G0 Z{z_cut:.4f}')  # Rapid plunge (in air)
+
+                # Cut through front wall
+                gcode.append(f'G1 X{end_x:.4f} F{self.feed_rate}')
+
+                # Retract
+                gcode.append(f'G0 Z{z_safe:.4f}')
 
         return gcode
 
@@ -2527,7 +2816,7 @@ def main():
     parser.add_argument('--square-end', action='store_true',
                        help='Square the tube end before machining pattern (tube-pattern mode)')
     parser.add_argument('--cut-to-length', action='store_true',
-                       help='Machine tube to length after pattern (tube-pattern mode - not yet implemented)')
+                       help='Machine tube to length after pattern (tube-pattern mode)')
     parser.add_argument('--material', type=str, default='plywood',
                        choices=['plywood', 'aluminum', 'polycarbonate'],
                        help='Material preset (default: plywood) - sets feeds, speeds, and ramp angles')
