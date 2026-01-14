@@ -802,6 +802,7 @@ class FRCPostProcessor:
 
         # Spindle on
         gcode.append(f"S{self.spindle_speed} M3  ; Spindle on at {self.spindle_speed} RPM")
+        gcode.append("M7  ; Air blast on")
         gcode.append("G4 P2  ; Wait 2 seconds for spindle to reach speed")
         gcode.append("")
 
@@ -842,6 +843,7 @@ class FRCPostProcessor:
         gcode.append("(===== FINISH =====)")
         gcode.append(f"G0 Z{self.safe_height:.4f}  ; Move to safe height")
         gcode.append("G53 G0 Z0.  ; Move to machine coordinate Z0 (safe clearance)")
+        gcode.append("M9  ; Air blast off")
         gcode.append("M5  ; Spindle off")
         gcode.append("G53 G0 X0.5 Y23.5  ; Move gantry to back of machine for easy access")
         gcode.append("M30  ; Program end")
@@ -1855,6 +1857,7 @@ class FRCPostProcessor:
         gcode.append('( Tool and spindle )')
         gcode.append('T1 M6')
         gcode.append(f'S{self.spindle_speed} M3')
+        gcode.append('M7  ; Air blast on')
         gcode.append('G4 P3.0')
         gcode.append('')
         gcode.append('G55  ; Use jig work coordinate system')
@@ -1880,6 +1883,7 @@ class FRCPostProcessor:
         gcode.append('( === PAUSE FOR TUBE FLIP === )')
         gcode.append('G53 G0 Z0.  ; Move to machine Z0 - safe clearance')
         gcode.append('G53 G0 X0.5 Y23.5  ; Park at back of machine')
+        gcode.append('M9  ; Air blast off')
         gcode.append('M5')
         gcode.append('G4 P5.0')
         gcode.append('')
@@ -1895,6 +1899,7 @@ class FRCPostProcessor:
         gcode.append('( Face from Y=-0.250 to Y=-0.125 )')
         gcode.append('')
         gcode.append(f'S{self.spindle_speed} M3')
+        gcode.append('M7  ; Air blast on')
         gcode.append('G4 P3.0')
         gcode.append('')
         gcode.append('G53 G0 Z0.  ; Move to machine Z0 - safe clearance')
@@ -1913,7 +1918,9 @@ class FRCPostProcessor:
         gcode.append('( === PROGRAM END === )')
         gcode.append('G53 G0 Z0.  ; Move to machine Z0 (safe clearance)')
         gcode.append('G53 G0 X0.5 Y23.5  ; Park at back of machine')
+        gcode.append('M9  ; Air blast off')
         gcode.append('M5')
+        gcode.append('G54  ; Reset to standard work coordinate system')
         gcode.append('M30')
 
         # Write to file
@@ -2001,6 +2008,7 @@ class FRCPostProcessor:
         gcode.append('( Tool and spindle )')
         gcode.append('T1 M6')
         gcode.append(f'S{self.spindle_speed} M3')
+        gcode.append('M7  ; Air blast on')
         gcode.append('G4 P3.0')
         gcode.append('')
         gcode.append('G55  ; Use jig work coordinate system')
@@ -2074,6 +2082,7 @@ class FRCPostProcessor:
         gcode.append('( === PAUSE FOR TUBE FLIP === )')
         gcode.append('G53 G0 Z0.  ; Safe height')
         gcode.append('G53 G0 X0.5 Y23.5  ; Park at back')
+        gcode.append('M9  ; Air blast off')
         gcode.append('M5')
         gcode.append('G4 P5.0')
         gcode.append('')
@@ -2088,6 +2097,7 @@ class FRCPostProcessor:
         gcode.append('( === PHASE 2: SECOND FACE === )')
         gcode.append('')
         gcode.append(f'S{self.spindle_speed} M3')
+        gcode.append('M7  ; Air blast on')
         gcode.append('G4 P3.0')
         gcode.append('')
 
@@ -2136,7 +2146,9 @@ class FRCPostProcessor:
         gcode.append('( === PROGRAM END === )')
         gcode.append('G53 G0 Z0.')
         gcode.append('G53 G0 X0.5 Y23.5')
+        gcode.append('M9  ; Air blast off')
         gcode.append('M5')
+        gcode.append('G54  ; Reset to standard work coordinate system')
         gcode.append('M30')
 
         # Write to file
