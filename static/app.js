@@ -101,6 +101,8 @@ document.addEventListener('DOMContentLoaded', () => {
         let suggestedFilename = null; // For Onshape imports
         let gcodeContent = null;
         let outputFilename = null;
+        let perimeterPoints = null; // Perimeter outline from postprocessor for 3D visualization
+        let tubeDimensions = null; // Tube width/length from backend for 3D visualization
         let scene, camera, renderer, controls;
         let optimalCameraPosition = { x: 10, y: 10, z: 10 };
         let optimalLookAtPosition = { x: 0, y: 0, z: 0 };
@@ -286,6 +288,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 gcodeContent = data.gcode;
                 outputFilename = data.filename;
+                perimeterPoints = data.perimeter_points || null; // Store perimeter for 3D visualization
+
+                // Store tube dimensions from backend for accurate 3D visualization
+                if (data.parameters && data.parameters.tube_width !== undefined) {
+                    tubeDimensions = {
+                        width: data.parameters.tube_width,
+                        length: data.parameters.tube_length,
+                        height: data.parameters.tube_height
+                    };
+                    console.log('Tube dimensions from backend:', tubeDimensions);
+                } else {
+                    tubeDimensions = null;
+                }
 
                 // Show results
                 showResults(data);
@@ -420,7 +435,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // DXF Setup State
         let currentMode = 'setup'; // 'setup' or 'preview'
         let dxfGeometry = null; // Parsed DXF geometry
-        let rotationAngle = 0; // 0, 90, 180, 270 degrees
+        let rotationAngle = 0; // Rotation in degrees (0-359)
         let dxfCanvas2D = null;
         let dxfCtx2D = null;
         let dxfBounds = null;
@@ -495,16 +510,125 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             // Setup event listeners
-            document.getElementById('rotateBtn').addEventListener('click', () => {
-                rotationAngle = (rotationAngle + 90) % 360;
-                document.getElementById('rotationDisplay').textContent = rotationAngle + '°';
+            const rotationInput = document.getElementById('rotationInput');
+
+            rotationInput.addEventListener('input', () => {
+                let value = parseInt(rotationInput.value) || 0;
+                // Normalize to 0-359 range
+                value = ((value % 360) + 360) % 360;
+                rotationAngle = value;
                 renderDxfSetup();
             });
-            
+
+            rotationInput.addEventListener('blur', () => {
+                // Normalize displayed value on blur
+                rotationInput.value = rotationAngle;
+            });
+
+            document.getElementById('optimizeRotationBtn').addEventListener('click', () => {
+                if (!dxfGeometry || !dxfBounds) return;
+
+                const optimalAngle = findMinAreaRotation();
+                rotationAngle = optimalAngle;
+                rotationInput.value = rotationAngle;
+                renderDxfSetup();
+            });
+
             // Mode toggle listeners
             document.querySelectorAll('.mode-button').forEach(btn => {
                 btn.addEventListener('click', () => switchMode(btn.dataset.mode));
             });
+        }
+
+        // Find the rotation angle that minimizes bounding box area
+        function findMinAreaRotation() {
+            if (!dxfGeometry || !dxfBounds) return 0;
+
+            // Helper to rotate a point
+            function rotatePoint(x, y, angle) {
+                const rad = -angle * Math.PI / 180;
+                const cos = Math.cos(rad);
+                const sin = Math.sin(rad);
+                return {
+                    x: x * cos - y * sin,
+                    y: x * sin + y * cos
+                };
+            }
+
+            // Calculate bounding box area for a given angle
+            function getBoundsArea(angle) {
+                let minX = Infinity, maxX = -Infinity;
+                let minY = Infinity, maxY = -Infinity;
+
+                function updateBounds(x, y) {
+                    const dx = x - dxfBounds.centerX;
+                    const dy = y - dxfBounds.centerY;
+                    const rotated = rotatePoint(dx, dy, angle);
+                    minX = Math.min(minX, rotated.x);
+                    maxX = Math.max(maxX, rotated.x);
+                    minY = Math.min(minY, rotated.y);
+                    maxY = Math.max(maxY, rotated.y);
+                }
+
+                function addCircleBounds(cx, cy, radius) {
+                    const dx = cx - dxfBounds.centerX;
+                    const dy = cy - dxfBounds.centerY;
+                    const rotatedCenter = rotatePoint(dx, dy, angle);
+                    minX = Math.min(minX, rotatedCenter.x - radius);
+                    maxX = Math.max(maxX, rotatedCenter.x + radius);
+                    minY = Math.min(minY, rotatedCenter.y - radius);
+                    maxY = Math.max(maxY, rotatedCenter.y + radius);
+                }
+
+                if (dxfGeometry.entities) {
+                    dxfGeometry.entities.forEach(entity => {
+                        switch(entity.type) {
+                            case 'CIRCLE':
+                                addCircleBounds(entity.center.x, entity.center.y, entity.radius);
+                                break;
+                            case 'ARC':
+                                addCircleBounds(entity.center.x, entity.center.y, entity.radius);
+                                break;
+                            case 'LINE':
+                                entity.vertices.forEach(v => updateBounds(v.x, v.y));
+                                break;
+                            case 'LWPOLYLINE':
+                            case 'POLYLINE':
+                                if (entity.vertices) {
+                                    entity.vertices.forEach(v => updateBounds(v.x, v.y));
+                                }
+                                break;
+                            case 'SPLINE':
+                                if (entity.controlPoints) {
+                                    entity.controlPoints.forEach(p => updateBounds(p.x, p.y));
+                                }
+                                break;
+                            case 'ELLIPSE':
+                                const majorRadius = Math.sqrt(entity.majorAxisEndPoint.x ** 2 + entity.majorAxisEndPoint.y ** 2);
+                                addCircleBounds(entity.center.x, entity.center.y, majorRadius);
+                                break;
+                        }
+                    });
+                }
+
+                const width = maxX - minX;
+                const height = maxY - minY;
+                return width * height;
+            }
+
+            // Search angles 0-179 (180° gives same bounding box dimensions)
+            let minArea = Infinity;
+            let bestAngle = 0;
+
+            for (let angle = 0; angle < 180; angle++) {
+                const area = getBoundsArea(angle);
+                if (area < minArea) {
+                    minArea = area;
+                    bestAngle = angle;
+                }
+            }
+
+            return bestAngle;
         }
 
         // Parse DXF geometry from file using dxf-parser library
@@ -801,20 +925,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const availWidth = width - 2 * padding;
             const availHeight = height - 2 * padding;
             
-            // Apply rotation to bounds for calculating display size
-            let displayWidth = dxfBounds.width;
-            let displayHeight = dxfBounds.height;
-            if (rotationAngle === 90 || rotationAngle === 270) {
-                [displayWidth, displayHeight] = [displayHeight, displayWidth];
-            }
-            
-            const scale = Math.min(availWidth / displayWidth, availHeight / displayHeight);
-            
-            // Center position (no rotation of entire canvas)
-            const centerX = width / 2;
-            const centerY = height / 2;
-            
-            // Helper functions to transform coordinates
+            // Helper function to rotate a point around the part center
             function rotatePoint(x, y, angle) {
                 const rad = -angle * Math.PI / 180; // Negative for clockwise
                 const cos = Math.cos(rad);
@@ -824,19 +935,103 @@ document.addEventListener('DOMContentLoaded', () => {
                     y: x * sin + y * cos
                 };
             }
-            
+
+            // Calculate actual bounding box of rotated geometry
+            // by iterating through all points and finding min/max
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+
+            function updateBounds(x, y) {
+                // Translate to center, rotate, then track bounds
+                const dx = x - dxfBounds.centerX;
+                const dy = y - dxfBounds.centerY;
+                const rotated = rotatePoint(dx, dy, rotationAngle);
+                minX = Math.min(minX, rotated.x);
+                maxX = Math.max(maxX, rotated.x);
+                minY = Math.min(minY, rotated.y);
+                maxY = Math.max(maxY, rotated.y);
+            }
+
+            // Process all geometry to find rotated bounds
+            // For circles/arcs: rotate center first, then add ±radius to rotated center
+            // For lines/polylines: rotate each vertex
+            function addCircleBounds(cx, cy, radius) {
+                // Rotate the center point
+                const dx = cx - dxfBounds.centerX;
+                const dy = cy - dxfBounds.centerY;
+                const rotatedCenter = rotatePoint(dx, dy, rotationAngle);
+                // Circle bounds are at rotated center ± radius
+                minX = Math.min(minX, rotatedCenter.x - radius);
+                maxX = Math.max(maxX, rotatedCenter.x + radius);
+                minY = Math.min(minY, rotatedCenter.y - radius);
+                maxY = Math.max(maxY, rotatedCenter.y + radius);
+            }
+
+            if (dxfGeometry.entities) {
+                dxfGeometry.entities.forEach(entity => {
+                    switch(entity.type) {
+                        case 'CIRCLE':
+                            addCircleBounds(entity.center.x, entity.center.y, entity.radius);
+                            break;
+                        case 'ARC':
+                            // Use full circle bounds as conservative estimate
+                            addCircleBounds(entity.center.x, entity.center.y, entity.radius);
+                            break;
+                        case 'LINE':
+                            entity.vertices.forEach(v => updateBounds(v.x, v.y));
+                            break;
+                        case 'LWPOLYLINE':
+                        case 'POLYLINE':
+                            if (entity.vertices) {
+                                entity.vertices.forEach(v => updateBounds(v.x, v.y));
+                            }
+                            break;
+                        case 'SPLINE':
+                            if (entity.controlPoints) {
+                                entity.controlPoints.forEach(p => updateBounds(p.x, p.y));
+                            }
+                            break;
+                        case 'ELLIPSE':
+                            const majorRadius = Math.sqrt(entity.majorAxisEndPoint.x ** 2 + entity.majorAxisEndPoint.y ** 2);
+                            addCircleBounds(entity.center.x, entity.center.y, majorRadius);
+                            break;
+                    }
+                });
+            }
+
+            // Calculate display dimensions from rotated bounds
+            let displayWidth = maxX - minX;
+            let displayHeight = maxY - minY;
+
+            // Fallback if no geometry found
+            if (!isFinite(displayWidth) || displayWidth <= 0) {
+                displayWidth = dxfBounds.width;
+                displayHeight = dxfBounds.height;
+            }
+
+            const scale = Math.min(availWidth / displayWidth, availHeight / displayHeight);
+
+            // Canvas center
+            const centerX = width / 2;
+            const centerY = height / 2;
+
+            // Center of the rotated bounding box (used to keep origin fixed)
+            const boundsCenterX = (minX + maxX) / 2;
+            const boundsCenterY = (minY + maxY) / 2;
+
             function toCanvasCoords(x, y) {
-                // Translate to center origin
+                // Translate to part center
                 let dx = x - dxfBounds.centerX;
                 let dy = y - dxfBounds.centerY;
-                
+
                 // Apply rotation
                 const rotated = rotatePoint(dx, dy, rotationAngle);
-                
-                // Scale and flip Y, then translate to canvas center
+
+                // Offset by bounds center so the BOUNDING BOX is centered on canvas
+                // This keeps the origin (bottom-left of box) at a fixed position
                 return {
-                    x: centerX + rotated.x * scale,
-                    y: centerY - rotated.y * scale
+                    x: centerX + (rotated.x - boundsCenterX) * scale,
+                    y: centerY - (rotated.y - boundsCenterY) * scale
                 };
             }
             
@@ -922,17 +1117,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
             
-            // Calculate bounding box corners in SCREEN coordinates (NOT rotated)
-            const boxLeft = centerX - (displayWidth * scale) / 2;
-            const boxRight = centerX + (displayWidth * scale) / 2;
-            const boxTop = centerY - (displayHeight * scale) / 2;
-            const boxBottom = centerY + (displayHeight * scale) / 2;
+            // Calculate bounding box corners - box is centered on canvas
+            const boxLeft = centerX - displayWidth * scale / 2;
+            const boxRight = centerX + displayWidth * scale / 2;
+            const boxTop = centerY - displayHeight * scale / 2;
+            const boxBottom = centerY + displayHeight * scale / 2;
             
             // Draw bounding box (dashed, NOT rotated)
             ctx.strokeStyle = '#8B949E';
             ctx.lineWidth = 2;
             ctx.setLineDash([5, 5]);
-            ctx.strokeRect(boxLeft, boxTop, displayWidth * scale, displayHeight * scale);
+            ctx.strokeRect(boxLeft, boxTop, boxRight - boxLeft, boxBottom - boxTop);
             ctx.setLineDash([]);
             
             // Draw origin marker at bottom-left (ALWAYS)
@@ -1093,6 +1288,298 @@ document.addEventListener('DOMContentLoaded', () => {
         function animate() {
             requestAnimationFrame(animate);
             renderer.render(scene, camera);
+        }
+
+        // Create 3D part geometry from DXF entities (for plates)
+        // Uses actual part outline from DXF polylines, with holes from circles
+        function createPartFromDxf(dxfData, thickness, gcodeMinX, gcodeMinY, gcodeMaxX, gcodeMaxY) {
+            console.log('createPartFromDxf: G-code bounds', { gcodeMinX, gcodeMinY, gcodeMaxX, gcodeMaxY });
+
+            // Calculate transformation from DXF coordinates to G-code coordinates
+            const dxfCenterX = dxfData ? (dxfData.minX + dxfData.maxX) / 2 : 0;
+            const dxfCenterY = dxfData ? (dxfData.minY + dxfData.maxY) / 2 : 0;
+            const gcodeCenterX = (gcodeMinX + gcodeMaxX) / 2;
+            const gcodeCenterY = (gcodeMinY + gcodeMaxY) / 2;
+            const rad = -rotationAngle * Math.PI / 180;
+
+            function transformDxfToGcode(x, y) {
+                let dx = x - dxfCenterX;
+                let dy = y - dxfCenterY;
+                const rotatedX = dx * Math.cos(rad) - dy * Math.sin(rad);
+                const rotatedY = dx * Math.sin(rad) + dy * Math.cos(rad);
+                return {
+                    x: rotatedX + gcodeCenterX,
+                    y: rotatedY + gcodeCenterY
+                };
+            }
+
+            // Find the outer perimeter from closed polylines
+            let outerShape = null;
+            let largestArea = 0;
+
+            if (dxfData && dxfData.entities) {
+                // Helper to check if a polyline is closed (by flag or by vertices)
+                function isPolylineClosed(poly) {
+                    if (!poly.vertices || poly.vertices.length < 3) return false;
+                    // Check closed flag
+                    if (poly.shape) return true;
+                    // Check if first and last vertices are the same (within tolerance)
+                    const first = poly.vertices[0];
+                    const last = poly.vertices[poly.vertices.length - 1];
+                    const tolerance = 0.001;
+                    return Math.abs(first.x - last.x) < tolerance && Math.abs(first.y - last.y) < tolerance;
+                }
+
+                // Look for LWPOLYLINE entities that are closed
+                const allPolylines = dxfData.entities.filter(e => e.type === 'LWPOLYLINE');
+                console.log('createPartFromDxf: Total polylines:', allPolylines.length);
+
+                const closedPolylines = allPolylines.filter(isPolylineClosed);
+                console.log('createPartFromDxf: Closed polylines:', closedPolylines.length);
+
+                // Find the largest closed polyline (outer perimeter)
+                for (const poly of closedPolylines) {
+                    // Calculate approximate area using bounding box
+                    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                    for (const v of poly.vertices) {
+                        minX = Math.min(minX, v.x);
+                        maxX = Math.max(maxX, v.x);
+                        minY = Math.min(minY, v.y);
+                        maxY = Math.max(maxY, v.y);
+                    }
+                    const area = (maxX - minX) * (maxY - minY);
+                    console.log('createPartFromDxf: Polyline with', poly.vertices.length, 'vertices, area:', area.toFixed(2));
+
+                    if (area > largestArea) {
+                        largestArea = area;
+                        // Create shape from this polyline
+                        outerShape = new THREE.Shape();
+                        const firstPt = transformDxfToGcode(poly.vertices[0].x, poly.vertices[0].y);
+                        outerShape.moveTo(firstPt.x, firstPt.y);
+                        for (let i = 1; i < poly.vertices.length; i++) {
+                            const pt = transformDxfToGcode(poly.vertices[i].x, poly.vertices[i].y);
+                            outerShape.lineTo(pt.x, pt.y);
+                        }
+                        outerShape.closePath();
+                    }
+                }
+            }
+
+            // Fallback: use perimeter points from postprocessor, or rectangular bounds
+            if (!outerShape) {
+                if (perimeterPoints && perimeterPoints.length > 2) {
+                    // Use perimeter points from postprocessor (already in G-code coordinates)
+                    console.log('createPartFromDxf: Using perimeter from postprocessor with', perimeterPoints.length, 'points');
+                    outerShape = new THREE.Shape();
+                    outerShape.moveTo(perimeterPoints[0][0], perimeterPoints[0][1]);
+                    for (let i = 1; i < perimeterPoints.length; i++) {
+                        outerShape.lineTo(perimeterPoints[i][0], perimeterPoints[i][1]);
+                    }
+                    outerShape.closePath();
+                } else {
+                    console.log('createPartFromDxf: No closed polyline or perimeter found, using rectangular bounds');
+                    console.log('createPartFromDxf: DXF entities:', dxfData?.entities?.map(e => e.type));
+                    outerShape = new THREE.Shape();
+                    outerShape.moveTo(gcodeMinX, gcodeMinY);
+                    outerShape.lineTo(gcodeMaxX, gcodeMinY);
+                    outerShape.lineTo(gcodeMaxX, gcodeMaxY);
+                    outerShape.lineTo(gcodeMinX, gcodeMaxY);
+                    outerShape.closePath();
+                }
+            } else {
+                console.log('createPartFromDxf: Using polyline outline with area', largestArea.toFixed(2));
+            }
+
+            // Add circles as holes from DXF, transformed to G-code coordinates
+            if (dxfData && dxfData.entities) {
+                const circles = dxfData.entities.filter(e => e.type === 'CIRCLE');
+                for (const circle of circles) {
+                    if (circle.center && circle.radius) {
+                        const transformed = transformDxfToGcode(circle.center.x, circle.center.y);
+                        const holePath = new THREE.Path();
+                        // true = clockwise (required for holes - opposite of outer shape)
+                        holePath.absarc(transformed.x, transformed.y, circle.radius, 0, Math.PI * 2, true);
+                        outerShape.holes.push(holePath);
+                    }
+                }
+                console.log('createPartFromDxf: Added', outerShape.holes.length, 'holes');
+            }
+
+            const geometry = new THREE.ExtrudeGeometry(outerShape, {
+                depth: thickness,
+                bevelEnabled: false
+            });
+
+            // Rotate so extrusion goes up (Y axis in Three.js)
+            // rotateX(-90°): (x, y, z) -> (x, z, -y)
+            // So shape at (gX, gY) with Z extrusion becomes (gX, 0..thickness, -gY)
+            geometry.rotateX(-Math.PI / 2);
+
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xC0C8D0,
+                metalness: 0.6,
+                roughness: 0.4,
+                side: THREE.DoubleSide
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            // No position offset needed - geometry is already at correct coordinates
+
+            return mesh;
+        }
+
+        // Create 3D tube geometry (hollow box tube with holes in top and bottom faces)
+        // Uses G-code bounds to ensure alignment with toolpath
+        // dxfData contains circles that represent holes to cut through walls
+        function createTubeGeometry(tubeWidth, tubeHeight, tubeLength, wallThickness, gcodeMinX, gcodeMinY, gcodeMaxX, gcodeMaxY, dxfData) {
+            if (!tubeWidth || !tubeHeight || !tubeLength || tubeWidth <= 0 || tubeHeight <= 0 || tubeLength <= 0) {
+                console.warn('Invalid tube dimensions:', { tubeWidth, tubeHeight, tubeLength });
+                return null;
+            }
+
+            console.log('createTubeGeometry:', { tubeWidth, tubeHeight, tubeLength, wallThickness });
+            console.log('createTubeGeometry G-code bounds:', { gcodeMinX, gcodeMinY, gcodeMaxX, gcodeMaxY });
+
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xC0C8D0,
+                metalness: 0.6,
+                roughness: 0.4,
+                side: THREE.DoubleSide
+            });
+
+            const group = new THREE.Group();
+
+            // Build tube from 4 wall panels:
+            // - Left and right walls: solid vertical panels
+            // - Top and bottom walls: horizontal panels with holes from DXF
+            // - No end caps: open ends show hollow interior
+            //
+            // Tube coordinate system (in Three.js space):
+            // - X: 0 to tubeWidth (matches G-code X)
+            // - Y: 0 to tubeHeight (tube height, vertical)
+            // - Z: 0 to -tubeLength (tube extends backward from front face)
+            //
+            // The G-code toolpath is at the front face (Z ≈ 0 in Three.js, Y ≈ 0 in G-code)
+            // G-code Y is small (facing depth) but tube extends full length backward
+
+            // Use actual tube dimensions, positioned at origin
+            // The tube should be at X=0 to tubeWidth, regardless of G-code toolpath bounds
+            // (G-code may have lead-in/out moves that extend beyond the tube)
+            const actualTubeMinX = 0;  // Tube starts at origin
+            const actualTubeMaxX = tubeWidth;  // Tube ends at tube width
+            const actualTubeMinY = 0;  // Front face at Y=0
+            const actualTubeMaxY = tubeLength;  // Tube extends to full length
+
+            console.log('createTubeGeometry: Actual tube bounds:', {
+                x: [actualTubeMinX, actualTubeMaxX],
+                y: [actualTubeMinY, actualTubeMaxY]
+            });
+
+            // Calculate transformation from DXF coordinates to tube coordinates
+            // DXF may be rotated and/or translated
+            const dxfCenterX = dxfData ? (dxfData.minX + dxfData.maxX) / 2 : 0;
+            const dxfCenterY = dxfData ? (dxfData.minY + dxfData.maxY) / 2 : 0;
+            // Transform to tube center (using actual tube bounds)
+            const tubeCenterX = (actualTubeMinX + actualTubeMaxX) / 2;
+            const tubeCenterY = (actualTubeMinY + actualTubeMaxY) / 2;
+            const rad = -rotationAngle * Math.PI / 180; // Negative for clockwise rotation
+
+            console.log('createTubeGeometry: DXF center', { dxfCenterX, dxfCenterY });
+            console.log('createTubeGeometry: Tube center', { tubeCenterX, tubeCenterY });
+            console.log('createTubeGeometry: Rotation angle', rotationAngle);
+
+            // Transform a point from DXF space to tube space
+            function transformDxfToTube(x, y) {
+                // Translate to DXF center
+                let dx = x - dxfCenterX;
+                let dy = y - dxfCenterY;
+                // Rotate
+                const rotatedX = dx * Math.cos(rad) - dy * Math.sin(rad);
+                const rotatedY = dx * Math.sin(rad) + dy * Math.cos(rad);
+                // Translate to tube center
+                return {
+                    x: rotatedX + tubeCenterX,
+                    y: rotatedY + tubeCenterY
+                };
+            }
+
+            // Helper: create a horizontal wall shape with holes from DXF circles
+            // Uses actual tube dimensions for the outer boundary
+            function createWallWithHoles() {
+                const shape = new THREE.Shape();
+                // Counter-clockwise outer boundary using actual tube dimensions
+                shape.moveTo(actualTubeMinX, actualTubeMinY);
+                shape.lineTo(actualTubeMaxX, actualTubeMinY);
+                shape.lineTo(actualTubeMaxX, actualTubeMaxY);
+                shape.lineTo(actualTubeMinX, actualTubeMaxY);
+                shape.closePath();
+
+                // Add circles from DXF as holes, transformed to tube coordinates
+                if (dxfData && dxfData.entities) {
+                    const circles = dxfData.entities.filter(e => e.type === 'CIRCLE');
+                    for (const circle of circles) {
+                        if (circle.center && circle.radius) {
+                            // Transform circle center from DXF to tube coordinates
+                            const transformed = transformDxfToTube(circle.center.x, circle.center.y);
+                            const holePath = new THREE.Path();
+                            // true = clockwise (required for holes - opposite of outer shape)
+                            holePath.absarc(transformed.x, transformed.y, circle.radius,
+                                           0, Math.PI * 2, true);
+                            shape.holes.push(holePath);
+                            console.log('Hole at DXF', circle.center, '-> tube', transformed);
+                        }
+                    }
+                }
+                return shape;
+            }
+
+            // LEFT WALL (solid) - vertical panel at tube left edge, full height
+            const leftGeom = new THREE.BoxGeometry(wallThickness, tubeHeight, tubeLength);
+            const leftMesh = new THREE.Mesh(leftGeom, material);
+            leftMesh.position.set(
+                actualTubeMinX + wallThickness / 2,
+                tubeHeight / 2,
+                -(actualTubeMinY + tubeLength / 2)
+            );
+            group.add(leftMesh);
+
+            // RIGHT WALL (solid) - vertical panel at tube right edge, full height
+            const rightGeom = new THREE.BoxGeometry(wallThickness, tubeHeight, tubeLength);
+            const rightMesh = new THREE.Mesh(rightGeom, material);
+            rightMesh.position.set(
+                actualTubeMaxX - wallThickness / 2,
+                tubeHeight / 2,
+                -(actualTubeMinY + tubeLength / 2)
+            );
+            group.add(rightMesh);
+
+            // TOP WALL (with holes) - horizontal panel at top of tube
+            const topShape = createWallWithHoles();
+            const topGeom = new THREE.ExtrudeGeometry(topShape, {
+                depth: wallThickness,
+                bevelEnabled: false
+            });
+            // Rotate so extrusion goes up (Y axis): (x, y, z) -> (x, z, -y)
+            topGeom.rotateX(-Math.PI / 2);
+            const topMesh = new THREE.Mesh(topGeom, material);
+            topMesh.position.set(0, tubeHeight - wallThickness, 0);
+            group.add(topMesh);
+            console.log('createTubeGeometry: Top wall has', topShape.holes.length, 'holes');
+
+            // BOTTOM WALL (with holes) - horizontal panel at Y = 0
+            const bottomShape = createWallWithHoles();
+            const bottomGeom = new THREE.ExtrudeGeometry(bottomShape, {
+                depth: wallThickness,
+                bevelEnabled: false
+            });
+            // Rotate so extrusion goes up (Y axis)
+            bottomGeom.rotateX(-Math.PI / 2);
+            const bottomMesh = new THREE.Mesh(bottomGeom, material);
+            bottomMesh.position.set(0, 0, 0);
+            group.add(bottomMesh);
+            console.log('createTubeGeometry: Bottom wall has', bottomShape.holes.length, 'holes');
+
+            return group;
         }
 
         function visualizeGcode(gcode) {
@@ -1276,32 +1763,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 parseFloat(document.getElementById('tubeHeight').value) :
                 materialThickness;
 
-            // Material boundaries (at material top surface)
-            const materialOutline = new THREE.Line(
-                new THREE.BufferGeometry().setFromPoints([
-                    new THREE.Vector3(minX, materialThickness, -minY),
-                    new THREE.Vector3(maxX, materialThickness, -minY),
-                    new THREE.Vector3(maxX, materialThickness, -maxY),
-                    new THREE.Vector3(minX, materialThickness, -maxY),
-                    new THREE.Vector3(minX, materialThickness, -minY)
-                ]),
-                new THREE.LineBasicMaterial({ color: 0x8B949E, linewidth: 1, opacity: 0.5, transparent: true })
-            );
-            scene.add(materialOutline);
+            // Material boundaries - only show for tubes (plates show actual part shape)
+            if (isAluminumTube) {
+                const materialOutline = new THREE.Line(
+                    new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(minX, materialThickness, -minY),
+                        new THREE.Vector3(maxX, materialThickness, -minY),
+                        new THREE.Vector3(maxX, materialThickness, -maxY),
+                        new THREE.Vector3(minX, materialThickness, -maxY),
+                        new THREE.Vector3(minX, materialThickness, -minY)
+                    ]),
+                    new THREE.LineBasicMaterial({ color: 0x8B949E, linewidth: 1, opacity: 0.5, transparent: true })
+                );
+                scene.add(materialOutline);
 
-            const sacrificeOutline = new THREE.Line(
-                new THREE.BufferGeometry().setFromPoints([
-                    new THREE.Vector3(minX, 0, -minY),
-                    new THREE.Vector3(maxX, 0, -minY),
-                    new THREE.Vector3(maxX, 0, -maxY),
-                    new THREE.Vector3(minX, 0, -maxY),
-                    new THREE.Vector3(minX, 0, -minY)
-                ]),
-                new THREE.LineBasicMaterial({ color: 0x8B949E, linewidth: 1, opacity: 0.3, transparent: true })
-            );
-            scene.add(sacrificeOutline);
+                const sacrificeOutline = new THREE.Line(
+                    new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(minX, 0, -minY),
+                        new THREE.Vector3(maxX, 0, -minY),
+                        new THREE.Vector3(maxX, 0, -maxY),
+                        new THREE.Vector3(minX, 0, -maxY),
+                        new THREE.Vector3(minX, 0, -minY)
+                    ]),
+                    new THREE.LineBasicMaterial({ color: 0x8B949E, linewidth: 1, opacity: 0.3, transparent: true })
+                );
+                scene.add(sacrificeOutline);
+            }
 
-            // Add stock material as semi-transparent solid
+            // Add 3D part geometry
             const stockWidth = maxX - minX;
             const stockDepth = maxY - minY;
             const stockHeight = stockHeightValue; // Use tube height for tubes, thickness for plates
@@ -1312,15 +1801,26 @@ document.addEventListener('DOMContentLoaded', () => {
             const stockSizeValue = document.getElementById('stockSizeValue');
 
             if (isAluminumTube) {
-                // For tube: show profile dimensions × length (no margin)
-                // Tube height from form input, tube width from DXF short dimension
-                const tubeHeightInput = parseFloat(document.getElementById('tubeHeight').value) || 1.0;
-                const dxfShort = dxfBounds ? Math.min(dxfBounds.width, dxfBounds.height) : Math.min(stockWidth, stockDepth);
-                const tubeLength = dxfBounds ? Math.max(dxfBounds.width, dxfBounds.height) : Math.max(stockWidth, stockDepth);
+                // For tube: use dimensions from backend if available, otherwise fallback to DXF bounds
+                let tubeWidthDisplay, tubeLengthDisplay, tubeHeightDisplay;
+
+                if (tubeDimensions) {
+                    // Use accurate dimensions from backend
+                    tubeWidthDisplay = tubeDimensions.width;
+                    tubeLengthDisplay = tubeDimensions.length;
+                    tubeHeightDisplay = tubeDimensions.height;
+                    console.log('Using tube dimensions from backend:', tubeDimensions);
+                } else {
+                    // Fallback to DXF bounds estimation
+                    const tubeHeightInput = parseFloat(document.getElementById('tubeHeight').value) || 1.0;
+                    tubeWidthDisplay = dxfBounds ? Math.min(dxfBounds.width, dxfBounds.height) : Math.min(stockWidth, stockDepth);
+                    tubeLengthDisplay = dxfBounds ? Math.max(dxfBounds.width, dxfBounds.height) : Math.max(stockWidth, stockDepth);
+                    tubeHeightDisplay = tubeHeightInput;
+                }
 
                 if (stockSizeDisplay && stockSizeValue) {
                     // Display as: width × height × length
-                    stockSizeValue.textContent = `${dxfShort.toFixed(0)}" × ${tubeHeightInput.toFixed(0)}" × ${tubeLength.toFixed(3)}"`;
+                    stockSizeValue.textContent = `${tubeWidthDisplay.toFixed(3)}" × ${tubeHeightDisplay.toFixed(3)}" × ${tubeLengthDisplay.toFixed(3)}"`;
                     stockSizeDisplay.style.display = 'flex';
                 }
             } else {
@@ -1351,26 +1851,54 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            const stockGeometry = new THREE.BoxGeometry(stockWidth, stockHeight, stockDepth);
-            const stockMaterial = new THREE.MeshStandardMaterial({
-                color: 0xE8F0FF, // Light blue-white (aluminum-ish)
-                transparent: true,
-                opacity: 0.15, // More transparent so toolpaths show through
-                metalness: 0.3,
-                roughness: 0.7,
-                side: THREE.DoubleSide,
-                depthWrite: false // Critical! Allows lines to render through transparent material
-            });
-            
-            const stockMesh = new THREE.Mesh(stockGeometry, stockMaterial);
-            // Position at center of stock, halfway up from sacrifice board
-            stockMesh.position.set(
-                (minX + maxX) / 2,
-                stockHeight / 2,
-                -(minY + maxY) / 2
-            );
-            stockMesh.renderOrder = -1; // Render stock before toolpaths
-            scene.add(stockMesh);
+            // Create 3D part geometry (hollow tubes or plates with holes)
+            let partMesh = null;
+
+            if (isAluminumTube) {
+                // Create hollow box tube with holes from DXF
+                // Use actual tube dimensions from backend if available, otherwise fall back to G-code bounds
+                const actualTubeWidth = tubeDimensions ? tubeDimensions.width : stockWidth;
+                const actualTubeHeight = tubeDimensions ? tubeDimensions.height : stockHeight;
+                const actualTubeLength = tubeDimensions ? tubeDimensions.length : stockDepth;
+
+                console.log('Creating tube with dimensions:', {
+                    width: actualTubeWidth,
+                    height: actualTubeHeight,
+                    length: actualTubeLength,
+                    fromBackend: !!tubeDimensions
+                });
+
+                partMesh = createTubeGeometry(actualTubeWidth, actualTubeHeight, actualTubeLength, materialThickness, minX, minY, maxX, maxY, dxfGeometry);
+            } else {
+                // Create plate with holes from DXF, aligned to G-code bounds
+                partMesh = createPartFromDxf(dxfGeometry, materialThickness, minX, minY, maxX, maxY);
+            }
+
+            if (partMesh) {
+                partMesh.renderOrder = -1;
+                scene.add(partMesh);
+            } else {
+                // Fallback to simple stock box
+                const stockGeometry = new THREE.BoxGeometry(stockWidth, stockHeight, stockDepth);
+                const stockMaterial = new THREE.MeshStandardMaterial({
+                    color: 0xE8F0FF,
+                    transparent: true,
+                    opacity: 0.15,
+                    metalness: 0.3,
+                    roughness: 0.7,
+                    side: THREE.DoubleSide,
+                    depthWrite: false
+                });
+
+                const stockMesh = new THREE.Mesh(stockGeometry, stockMaterial);
+                stockMesh.position.set(
+                    (minX + maxX) / 2,
+                    stockHeight / 2,
+                    -(minY + maxY) / 2
+                );
+                stockMesh.renderOrder = -1;
+                scene.add(stockMesh);
+            }
 
             // Create tool representation (endmill)
             const toolLength = Math.max(maxZ * 1.5, 1.0);
