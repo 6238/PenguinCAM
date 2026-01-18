@@ -205,6 +205,31 @@ class FRCPostProcessor:
         """Calculate 2D Euclidean distance between two points"""
         return math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
 
+    def _get_polygon_center(self, polygon) -> Tuple[float, float]:
+        """
+        Get approximate center of a Shapely polygon from its bounding box.
+
+        Args:
+            polygon: Shapely Polygon object
+
+        Returns:
+            (center_x, center_y) tuple
+        """
+        bounds = polygon.bounds  # (minx, miny, maxx, maxy)
+        center_x = (bounds[0] + bounds[2]) / 2
+        center_y = (bounds[1] + bounds[3]) / 2
+        return center_x, center_y
+
+    def _add_error(self, error_msg: str):
+        """
+        Add an error message to the error list and print it.
+
+        Args:
+            error_msg: Error message to add
+        """
+        print(f"  ❌ ERROR: {error_msg}")
+        self.errors.append(error_msg)
+
     def load_dxf(self, filename: str):
         """Load DXF file and extract geometry"""
         print(f"Loading {filename}...")
@@ -675,8 +700,7 @@ class FRCPostProcessor:
             # Check if hole is too small to mill with this tool
             if diameter < self.min_millable_hole:
                 error_msg = f"Hole at ({center[0]:.3f}, {center[1]:.3f}) has diameter {diameter:.3f}\" which is too small for {self.tool_diameter:.3f}\" tool (minimum: {self.min_millable_hole:.3f}\")"
-                print(f"  ❌ ERROR: {error_msg}")
-                self.errors.append(error_msg)
+                self._add_error(error_msg)
                 continue
 
             # All millable holes use the same strategy (helical + spiral)
@@ -690,16 +714,132 @@ class FRCPostProcessor:
         # Sort holes to minimize travel time
         self._sort_holes()
 
+    def _optimize_route(self, items, item_type="items"):
+        """
+        Generic route optimization using nearest neighbor + 2-opt algorithm.
+
+        This uses a two-phase approach:
+        1. Nearest neighbor: Build initial route by always going to closest unvisited item
+        2. 2-opt: Optimize route by eliminating crossed paths
+
+        Args:
+            items: List of dicts with 'center' key containing (x, y) coordinates
+            item_type: String describing the item type for logging (e.g., "holes", "pockets")
+
+        Returns:
+            Tuple of (optimized_route, total_distance, num_iterations)
+        """
+        if len(items) <= 1:
+            return items, 0.0, 0
+
+        # Phase 1: Nearest Neighbor Algorithm
+        # Start at origin (0, 0) and build route by always going to nearest unvisited item
+        unvisited = items.copy()
+        route = []
+        current_pos = (0, 0)  # Start at origin
+
+        while unvisited:
+            # Find nearest unvisited item
+            nearest_idx = 0
+            nearest_dist = self._distance_2d(current_pos, unvisited[0]['center'])
+
+            for i in range(1, len(unvisited)):
+                dist = self._distance_2d(current_pos, unvisited[i]['center'])
+                if dist < nearest_dist:
+                    nearest_dist = dist
+                    nearest_idx = i
+
+            # Add nearest item to route and remove from unvisited
+            nearest_item = unvisited.pop(nearest_idx)
+            route.append(nearest_item)
+            current_pos = nearest_item['center']
+
+        # Phase 2: 2-opt Optimization
+        # Try swapping edge pairs to reduce total distance
+        improved = True
+        max_iterations = 100
+        iteration = 0
+
+        while improved and iteration < max_iterations:
+            improved = False
+            iteration += 1
+
+            for i in range(len(route) - 1):
+                for j in range(i + 2, len(route)):
+                    # 2-opt: reverse segment from i to j-1
+                    # Changes edges: (i-1)→(i) and (j-1)→(j)
+                    # Into edges: (i-1)→(j-1) and (i)→(j)
+
+                    # Get the points before and after the segment to reverse
+                    if i == 0:
+                        point_before = (0, 0)  # Origin
+                    else:
+                        point_before = route[i - 1]['center']
+
+                    if j < len(route):
+                        point_after = route[j]['center']
+                    else:
+                        point_after = None  # No point after (j is at end)
+
+                    point_i = route[i]['center']
+                    point_j_minus_1 = route[j - 1]['center']
+
+                    # Calculate distance before swap
+                    dist_before = self._distance_2d(point_before, point_i)
+                    if point_after is not None:
+                        dist_before += self._distance_2d(point_j_minus_1, point_after)
+
+                    # Calculate distance after swap (reversing segment i to j-1)
+                    dist_after = self._distance_2d(point_before, point_j_minus_1)
+                    if point_after is not None:
+                        dist_after += self._distance_2d(point_i, point_after)
+
+                    # If swap improves distance, do it
+                    if dist_after < dist_before:
+                        # Reverse the segment from i to j-1
+                        route[i:j] = reversed(route[i:j])
+                        improved = True
+
+        # Calculate total travel distance
+        total_dist = self._distance_2d((0, 0), route[0]['center'])
+        for i in range(len(route) - 1):
+            total_dist += self._distance_2d(route[i]['center'], route[i + 1]['center'])
+
+        print(f"Optimized {len(route)} {item_type} - total travel: {total_dist:.2f}\" ({iteration} 2-opt iterations)")
+
+        return route, total_dist, iteration
+
     def _sort_holes(self):
+        """Sort holes to minimize tool travel time using nearest neighbor + 2-opt."""
+        if len(self.holes) <= 1:
+            return
+
+        self.holes, _, _ = self._optimize_route(self.holes, "holes")
+
+    def _sort_pockets(self):
         """
-        Sort holes to minimize tool travel time.
-        Sorts by X coordinate first, then by Y within each X group (zigzag pattern).
+        Sort pockets to minimize tool travel time using nearest neighbor + 2-opt.
+
+        Uses pocket centroids as the position for distance calculations.
         """
-        if len(self.holes) > 1:
-            # Sort holes by X, then Y (holes now contains all millable holes)
-            self.holes.sort(key=lambda h: (round(h['center'][0], 2), h['center'][1]))
-            print(f"Sorted {len(self.holes)} holes for optimal travel")
-    
+        if len(self.pockets) <= 1:
+            return
+
+        # Calculate centroid for each pocket (used for distance calculations)
+        pocket_data = []
+        for pocket_points in self.pockets:
+            # Calculate centroid
+            sum_x = sum(p[0] for p in pocket_points)
+            sum_y = sum(p[1] for p in pocket_points)
+            centroid = (sum_x / len(pocket_points), sum_y / len(pocket_points))
+            pocket_data.append({'points': pocket_points, 'center': centroid})
+
+        # Optimize route using generic algorithm
+        optimized_route, _, _ = self._optimize_route(pocket_data, "pockets")
+
+        # Extract optimized pocket points list
+        self.pockets = [p['points'] for p in optimized_route]
+
     def identify_perimeter_and_pockets(self):
         """Identify the outer perimeter and any inner pockets"""
         if not self.polylines:
@@ -728,6 +868,9 @@ class FRCPostProcessor:
         self.pockets = [p[1] for p in polygons[1:]]
 
         print(f"\nIdentified perimeter and {len(self.pockets)} pockets")
+
+        # Sort pockets to minimize travel time
+        self._sort_pockets()
     
     def generate_gcode(self, suggested_filename: str = None) -> PostProcessorResult:
         """
@@ -1244,26 +1387,18 @@ class FRCPostProcessor:
         offset_poly = pocket_poly.buffer(-self.tool_radius)
 
         if offset_poly.is_empty or offset_poly.area < 0.001:
-            # Get pocket bounds for error message
-            bounds = pocket_poly.bounds  # (minx, miny, maxx, maxy)
-            center_x = (bounds[0] + bounds[2]) / 2
-            center_y = (bounds[1] + bounds[3]) / 2
+            center_x, center_y = self._get_polygon_center(pocket_poly)
             error_msg = f"Pocket at approximately ({center_x:.3f}, {center_y:.3f}) is too small for {self.tool_diameter:.4f}\" tool - tool cannot fit inside with proper clearance"
-            print(f"  ❌ ERROR: {error_msg}")
-            self.errors.append(error_msg)
+            self._add_error(error_msg)
             return gcode
 
         # Get the boundary of the offset polygon
         if hasattr(offset_poly, 'exterior'):
             offset_points = list(offset_poly.exterior.coords)[:-1]  # Remove duplicate last point
         else:
-            # Get pocket bounds for error message
-            bounds = pocket_poly.bounds
-            center_x = (bounds[0] + bounds[2]) / 2
-            center_y = (bounds[1] + bounds[3]) / 2
+            center_x, center_y = self._get_polygon_center(pocket_poly)
             error_msg = f"Pocket at approximately ({center_x:.3f}, {center_y:.3f}) resulted in invalid geometry after tool compensation"
-            print(f"  ❌ ERROR: {error_msg}")
-            self.errors.append(error_msg)
+            self._add_error(error_msg)
             return gcode
 
         # Use pocket centroid as entry position (center of pocket)
@@ -1422,13 +1557,9 @@ class FRCPostProcessor:
         offset_poly = perimeter_poly.buffer(self.tool_radius)
 
         if offset_poly.is_empty:
-            # Get perimeter bounds for error message
-            bounds = perimeter_poly.bounds  # (minx, miny, maxx, maxy)
-            center_x = (bounds[0] + bounds[2]) / 2
-            center_y = (bounds[1] + bounds[3]) / 2
+            center_x, center_y = self._get_polygon_center(perimeter_poly)
             error_msg = f"Perimeter at approximately ({center_x:.3f}, {center_y:.3f}) failed offset operation - may have internal corners with radius smaller than {self.tool_diameter:.4f}\" tool can mill"
-            print(f"  ❌ ERROR: {error_msg}")
-            self.errors.append(error_msg)
+            self._add_error(error_msg)
             return gcode
 
         # Get the boundary of the offset polygon
@@ -1437,13 +1568,9 @@ class FRCPostProcessor:
             # Reverse points for clockwise direction (climb milling on outside features)
             offset_points = offset_points[::-1]
         else:
-            # Get perimeter bounds for error message
-            bounds = perimeter_poly.bounds
-            center_x = (bounds[0] + bounds[2]) / 2
-            center_y = (bounds[1] + bounds[3]) / 2
+            center_x, center_y = self._get_polygon_center(perimeter_poly)
             error_msg = f"Perimeter at approximately ({center_x:.3f}, {center_y:.3f}) resulted in invalid geometry after tool compensation - may have internal corners too sharp for {self.tool_diameter:.4f}\" tool"
-            print(f"  ❌ ERROR: {error_msg}")
-            self.errors.append(error_msg)
+            self._add_error(error_msg)
             return gcode
         
         # Calculate segment lengths
@@ -1733,26 +1860,79 @@ class FRCPostProcessor:
 
         return gcode
 
-    def _adjust_y_coordinate(self, line: str, y_offset: float) -> str:
+    def _offset_coordinate(self, line: str, axis: str, offset: float) -> str:
         """
-        Adjust Y coordinate in a G-code line by adding offset.
+        Offset a coordinate in a G-code line by adding an offset.
 
-        Handles formats: Y-0.1234, Y0.5678, Y-0.1234 (with other coords)
+        Generic method for offsetting X, Y, or Z coordinates in G-code lines.
 
         Args:
             line: G-code line to modify
-            y_offset: Offset to add to Y coordinate
+            axis: Coordinate axis to offset ('X', 'Y', or 'Z')
+            offset: Offset to add to coordinate value
 
         Returns:
-            Modified G-code line with adjusted Y coordinate
+            Modified G-code line with offset coordinate
         """
-        def replace_y(match):
-            y_val = float(match.group(1))
-            new_y = y_val + y_offset
-            return f'Y{new_y:.4f}'
+        def replace_coord(match):
+            coord_val = float(match.group(1))
+            new_val = coord_val + offset
+            return f'{axis}{new_val:.4f}'
 
-        # Match Y followed by optional minus and digits
-        return re.sub(r'Y(-?\d+\.?\d*)', replace_y, line)
+        # Match axis letter followed by optional minus and digits
+        return re.sub(rf'{axis}(-?\d+\.?\d*)', replace_coord, line)
+
+    def _adjust_y_coordinate(self, line: str, y_offset: float) -> str:
+        """
+        Adjust Y coordinate in a G-code line by adding offset.
+        Legacy method - wraps generic _offset_coordinate() for backwards compatibility.
+        """
+        return self._offset_coordinate(line, 'Y', y_offset)
+
+    def _calculate_tube_operation_passes(self, tube_height: float) -> dict:
+        """
+        Calculate pass parameters for tube operations (facing, cutting).
+
+        Common calculation for both tube facing and cut-to-length operations.
+        Both use the same depth strategy: cut just over half the tube height,
+        with multiple passes to respect flute length limits.
+
+        Args:
+            tube_height: Height of tube in inches (Z dimension)
+
+        Returns:
+            Dict with pass calculation results:
+            - total_depth: Total depth to cut
+            - wall_thickness: Wall thickness from material_thickness
+            - num_roughing_passes: Number of roughing passes needed
+            - roughing_depth_per_pass: Depth per roughing pass
+            - num_finishing_passes: Number of finishing passes needed
+            - finishing_depth_per_pass: Depth per finishing pass
+        """
+        # Cutting parameters
+        total_depth = tube_height / 2 + 0.005  # Just over half the tube height (half + 5 thou)
+        wall_thickness = self.material_thickness  # Wall thickness of box tubing
+
+        # Roughing: respects flute length limit (0.3" max per pass)
+        # 1" tube (0.505"): 2 passes, 2" tube (1.005"): 4 passes
+        max_roughing_depth = 0.3
+        num_roughing_passes = max(1, int(math.ceil(total_depth / max_roughing_depth)))
+        roughing_depth_per_pass = total_depth / num_roughing_passes
+
+        # Finishing: light stepover allows deeper passes (0.51" max per pass)
+        # 1" tube (0.505"): 1 pass, 2" tube (1.005"): 2 passes
+        max_finishing_depth = 0.51
+        num_finishing_passes = max(1, int(math.ceil(total_depth / max_finishing_depth)))
+        finishing_depth_per_pass = total_depth / num_finishing_passes
+
+        return {
+            'total_depth': total_depth,
+            'wall_thickness': wall_thickness,
+            'num_roughing_passes': num_roughing_passes,
+            'roughing_depth_per_pass': roughing_depth_per_pass,
+            'num_finishing_passes': num_finishing_passes,
+            'finishing_depth_per_pass': finishing_depth_per_pass
+        }
 
     def _parse_tube_size(self, tube_size: str) -> tuple[float, float]:
         """
@@ -1810,21 +1990,14 @@ class FRCPostProcessor:
         gcode = []
         tool_radius = self.tool_diameter / 2.0
 
-        # Cutting parameters
-        total_depth = tube_height / 2 + 0.005  # Just over half the tube height (half + 5 thou)
-        wall_thickness = self.material_thickness  # Wall thickness of box tubing
-
-        # Roughing: respects flute length limit (0.3" max per pass)
-        # 1" tube (0.505"): 2 passes, 2" tube (1.005"): 4 passes
-        max_roughing_depth = 0.3
-        num_roughing_passes = max(1, int(math.ceil(total_depth / max_roughing_depth)))
-        roughing_depth_per_pass = total_depth / num_roughing_passes
-
-        # Finishing: light stepover allows deeper passes (0.51" max per pass)
-        # 1" tube (0.505"): 1 pass, 2" tube (1.005"): 2 passes
-        max_finishing_depth = 0.51
-        num_finishing_passes = max(1, int(math.ceil(total_depth / max_finishing_depth)))
-        finishing_depth_per_pass = total_depth / num_finishing_passes
+        # Calculate pass parameters using shared helper
+        passes = self._calculate_tube_operation_passes(tube_height)
+        total_depth = passes['total_depth']
+        wall_thickness = passes['wall_thickness']
+        num_roughing_passes = passes['num_roughing_passes']
+        roughing_depth_per_pass = passes['roughing_depth_per_pass']
+        num_finishing_passes = passes['num_finishing_passes']
+        finishing_depth_per_pass = passes['finishing_depth_per_pass']
 
         # Tool edge positions for each phase (these are the final face positions)
         if phase == 1:
@@ -2653,20 +2826,9 @@ class FRCPostProcessor:
         For tube mode: Z=0 at bottom of lower face. Upper face bottom is at Z=tube_height-tube_wall_thickness.
         This method shifts Z coordinates by (tube_height - tube_wall_thickness) to position at upper face.
 
-        Args:
-            line: G-code line to modify
-            z_offset: Offset to add to Z coordinate (typically tube_height - tube_wall_thickness)
-
-        Returns:
-            Modified G-code line with offset Z coordinate
+        Legacy method - wraps generic _offset_coordinate() for backwards compatibility.
         """
-        def replace_z(match):
-            z_val = float(match.group(1))
-            new_z = z_val + z_offset
-            return f'Z{new_z:.4f}'
-
-        # Match Z followed by optional minus and digits
-        return re.sub(r'Z(-?\d+\.?\d*)', replace_z, line)
+        return self._offset_coordinate(line, 'Z', z_offset)
 
     def _offset_y_coordinate(self, line: str, y_offset: float) -> str:
         """
@@ -2675,19 +2837,9 @@ class FRCPostProcessor:
         For tube mode first face: Y offset accounts for material that will be removed during facing.
         If rough end will be milled back by 0.125", pattern must be positioned 0.125" deeper.
 
-        Args:
-            line: G-code line to modify
-            y_offset: Offset to add to Y coordinate (typically wall_thickness for first face)
-
-        Returns:
-            Modified G-code line with offset Y coordinate
+        Legacy method - wraps generic _offset_coordinate() for backwards compatibility.
         """
-        def replace_y(match):
-            y_val = float(match.group(1))
-            new_y = y_val + y_offset
-            return f'Y{new_y:.4f}'
-
-        return re.sub(r'Y(-?\d+\.?\d*)', replace_y, line)
+        return self._offset_coordinate(line, 'Y', y_offset)
 
     def _generate_cut_to_length(self, tube_width: float, tube_height: float,
                                  tube_length: float, phase: int) -> list[str]:
@@ -2718,21 +2870,14 @@ class FRCPostProcessor:
         gcode = []
         tool_radius = self.tool_diameter / 2.0
 
-        # Depth parameters: just over half the tube height (half + 5 thou), with multiple passes
-        total_depth = tube_height / 2 + 0.005
-        wall_thickness = self.material_thickness  # Wall thickness of box tubing
-
-        # Roughing: respects flute length limit (0.3" max per pass)
-        # 1" tube (0.505"): 2 passes, 2" tube (1.005"): 4 passes
-        max_roughing_depth = 0.3
-        num_roughing_passes = max(1, int(math.ceil(total_depth / max_roughing_depth)))
-        roughing_depth_per_pass = total_depth / num_roughing_passes
-
-        # Finishing: light stepover allows deeper passes (0.51" max per pass)
-        # 1" tube (0.505"): 1 pass, 2" tube (1.005"): 2 passes
-        max_finishing_depth = 0.51
-        num_finishing_passes = max(1, int(math.ceil(total_depth / max_finishing_depth)))
-        finishing_depth_per_pass = total_depth / num_finishing_passes
+        # Calculate pass parameters using shared helper
+        passes = self._calculate_tube_operation_passes(tube_height)
+        total_depth = passes['total_depth']
+        wall_thickness = passes['wall_thickness']
+        num_roughing_passes = passes['num_roughing_passes']
+        roughing_depth_per_pass = passes['roughing_depth_per_pass']
+        num_finishing_passes = passes['num_finishing_passes']
+        finishing_depth_per_pass = passes['finishing_depth_per_pass']
 
         # Y offset for cut position
         # Phase 1: +0.0625" to account for facing material removal from front

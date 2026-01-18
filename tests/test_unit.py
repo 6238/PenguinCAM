@@ -138,12 +138,13 @@ class TestHoleClassification(unittest.TestCase):
 
 
 class TestHoleSorting(unittest.TestCase):
-    """Test hole sorting for travel optimization"""
+    """Test hole sorting for travel optimization using nearest neighbor + 2-opt"""
 
     def setUp(self):
         self.pp = FRCPostProcessor(0.25, 0.157)
 
-    def test_holes_sorted_by_x_then_y(self):
+    def test_holes_optimized_for_minimum_travel(self):
+        """Test that holes are sorted using nearest neighbor optimization"""
         self.pp.circles = [
             {'center': (5, 5), 'radius': 0.25, 'diameter': 0.5},
             {'center': (1, 3), 'radius': 0.25, 'diameter': 0.5},
@@ -152,12 +153,30 @@ class TestHoleSorting(unittest.TestCase):
         ]
         self.pp.classify_holes()
 
-        # Should be sorted by X first, then Y
+        # Should start with the hole closest to origin (0,0)
         centers = [h['center'] for h in self.pp.holes]
-        self.assertEqual(centers[0], (1, 1))  # x=1, y=1
-        self.assertEqual(centers[1], (1, 3))  # x=1, y=3
-        self.assertEqual(centers[2], (3, 2))  # x=3
-        self.assertEqual(centers[3], (5, 5))  # x=5
+        self.assertEqual(centers[0], (1, 1))  # Closest to origin
+
+        # Verify all holes are present
+        self.assertEqual(len(centers), 4)
+        self.assertIn((1, 1), centers)
+        self.assertIn((1, 3), centers)
+        self.assertIn((3, 2), centers)
+        self.assertIn((5, 5), centers)
+
+        # Calculate total travel distance for optimized route
+        optimized_dist = self.pp._distance_2d((0, 0), centers[0])
+        for i in range(len(centers) - 1):
+            optimized_dist += self.pp._distance_2d(centers[i], centers[i + 1])
+
+        # Compare to naive X-then-Y sorting distance
+        naive_order = [(1, 1), (1, 3), (3, 2), (5, 5)]
+        naive_dist = self.pp._distance_2d((0, 0), naive_order[0])
+        for i in range(len(naive_order) - 1):
+            naive_dist += self.pp._distance_2d(naive_order[i], naive_order[i + 1])
+
+        # Optimized route should be at most as long as naive route
+        self.assertLessEqual(optimized_dist, naive_dist)
 
     def test_single_hole_not_affected(self):
         self.pp.circles = [
