@@ -241,7 +241,7 @@ def verify_safe_heights(onshape_lines, fusion_lines, tolerance=0.001):
 
 
 def generate_gcode_from_dxf(dxf_path, material_thickness=0.25, tool_diameter=0.157,
-                            sacrifice_depth=0.02, units='inch', tabs=4,
+                            sacrifice_depth=0.02, units='inch', tab_spacing=6.0,
                             material='plywood'):
     """Generate G-code from DXF using PenguinCAM"""
 
@@ -257,7 +257,7 @@ def generate_gcode_from_dxf(dxf_path, material_thickness=0.25, tool_diameter=0.1
         # Apply material preset (sets feeds, speeds, ramp angles) - matches GUI behavior
         pp.apply_material_preset(material)
 
-        pp.num_tabs = tabs
+        pp.tab_spacing = tab_spacing
         pp.sacrifice_board_depth = sacrifice_depth
 
         # Recalculate Z positions with user-specified sacrifice depth
@@ -299,7 +299,7 @@ if __name__ == "__main__":
     TOOL_DIAMETER = 4
     SACRIFICE_DEPTH = 0.5
     UNITS = 'mm'
-    TABS = 4
+    TAB_SPACING = 150.0  # 6 inches = 152.4mm, use 150mm for round number
 
     penguin_gcode_path = generate_gcode_from_dxf(
         INPUT_DXF,
@@ -307,7 +307,7 @@ if __name__ == "__main__":
         tool_diameter=TOOL_DIAMETER,
         sacrifice_depth=SACRIFICE_DEPTH,
         units=UNITS,
-        tabs=TABS,
+        tab_spacing=TAB_SPACING,
         material=MATERIAL
     )
 

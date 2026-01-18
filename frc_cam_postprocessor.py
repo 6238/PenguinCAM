@@ -138,7 +138,7 @@ class FRCPostProcessor:
         # Tab parameters
         self.tab_width = 0.25  # Width of tabs (inches)
         self.tab_height = 0.1  # How much material to leave in tab (inches) - per team standards
-        self.num_tabs = 4  # Number of tabs around perimeter
+        self.tab_spacing = 6.0  # Desired spacing between tabs (inches) - actual spacing may be closer to ensure minimum 3 tabs
 
         # Tube facing parameters
         self.tube_facing_offset = 0.0625  # Hole offset to align with faced surface at Y=+1/16" (inches)
@@ -1595,18 +1595,22 @@ class FRCPostProcessor:
         # Calculate tab zones (start/end distances) - evenly spaced in cutting section (after ramp)
         # We cut from ramp_distance to perimeter_length, so tabs should only be in that range
         cutting_length = perimeter_length - ramp_distance
-        tab_spacing = cutting_length / self.num_tabs
+
+        # Calculate number of tabs based on desired spacing, with minimum of 3
+        num_tabs = max(3, int(math.ceil(cutting_length / self.tab_spacing)))
+        actual_tab_spacing = cutting_length / num_tabs
+
         tab_zones = []  # List of (start_dist, end_dist) tuples
 
         # Place tabs starting after the ramp, centered in each section
         half_tab_width = self.tab_width / 2
-        for i in range(self.num_tabs):
-            tab_center = ramp_distance + tab_spacing * (i + 0.5)
+        for i in range(num_tabs):
+            tab_center = ramp_distance + actual_tab_spacing * (i + 0.5)
             tab_start = tab_center - half_tab_width
             tab_end = tab_center + half_tab_width
             tab_zones.append((tab_start, tab_end))
 
-        gcode.append(f"(Tabs: {len(tab_zones)} evenly spaced in cutting section, {self.tab_width:.4f}\" wide)")
+        gcode.append(f"(Tabs: {num_tabs} tabs (desired spacing: {self.tab_spacing:.2f}\", actual: {actual_tab_spacing:.2f}\"), {self.tab_width:.4f}\" wide)")
 
         # Move to start
         start = offset_points[0]
@@ -3122,8 +3126,8 @@ def main():
                        help='How far to cut into sacrifice board in inches (default: 0.02")')
     parser.add_argument('--units', choices=['inch', 'mm'], default='inch',
                        help='Units (default: inch)')
-    parser.add_argument('--tabs', type=int, default=4,
-                       help='Number of tabs on perimeter (default: 4)')
+    parser.add_argument('--tab-spacing', type=float, default=6.0,
+                       help='Desired spacing between tabs in inches (default: 6.0, minimum 3 tabs)')
     parser.add_argument('--origin-corner', default='bottom-left',
                        choices=['bottom-left', 'bottom-right', 'top-left', 'top-right'],
                        help='Which corner should be origin (0,0) - default: bottom-left')
@@ -3275,7 +3279,7 @@ def main():
             pp.plunge_rate = args.plunge_rate
 
         # Standard mode specific parameters
-        pp.num_tabs = args.tabs
+        pp.tab_spacing = args.tab_spacing
         pp.sacrifice_board_depth = args.sacrifice_depth
         pp.cut_depth = -pp.sacrifice_board_depth
 

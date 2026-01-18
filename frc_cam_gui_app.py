@@ -258,7 +258,7 @@ def process_file():
             cut_to_length = request.form.get('cut_to_length', '0') == '1'
         else:
             # Standard mode parameters
-            tabs = int(request.form.get('tabs', 4))
+            tab_spacing = float(request.form.get('tab_spacing', 6.0))
 
         # Save uploaded file
         input_path = os.path.join(UPLOAD_FOLDER, 'input.dxf')
@@ -373,7 +373,7 @@ def process_file():
                     pp.user_name = user_name
 
                 # Standard mode specific parameters
-                pp.num_tabs = tabs
+                pp.tab_spacing = tab_spacing
 
                 # Load and process DXF
                 pp.load_dxf(input_path)

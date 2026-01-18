@@ -39,7 +39,7 @@ const appState = {
 const DEFAULT_SETTINGS = {
     material: 'plywood',
     thickness: '0.25',
-    tabs: '4',
+    tabSpacing: '6.0',
     tubeHeight: '2.0',
     squareEnd: true,
     cutToLength: true,
@@ -54,7 +54,7 @@ function saveSettings() {
     const settings = {
         material: document.getElementById('material').value,
         thickness: document.getElementById('thickness').value,
-        tabs: document.getElementById('tabs').value,
+        tabSpacing: document.getElementById('tabSpacing').value,
         tubeHeight: document.getElementById('tubeHeight').value,
         squareEnd: document.getElementById('squareEnd').checked,
         cutToLength: document.getElementById('cutToLength').checked,
@@ -80,7 +80,7 @@ function loadSettings() {
         // Apply settings to form elements
         document.getElementById('material').value = settings.material || DEFAULT_SETTINGS.material;
         document.getElementById('thickness').value = settings.thickness || DEFAULT_SETTINGS.thickness;
-        document.getElementById('tabs').value = settings.tabs || DEFAULT_SETTINGS.tabs;
+        document.getElementById('tabSpacing').value = settings.tabSpacing || DEFAULT_SETTINGS.tabSpacing;
         document.getElementById('tubeHeight').value = settings.tubeHeight || DEFAULT_SETTINGS.tubeHeight;
         document.getElementById('squareEnd').checked = settings.squareEnd !== undefined ? settings.squareEnd : DEFAULT_SETTINGS.squareEnd;
         document.getElementById('cutToLength').checked = settings.cutToLength !== undefined ? settings.cutToLength : DEFAULT_SETTINGS.cutToLength;
@@ -114,7 +114,7 @@ function loadSettings() {
  * Attach event listeners to form elements to auto-save on change
  */
 function setupSettingsAutoSave() {
-    const fields = ['material', 'thickness', 'tabs', 'tubeHeight', 'squareEnd', 'cutToLength', 'toolDiameter'];
+    const fields = ['material', 'thickness', 'tabSpacing', 'tubeHeight', 'squareEnd', 'cutToLength', 'toolDiameter'];
 
     fields.forEach(fieldId => {
         const element = document.getElementById(fieldId);
@@ -234,7 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const thicknessGroup = document.getElementById('thickness')?.closest('.param-group');
             const thicknessLabel = thicknessGroup?.querySelector('label');
             const thicknessInput = document.getElementById('thickness');
-            const tabsGroup = document.getElementById('tabs')?.closest('.param-group');
+            const tabsGroup = document.getElementById('tabSpacing')?.closest('.param-group');
 
             if (thicknessLabel && thicknessInput) {
                 if (isAluminumTube) {
@@ -360,7 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 // Standard parameters
                 formData.append('thickness', document.getElementById('thickness').value);
-                formData.append('tabs', document.getElementById('tabs').value);
+                formData.append('tab_spacing', document.getElementById('tabSpacing').value);
             }
             formData.append('rotation', rotationAngle); // Add rotation angle
             if (suggestedFilename) {
