@@ -11,6 +11,7 @@ import sys
 import subprocess
 import tempfile
 import shutil
+import traceback
 from pathlib import Path
 import json
 import secrets
@@ -19,6 +20,7 @@ import atexit
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from urllib.parse import urlencode
+import ezdxf
 
 # Import Google Drive integration (optional - will work without it)
 try:
@@ -269,7 +271,6 @@ def process_file():
         tube_length = None
         if is_aluminum_tube:
             try:
-                import ezdxf
                 doc = ezdxf.readfile(input_path)
                 msp = doc.modelspace()
 
@@ -406,7 +407,6 @@ def process_file():
 
         except Exception as e:
             print(f"❌ Post-processor API error: {e}")
-            import traceback
             traceback.print_exc()
             return jsonify({
                 'error': 'Post-processor API error',
@@ -458,7 +458,6 @@ def process_file():
     except ValueError as e:
         return jsonify({'error': f'Invalid parameter value: {str(e)}'}), 400
     except Exception as e:
-        import traceback
         traceback.print_exc()
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
@@ -1240,7 +1239,6 @@ def onshape_save_dxf():
 
     except Exception as e:
         print(f"❌ Error in save-dxf: {str(e)}")
-        import traceback
         traceback.print_exc()
         return jsonify({
             'error': f'Save DXF failed: {str(e)}'

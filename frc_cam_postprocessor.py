@@ -1101,8 +1101,6 @@ class FRCPostProcessor:
         Returns:
             Tuple of (number_of_passes, depth_per_pass)
         """
-        import math
-
         # Use material-specific ramp angle if not specified
         if target_angle_deg is None:
             target_angle_deg = self.ramp_angle
