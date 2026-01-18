@@ -382,5 +382,85 @@ class TestUnmillableFeatures(unittest.TestCase):
         # else: buffer succeeded (Shapely is very robust) - test passes anyway
 
 
+class TestGCodeFormatting(unittest.TestCase):
+    """Test that generated G-code has no nested comments or unicode characters."""
+
+    def setUp(self):
+        """Create a simple test part that exercises all major operations."""
+        self.pp = FRCPostProcessor(0.25, 0.157)
+        self.pp.apply_material_preset('plywood')
+
+        # Add a hole
+        self.pp.circles = [{'center': (0.5, 0.5), 'diameter': 0.25}]
+
+        # Add a perimeter
+        self.pp.polylines = [
+            [(0, 0), (2, 0), (2, 2), (0, 2)]
+        ]
+
+        self.pp.classify_holes()
+        self.pp.identify_perimeter_and_pockets()
+
+        # Generate G-code
+        result = self.pp.generate_gcode()
+        self.assertTrue(result.success, "G-code generation should succeed for test setup")
+        self.gcode_lines = result.gcode.split('\n')
+
+    def test_no_nested_comments(self):
+        """Test that no line contains nested parenthesis comments."""
+        for line_num, line in enumerate(self.gcode_lines, 1):
+            # Remove semicolon comments first (they're always at the end)
+            if ';' in line:
+                line = line.split(';')[0]
+
+            # Count parenthesis comment depth
+            depth = 0
+            max_depth = 0
+            for char in line:
+                if char == '(':
+                    depth += 1
+                    max_depth = max(max_depth, depth)
+                elif char == ')':
+                    depth -= 1
+
+            # Max depth should never exceed 1 (one level of comments)
+            self.assertLessEqual(
+                max_depth, 1,
+                f"Line {line_num} has nested comments: {line.strip()}"
+            )
+
+    def test_no_unicode_characters(self):
+        """Test that all G-code uses ASCII only (no unicode characters)."""
+        for line_num, line in enumerate(self.gcode_lines, 1):
+            try:
+                # Try to encode as ASCII - will fail if unicode present
+                line.encode('ascii')
+            except UnicodeEncodeError as e:
+                self.fail(
+                    f"Line {line_num} contains unicode character(s): {line.strip()}\n"
+                    f"Error: {e}"
+                )
+
+    def test_no_square_brackets_in_comments(self):
+        """Test that square brackets don't appear inside parenthesis comments.
+
+        Some controllers interpret square brackets specially, so they should
+        not appear inside comments.
+        """
+        for line_num, line in enumerate(self.gcode_lines, 1):
+            # Find parenthesis comments
+            in_paren_comment = False
+            for i, char in enumerate(line):
+                if char == '(':
+                    in_paren_comment = True
+                elif char == ')':
+                    in_paren_comment = False
+                elif in_paren_comment and char in '[]':
+                    self.fail(
+                        f"Line {line_num} has square bracket inside parenthesis comment: "
+                        f"{line.strip()}"
+                    )
+
+
 if __name__ == '__main__':
     unittest.main()

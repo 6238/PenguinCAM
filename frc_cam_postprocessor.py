@@ -1652,7 +1652,7 @@ class FRCPostProcessor:
                     tab_end = tab_center + half_tab_width
                     tab_zones.append((tab_start, tab_end))
 
-                gcode.append(f"(Tabs: {num_tabs} tabs (desired spacing: {self.tab_spacing:.2f}\", actual: {actual_tab_spacing:.2f}\"), {self.tab_width:.4f}\" wide)")
+                gcode.append(f"(Tabs: {num_tabs} tabs - desired spacing: {self.tab_spacing:.2f}\", actual: {actual_tab_spacing:.2f}\" - width: {self.tab_width:.4f}\")")
 
             # Move to start
             start = offset_points[0]
@@ -1884,7 +1884,7 @@ class FRCPostProcessor:
             if num_tabs % 2 == 1:
                 star_order.append(num_tabs - 1)
 
-            gcode.append(f"(Star pattern order: {[i+1 for i in star_order]})")
+            gcode.append(f"(Star pattern order: {', '.join(str(i+1) for i in star_order)})")
             gcode.append("")
 
             # Remove each tab in star order
