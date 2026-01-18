@@ -60,6 +60,7 @@ MATERIAL_PRESETS = {
         'ramp_angle': 20.0,       # Ramp angle in degrees
         'ramp_start_clearance': 0.150,  # Clearance above material to start ramping (inches)
         'stepover_percentage': 0.65,    # Radial stepover as fraction of tool diameter (65% for plywood)
+        'max_slotting_depth': 0.4,      # Maximum depth per pass for perimeter slotting (inches)
         'tab_width': 0.25,        # Tab width (inches)
         'tab_height': 0.15,        # Tab height (inches)
         'description': 'Standard plywood settings - 18K RPM, 75 IPM cutting'
@@ -73,6 +74,7 @@ MATERIAL_PRESETS = {
         'ramp_angle': 4.0,        # Ramp angle in degrees
         'ramp_start_clearance': 0.050,  # Clearance above material to start ramping (inches)
         'stepover_percentage': 0.25,    # Radial stepover as fraction of tool diameter (25% conservative for aluminum)
+        'max_slotting_depth': 0.2,      # Maximum depth per pass for perimeter slotting (inches)
         'tab_width': 0.25,        # Tab width (inches) - same as plywood
         'tab_height': 0.15,       # Tab height (inches) - same as plywood
         'description': 'Aluminum box tubing - 18K RPM, 55 IPM cutting, 4° ramp'
@@ -86,6 +88,7 @@ MATERIAL_PRESETS = {
         'ramp_angle': 20.0,       # Same as plywood
         'ramp_start_clearance': 0.100,  # Clearance above material to start ramping (inches)
         'stepover_percentage': 0.55,    # Radial stepover as fraction of tool diameter (55% moderate for polycarbonate)
+        'max_slotting_depth': 0.25,     # Maximum depth per pass for perimeter slotting (inches)
         'tab_width': 0.25,        # Tab width (inches) - same as plywood
         'tab_height': 0.15,        # Tab height (inches) - same as plywood
         'description': 'Polycarbonate - same as plywood settings'
@@ -176,6 +179,12 @@ class FRCPostProcessor:
         self.spindle_speed = preset['spindle_speed']
         self.ramp_angle = preset['ramp_angle']
         self.stepover_percentage = preset['stepover_percentage']
+
+        # Max slotting depth (convert to mm if needed)
+        if self.units == 'mm':
+            self.max_slotting_depth = preset['max_slotting_depth'] * 25.4
+        else:
+            self.max_slotting_depth = preset['max_slotting_depth']
 
         # Tab sizes (convert to mm if needed)
         if self.units == 'mm':
@@ -1547,8 +1556,21 @@ class FRCPostProcessor:
         return gcode
     
     def _generate_perimeter_gcode(self, perimeter_points: List[Tuple[float, float]]) -> List[str]:
-        """Generate G-code for perimeter with tabs and tool compensation (offset outward)"""
+        """Generate G-code for perimeter with tabs and tool compensation (offset outward)
+
+        Supports multi-pass cutting for thick materials based on max_slotting_depth.
+        Tabs are only cut on the final pass.
+        """
         gcode = []
+
+        # Calculate number of passes needed based on material thickness and max slotting depth
+        # Total depth = from material top to cut depth (which is below Z=0)
+        total_cut_depth = self.material_top - self.cut_depth  # e.g., 0.25 - (-0.02) = 0.27"
+        num_passes = max(1, int(math.ceil(total_cut_depth / self.max_slotting_depth)))
+
+        if num_passes > 1:
+            actual_depth_per_pass = total_cut_depth / num_passes
+            gcode.append(f"(Multi-pass perimeter: {num_passes} passes @ {actual_depth_per_pass:.3f}\" each (max {self.max_slotting_depth:.3f}\"))")
 
         # Create offset path (outward by tool radius)
         perimeter_poly = Polygon(perimeter_points)
@@ -1584,249 +1606,276 @@ class FRCPostProcessor:
         # Calculate total perimeter length
         perimeter_length = sum(segment_lengths)
 
-        # Calculate ramp start height (close to material surface)
-        ramp_start_height = self.material_top + self.ramp_start_clearance
+        # Will store tab positions for final removal pass (only populated on final pass)
+        all_tab_positions = []
 
-        # Calculate ramp-in distance using material-specific ramp angle
-        ramp_depth = ramp_start_height - self.cut_depth
-        ramp_distance = ramp_depth / math.tan(math.radians(self.ramp_angle))
-        gcode.append(f"(Ramp-in: {ramp_distance:.4f}\" at {self.ramp_angle}°)")
+        # Calculate equal depth per pass for consistent tool loading
+        depth_per_pass = total_cut_depth / num_passes
 
-        # Calculate tab zones (start/end distances) - evenly spaced in cutting section (after ramp)
-        # We cut from ramp_distance to perimeter_length, so tabs should only be in that range
-        cutting_length = perimeter_length - ramp_distance
+        # Multi-pass cutting loop
+        for pass_num in range(1, num_passes + 1):
+            is_final_pass = (pass_num == num_passes)
 
-        # Calculate number of tabs based on desired spacing, with minimum of 3
-        num_tabs = max(3, int(math.ceil(cutting_length / self.tab_spacing)))
-        actual_tab_spacing = cutting_length / num_tabs
-
-        tab_zones = []  # List of (start_dist, end_dist) tuples
-
-        # Place tabs starting after the ramp, centered in each section
-        half_tab_width = self.tab_width / 2
-        for i in range(num_tabs):
-            tab_center = ramp_distance + actual_tab_spacing * (i + 0.5)
-            tab_start = tab_center - half_tab_width
-            tab_end = tab_center + half_tab_width
-            tab_zones.append((tab_start, tab_end))
-
-        gcode.append(f"(Tabs: {num_tabs} tabs (desired spacing: {self.tab_spacing:.2f}\", actual: {actual_tab_spacing:.2f}\"), {self.tab_width:.4f}\" wide)")
-
-        # Move to start
-        start = offset_points[0]
-        gcode.append(f"G1 X{start[0]:.4f} Y{start[1]:.4f} F{self.traverse_rate}  ; Move to perimeter start")
-        gcode.append(f"G1 Z{ramp_start_height:.4f} F{self.approach_rate}  ; Approach to ramp start height")
-
-        # Ramp in along the perimeter path
-        # Calculate points along perimeter for ramping
-        ramp_points = []
-        current_ramp_dist = 0
-        current_z = ramp_start_height
-        ramp_end_segment = 0  # Track which segment the ramp ends on
-
-        for i in range(len(offset_points)):
-            p1 = offset_points[i]
-            p2 = offset_points[(i + 1) % len(offset_points)]
-            seg_len = segment_lengths[i]
-
-            if current_ramp_dist >= ramp_distance:
-                break  # Ramp complete
-
-            if current_ramp_dist + seg_len <= ramp_distance:
-                # Entire segment is part of ramp
-                z_at_end = ramp_start_height - (current_ramp_dist + seg_len) / ramp_distance * ramp_depth
-                ramp_points.append((p2[0], p2[1], z_at_end))
-                current_ramp_dist += seg_len
-                ramp_end_segment = i + 1  # Ramp ends at the end of this segment
+            # Calculate target depth for this pass (equal increments)
+            if is_final_pass:
+                # Final pass goes exactly to target depth to avoid rounding errors
+                pass_cut_depth = self.cut_depth
             else:
-                # Partial segment - ramp ends partway through
-                remaining_ramp = ramp_distance - current_ramp_dist
-                t = remaining_ramp / seg_len
-                final_x = p1[0] + t * (p2[0] - p1[0])
-                final_y = p1[1] + t * (p2[1] - p1[1])
-                ramp_points.append((final_x, final_y, self.cut_depth))
-                current_ramp_dist = ramp_distance
-                ramp_end_segment = i  # Ramp ends partway through this segment
-                break
+                # Intermediate passes cut equal increments from material top
+                pass_cut_depth = self.material_top - (pass_num * depth_per_pass)
 
-        # Execute ramp moves using ramp feed rate
-        for i, (x, y, z) in enumerate(ramp_points):
-            gcode.append(f"G1 X{x:.4f} Y{y:.4f} Z{z:.4f} F{self.ramp_feed_rate}  ; Ramp segment {i+1}")
+            if num_passes > 1:
+                gcode.append(f"")
+                gcode.append(f"(===== PASS {pass_num}/{num_passes} - cutting to {pass_cut_depth:.3f}\" =====)")
 
-        # Ensure we're at full depth
-        if current_ramp_dist < ramp_distance:
-            # Calculate remaining depth to descend
-            if ramp_points:
-                current_pos = ramp_points[-1]
-                current_z = current_pos[2]
-                remaining_depth = current_z - self.cut_depth
+            # Calculate ramp start height (close to material surface)
+            ramp_start_height = self.material_top + self.ramp_start_clearance
 
-                if remaining_depth > 0.001:  # Only if significant depth remains
-                    # Use small helical loop instead of straight plunge
-                    helix_radius = self.tool_diameter * 0.75  # Small radius, safe for any geometry
-                    helix_center_x = current_pos[0]
-                    helix_center_y = current_pos[1]
+            # Calculate ramp-in distance using material-specific ramp angle
+            ramp_depth = ramp_start_height - pass_cut_depth
+            ramp_distance = ramp_depth / math.tan(math.radians(self.ramp_angle))
+            gcode.append(f"(Ramp-in: {ramp_distance:.4f}\" at {self.ramp_angle}°)")
 
-                    # Calculate number of helical loops needed
-                    circumference = 2 * math.pi * helix_radius
-                    depth_per_loop = circumference * math.tan(math.radians(self.ramp_angle))
-                    num_loops = max(1, int(math.ceil(remaining_depth / depth_per_loop)))
-                    depth_per_loop_actual = remaining_depth / num_loops
+            # Calculate tab zones ONLY on final pass
+            tab_zones = []  # List of (start_dist, end_dist) tuples
+            if is_final_pass:
+                # We cut from ramp_distance to perimeter_length, so tabs should only be in that range
+                cutting_length = perimeter_length - ramp_distance
 
-                    gcode.append(f"(Perimeter too short - using helical finish: {num_loops} loop(s) at {self.ramp_angle}°)")
+                # Calculate number of tabs based on desired spacing, with minimum of 3
+                num_tabs = max(3, int(math.ceil(cutting_length / self.tab_spacing)))
+                actual_tab_spacing = cutting_length / num_tabs
 
-                    # Move to edge of helix radius
-                    start_x = helix_center_x + helix_radius
-                    start_y = helix_center_y
-                    gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.feed_rate}  ; Move to helix start")
+                # Place tabs starting after the ramp, centered in each section
+                half_tab_width = self.tab_width / 2
+                for i in range(num_tabs):
+                    tab_center = ramp_distance + actual_tab_spacing * (i + 0.5)
+                    tab_start = tab_center - half_tab_width
+                    tab_end = tab_center + half_tab_width
+                    tab_zones.append((tab_start, tab_end))
 
-                    # Perform helical loops
-                    for loop_num in range(num_loops):
-                        target_z = current_z - (loop_num + 1) * depth_per_loop_actual
-                        gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-helix_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical loop {loop_num + 1}/{num_loops} CCW for climb milling")
+                gcode.append(f"(Tabs: {num_tabs} tabs (desired spacing: {self.tab_spacing:.2f}\", actual: {actual_tab_spacing:.2f}\"), {self.tab_width:.4f}\" wide)")
 
-                    # Return to perimeter path
-                    gcode.append(f"G1 X{helix_center_x:.4f} Y{helix_center_y:.4f} F{self.feed_rate}  ; Return to perimeter")
+            # Move to start
+            start = offset_points[0]
+            gcode.append(f"G1 X{start[0]:.4f} Y{start[1]:.4f} F{self.traverse_rate}  ; Move to perimeter start")
+            gcode.append(f"G1 Z{ramp_start_height:.4f} F{self.approach_rate}  ; Approach to ramp start height")
 
-        gcode.append("")
+            # Ramp in along the perimeter path
+            # Calculate points along perimeter for ramping
+            ramp_points = []
+            current_ramp_dist = 0
+            current_z = ramp_start_height
+            ramp_end_segment = 0  # Track which segment the ramp ends on
 
-        # Cut around perimeter with tabs, starting from where ramp ended
-        # Use segment-centric approach: check each segment against tab zones
-        current_distance = current_ramp_dist
-        tab_z = self.cut_depth + self.tab_height
-        tab_number = 0
-        current_z = self.cut_depth  # Track current Z height to avoid unnecessary moves
+            for i in range(len(offset_points)):
+                p1 = offset_points[i]
+                p2 = offset_points[(i + 1) % len(offset_points)]
+                seg_len = segment_lengths[i]
 
-        # Store tab positions for the tab removal pass
-        # List of (tab_idx, start_x, start_y, end_x, end_y) tuples
-        tab_positions = []
+                if current_ramp_dist >= ramp_distance:
+                    break  # Ramp complete
 
-        # Create perimeter points list starting from where ramp ended
-        # Continue from ramp_end_segment to end, then wrap around to start
-        remaining_points = offset_points[ramp_end_segment:] + offset_points[:ramp_end_segment]
-        remaining_lengths = segment_lengths[ramp_end_segment:] + segment_lengths[:ramp_end_segment]
-
-        # Helper function to process a segment with tab checking
-        def process_segment(p1, p2, seg_start_dist, seg_length):
-            nonlocal tab_number, current_z, tab_positions
-
-            if seg_length == 0:
-                return
-
-            seg_end_dist = seg_start_dist + seg_length
-
-            # Find all tab zones that intersect this segment
-            intersecting_tabs = []
-            for tab_idx, (tab_start, tab_end) in enumerate(tab_zones):
-                # Check if tab zone overlaps with segment
-                if tab_start < seg_end_dist and tab_end > seg_start_dist:
-                    # Clamp to segment boundaries
-                    overlap_start = max(tab_start, seg_start_dist)
-                    overlap_end = min(tab_end, seg_end_dist)
-                    intersecting_tabs.append((overlap_start, overlap_end, tab_idx))
-
-            if not intersecting_tabs:
-                # No tabs in this segment - ensure we're at cut depth, then cut normally
-                if current_z != self.cut_depth:
-                    gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.plunge_rate}")
-                    current_z = self.cut_depth
-                gcode.append(f"G1 X{p2[0]:.4f} Y{p2[1]:.4f} F{self.feed_rate}")
-                return
-
-            # Segment has tabs - split it into subsegments
-            # Sort intersecting tabs by start distance
-            intersecting_tabs.sort(key=lambda x: x[0])
-
-            # Build list of subsegments: [(start_dist, end_dist, is_tab), ...]
-            subsegments = []
-            current_pos = seg_start_dist
-
-            for overlap_start, overlap_end, tab_idx in intersecting_tabs:
-                # Add pre-tab segment if there's a gap
-                if current_pos < overlap_start:
-                    subsegments.append((current_pos, overlap_start, False, -1))
-
-                # Add tab segment
-                subsegments.append((overlap_start, overlap_end, True, tab_idx))
-                current_pos = overlap_end
-
-            # Add post-tab segment if there's remaining length
-            if current_pos < seg_end_dist:
-                subsegments.append((current_pos, seg_end_dist, False, -1))
-
-            # Process each subsegment
-            for sub_start, sub_end, is_tab, tab_idx in subsegments:
-                # Calculate XY position at subsegment end
-                t_end = (sub_end - seg_start_dist) / seg_length
-                end_x = p1[0] + t_end * (p2[0] - p1[0])
-                end_y = p1[1] + t_end * (p2[1] - p1[1])
-
-                if is_tab:
-                    # Calculate XY position at subsegment start
-                    t_start = (sub_start - seg_start_dist) / seg_length
-                    start_x = p1[0] + t_start * (p2[0] - p1[0])
-                    start_y = p1[1] + t_start * (p2[1] - p1[1])
-
-                    # Store tab position for removal pass
-                    tab_positions.append((tab_idx, start_x, start_y, end_x, end_y))
-
-                    # Move to tab start in XY
-                    gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.feed_rate}")
-
-                    # Raise Z only if not already at tab height
-                    if current_z != tab_z:
-                        tab_number += 1
-                        gcode.append(f"G1 Z{tab_z:.4f} F{self.plunge_rate}  ; Tab {tab_number} start")
-                        current_z = tab_z
-
-                    # Move across tab (at tab height)
-                    gcode.append(f"G1 X{end_x:.4f} Y{end_y:.4f} F{self.feed_rate}")
+                if current_ramp_dist + seg_len <= ramp_distance:
+                    # Entire segment is part of ramp
+                    z_at_end = ramp_start_height - (current_ramp_dist + seg_len) / ramp_distance * ramp_depth
+                    ramp_points.append((p2[0], p2[1], z_at_end))
+                    current_ramp_dist += seg_len
+                    ramp_end_segment = i + 1  # Ramp ends at the end of this segment
                 else:
-                    # Lower Z only if not already at cut depth
-                    if current_z != self.cut_depth:
-                        gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.plunge_rate}  ; Tab end")
-                        current_z = self.cut_depth
+                    # Partial segment - ramp ends partway through
+                    remaining_ramp = ramp_distance - current_ramp_dist
+                    t = remaining_ramp / seg_len
+                    final_x = p1[0] + t * (p2[0] - p1[0])
+                    final_y = p1[1] + t * (p2[1] - p1[1])
+                    ramp_points.append((final_x, final_y, pass_cut_depth))
+                    current_ramp_dist = ramp_distance
+                    ramp_end_segment = i  # Ramp ends partway through this segment
+                    break
 
-                    # Normal cutting move (at cut depth)
-                    gcode.append(f"G1 X{end_x:.4f} Y{end_y:.4f} F{self.feed_rate}")
+            # Execute ramp moves using ramp feed rate
+            for i, (x, y, z) in enumerate(ramp_points):
+                gcode.append(f"G1 X{x:.4f} Y{y:.4f} Z{z:.4f} F{self.ramp_feed_rate}  ; Ramp segment {i+1}")
 
-        # Process all segments from where ramp ended to closing
-        for i in range(len(remaining_points) - 1):
-            p1 = remaining_points[i]
-            p2 = remaining_points[i + 1]
-            seg_length = remaining_lengths[i]
+            # Ensure we're at full depth
+            if current_ramp_dist < ramp_distance:
+                # Calculate remaining depth to descend
+                if ramp_points:
+                    current_pos = ramp_points[-1]
+                    current_z = current_pos[2]
+                    remaining_depth = current_z - pass_cut_depth
 
-            process_segment(p1, p2, current_distance, seg_length)
-            current_distance += seg_length
+                    if remaining_depth > 0.001:  # Only if significant depth remains
+                        # Use small helical loop instead of straight plunge
+                        helix_radius = self.tool_diameter * 0.75  # Small radius, safe for any geometry
+                        helix_center_x = current_pos[0]
+                        helix_center_y = current_pos[1]
 
-        # Close the perimeter by returning to where ramp ended
-        if ramp_points:
-            ramp_end_x, ramp_end_y, _ = ramp_points[-1]
-            last_point = remaining_points[-1]
+                        # Calculate number of helical loops needed
+                        circumference = 2 * math.pi * helix_radius
+                        depth_per_loop = circumference * math.tan(math.radians(self.ramp_angle))
+                        num_loops = max(1, int(math.ceil(remaining_depth / depth_per_loop)))
+                        depth_per_loop_actual = remaining_depth / num_loops
 
-            # Calculate closing segment
-            closing_length = self._distance_2d((ramp_end_x, ramp_end_y), last_point)
+                        gcode.append(f"(Perimeter too short - using helical finish: {num_loops} loop(s) at {self.ramp_angle}°)")
 
-            # Process closing segment
-            process_segment(last_point, (ramp_end_x, ramp_end_y), current_distance, closing_length)
+                        # Move to edge of helix radius
+                        start_x = helix_center_x + helix_radius
+                        start_y = helix_center_y
+                        gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.feed_rate}  ; Move to helix start")
 
-        # Retract
-        gcode.append(f"G0 Z{self.safe_height:.4f}  ; Retract")
+                        # Perform helical loops
+                        for loop_num in range(num_loops):
+                            target_z = current_z - (loop_num + 1) * depth_per_loop_actual
+                            gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-helix_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical loop {loop_num + 1}/{num_loops} CCW for climb milling")
+
+                        # Return to perimeter path
+                        gcode.append(f"G1 X{helix_center_x:.4f} Y{helix_center_y:.4f} F{self.feed_rate}  ; Return to perimeter")
+
+            gcode.append("")
+
+            # Cut around perimeter with tabs (on final pass only), starting from where ramp ended
+            # Use segment-centric approach: check each segment against tab zones
+            current_distance = current_ramp_dist
+            tab_z = pass_cut_depth + self.tab_height
+            tab_number = 0
+            current_z = pass_cut_depth  # Track current Z height to avoid unnecessary moves
+
+            # Store tab positions for the tab removal pass (only on final pass)
+            # List of (tab_idx, start_x, start_y, end_x, end_y) tuples
+            tab_positions = []
+
+            # Create perimeter points list starting from where ramp ended
+            # Continue from ramp_end_segment to end, then wrap around to start
+            remaining_points = offset_points[ramp_end_segment:] + offset_points[:ramp_end_segment]
+            remaining_lengths = segment_lengths[ramp_end_segment:] + segment_lengths[:ramp_end_segment]
+
+            # Helper function to process a segment with tab checking
+            def process_segment(p1, p2, seg_start_dist, seg_length):
+                nonlocal tab_number, current_z, tab_positions
+
+                if seg_length == 0:
+                    return
+
+                seg_end_dist = seg_start_dist + seg_length
+
+                # Find all tab zones that intersect this segment (only if tabs enabled for this pass)
+                intersecting_tabs = []
+                if is_final_pass:  # Only process tabs on final pass
+                    for tab_idx, (tab_start, tab_end) in enumerate(tab_zones):
+                        # Check if tab zone overlaps with segment
+                        if tab_start < seg_end_dist and tab_end > seg_start_dist:
+                            # Clamp to segment boundaries
+                            overlap_start = max(tab_start, seg_start_dist)
+                            overlap_end = min(tab_end, seg_end_dist)
+                            intersecting_tabs.append((overlap_start, overlap_end, tab_idx))
+
+                if not intersecting_tabs:
+                    # No tabs in this segment - ensure we're at cut depth, then cut normally
+                    if current_z != pass_cut_depth:
+                        gcode.append(f"G1 Z{pass_cut_depth:.4f} F{self.plunge_rate}")
+                        current_z = pass_cut_depth
+                    gcode.append(f"G1 X{p2[0]:.4f} Y{p2[1]:.4f} F{self.feed_rate}")
+                    return
+
+                # Segment has tabs - split it into subsegments
+                # Sort intersecting tabs by start distance
+                intersecting_tabs.sort(key=lambda x: x[0])
+
+                # Build list of subsegments: [(start_dist, end_dist, is_tab), ...]
+                subsegments = []
+                current_pos = seg_start_dist
+
+                for overlap_start, overlap_end, tab_idx in intersecting_tabs:
+                    # Add pre-tab segment if there's a gap
+                    if current_pos < overlap_start:
+                        subsegments.append((current_pos, overlap_start, False, -1))
+
+                    # Add tab segment
+                    subsegments.append((overlap_start, overlap_end, True, tab_idx))
+                    current_pos = overlap_end
+
+                # Add post-tab segment if there's remaining length
+                if current_pos < seg_end_dist:
+                    subsegments.append((current_pos, seg_end_dist, False, -1))
+
+                # Process each subsegment
+                for sub_start, sub_end, is_tab, tab_idx in subsegments:
+                    # Calculate XY position at subsegment end
+                    t_end = (sub_end - seg_start_dist) / seg_length
+                    end_x = p1[0] + t_end * (p2[0] - p1[0])
+                    end_y = p1[1] + t_end * (p2[1] - p1[1])
+
+                    if is_tab:
+                        # Calculate XY position at subsegment start
+                        t_start = (sub_start - seg_start_dist) / seg_length
+                        start_x = p1[0] + t_start * (p2[0] - p1[0])
+                        start_y = p1[1] + t_start * (p2[1] - p1[1])
+
+                        # Store tab position for removal pass
+                        tab_positions.append((tab_idx, start_x, start_y, end_x, end_y))
+
+                        # Move to tab start in XY
+                        gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.feed_rate}")
+
+                        # Raise Z only if not already at tab height
+                        if current_z != tab_z:
+                            tab_number += 1
+                            gcode.append(f"G1 Z{tab_z:.4f} F{self.plunge_rate}  ; Tab {tab_number} start")
+                            current_z = tab_z
+
+                        # Move across tab (at tab height)
+                        gcode.append(f"G1 X{end_x:.4f} Y{end_y:.4f} F{self.feed_rate}")
+                    else:
+                        # Lower Z only if not already at cut depth
+                        if current_z != pass_cut_depth:
+                            gcode.append(f"G1 Z{pass_cut_depth:.4f} F{self.plunge_rate}  ; Tab end")
+                            current_z = pass_cut_depth
+
+                        # Normal cutting move (at cut depth)
+                        gcode.append(f"G1 X{end_x:.4f} Y{end_y:.4f} F{self.feed_rate}")
+
+            # Process all segments from where ramp ended to closing
+            for i in range(len(remaining_points) - 1):
+                p1 = remaining_points[i]
+                p2 = remaining_points[i + 1]
+                seg_length = remaining_lengths[i]
+
+                process_segment(p1, p2, current_distance, seg_length)
+                current_distance += seg_length
+
+            # Close the perimeter by returning to where ramp ended
+            if ramp_points:
+                ramp_end_x, ramp_end_y, _ = ramp_points[-1]
+                last_point = remaining_points[-1]
+
+                # Calculate closing segment
+                closing_length = self._distance_2d((ramp_end_x, ramp_end_y), last_point)
+
+                # Process closing segment
+                process_segment(last_point, (ramp_end_x, ramp_end_y), current_distance, closing_length)
+
+            # Store tab positions from final pass for removal
+            if is_final_pass:
+                all_tab_positions = tab_positions
+
+            # Retract
+            gcode.append(f"G0 Z{self.safe_height:.4f}  ; Retract")
 
         # ===== TAB REMOVAL PASS =====
-        # Remove tabs in star pattern to gradually release the part
-        if tab_positions:
+        # Remove tabs in star pattern to gradually release the part (only if tabs were created)
+        if all_tab_positions:
             gcode.append("")
             gcode.append("(===== TAB REMOVAL PASS =====)")
-            gcode.append(f"(Removing {len(tab_positions)} tabs in star pattern)")
+            gcode.append(f"(Removing {len(all_tab_positions)} tabs in star pattern)")
 
             # Sort tabs by their index to ensure consistent ordering
-            tab_positions.sort(key=lambda x: x[0])
+            all_tab_positions.sort(key=lambda x: x[0])
 
             # Generate star pattern order: alternates between first and second half
             # For 4 tabs (0,1,2,3): order is 0,2,1,3
             # For 6 tabs (0,1,2,3,4,5): order is 0,3,1,4,2,5
-            num_tabs = len(tab_positions)
+            num_tabs = len(all_tab_positions)
             star_order = []
             half = num_tabs // 2
             for i in range(half):
@@ -1842,7 +1891,7 @@ class FRCPostProcessor:
 
             # Remove each tab in star order
             for removal_num, tab_order_idx in enumerate(star_order, 1):
-                tab_idx, start_x, start_y, end_x, end_y = tab_positions[tab_order_idx]
+                tab_idx, start_x, start_y, end_x, end_y = all_tab_positions[tab_order_idx]
 
                 gcode.append(f"(Tab {tab_order_idx + 1} removal - #{removal_num} in sequence)")
 
