@@ -75,9 +75,9 @@ def verify_feedrates(onshape_lines, fusion_lines, debug=False):
     all_passed = True
 
     # Get min (plunge) and max (cutting) feedrates
-    # Note: traverse_rate (100 IPM = 2540 mm/min) is for non-cutting moves above material
+    # Note: traverse_rate (200 IPM = 5080 mm/min) is for non-cutting moves above material
     # so we exclude it when determining the cutting feedrate
-    TRAVERSE_RATE_MM = 2540  # 100 IPM in mm/min
+    TRAVERSE_RATE_MM = 5080  # 200 IPM in mm/min
     onshape_cutting_rates = [f for f in onshape_feedrates if f != TRAVERSE_RATE_MM]
 
     onshape_plunge = min(onshape_feedrates) if onshape_feedrates else None
@@ -85,27 +85,38 @@ def verify_feedrates(onshape_lines, fusion_lines, debug=False):
 
     fusion_plunge = min(fusion_feedrates) if fusion_feedrates else None
     fusion_cutting = max(fusion_feedrates) if fusion_feedrates else None
-    
+
     # Verify plunge feedrate is reasonable (we use 35 IPM for plywood, not Fusion's 20 IPM)
     EXPECTED_PLUNGE_MM = 889  # 35 IPM in mm/min for plywood
-    plunge_match = onshape_plunge == EXPECTED_PLUNGE_MM
-    print(f"\tPlunge Feedrate Match ---- {PASS if plunge_match else FAIL}")
-    if not plunge_match:
-        print(f"\t\tOnshape plunge: {onshape_plunge/25.4:.2f}")
-        print(f"\t\tExpected plunge: {EXPECTED_PLUNGE_MM/25.4:.2f}")
+
+    if onshape_plunge is None:
+        print(f"\tPlunge Feedrate Match ---- {FAIL}")
+        print(f"\t\tError: No feedrates found in generated G-code")
         all_passed = False
     else:
-        print(f"\t\tPlunge feedrate: {onshape_plunge/25.4:.2f}")
+        plunge_match = onshape_plunge == EXPECTED_PLUNGE_MM
+        print(f"\tPlunge Feedrate Match ---- {PASS if plunge_match else FAIL}")
+        if not plunge_match:
+            print(f"\t\tOnshape plunge: {onshape_plunge/25.4:.2f}")
+            print(f"\t\tExpected plunge: {EXPECTED_PLUNGE_MM/25.4:.2f}")
+            all_passed = False
+        else:
+            print(f"\t\tPlunge feedrate: {onshape_plunge/25.4:.2f}")
     
     # Compare cutting feedrates
-    cutting_match = onshape_cutting == fusion_cutting
-    print(f"\tCutting Feedrate Match ---- {PASS if cutting_match else FAIL}")
-    if not cutting_match:
-        print(f"\t\tOnshape cutting: {onshape_cutting/25.4:.2f}")
-        print(f"\t\tFusion cutting: {fusion_cutting/25.4:.2f}")
+    if onshape_cutting is None or fusion_cutting is None:
+        print(f"\tCutting Feedrate Match ---- {FAIL}")
+        print(f"\t\tError: Missing cutting feedrate data")
         all_passed = False
     else:
-        print(f"\t\tCutting feedrate: {onshape_cutting/25.4:.2f}")
+        cutting_match = onshape_cutting == fusion_cutting
+        print(f"\tCutting Feedrate Match ---- {PASS if cutting_match else FAIL}")
+        if not cutting_match:
+            print(f"\t\tOnshape cutting: {onshape_cutting/25.4:.2f}")
+            print(f"\t\tFusion cutting: {fusion_cutting/25.4:.2f}")
+            all_passed = False
+        else:
+            print(f"\t\tCutting feedrate: {onshape_cutting/25.4:.2f}")
     
     return all_passed
 
@@ -257,12 +268,17 @@ def generate_gcode_from_dxf(dxf_path, material_thickness=0.25, tool_diameter=0.1
         pp.classify_holes()
         pp.identify_perimeter_and_pockets()
 
-        # Generate to temporary file
+        # Generate G-code using new API
+        result = pp.generate_gcode()
+
+        if not result.success:
+            raise RuntimeError(f"G-code generation failed: {', '.join(result.errors)}")
+
+        # Write to temporary file
         temp_gcode = tempfile.NamedTemporaryFile(mode='w', suffix='.gcode', delete=False)
         temp_gcode_path = temp_gcode.name
+        temp_gcode.write(result.gcode)
         temp_gcode.close()
-
-        pp.generate_gcode(temp_gcode_path)
 
     return temp_gcode_path
 
