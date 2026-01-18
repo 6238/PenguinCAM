@@ -129,7 +129,7 @@ class FRCPostProcessor:
         self.feed_rate = 75.0 if units == "inch" else 1905  # Cutting feed rate (IPM or mm/min)
         self.ramp_feed_rate = 50.0 if units == "inch" else 1270  # Ramp feed rate (IPM or mm/min)
         self.plunge_rate = 35.0 if units == "inch" else 889  # Plunge feed rate (IPM or mm/min) for tab Z moves
-        self.traverse_rate = 100.0 if units == "inch" else 2540  # Lateral moves above material (IPM or mm/min)
+        self.traverse_rate = 200.0 if units == "inch" else 5080  # Lateral moves above material (IPM or mm/min) - rapid moves
         self.approach_rate = 50.0 if units == "inch" else 1270  # Z approach to ramp start height (IPM or mm/min)
         self.ramp_angle = 20.0  # Ramp angle in degrees (for helical bores and perimeter ramps)
         self.ramp_start_clearance = 0.15 if units == "inch" else 3.8  # Clearance above material to start ramping
