@@ -30,6 +30,102 @@ const appState = {
 };
 
 // ============================================================================
+// Settings Persistence (localStorage)
+// ============================================================================
+
+/**
+ * Default settings for the application
+ */
+const DEFAULT_SETTINGS = {
+    material: 'plywood',
+    thickness: '0.25',
+    tabs: '4',
+    tubeHeight: '2.0',
+    squareEnd: true,
+    cutToLength: true,
+    toolDiameter: '0.157',
+    rotationAngle: 0
+};
+
+/**
+ * Save current form settings to localStorage
+ */
+function saveSettings() {
+    const settings = {
+        material: document.getElementById('material').value,
+        thickness: document.getElementById('thickness').value,
+        tabs: document.getElementById('tabs').value,
+        tubeHeight: document.getElementById('tubeHeight').value,
+        squareEnd: document.getElementById('squareEnd').checked,
+        cutToLength: document.getElementById('cutToLength').checked,
+        toolDiameter: document.getElementById('toolDiameter').value,
+        rotationAngle: appState.rotationAngle
+    };
+
+    try {
+        localStorage.setItem('penguinCAM_settings', JSON.stringify(settings));
+    } catch (e) {
+        console.warn('Failed to save settings to localStorage:', e);
+    }
+}
+
+/**
+ * Load settings from localStorage and apply to form
+ */
+function loadSettings() {
+    try {
+        const saved = localStorage.getItem('penguinCAM_settings');
+        const settings = saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+
+        // Apply settings to form elements
+        document.getElementById('material').value = settings.material || DEFAULT_SETTINGS.material;
+        document.getElementById('thickness').value = settings.thickness || DEFAULT_SETTINGS.thickness;
+        document.getElementById('tabs').value = settings.tabs || DEFAULT_SETTINGS.tabs;
+        document.getElementById('tubeHeight').value = settings.tubeHeight || DEFAULT_SETTINGS.tubeHeight;
+        document.getElementById('squareEnd').checked = settings.squareEnd !== undefined ? settings.squareEnd : DEFAULT_SETTINGS.squareEnd;
+        document.getElementById('cutToLength').checked = settings.cutToLength !== undefined ? settings.cutToLength : DEFAULT_SETTINGS.cutToLength;
+        document.getElementById('toolDiameter').value = settings.toolDiameter || DEFAULT_SETTINGS.toolDiameter;
+        appState.rotationAngle = settings.rotationAngle || DEFAULT_SETTINGS.rotationAngle;
+
+        // Trigger material change to show/hide tube params
+        const materialSelect = document.getElementById('material');
+        if (materialSelect.value === 'aluminum_tube') {
+            document.getElementById('tubeParams').style.display = 'block';
+        }
+
+        console.log('Settings loaded from localStorage');
+    } catch (e) {
+        console.warn('Failed to load settings from localStorage:', e);
+        // Use defaults if localStorage fails
+        Object.keys(DEFAULT_SETTINGS).forEach(key => {
+            const element = document.getElementById(key);
+            if (element) {
+                if (element.type === 'checkbox') {
+                    element.checked = DEFAULT_SETTINGS[key];
+                } else {
+                    element.value = DEFAULT_SETTINGS[key];
+                }
+            }
+        });
+    }
+}
+
+/**
+ * Attach event listeners to form elements to auto-save on change
+ */
+function setupSettingsAutoSave() {
+    const fields = ['material', 'thickness', 'tabs', 'tubeHeight', 'squareEnd', 'cutToLength', 'toolDiameter'];
+
+    fields.forEach(fieldId => {
+        const element = document.getElementById(fieldId);
+        if (element) {
+            const eventType = element.type === 'checkbox' ? 'change' : 'input';
+            element.addEventListener(eventType, saveSettings);
+        }
+    });
+}
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 
@@ -95,6 +191,9 @@ document.addEventListener('DOMContentLoaded', () => {
             option.classList.add('selected');
         });
     });
+
+    // Load saved settings from localStorage
+        loadSettings();
 
     // Global state
         let uploadedFile = null;
@@ -180,6 +279,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         checkDriveStatus();
+
+        // Setup auto-save for settings
+        setupSettingsAutoSave();
 
         // File upload handling
         dropZone.addEventListener('click', () => fileInput.click());
@@ -497,8 +599,10 @@ document.addEventListener('DOMContentLoaded', () => {
             // Setup event listeners
             document.getElementById('rotateBtn').addEventListener('click', () => {
                 rotationAngle = (rotationAngle + 90) % 360;
+                appState.rotationAngle = rotationAngle; // Keep appState in sync
                 document.getElementById('rotationDisplay').textContent = rotationAngle + '°';
                 renderDxfSetup();
+                saveSettings(); // Persist rotation angle
             });
             
             // Mode toggle listeners
