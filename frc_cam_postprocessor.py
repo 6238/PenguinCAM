@@ -143,6 +143,9 @@ class FRCPostProcessor:
         # Tube facing parameters
         self.tube_facing_offset = 0.0625  # Hole offset to align with faced surface at Y=+1/16" (inches)
 
+        # Error tracking
+        self.errors = []  # Collect validation errors during processing
+
     def apply_material_preset(self, material: str):
         """
         Apply a material preset to set feeds, speeds, and ramp angles.
@@ -664,16 +667,16 @@ class FRCPostProcessor:
         """Classify holes by diameter"""
         # Classify all circles as holes (apply size check)
         self.holes = []
-        holes_skipped = 0
 
         for circle in self.circles:
             diameter = circle['diameter']
             center = circle['center']
 
-            # Skip holes that are too small to mill with this tool
+            # Check if hole is too small to mill with this tool
             if diameter < self.min_millable_hole:
-                print(f"  ⚠️  Skipping hole at ({center[0]:.3f}, {center[1]:.3f}) - diameter {diameter:.3f}\" too small for {self.tool_diameter:.3f}\" tool")
-                holes_skipped += 1
+                error_msg = f"Hole at ({center[0]:.3f}, {center[1]:.3f}) has diameter {diameter:.3f}\" which is too small for {self.tool_diameter:.3f}\" tool (minimum: {self.min_millable_hole:.3f}\")"
+                print(f"  ❌ ERROR: {error_msg}")
+                self.errors.append(error_msg)
                 continue
 
             # All millable holes use the same strategy (helical + spiral)
@@ -681,8 +684,8 @@ class FRCPostProcessor:
             print(f"  Hole (d={diameter:.3f}\") at ({center[0]:.3f}, {center[1]:.3f})")
 
         print(f"\nIdentified {len(self.holes)} millable holes")
-        if holes_skipped > 0:
-            print(f"  ⚠️  Skipped {holes_skipped} hole(s) too small for tool")
+        if self.errors:
+            print(f"  ❌ {len(self.errors)} error(s) found during hole classification")
 
         # Sort holes to minimize travel time
         self._sort_holes()
@@ -736,6 +739,16 @@ class FRCPostProcessor:
         Returns:
             PostProcessorResult with gcode string and stats
         """
+        # Check for validation errors first
+        if self.errors:
+            print(f"\n❌ Cannot generate G-code: {len(self.errors)} validation error(s) found")
+            for error in self.errors:
+                print(f"   - {error}")
+            return PostProcessorResult(
+                success=False,
+                errors=self.errors.copy()
+            )
+
         gcode = []
         warnings = []
 
@@ -1231,14 +1244,26 @@ class FRCPostProcessor:
         offset_poly = pocket_poly.buffer(-self.tool_radius)
 
         if offset_poly.is_empty or offset_poly.area < 0.001:
-            gcode.append(f"(WARNING: Pocket too small for tool diameter {self.tool_diameter:.4f}\")")
+            # Get pocket bounds for error message
+            bounds = pocket_poly.bounds  # (minx, miny, maxx, maxy)
+            center_x = (bounds[0] + bounds[2]) / 2
+            center_y = (bounds[1] + bounds[3]) / 2
+            error_msg = f"Pocket at approximately ({center_x:.3f}, {center_y:.3f}) is too small for {self.tool_diameter:.4f}\" tool - tool cannot fit inside with proper clearance"
+            print(f"  ❌ ERROR: {error_msg}")
+            self.errors.append(error_msg)
             return gcode
 
         # Get the boundary of the offset polygon
         if hasattr(offset_poly, 'exterior'):
             offset_points = list(offset_poly.exterior.coords)[:-1]  # Remove duplicate last point
         else:
-            gcode.append("(WARNING: Pocket offset resulted in invalid geometry)")
+            # Get pocket bounds for error message
+            bounds = pocket_poly.bounds
+            center_x = (bounds[0] + bounds[2]) / 2
+            center_y = (bounds[1] + bounds[3]) / 2
+            error_msg = f"Pocket at approximately ({center_x:.3f}, {center_y:.3f}) resulted in invalid geometry after tool compensation"
+            print(f"  ❌ ERROR: {error_msg}")
+            self.errors.append(error_msg)
             return gcode
 
         # Use pocket centroid as entry position (center of pocket)
@@ -1392,21 +1417,33 @@ class FRCPostProcessor:
 
         # Create offset path (outward by tool radius)
         perimeter_poly = Polygon(perimeter_points)
-        
-        # Buffer outward (positive buffer) 
+
+        # Buffer outward (positive buffer)
         offset_poly = perimeter_poly.buffer(self.tool_radius)
-        
+
         if offset_poly.is_empty:
-            gcode.append(f"(WARNING: Perimeter offset failed)")
+            # Get perimeter bounds for error message
+            bounds = perimeter_poly.bounds  # (minx, miny, maxx, maxy)
+            center_x = (bounds[0] + bounds[2]) / 2
+            center_y = (bounds[1] + bounds[3]) / 2
+            error_msg = f"Perimeter at approximately ({center_x:.3f}, {center_y:.3f}) failed offset operation - may have internal corners with radius smaller than {self.tool_diameter:.4f}\" tool can mill"
+            print(f"  ❌ ERROR: {error_msg}")
+            self.errors.append(error_msg)
             return gcode
-        
+
         # Get the boundary of the offset polygon
         if hasattr(offset_poly, 'exterior'):
             offset_points = list(offset_poly.exterior.coords)[:-1]  # Remove duplicate last point
             # Reverse points for clockwise direction (climb milling on outside features)
             offset_points = offset_points[::-1]
         else:
-            gcode.append("(WARNING: Perimeter offset resulted in invalid geometry)")
+            # Get perimeter bounds for error message
+            bounds = perimeter_poly.bounds
+            center_x = (bounds[0] + bounds[2]) / 2
+            center_y = (bounds[1] + bounds[3]) / 2
+            error_msg = f"Perimeter at approximately ({center_x:.3f}, {center_y:.3f}) resulted in invalid geometry after tool compensation - may have internal corners too sharp for {self.tool_diameter:.4f}\" tool"
+            print(f"  ❌ ERROR: {error_msg}")
+            self.errors.append(error_msg)
             return gcode
         
         # Calculate segment lengths
@@ -2224,6 +2261,16 @@ class FRCPostProcessor:
         Returns:
             PostProcessorResult with gcode string and stats
         """
+        # Check for validation errors first
+        if self.errors:
+            print(f"\n❌ Cannot generate G-code: {len(self.errors)} validation error(s) found")
+            for error in self.errors:
+                print(f"   - {error}")
+            return PostProcessorResult(
+                success=False,
+                errors=self.errors.copy()
+            )
+
         gcode = []
 
         # Generate timestamp
