@@ -437,7 +437,7 @@ def process_file():
             })
         else:
             parameters.update({
-                'tabs': tabs
+                'tab_spacing': tab_spacing
             })
 
         response_data = {
