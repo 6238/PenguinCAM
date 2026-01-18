@@ -45,6 +45,9 @@ except ImportError:
     ONSHAPE_AVAILABLE = False
     print("⚠️  Onshape integration not available")
 
+# Import postprocessor directly (for API calls instead of subprocess)
+from frc_cam_postprocessor import FRCPostProcessor, PostProcessorResult
+
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
 
@@ -305,131 +308,118 @@ def process_file():
             except Exception as e:
                 print(f"⚠️  Could not extract tube dimensions from DXF: {e}")
 
-        # Generate output filename
+        # Generate suggested filename base (without extension or timestamp)
         if suggested_filename:
             # Use Onshape-derived name
-            output_filename = suggested_filename + '.nc'
-            print(f"📝 Using Onshape filename: {output_filename}")
+            base_name = suggested_filename
+            print(f"📝 Using Onshape filename base: {base_name}")
         else:
             # Use DXF filename
-            output_filename = Path(file.filename).stem + '.nc'
-            print(f"📝 Using DXF filename: {output_filename}")
+            base_name = Path(file.filename).stem
+            print(f"📝 Using DXF filename base: {base_name}")
 
-        output_path = os.path.join(OUTPUT_FOLDER, output_filename)
+        print(f"🚀 Running post-processor API...")
 
-        # Build command based on mode
-        if is_aluminum_tube:
-            # Tube mode - different command structure
-            cmd = [
-                sys.executable,
-                str(POST_PROCESSOR),
-                input_path,
-                output_path,
-                '--mode', 'tube-pattern',
-                '--material', material,
-                '--thickness', str(thickness),  # Tube wall thickness
-                '--tool-diameter', str(tool_diameter),
-                '--tube-height', str(tube_height),
-                '--origin-corner', origin_corner,
-                '--rotation', str(rotation),
-            ]
+        # Call post-processor API based on mode
+        try:
+            if is_aluminum_tube:
+                # Tube mode - use tube-pattern API
+                pp = FRCPostProcessor(
+                    material_thickness=thickness,
+                    tool_diameter=tool_diameter,
+                    units='inch'
+                )
 
-            # Add tube dimensions if detected
-            if tube_width is not None:
-                cmd.extend(['--tube-width', str(tube_width)])
-            if tube_length is not None:
-                cmd.extend(['--tube-length', str(tube_length)])
+                # Store tube height for Z-offset calculations
+                pp.tube_height = tube_height
 
-            # Add optional tube operations
-            if square_end:
-                cmd.append('--square-end')
-            if cut_to_length:
-                cmd.append('--cut-to-length')
-        else:
-            # Standard mode - let post-processor handle material presets
-            cmd = [
-                sys.executable,
-                str(POST_PROCESSOR),
-                input_path,
-                output_path,
-                '--material', material,
-                '--thickness', str(thickness),
-                '--tool-diameter', str(tool_diameter),
-                '--tabs', str(tabs),
-                '--origin-corner', origin_corner,
-                '--rotation', str(rotation),
-            ]
+                # Apply material preset
+                pp.apply_material_preset(material)
 
-        # Add user name if authenticated
-        user_name = session.get('user_name')
-        if user_name:
-            cmd.extend(['--user', user_name])
+                # Add user name if authenticated
+                user_name = session.get('user_name')
+                if user_name:
+                    pp.user_name = user_name
 
-        print(f"🚀 Running post-processor...")
-        print(f"   Command: {' '.join(cmd)}")
-        print(f"   Output will be: {output_path}")
-        
-        # Run post-processor
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
+                # Load and process DXF
+                pp.load_dxf(input_path)
+                pp.transform_coordinates('bottom-left', rotation)  # Tube jig is always bottom-left
+                pp.classify_holes()
+                pp.identify_perimeter_and_pockets()
 
-        print(result.stderr)
+                # Generate G-code using API
+                result = pp.generate_tube_pattern_gcode(
+                    tube_height=tube_height,
+                    square_end=square_end,
+                    cut_to_length=cut_to_length,
+                    tube_width=tube_width,
+                    tube_length=tube_length,
+                    suggested_filename=base_name
+                )
+            else:
+                # Standard mode - use standard API
+                pp = FRCPostProcessor(
+                    material_thickness=thickness,
+                    tool_diameter=tool_diameter,
+                    units='inch'
+                )
 
-        print(f"📊 Post-processor finished:")
-        print(f"   Return code: {result.returncode}")
-        print(f"   Stdout length: {len(result.stdout)} bytes")
-        print(f"   Stderr length: {len(result.stderr)} bytes")
-        
-        if result.returncode != 0:
-            print(f"❌ Post-processor failed!")
-            print(f"   Stderr: {result.stderr}")
+                # Apply material preset
+                pp.apply_material_preset(material)
+
+                # Add user name if authenticated
+                user_name = session.get('user_name')
+                if user_name:
+                    pp.user_name = user_name
+
+                # Standard mode specific parameters
+                pp.num_tabs = tabs
+
+                # Load and process DXF
+                pp.load_dxf(input_path)
+                pp.transform_coordinates(origin_corner, rotation)
+                pp.classify_holes()
+                pp.identify_perimeter_and_pockets()
+
+                # Generate G-code using API
+                result = pp.generate_gcode(suggested_filename=base_name)
+
+            if not result.success:
+                print(f"❌ Post-processor API failed!")
+                for error in result.errors:
+                    print(f"   Error: {error}")
+                return jsonify({
+                    'error': 'Post-processor failed',
+                    'details': '\n'.join(result.errors)
+                }), 500
+
+            # Write G-code to file
+            output_path = os.path.join(OUTPUT_FOLDER, result.filename)
+            with open(output_path, 'w') as f:
+                f.write(result.gcode)
+
+            print(f"✅ Output file created: {os.path.getsize(output_path)} bytes")
+            print(f"📄 Output file: {output_path}")
+
+            # Get actual filename with timestamp for download/drive routes
+            actual_filename = result.filename
+
+        except Exception as e:
+            print(f"❌ Post-processor API error: {e}")
+            import traceback
+            traceback.print_exc()
             return jsonify({
-                'error': 'Post-processor failed',
-                'details': result.stderr
+                'error': 'Post-processor API error',
+                'details': str(e)
             }), 500
 
-        # Parse actual output filename and cycle time from stdout
-        actual_output_path = output_path  # Default fallback
-        cycle_time = None
-        cycle_time_display = None
-        for line in result.stdout.split('\n'):
-            if line.startswith('OUTPUT_FILE:'):
-                actual_output_path = line.split('OUTPUT_FILE:', 1)[1].strip()
-                print(f"📄 Actual output file: {actual_output_path}")
-            elif 'ESTIMATED_CYCLE_TIME:' in line:
-                # Parse: "⏱️  ESTIMATED_CYCLE_TIME: 123.4 seconds (2m 3s)"
-                match = re.search(r'ESTIMATED_CYCLE_TIME:\s*([\d.]+)\s*seconds\s*\(([^)]+)\)', line)
-                if match:
-                    cycle_time = float(match.group(1))
-                    cycle_time_display = match.group(2)
-                    print(f"⏱️  Parsed cycle time: {cycle_time_display}")
-
-        # Check if output file was created
-        if not os.path.exists(actual_output_path):
-            print(f"❌ Output file not created: {actual_output_path}")
-            return jsonify({
-                'error': 'Post-processor did not create output file',
-                'details': result.stdout + '\n\n' + result.stderr
-            }), 500
-
-        # Update output_path to the actual file with timestamp
-        output_path = actual_output_path
-
-        print(f"✅ Output file created: {os.path.getsize(output_path)} bytes")
-
-        # Read generated G-code
-        with open(output_path, 'r') as f:
-            gcode_content = f.read()
-
-        # Parse console output for statistics
-        console_output = result.stdout
-
-        # Get actual filename with timestamp for download/drive routes
-        actual_filename = os.path.basename(actual_output_path)
+        # Build console output from result stats (for backward compatibility with UI)
+        console_lines = []
+        console_lines.append(f"Identified {result.stats.get('num_holes', 0)} millable holes and {result.stats.get('num_pockets', 0)} pockets")
+        console_lines.append(f"Total lines: {result.stats.get('total_lines', 0)}")
+        if 'cycle_time_display' in result.stats:
+            console_lines.append(f"\n⏱️  ESTIMATED_CYCLE_TIME: {result.stats['cycle_time_seconds']:.1f} seconds ({result.stats['cycle_time_display']})")
+        console_output = '\n'.join(console_lines)
 
         # Build parameters dictionary based on mode
         parameters = {
@@ -453,23 +443,23 @@ def process_file():
         response_data = {
             'success': True,
             'filename': actual_filename,  # Return actual filename with timestamp
-            'gcode': gcode_content,
+            'gcode': result.gcode,
             'console': console_output,
             'parameters': parameters
         }
 
         # Add cycle time if available
-        if cycle_time_display:
-            response_data['cycle_time'] = cycle_time_display
-            response_data['cycle_time_seconds'] = cycle_time
+        if 'cycle_time_display' in result.stats:
+            response_data['cycle_time'] = result.stats['cycle_time_display']
+            response_data['cycle_time_seconds'] = result.stats['cycle_time_seconds']
 
         return jsonify(response_data)
-        
+
     except ValueError as e:
         return jsonify({'error': f'Invalid parameter value: {str(e)}'}), 400
-    except subprocess.TimeoutExpired:
-        return jsonify({'error': 'Processing timeout - file too complex'}), 500
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
 @app.route('/download/<filename>')

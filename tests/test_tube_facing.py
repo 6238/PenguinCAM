@@ -68,12 +68,19 @@ class TestTubeFacingGeneration(unittest.TestCase):
         self.pp = FRCPostProcessor(0.25, 0.157)
         self.pp.apply_material_preset('aluminum')
 
+    def _generate_tube_gcode_to_file(self, output_path, tube_size='1x1'):
+        """Helper to generate tube facing gcode and write to file (for API tests)."""
+        result = self.pp.generate_tube_facing_gcode(tube_size=tube_size)
+        with open(output_path, 'w') as f:
+            f.write(result.gcode)
+        return result
+
     def test_generates_output_file(self):
         """Test that output file is created."""
         with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as f:
             output_path = f.name
         try:
-            self.pp.generate_tube_facing_gcode(output_path, '1x1')
+            self._generate_tube_gcode_to_file(output_path, '1x1')
             self.assertTrue(os.path.exists(output_path))
             with open(output_path) as f:
                 content = f.read()
@@ -86,7 +93,7 @@ class TestTubeFacingGeneration(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as f:
             output_path = f.name
         try:
-            self.pp.generate_tube_facing_gcode(output_path, '1x1')
+            self._generate_tube_gcode_to_file(output_path, '1x1')
             with open(output_path) as f:
                 content = f.read()
             self.assertIn("PHASE 1", content)
@@ -100,7 +107,7 @@ class TestTubeFacingGeneration(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as f:
             output_path = f.name
         try:
-            self.pp.generate_tube_facing_gcode(output_path, '1x1')
+            self._generate_tube_gcode_to_file(output_path, '1x1')
             with open(output_path) as f:
                 content = f.read()
             self.assertIn("G55", content)
@@ -113,7 +120,7 @@ class TestTubeFacingGeneration(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as f:
             output_path = f.name
         try:
-            self.pp.generate_tube_facing_gcode(output_path, '1x1')
+            self._generate_tube_gcode_to_file(output_path, '1x1')
             with open(output_path) as f:
                 content = f.read()
             self.assertIn("SETUP INSTRUCTIONS", content)
@@ -127,7 +134,7 @@ class TestTubeFacingGeneration(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as f:
             output_path = f.name
         try:
-            self.pp.generate_tube_facing_gcode(output_path, '1x1')
+            self._generate_tube_gcode_to_file(output_path, '1x1')
             with open(output_path) as f:
                 content = f.read()
             self.assertIn("Flip tube 180 degrees", content)
@@ -140,7 +147,7 @@ class TestTubeFacingGeneration(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as f:
             output_path = f.name
         try:
-            self.pp.generate_tube_facing_gcode(output_path, '1x1')
+            self._generate_tube_gcode_to_file(output_path, '1x1')
             with open(output_path) as f:
                 content = f.read()
             self.assertIn("M30", content)
@@ -152,7 +159,7 @@ class TestTubeFacingGeneration(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as f:
             output_path = f.name
         try:
-            self.pp.generate_tube_facing_gcode(output_path, '1x1')
+            self._generate_tube_gcode_to_file(output_path, '1x1')
             with open(output_path) as f:
                 lines = f.readlines()
 
@@ -207,7 +214,7 @@ class TestTubeFacingGeneration(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as f:
             output_path = f.name
         try:
-            self.pp.generate_tube_facing_gcode(output_path, '1x1')
+            self._generate_tube_gcode_to_file(output_path, '1x1')
             with open(output_path) as f:
                 content = f.read()
             # Should have G1 linear moves for cutting
@@ -225,7 +232,7 @@ class TestTubeFacingGeneration(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as f:
             output_path = f.name
         try:
-            self.pp.generate_tube_facing_gcode(output_path, '1x1')
+            self._generate_tube_gcode_to_file(output_path, '1x1')
             with open(output_path) as f:
                 content = f.read()
             self.assertIn("G0 G28 G91 Z0", content)
@@ -238,7 +245,7 @@ class TestTubeFacingGeneration(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as f:
             output_path = f.name
         try:
-            self.pp.generate_tube_facing_gcode(output_path, '1x1')
+            self._generate_tube_gcode_to_file(output_path, '1x1')
             with open(output_path) as f:
                 content = f.read()
             self.assertIn("G0 X0 Y0", content)
@@ -250,7 +257,7 @@ class TestTubeFacingGeneration(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as f:
             output_path = f.name
         try:
-            self.pp.generate_tube_facing_gcode(output_path, '1x1')
+            self._generate_tube_gcode_to_file(output_path, '1x1')
             with open(output_path) as f:
                 content = f.read()
             self.assertIn("G53 G0 X0.5 Y23.5", content)
@@ -263,7 +270,7 @@ class TestTubeFacingGeneration(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix='.nc', delete=False) as f:
             output_path = f.name
         try:
-            self.pp.generate_tube_facing_gcode(output_path, '1x1')
+            self._generate_tube_gcode_to_file(output_path, '1x1')
             with open(output_path) as f:
                 lines = f.readlines()
 

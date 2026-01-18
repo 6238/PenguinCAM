@@ -15,7 +15,8 @@ import math
 import os
 import re
 from collections import defaultdict
-from typing import List, Tuple
+from dataclasses import dataclass, field
+from typing import List, Tuple, Optional, Dict, Any
 from zoneinfo import ZoneInfo
 
 # Third-party
@@ -24,6 +25,28 @@ import ezdxf
 # Local modules
 from shapely.geometry import Point, Polygon, LineString, MultiPolygon
 from shapely.ops import unary_union, linemerge
+
+
+@dataclass
+class PostProcessorResult:
+    """Result from post-processor operations"""
+    success: bool
+    gcode: Optional[str] = None
+    filename: Optional[str] = None
+    errors: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    stats: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self):
+        """Convert to dictionary for JSON serialization"""
+        return {
+            'success': self.success,
+            'gcode': self.gcode,
+            'filename': self.filename,
+            'errors': self.errors,
+            'warnings': self.warnings,
+            'stats': self.stats
+        }
 
 
 # Material presets based on team 6238 feeds/speeds document
@@ -703,9 +726,18 @@ class FRCPostProcessor:
 
         print(f"\nIdentified perimeter and {len(self.pockets)} pockets")
     
-    def generate_gcode(self, output_file: str):
-        """Generate complete G-code file"""
+    def generate_gcode(self, suggested_filename: str = None) -> PostProcessorResult:
+        """
+        Generate complete G-code for standard plate operations
+
+        Args:
+            suggested_filename: Optional filename (without timestamp, will be added)
+
+        Returns:
+            PostProcessorResult with gcode string and stats
+        """
         gcode = []
+        warnings = []
 
         # Load machine config
         config_path = os.path.join(os.path.dirname(__file__), 'machine_config.json')
@@ -867,14 +899,30 @@ class FRCPostProcessor:
                     gcode.insert(insert_idx + j, time_line)
                 break
 
-        # Write to file
-        with open(output_file, 'w') as f:
-            f.write('\n'.join(gcode))
+        # Generate filename with timestamp
+        base_name = suggested_filename if suggested_filename else "output"
+        pacific_time = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
+        timestamp = pacific_time.strftime("%Y%m%d_%H%M%S")
+        filename = f"{base_name}_{timestamp}.nc"
 
-        print(f"\nG-code written to {output_file}")
-        print(f"Total lines: {len(gcode)}")
-        print(f"\n⏱️  ESTIMATED_CYCLE_TIME: {time_estimate['total']:.1f} seconds ({self._format_time(time_estimate['total'])})")
-        print(f"   Cutting: {self._format_time(time_estimate['cutting'])}, Rapids: {self._format_time(time_estimate['rapid'])}, Spindle: {self._format_time(time_estimate['dwell'])}")
+        # Return result
+        return PostProcessorResult(
+            success=True,
+            gcode='\n'.join(gcode),
+            filename=filename,
+            warnings=warnings,
+            stats={
+                'num_holes': len(self.holes) if hasattr(self, 'holes') else 0,
+                'num_pockets': len(self.pockets) if hasattr(self, 'pockets') else 0,
+                'has_perimeter': bool(self.perimeter) if hasattr(self, 'perimeter') else False,
+                'total_lines': len(gcode),
+                'cycle_time_seconds': time_estimate['total'],
+                'cycle_time_display': self._format_time(time_estimate['total']),
+                'cutting_time': self._format_time(time_estimate['cutting']),
+                'rapid_time': self._format_time(time_estimate['rapid']),
+                'dwell_time': self._format_time(time_estimate['dwell'])
+            }
+        )
     
     def _calculate_helical_passes(self, toolpath_radius: float, target_angle_deg: float = None, ramp_start_height: float = None) -> Tuple[int, float]:
         """
@@ -1959,7 +2007,7 @@ class FRCPostProcessor:
         """
         return self._generate_parametric_tube_facing(tube_width, tube_height, phase)
 
-    def generate_tube_facing_gcode(self, output_file: str, tube_size: str = '1x1'):
+    def generate_tube_facing_gcode(self, tube_size: str = '1x1', suggested_filename: str = None) -> PostProcessorResult:
         """
         Generate G-code for tube facing operation with parameterized tube dimensions.
 
@@ -1971,8 +2019,11 @@ class FRCPostProcessor:
         - Phase 2: Face second half (Y=-0.25 to Y=0)
 
         Args:
-            output_file: Path to output G-code file
             tube_size: Size of tube ('1x1', '2x1-standing', '2x1-flat')
+            suggested_filename: Optional filename (without timestamp, will be added)
+
+        Returns:
+            PostProcessorResult with gcode string and stats
         """
         # Parse tube dimensions
         tube_width, tube_height = self._parse_tube_size(tube_size)
@@ -2099,34 +2150,53 @@ class FRCPostProcessor:
         gcode.append('G54  ; Reset to standard work coordinate system')
         gcode.append('M30')
 
-        # Write to file
-        with open(output_file, 'w') as f:
-            f.write('\n'.join(gcode))
-
-        print(f'OUTPUT_FILE:{output_file}')
-        print(f'Tube facing G-code generated for {tube_size} tube')
-
-        # Print stats for UI
-        print(f"\nIdentified 0 millable holes and 0 pockets")
-        print(f"Total lines: {len(gcode)}")
-
         # Estimate cycle time
         time_estimate = self._estimate_cycle_time(gcode)
-        print(f"\n⏱️  ESTIMATED_CYCLE_TIME: {time_estimate['total']:.1f} seconds ({self._format_time(time_estimate['total'])})")
 
-        print(f'\nSETUP:')
-        print(f'  1. Mount tube in jig with end facing spindle')
-        print(f'  2. Verify G55 is set to jig origin')
-        print(f'  3. Z=0 is at bottom of tube (jig surface)')
-        print(f'  4. Y=0 is at nominal end face of tube')
-        print(f'\nOPERATION:')
-        print(f'  Phase 1: Face first half of tube end')
-        print(f'  -- Program pauses (M0) for tube flip --')
-        print(f'  Phase 2: Face second half of tube end')
+        # Generate filename with timestamp
+        base_name = suggested_filename if suggested_filename else "tube_facing"
+        pacific_time = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
+        timestamp = pacific_time.strftime("%Y%m%d_%H%M%S")
+        filename = f"{base_name}_{timestamp}.nc"
 
-    def generate_tube_pattern_gcode(self, output_file: str, tube_height: float,
+        # Return result
+        return PostProcessorResult(
+            success=True,
+            gcode='\n'.join(gcode),
+            filename=filename,
+            warnings=[],
+            stats={
+                'operation': 'tube_facing',
+                'tube_size': tube_size,
+                'tube_width': tube_width,
+                'tube_height': tube_height,
+                'num_holes': 0,
+                'num_pockets': 0,
+                'has_perimeter': False,
+                'total_lines': len(gcode),
+                'cycle_time_seconds': time_estimate['total'],
+                'cycle_time_display': self._format_time(time_estimate['total']),
+                'cutting_time': self._format_time(time_estimate['cutting']),
+                'rapid_time': self._format_time(time_estimate['rapid']),
+                'dwell_time': self._format_time(time_estimate['dwell']),
+                'setup_instructions': [
+                    'Mount tube in jig with end facing spindle',
+                    'Verify G55 is set to jig origin',
+                    'Z=0 is at bottom of tube (jig surface)',
+                    'Y=0 is at nominal end face of tube'
+                ],
+                'operation_notes': [
+                    'Phase 1: Face first half of tube end',
+                    'Program pauses (M0) for tube flip',
+                    'Phase 2: Face second half of tube end'
+                ]
+            }
+        )
+
+    def generate_tube_pattern_gcode(self, tube_height: float,
                                    square_end: bool, cut_to_length: bool,
-                                   tube_width: float = None, tube_length: float = None):
+                                   tube_width: float = None, tube_length: float = None,
+                                   suggested_filename: str = None) -> PostProcessorResult:
         """
         Generate G-code for machining DXF pattern on both faces of a tube.
 
@@ -2144,12 +2214,15 @@ class FRCPostProcessor:
         - Z-axis along tube height (vertical)
 
         Args:
-            output_file: Path to output G-code file
             tube_height: Height of tube in Z direction (inches)
             square_end: Whether to square the tube end before machining pattern
             cut_to_length: Whether to cut tube to length after pattern (stub)
             tube_width: Width of tube face (X dimension) in inches (optional, calculated from DXF if not provided)
             tube_length: Length of tube face (Y dimension) in inches (optional, for future use)
+            suggested_filename: Optional filename (without timestamp, will be added)
+
+        Returns:
+            PostProcessorResult with gcode string and stats
         """
         gcode = []
 
@@ -2329,42 +2402,71 @@ class FRCPostProcessor:
         gcode.append('G54  ; Reset to standard work coordinate system')
         gcode.append('M30')
 
-        # Write to file
-        with open(output_file, 'w') as f:
-            f.write('\n'.join(gcode))
-
-        print(f'OUTPUT_FILE:{output_file}')
-        print(f'Tube pattern G-code generated')
-
-        # Print stats for UI
-        num_holes = len(self.holes) if hasattr(self, 'holes') else 0
-        num_pockets = len(self.pockets) if hasattr(self, 'pockets') else 0
-        print(f"\nIdentified {num_holes} millable holes and {num_pockets} pockets on each face")
-        print(f"Total lines: {len(gcode)}")
-
         # Estimate cycle time
         time_estimate = self._estimate_cycle_time(gcode)
-        print(f"\n⏱️  ESTIMATED_CYCLE_TIME: {time_estimate['total']:.1f} seconds ({self._format_time(time_estimate['total'])})")
 
-        print(f'\nSETUP:')
-        print(f'  1. Mount tube in jig with end facing spindle')
-        print(f'  2. Verify G55 is set to jig origin')
-        print(f'  3. Origin (0,0,0) = bottom-left corner of tube face')
+        # Collect stats
+        num_holes = len(self.holes) if hasattr(self, 'holes') else 0
+        num_pockets = len(self.pockets) if hasattr(self, 'pockets') else 0
+
+        # Generate filename with timestamp
+        base_name = suggested_filename if suggested_filename else "tube_pattern"
+        pacific_time = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
+        timestamp = pacific_time.strftime("%Y%m%d_%H%M%S")
+        filename = f"{base_name}_{timestamp}.nc"
+
+        # Build operation notes based on configuration
+        operation_notes = []
         if square_end:
-            print(f'\nOPERATIONS:')
-            print(f'  Phase 0: Square tube end')
-            print(f'  -- Flip tube end-for-end (M0) --')
-            print(f'  Phase 0: Square opposite end')
-            print(f'  Phase 1: Machine pattern on first face')
-            print(f'  -- Flip tube 180° around Y-axis (M0) --')
-            print(f'  Phase 2: Machine pattern on opposite face (mirrored)')
+            operation_notes.extend([
+                'Phase 0: Square tube end',
+                'Flip tube end-for-end (M0)',
+                'Phase 0: Square opposite end',
+                'Phase 1: Machine pattern on first face',
+                'Flip tube 180° around Y-axis (M0)',
+                'Phase 2: Machine pattern on opposite face (mirrored)'
+            ])
         else:
-            print(f'\nOPERATIONS:')
-            print(f'  Phase 1: Machine pattern on first face')
-            print(f'  -- Flip tube 180° around Y-axis (M0) --')
-            print(f'  Phase 2: Machine pattern on opposite face (mirrored)')
+            operation_notes.extend([
+                'Phase 1: Machine pattern on first face',
+                'Flip tube 180° around Y-axis (M0)',
+                'Phase 2: Machine pattern on opposite face (mirrored)'
+            ])
         if cut_to_length:
-            print(f'  Cut to length: Y={tube_length}" (each phase)')
+            operation_notes.append(f'Cut to length: Y={tube_length}" (each phase)')
+
+        # Return result
+        return PostProcessorResult(
+            success=True,
+            gcode='\n'.join(gcode),
+            filename=filename,
+            warnings=[],
+            stats={
+                'operation': 'tube_pattern',
+                'tube_height': tube_height,
+                'tube_width': tube_width,
+                'tube_length': tube_length,
+                'square_end': square_end,
+                'cut_to_length': cut_to_length,
+                'num_holes': num_holes,
+                'num_pockets': num_pockets,
+                'num_holes_per_face': num_holes,
+                'num_pockets_per_face': num_pockets,
+                'has_perimeter': False,
+                'total_lines': len(gcode),
+                'cycle_time_seconds': time_estimate['total'],
+                'cycle_time_display': self._format_time(time_estimate['total']),
+                'cutting_time': self._format_time(time_estimate['cutting']),
+                'rapid_time': self._format_time(time_estimate['rapid']),
+                'dwell_time': self._format_time(time_estimate['dwell']),
+                'setup_instructions': [
+                    'Mount tube in jig with end facing spindle',
+                    'Verify G55 is set to jig origin',
+                    'Origin (0,0,0) = bottom-left corner of tube face'
+                ],
+                'operation_notes': operation_notes
+            }
+        )
 
     def _generate_toolpath_gcode(self, skip_perimeter: bool = False, z_offset: float = 0.0, y_offset: float = 0.0) -> list[str]:
         """
@@ -2858,9 +2960,33 @@ def main():
         pp = FRCPostProcessor(args.thickness, args.tool_diameter)
         pp.apply_material_preset('aluminum')  # Tube facing is always aluminum
 
-        # Add timestamp to output filename
-        output_path = add_timestamp_to_filename(args.output_gcode)
-        pp.generate_tube_facing_gcode(output_path, args.tube_size)
+        # Call API to generate G-code
+        base_name = os.path.splitext(os.path.basename(args.output_gcode))[0]
+        result = pp.generate_tube_facing_gcode(tube_size=args.tube_size, suggested_filename=base_name)
+
+        if not result.success:
+            print(f"ERROR: Failed to generate G-code")
+            for error in result.errors:
+                print(f"  - {error}")
+            sys.exit(1)
+
+        # Write G-code to file
+        output_path = os.path.join(os.path.dirname(args.output_gcode) or '.', result.filename)
+        with open(output_path, 'w') as f:
+            f.write(result.gcode)
+
+        # Print output for CLI
+        print(f'OUTPUT_FILE:{output_path}')
+        print(f'Tube facing G-code generated for {args.tube_size} tube')
+        print(f"\nIdentified 0 millable holes and 0 pockets")
+        print(f"Total lines: {result.stats['total_lines']}")
+        print(f"\n⏱️  ESTIMATED_CYCLE_TIME: {result.stats['cycle_time_seconds']:.1f} seconds ({result.stats['cycle_time_display']})")
+        print(f'\nSETUP:')
+        for instruction in result.stats['setup_instructions']:
+            print(f'  {instruction}')
+        print(f'\nOPERATION:')
+        for note in result.stats['operation_notes']:
+            print(f'  {note}')
 
     elif args.mode == 'tube-pattern':
         # Tube pattern mode - machine DXF pattern on both tube faces
@@ -2900,13 +3026,40 @@ def main():
         has_perimeter = bool(pp.perimeter) if hasattr(pp, 'perimeter') else False
         print(f'DEBUG: Classified {hole_count} holes, {pocket_count} pockets, perimeter={has_perimeter}')
 
-        # Add timestamp to output filename (shared logic)
-        output_path = add_timestamp_to_filename(args.output_gcode)
+        # Call API to generate G-code
+        base_name = os.path.splitext(os.path.basename(args.output_gcode))[0]
+        result = pp.generate_tube_pattern_gcode(
+            tube_height=args.tube_height,
+            square_end=args.square_end,
+            cut_to_length=args.cut_to_length,
+            tube_width=args.tube_width,
+            tube_length=args.tube_length,
+            suggested_filename=base_name
+        )
 
-        # Generate tube pattern G-code
-        pp.generate_tube_pattern_gcode(output_path, args.tube_height,
-                                       args.square_end, args.cut_to_length,
-                                       args.tube_width, args.tube_length)
+        if not result.success:
+            print(f"ERROR: Failed to generate G-code")
+            for error in result.errors:
+                print(f"  - {error}")
+            sys.exit(1)
+
+        # Write G-code to file
+        output_path = os.path.join(os.path.dirname(args.output_gcode) or '.', result.filename)
+        with open(output_path, 'w') as f:
+            f.write(result.gcode)
+
+        # Print output for CLI
+        print(f'OUTPUT_FILE:{output_path}')
+        print(f'Tube pattern G-code generated')
+        print(f"\nIdentified {result.stats['num_holes_per_face']} millable holes and {result.stats['num_pockets_per_face']} pockets on each face")
+        print(f"Total lines: {result.stats['total_lines']}")
+        print(f"\n⏱️  ESTIMATED_CYCLE_TIME: {result.stats['cycle_time_seconds']:.1f} seconds ({result.stats['cycle_time_display']})")
+        print(f'\nSETUP:')
+        for instruction in result.stats['setup_instructions']:
+            print(f'  {instruction}')
+        print(f'\nOPERATIONS:')
+        for note in result.stats['operation_notes']:
+            print(f'  {note}')
 
     else:
         # Standard mode - DXF processing
@@ -2940,10 +3093,20 @@ def main():
         pp.classify_holes()
         pp.identify_perimeter_and_pockets()
 
-        # Add timestamp to output filename (shared logic)
-        output_path = add_timestamp_to_filename(args.output_gcode)
+        # Call API to generate G-code
+        base_name = os.path.splitext(os.path.basename(args.output_gcode))[0]
+        result = pp.generate_gcode(suggested_filename=base_name)
 
-        pp.generate_gcode(output_path)
+        if not result.success:
+            print(f"ERROR: Failed to generate G-code")
+            for error in result.errors:
+                print(f"  - {error}")
+            sys.exit(1)
+
+        # Write G-code to file
+        output_path = os.path.join(os.path.dirname(args.output_gcode) or '.', result.filename)
+        with open(output_path, 'w') as f:
+            f.write(result.gcode)
 
         # Print actual output path for GUI to parse (prefixed with OUTPUT_FILE:)
         print(f"OUTPUT_FILE:{output_path}")
