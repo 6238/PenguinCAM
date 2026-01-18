@@ -984,7 +984,7 @@ class FRCPostProcessor:
 
         # Modal G-code setup (similar to Fusion 360)
         gcode.append("G90 G94 G91.1 G40 G49 G17")
-        gcode.append("(G90=Absolute, G94=Feed/min, G91.1=Arc centers incremental [IJK relative to start point], G40=Cutter comp cancel, G49=Tool length comp cancel, G17=XY plane)")
+        gcode.append("(G90=Absolute, G94=Feed/min, G91.1=Arc centers incremental - IJK relative to start point, G40=Cutter comp cancel, G49=Tool length comp cancel, G17=XY plane)")
 
         # Units
         if self.units == "inch":
@@ -1164,7 +1164,7 @@ class FRCPostProcessor:
         gcode.append(f"G1 Z{ramp_start_height:.4f} F{self.approach_rate}  ; Approach to ramp start height")
 
         # Helical entry in multiple passes using ramp feed rate
-        gcode.append(f"(Helical entry: {num_helical_passes} passes at {self.ramp_angle}°, {depth_per_pass:.4f}\" per pass)")
+        gcode.append(f"(Helical entry: {num_helical_passes} passes at {self.ramp_angle} deg, {depth_per_pass:.4f}\" per pass)")
         for pass_num in range(num_helical_passes):
             target_z = ramp_start_height - (pass_num + 1) * depth_per_pass
             gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-entry_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_helical_passes} CCW for climb milling")
@@ -1420,7 +1420,7 @@ class FRCPostProcessor:
         ramp_start_height = self.material_top + self.ramp_start_clearance
         num_helical_passes, depth_per_pass = self._calculate_helical_passes(helix_radius, ramp_start_height=ramp_start_height)
 
-        gcode.append(f"(Pocket with helical entry at center: {num_helical_passes} passes at {self.ramp_angle}°)")
+        gcode.append(f"(Pocket with helical entry at center: {num_helical_passes} passes at {self.ramp_angle} deg)")
 
         # Position at pocket center
         gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.traverse_rate}  ; Position at pocket center")
@@ -1632,7 +1632,7 @@ class FRCPostProcessor:
             # Calculate ramp-in distance using material-specific ramp angle
             ramp_depth = ramp_start_height - pass_cut_depth
             ramp_distance = ramp_depth / math.tan(math.radians(self.ramp_angle))
-            gcode.append(f"(Ramp-in: {ramp_distance:.4f}\" at {self.ramp_angle}°)")
+            gcode.append(f"(Ramp-in: {ramp_distance:.4f}\" at {self.ramp_angle} deg)")
 
             # Calculate tab zones ONLY on final pass
             tab_zones = []  # List of (start_dist, end_dist) tuples
@@ -1715,7 +1715,7 @@ class FRCPostProcessor:
                         num_loops = max(1, int(math.ceil(remaining_depth / depth_per_loop)))
                         depth_per_loop_actual = remaining_depth / num_loops
 
-                        gcode.append(f"(Perimeter too short - using helical finish: {num_loops} loop(s) at {self.ramp_angle}°)")
+                        gcode.append(f"(Perimeter too short - using helical finish: {num_loops} loop(s) at {self.ramp_angle} deg)")
 
                         # Move to edge of helix radius
                         start_x = helix_center_x + helix_radius
