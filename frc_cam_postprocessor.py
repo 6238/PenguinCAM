@@ -1742,6 +1742,7 @@ class FRCPostProcessor:
             # Store tab positions for the tab removal pass (only on final pass)
             # List of (tab_idx, start_x, start_y, end_x, end_y) tuples
             tab_positions = []
+            recorded_tabs = set()  # Track which tab_idx values we've already recorded
 
             # Create perimeter points list starting from where ramp ended
             # Continue from ramp_end_segment to end, then wrap around to start
@@ -1750,7 +1751,7 @@ class FRCPostProcessor:
 
             # Helper function to process a segment with tab checking
             def process_segment(p1, p2, seg_start_dist, seg_length):
-                nonlocal tab_number, current_z, tab_positions
+                nonlocal tab_number, current_z, tab_positions, recorded_tabs
 
                 if seg_length == 0:
                     return
@@ -1810,8 +1811,10 @@ class FRCPostProcessor:
                         start_x = p1[0] + t_start * (p2[0] - p1[0])
                         start_y = p1[1] + t_start * (p2[1] - p1[1])
 
-                        # Store tab position for removal pass
-                        tab_positions.append((tab_idx, start_x, start_y, end_x, end_y))
+                        # Store tab position for removal pass (only once per tab_idx)
+                        if tab_idx not in recorded_tabs:
+                            tab_positions.append((tab_idx, start_x, start_y, end_x, end_y))
+                            recorded_tabs.add(tab_idx)
 
                         # Move to tab start in XY
                         gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.feed_rate}")
