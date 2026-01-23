@@ -118,7 +118,7 @@ class FRCPostProcessor:
         
         # Z-axis reference: Z=0 is at BOTTOM (sacrifice board surface)
         # This allows zeroing to the sacrifice board instead of material top
-        self.sacrifice_board_depth = 0.02  # How far to cut into sacrifice board (inches)
+        self.sacrifice_board_depth = 0.008  # How far to cut into sacrifice board (inches)
         self.clearance_height = 0.5  # Clearance above material top for rapid moves (inches)
 
         # Calculated Z positions (Z=0 at sacrifice board)
