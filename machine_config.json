@@ -1,7 +1,7 @@
 {
   "machine": {
-    "name": "Avid CNC CRP800",
-    "controller": "Mach4",
+    "name": "OmioCNC",
+    "controller": "Mach3",
     "coolant": "Air blast",
     "work_envelope": {
       "x": 24.0,
@@ -11,8 +11,8 @@
     }
   },
   "team": {
-    "number": 6238,
-    "name": "Popcorn Penguins"
+    "number": 4611,
+    "name": "Ozone Robotics"
   },
   "safety": {
     "note": "Always verify Z-zero before running program"

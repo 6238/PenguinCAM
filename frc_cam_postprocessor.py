@@ -100,7 +100,7 @@ class FRCPostProcessor:
     def __init__(self, material_thickness: float, tool_diameter: float, units: str = "inch"):
         """
         Initialize the post-processor
-        
+
         Args:
             material_thickness: Thickness of material in inches
             tool_diameter: Diameter of cutting tool in inches (e.g., 4mm = 0.157")
@@ -115,7 +115,7 @@ class FRCPostProcessor:
         # Minimum hole diameter that can be milled (must be > tool diameter for chip evacuation)
         # Holes smaller than this are skipped
         self.min_millable_hole = tool_diameter * 1.2  # 20% larger than tool for chip clearance
-        
+
         # Z-axis reference: Z=0 is at BOTTOM (sacrifice board surface)
         # This allows zeroing to the sacrifice board instead of material top
         self.sacrifice_board_depth = 0.008  # How far to cut into sacrifice board (inches)
@@ -259,33 +259,33 @@ class FRCPostProcessor:
 
         # Extract polylines and lines (boundaries/pockets)
         self.polylines = []
-        
+
         # Method 1: Look for LWPOLYLINE entities
         for entity in msp.query('LWPOLYLINE'):
             points = [(p[0], p[1]) for p in entity.get_points('xy')]
             if entity.closed and len(points) > 2:
                 self.polylines.append(points)
-        
+
         # Method 2: Look for POLYLINE entities
         for entity in msp.query('POLYLINE'):
             if entity.is_2d_polyline:
                 points = [(v.dxf.location.x, v.dxf.location.y) for v in entity.vertices]
                 if entity.is_closed and len(points) > 2:
                     self.polylines.append(points)
-        
+
         # Method 3: Collect individual LINE, ARC, SPLINE entities and try to form closed paths
         # This is needed for Onshape exports which use individual entities
         lines = list(msp.query('LINE'))
         arcs = list(msp.query('ARC'))
         splines = list(msp.query('SPLINE'))
-        
+
         if lines or arcs or splines:
             print(f"Found {len(lines)} lines, {len(arcs)} arcs, {len(splines)} splines - attempting to form closed paths...")
             closed_paths = self._chain_entities_to_paths(lines, arcs, splines)
             self.polylines.extend(closed_paths)
-        
+
         print(f"Found {len(self.circles)} circles and {len(self.polylines)} closed paths")
-    
+
     def _chain_entities_to_paths(self, lines, arcs, splines):
         """
         Chain individual LINE, ARC, and SPLINE entities into closed paths.
@@ -296,68 +296,68 @@ class FRCPostProcessor:
         exact_paths = self._connect_segments_graph_based(lines, arcs, splines)
         if exact_paths:
             return exact_paths
-        
+
         # Fallback: Convert all entities to linestrings and try merge
         print("  Falling back to linestring merge...")
         all_linestrings = []
-        
+
         # Add LINE entities
         for line in lines:
             start = (line.dxf.start.x, line.dxf.start.y)
             end = (line.dxf.end.x, line.dxf.end.y)
             all_linestrings.append(LineString([start, end]))
-        
+
         # Add ARC entities (sample them into line segments)
         for arc in arcs:
             points = self._sample_arc(arc, num_points=20)
             if len(points) >= 2:
                 all_linestrings.append(LineString(points))
-        
+
         # Add SPLINE entities (sample them into line segments)
         for spline in splines:
             points = self._sample_spline(spline, num_points=30)
             if len(points) >= 2:
                 all_linestrings.append(LineString(points))
-        
+
         if not all_linestrings:
             return []
-        
+
         try:
             # Merge connected line segments
             merged = linemerge(all_linestrings)
-            
+
             # Extract closed paths
             closed_paths = []
             tolerance = 0.1  # 0.1" tolerance for "almost closed"
-            
+
             # Check if we got a single geometry or multiple
             geoms_to_check = []
             if hasattr(merged, 'geoms'):
                 geoms_to_check = list(merged.geoms)
             else:
                 geoms_to_check = [merged]
-            
+
             for geom in geoms_to_check:
                 coords = list(geom.coords)
                 if len(coords) < 3:
                     continue
-                
+
                 # Check if path is closed or nearly closed
                 start = Point(coords[0])
                 end = Point(coords[-1])
                 distance = start.distance(end)
-                
+
                 is_closed = (coords[0] == coords[-1]) or distance < tolerance
-                
+
                 if is_closed:
                     # Remove duplicate closing point if present
                     if coords[0] == coords[-1]:
                         coords = coords[:-1]
-                    
+
                     if len(coords) > 2:
                         closed_paths.append(coords)
                         print(f"  Found closed path with {len(coords)} points (gap: {distance:.4f}\")")
-            
+
             # If we still didn't find closed paths, try creating convex hull (last resort)
             if not closed_paths and all_linestrings:
                 print("  Attempting to form polygon from all segments (APPROXIMATE)...")
@@ -372,13 +372,13 @@ class FRCPostProcessor:
                             print(f"  ⚠️  This is approximate - concave features will be lost!")
                 except Exception as e:
                     print(f"  Could not create polygon: {e}")
-            
+
             return closed_paths
-            
+
         except Exception as e:
             print(f"Warning: Could not automatically chain entities into paths: {e}")
             return []
-    
+
     def _connect_segments_graph_based(self, lines, arcs, splines):
         """
         Build a connectivity graph and find closed cycles.
@@ -386,80 +386,80 @@ class FRCPostProcessor:
         """
         # Build list of all segments with their endpoints
         segments = []
-        
+
         # Add lines
         for line in lines:
             start = (line.dxf.start.x, line.dxf.start.y)
             end = (line.dxf.end.x, line.dxf.end.y)
             points = [start, end]
             segments.append({'type': 'line', 'points': points, 'start': start, 'end': end})
-        
+
         # Add arcs (sampled)
         for arc in arcs:
             points = self._sample_arc(arc, num_points=20)
             if len(points) >= 2:
                 segments.append({'type': 'arc', 'points': points, 'start': points[0], 'end': points[-1]})
-        
+
         # Add splines (sampled)
         for spline in splines:
             points = self._sample_spline(spline, num_points=30)
             if len(points) >= 2:
                 segments.append({'type': 'spline', 'points': points, 'start': points[0], 'end': points[-1]})
-        
+
         if not segments:
             return []
-        
+
         # Build adjacency graph
         tolerance = 0.01  # 0.01" tolerance for matching endpoints
 
         def points_match(p1, p2, tol=tolerance):
             return self._distance_2d(p1, p2) < tol
-        
+
         # Find which segments connect to which
         graph = defaultdict(list)  # endpoint -> list of (segment_idx, is_start)
-        
+
         for idx, seg in enumerate(segments):
             # Add connections for start point
             start_key = self._round_point(seg['start'], 3)
             graph[start_key].append((idx, True))
-            
+
             # Add connections for end point
             end_key = self._round_point(seg['end'], 3)
             graph[end_key].append((idx, False))
-        
+
         # Find closed cycles
         visited = set()
         closed_paths = []
-        
+
         for start_idx in range(len(segments)):
             if start_idx in visited:
                 continue
-            
+
             # Try to build a path starting from this segment
             path_segments = []
             path_points = []
             current_idx = start_idx
             current_end = segments[start_idx]['end']
-            
+
             # Add first segment
             path_segments.append(current_idx)
             path_points.extend(segments[current_idx]['points'][:-1])  # Don't duplicate endpoints
             visited.add(current_idx)
-            
+
             # Try to find next segments
             max_iterations = len(segments)
             for _ in range(max_iterations):
                 # Look for a segment that starts where we ended
                 end_key = self._round_point(current_end, 3)
-                
+
                 next_found = False
                 for next_idx, is_start in graph[end_key]:
                     if next_idx == current_idx or next_idx in path_segments:
                         continue
-                    
+
                     # Found a connection!
                     seg = segments[next_idx]
-                    
+
                     if is_start:
                         # Segment starts where we ended - add it forward
                         path_segments.append(next_idx)
@@ -471,14 +471,14 @@ class FRCPostProcessor:
                         reversed_points = list(reversed(seg['points']))
                         path_points.extend(reversed_points[:-1])
                         current_end = seg['start']
-                    
+
                     visited.add(next_idx)
                     next_found = True
                     break
-                
+
                 if not next_found:
                     break
-                
+
                 # Check if we've closed the loop
                 start_point = segments[start_idx]['start']
                 if points_match(current_end, start_point):
@@ -487,24 +487,24 @@ class FRCPostProcessor:
                         closed_paths.append(path_points)
                         print(f"  Found exact closed path with {len(path_points)} points using {len(path_segments)} segments")
                     break
-        
+
         return closed_paths
-    
+
     def _round_point(self, point, decimals=3):
         """Round a point to create a hashable key for graph"""
         return (round(point[0], decimals), round(point[1], decimals))
-    
+
     def _sample_arc(self, arc, num_points=20):
         """Sample an ARC entity into a series of points"""
         center = (arc.dxf.center.x, arc.dxf.center.y)
         radius = arc.dxf.radius
         start_angle = math.radians(arc.dxf.start_angle)
         end_angle = math.radians(arc.dxf.end_angle)
-        
+
         # Handle angle wrapping
         if end_angle < start_angle:
             end_angle += 2 * math.pi
-        
+
         points = []
         for i in range(num_points + 1):
             t = i / num_points
@@ -512,9 +512,9 @@ class FRCPostProcessor:
             x = center[0] + radius * math.cos(angle)
             y = center[1] + radius * math.sin(angle)
             points.append((x, y))
-        
+
         return points
-    
+
     def _sample_spline(self, spline, num_points=30):
         """Sample a SPLINE entity into a series of points"""
         try:
@@ -530,11 +530,11 @@ class FRCPostProcessor:
                 return control_points if len(control_points) > 1 else []
             except:
                 return []
-        
+
     def transform_coordinates(self, origin_corner: str, rotation_angle: int):
         """
         Transform all coordinates based on origin corner and rotation.
-        
+
         Args:
             origin_corner: 'bottom-left', 'bottom-right', 'top-left', 'top-right'
             rotation_angle: 0, 90, 180, 270 degrees clockwise
@@ -542,16 +542,16 @@ class FRCPostProcessor:
         # First, find bounding box of ALL entities
         all_x = []
         all_y = []
-        
+
         # Collect all X,Y coordinates
         for circle in self.circles:
             all_x.append(circle['center'][0])
             all_y.append(circle['center'][1])
-        
+
         for line in self.lines:
             all_x.extend([line['start'][0], line['end'][0]])
             all_y.extend([line['start'][1], line['end'][1]])
-        
+
         for arc in self.arcs:
             all_x.append(arc['center'][0])
             all_y.append(arc['center'][1])
@@ -559,7 +559,7 @@ class FRCPostProcessor:
             radius = arc['radius']
             all_x.extend([arc['center'][0] - radius, arc['center'][0] + radius])
             all_y.extend([arc['center'][1] - radius, arc['center'][1] + radius])
-        
+
         for spline in self.splines:
             points = self._sample_spline(spline)
             for x, y in points:
@@ -574,23 +574,23 @@ class FRCPostProcessor:
         if not all_x or not all_y:
             print("Warning: No geometry found for transformation")
             return
-        
+
         minX, maxX = min(all_x), max(all_x)
         minY, maxY = min(all_y), max(all_y)
         centerX = (minX + maxX) / 2
         centerY = (minY + maxY) / 2
-        
+
         print(f"\nApplying transformation:")
         print(f"  Origin corner: {origin_corner}")
         print(f"  Rotation: {rotation_angle}°")
         print(f"  Original bounds: X=[{minX:.3f}, {maxX:.3f}], Y=[{minY:.3f}, {maxY:.3f}]")
-        
+
         # Step 1: Rotate around center if needed
         if rotation_angle != 0:
             angle_rad = -math.radians(rotation_angle)  # Negative for clockwise
             cos_a = math.cos(angle_rad)
             sin_a = math.sin(angle_rad)
-            
+
             def rotate_point(x, y):
                 # Translate to origin
                 x -= centerX
@@ -602,21 +602,21 @@ class FRCPostProcessor:
                 new_x += centerX
                 new_y += centerY
                 return new_x, new_y
-            
+
             # Rotate all entities
             for circle in self.circles:
                 circle['center'] = rotate_point(*circle['center'])
-            
+
             for line in self.lines:
                 line['start'] = rotate_point(*line['start'])
                 line['end'] = rotate_point(*line['end'])
-            
+
             for arc in self.arcs:
                 arc['center'] = rotate_point(*arc['center'])
                 # Update angles for rotation
                 arc['start_angle'] = (arc['start_angle'] - rotation_angle) % 360
                 arc['end_angle'] = (arc['end_angle'] - rotation_angle) % 360
-            
+
             for spline in self.splines:
                 # For splines, we need to recreate - for now, skip
                 # This is a limitation but rarely matters for FRC parts
@@ -648,7 +648,7 @@ class FRCPostProcessor:
 
             minX, maxX = min(all_x), max(all_x)
             minY, maxY = min(all_y), max(all_y)
-        
+
         # Step 2: Translate based on origin corner
         # We want the selected corner to become (0, 0)
         if origin_corner == 'bottom-left':
@@ -659,18 +659,18 @@ class FRCPostProcessor:
             offsetX, offsetY = -minX, -maxY
         elif origin_corner == 'top-right':
             offsetX, offsetY = -maxX, -maxY
-        
+
         def translate_point(x, y):
             return x + offsetX, y + offsetY
-        
+
         # Translate all entities
         for circle in self.circles:
             circle['center'] = translate_point(*circle['center'])
-        
+
         for line in self.lines:
             line['start'] = translate_point(*line['start'])
             line['end'] = translate_point(*line['end'])
-        
+
         for arc in self.arcs:
             arc['center'] = translate_point(*arc['center'])
 
@@ -693,10 +693,10 @@ class FRCPostProcessor:
 
         new_minX, new_maxX = min(all_x), max(all_x)
         new_minY, new_maxY = min(all_y), max(all_y)
-        
+
         print(f"  Transformed bounds: X=[{new_minX:.3f}, {new_maxX:.3f}], Y=[{new_minY:.3f}, {new_maxY:.3f}]")
         print(f"  New origin (0,0) is at the {origin_corner} corner\n")
-    
+
     def classify_holes(self):
         """Classify holes by diameter"""
         # Classify all circles as holes (apply size check)
@@ -855,7 +855,7 @@ class FRCPostProcessor:
             self.perimeter = None
             self.pockets = []
             return
-        
+
         # Convert to Shapely polygons
         polygons = []
         for points in self.polylines:
@@ -865,12 +865,12 @@ class FRCPostProcessor:
                     polygons.append((poly, points))
             except:
                 pass
-        
+
         if not polygons:
             self.perimeter = None
             self.pockets = []
             return
-        
+
         # Find the largest polygon (perimeter)
         polygons.sort(key=lambda x: x[0].area, reverse=True)
         self.perimeter = polygons[0][1]  # Get the original points
@@ -880,7 +880,7 @@ class FRCPostProcessor:
 
         # Sort pockets to minimize travel time
         self._sort_pockets()
-    
+
     def generate_gcode(self, suggested_filename: str = None) -> PostProcessorResult:
         """
         Generate complete G-code for standard plate operations
@@ -916,9 +916,9 @@ class FRCPostProcessor:
                 'team': {'number': 0, 'name': 'FRC Team'}
             }
 
-        # Generate timestamp in Pacific time
-        pacific_time = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
-        timestamp = pacific_time.strftime("%Y-%m-%d %H:%M")
+        # Generate timestamp in Eastern time
+        eastern_time = datetime.datetime.now(ZoneInfo("America/Detroit"))
+        timestamp = eastern_time.strftime("%Y-%m-%d %H:%M")
 
         # Determine operations present
         operations = []
@@ -1021,7 +1021,7 @@ class FRCPostProcessor:
                 gcode.append(f"(Hole {i} - {diameter:.3f}\" diameter)")
                 gcode.extend(self._generate_hole_gcode(center[0], center[1], diameter))
                 gcode.append("")
-        
+
         # Pockets
         if self.pockets:
             gcode.append("(===== POCKETS =====)")
@@ -1029,13 +1029,13 @@ class FRCPostProcessor:
                 gcode.append(f"(Pocket {i})")
                 gcode.extend(self._generate_pocket_gcode(pocket))
                 gcode.append("")
-        
+
         # Perimeter with tabs
         if self.perimeter:
             gcode.append("(===== PERIMETER WITH TABS =====)")
             gcode.extend(self._generate_perimeter_gcode(self.perimeter))
             gcode.append("")
-        
+
         # Footer
         gcode.append("(===== FINISH =====)")
         gcode.append(f"G0 Z{self.safe_height:.4f}  ; Move to safe height")
@@ -1088,7 +1088,7 @@ class FRCPostProcessor:
                 'dwell_time': self._format_time(time_estimate['dwell'])
             }
         )
-    
+
     def _calculate_helical_passes(self, toolpath_radius: float, target_angle_deg: float = None, ramp_start_height: float = None) -> Tuple[int, float]:
         """
         Calculate number of helical passes needed for a safe plunge angle.
@@ -1552,7 +1552,7 @@ class FRCPostProcessor:
         gcode.append(f"G0 Z{self.safe_height:.4f}  ; Retract")
 
         return gcode
-    
+
     def _generate_perimeter_gcode(self, perimeter_points: List[Tuple[float, float]]) -> List[str]:
         """Generate G-code for perimeter with tabs and tool compensation (offset outward)
 
@@ -1568,7 +1568,7 @@ class FRCPostProcessor:
 
         if num_passes > 1:
             actual_depth_per_pass = total_cut_depth / num_passes
-            gcode.append(f"(Multi-pass perimeter: {num_passes} passes @ {actual_depth_per_pass:.3f}\" each (max {self.max_slotting_depth:.3f}\"))")
+            gcode.append(f"(Multi-pass perimeter: {num_passes} passes @ {actual_depth_per_pass:.3f}\" each. Max {self.max_slotting_depth:.3f}\")")
 
         # Create offset path (outward by tool radius)
         perimeter_poly = Polygon(perimeter_points)
@@ -1592,7 +1592,7 @@ class FRCPostProcessor:
             error_msg = f"Perimeter at approximately ({center_x:.3f}, {center_y:.3f}) resulted in invalid geometry after tool compensation - may have internal corners too sharp for {self.tool_diameter:.4f}\" tool"
             self._add_error(error_msg)
             return gcode
-        
+
         # Calculate segment lengths
         segment_lengths = []
         for i in range(len(offset_points)):
@@ -3194,7 +3194,7 @@ def main():
                        help='Feed rate (default: 14 ipm or 365 mm/min depending on units)')
     parser.add_argument('--plunge-rate', type=float, default=None,
                        help='Plunge rate (default: 10 ipm or 339 mm/min depending on units)')
-    
+
     args = parser.parse_args()
 
     # Mode branching
