@@ -13,7 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Expose port (Railway sets PORT env var)
-EXPOSE 8080
+EXPOSE $PORT
 
 # Start gunicorn
-CMD gunicorn frc_cam_gui_app:app --bind 0.0.0.0:8080
+CMD gunicorn frc_cam_gui_app:app --bind 0.0.0.0:$PORT
