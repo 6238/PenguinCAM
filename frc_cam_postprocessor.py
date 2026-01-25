@@ -993,7 +993,10 @@ class FRCPostProcessor:
             gcode.append("G21  ; Millimeters")
 
         # Home Z axis (G28) - use G0 for rapid speed
-        gcode.append("G0 G28 G91 Z0.  ; Home Z axis at rapid speed")
+        #gcode.append("G0 G28 G91 Z0.  ; Home Z axis at rapid speed") <-- OLD CODE, made into multiple lines by TS
+        gcode.append("G91")
+        gcode.append("G28 Z0.")
+
         gcode.append("G90  ; Back to absolute mode")
         gcode.append("")
 
@@ -2342,7 +2345,9 @@ class FRCPostProcessor:
         gcode.append('( === INITIALIZATION === )')
         gcode.append('G90 G94 G91.1 G40 G49 G17')
         gcode.append('G20')
-        gcode.append('G0 G28 G91 Z0.  ; Home Z axis at rapid speed')
+        #gcode.append('G0 G28 G91 Z0.  ; Home Z axis at rapid speed') split to multiple lines - TS
+        gcode.append("G91")
+        gcode.append("G28 Z0.")
         gcode.append('G90  ; Back to absolute mode')
         gcode.append('')
         gcode.append('( Tool and spindle )')
