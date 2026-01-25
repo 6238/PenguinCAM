@@ -1,6 +1,6 @@
 {
   "client_id": "RN6GHYZBINHE5G37O23C6VFGPYYFXXOVOXDYMPQ=",
-  "client_secret": "",
+  "client_secret": "7CU2DEUONSKYDKIZDTPXANDVYCWE6ZLFETPTMVWU57HGCNUQ2KNA====",
   "dev_redirect_uri": "http://localhost:6238/onshape/oauth/callback",
   "redirect_uri": "https://4611penguincam.up.railway.app/onshape/oauth/callback",
   "scopes": "OAuth2Read OAuth2ReadPII"
