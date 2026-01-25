@@ -264,7 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const response = await fetch('/drive/status');
                 const data = await response.json();
-                
+
                 if (data.available && data.configured) {
                     driveAvailable = true;
                     driveBtn.style.display = 'inline-block';
@@ -324,7 +324,7 @@ document.addEventListener('DOMContentLoaded', () => {
             generateBtn.textContent = '🚀 Generate Program';
             hideError();
             hideResults();
-            
+
             // Read DXF file for setup mode
             const reader = new FileReader();
             reader.onload = (e) => {
@@ -421,18 +421,18 @@ document.addEventListener('DOMContentLoaded', () => {
         // Upload to Google Drive
         driveBtn.addEventListener('click', async () => {
             if (!outputFilename) return;
-            
+
             driveBtn.disabled = true;
             driveBtn.textContent = '⏳ Uploading...';
             driveStatus.style.display = 'none';
-            
+
             try {
                 const response = await fetch(`/drive/upload/${outputFilename}`, {
                     method: 'POST'
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.success) {
                     driveStatus.textContent = data.message;
                     driveStatus.style.color = '#00D26A';
@@ -551,7 +551,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 previewControls.style.display = 'none';
                 gcodeButtons.style.display = 'none';
                 if (stockSizeDisplay) stockSizeDisplay.style.display = 'none';
-                
+
                 // Resize canvas now that it's visible
                 if (dxfCanvas2D && dxfGeometry) {
                     setTimeout(() => {
@@ -582,7 +582,7 @@ document.addEventListener('DOMContentLoaded', () => {
         function initDxfSetup() {
             dxfCanvas2D = document.getElementById('dxfSetupCanvas');
             dxfCtx2D = dxfCanvas2D.getContext('2d');
-            
+
             // CRITICAL: Set canvas internal size to match CSS display size
             // to avoid stretching/distortion
             const rect = dxfCanvas2D.getBoundingClientRect();
@@ -595,16 +595,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 dxfCanvas2D.width = 800;
                 dxfCanvas2D.height = 500;
             }
-            
+
             // Setup event listeners
-            document.getElementById('rotateBtn').addEventListener('click', () => {
-                rotationAngle = (rotationAngle + 90) % 360;
-                appState.rotationAngle = rotationAngle; // Keep appState in sync
+           //document.getElementById('rotateBtn').addEventListener('click', () => {
+             //   rotationAngle = (rotationAngle + 90) % 360;
+               // appState.rotationAngle = rotationAngle; // Keep appState in sync
+                //document.getElementById('rotationDisplay').textContent = rotationAngle + '°';
+                //renderDxfSetup();
+                //saveSettings(); // Persist rotation angle
+            //});
+
+            document.getElementById('rotateBtn').addEventListener('click', (event) => {
+                const step = event.shiftKey ? 5 : 45;          // Shift = fine adjust
+                rotationAngle = (rotationAngle + step) % 360;  // wrap 0–359
+
+                appState.rotationAngle = rotationAngle;
                 document.getElementById('rotationDisplay').textContent = rotationAngle + '°';
                 renderDxfSetup();
-                saveSettings(); // Persist rotation angle
+                saveSettings();
             });
-            
+
+
+
+
             // Mode toggle listeners
             document.querySelectorAll('.mode-button').forEach(btn => {
                 btn.addEventListener('click', () => switchMode(btn.dataset.mode));
@@ -621,17 +634,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     parseDxfManually(dxfContent);
                     return;
                 }
-                
+
                 // Use dxf-parser library to parse DXF
                 const parser = new window.DxfParser();
                 const dxf = parser.parseSync(dxfContent);
-                
+
                 console.log('Parsed DXF:', dxf);
-                
+
                 // Extract bounds from all entities
                 let minX = Infinity, maxX = -Infinity;
                 let minY = Infinity, maxY = -Infinity;
-                
+
                 // Helper to update bounds
                 function updateBounds(x, y) {
                     minX = Math.min(minX, x);
@@ -639,7 +652,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     minY = Math.min(minY, y);
                     maxY = Math.max(maxY, y);
                 }
-                
+
                 // Process entities to get bounds
                 if (dxf.entities) {
                     dxf.entities.forEach(entity => {
@@ -675,31 +688,31 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     });
                 }
-                
+
                 if (minX === Infinity) {
                     minX = 0; maxX = 10;
                     minY = 0; maxY = 10;
                 }
-                
+
                 console.log(`DXF bounds: X=[${minX.toFixed(3)}, ${maxX.toFixed(3)}], Y=[${minY.toFixed(3)}, ${maxY.toFixed(3)}]`);
                 console.log(`Entity count: ${dxf.entities ? dxf.entities.length : 0}`);
-                
+
                 // Store parsed DXF data
-                dxfGeometry = { 
+                dxfGeometry = {
                     minX, maxX, minY, maxY,
                     entities: dxf.entities || []
                 };
-                dxfBounds = { 
-                    width: maxX - minX, 
+                dxfBounds = {
+                    width: maxX - minX,
                     height: maxY - minY,
                     centerX: (minX + maxX) / 2,
                     centerY: (minY + maxY) / 2
                 };
-                
+
                 // Show mode toggle and switch to setup mode
                 document.getElementById('modeToggle').style.display = 'flex';
                 switchMode('setup');
-                
+
             } catch (error) {
                 console.error('DXF parsing error:', error);
                 // Try manual fallback
@@ -707,28 +720,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 parseDxfManually(dxfContent);
             }
         }
-        
+
         // Fallback manual DXF parser (simple but works for basic shapes)
         function parseDxfManually(dxfContent) {
             const lines = dxfContent.split('\n');
             let minX = Infinity, maxX = -Infinity;
             let minY = Infinity, maxY = -Infinity;
-            
+
             const entities = [];
             let inEntitiesSection = false;
             let currentEntity = null;
             let entityData = {};
-            
+
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
-                
+
                 if (line === 'ENTITIES') {
                     inEntitiesSection = true;
                     continue;
                 }
                 if (line === 'ENDSEC' && inEntitiesSection) break;
                 if (!inEntitiesSection) continue;
-                
+
                 // Detect entity type
                 if (line === 'CIRCLE' || line === 'ARC' || line === 'LINE' || line === 'LWPOLYLINE' || line === 'SPLINE') {
                     if (currentEntity) {
@@ -743,7 +756,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         entityData.controlPoints = [];
                     }
                 }
-                
+
                 // Parse coordinates
                 if (line === '10' && i + 1 < lines.length) {
                     const val = parseFloat(lines[i + 1]);
@@ -814,35 +827,35 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             }
-            
+
             if (currentEntity) {
                 entities.push(createEntity(currentEntity, entityData));
             }
-            
+
             if (minX === Infinity) {
                 console.warn('⚠️ No valid geometry found, using fallback 10×10 bounds');
                 minX = 0; maxX = 10;
                 minY = 0; maxY = 10;
             }
-            
+
             console.log(`Manual parse: ${entities.length} entities`);
             console.log(`Bounds: X=[${minX.toFixed(3)}, ${maxX.toFixed(3)}], Y=[${minY.toFixed(3)}, ${maxY.toFixed(3)}]`);
-            
-            dxfGeometry = { 
+
+            dxfGeometry = {
                 minX, maxX, minY, maxY,
                 entities: entities
             };
-            dxfBounds = { 
-                width: maxX - minX, 
+            dxfBounds = {
+                width: maxX - minX,
                 height: maxY - minY,
                 centerX: (minX + maxX) / 2,
                 centerY: (minY + maxY) / 2
             };
-            
+
             document.getElementById('modeToggle').style.display = 'flex';
             switchMode('setup');
         }
-        
+
         function createEntity(type, data) {
             if (type === 'CIRCLE') {
                 return {
@@ -884,40 +897,40 @@ document.addEventListener('DOMContentLoaded', () => {
         // Render 2D DXF setup view
         function renderDxfSetup() {
             if (!dxfGeometry || !dxfCtx2D) return;
-            
+
             const ctx = dxfCtx2D;
             const canvas = dxfCanvas2D;
             const width = canvas.width;
             const height = canvas.height;
-            
+
             // Check if canvas has valid size
             if (width === 0 || height === 0) {
                 console.warn('Canvas has zero size, skipping render');
                 return;
             }
-            
+
             // Clear
             ctx.fillStyle = '#0A0E14';
             ctx.fillRect(0, 0, width, height);
-            
+
             // Calculate transform to fit DXF in canvas with padding
             const padding = 80;
             const availWidth = width - 2 * padding;
             const availHeight = height - 2 * padding;
-            
+
             // Apply rotation to bounds for calculating display size
             let displayWidth = dxfBounds.width;
             let displayHeight = dxfBounds.height;
             if (rotationAngle === 90 || rotationAngle === 270) {
                 [displayWidth, displayHeight] = [displayHeight, displayWidth];
             }
-            
+
             const scale = Math.min(availWidth / displayWidth, availHeight / displayHeight);
-            
+
             // Center position (no rotation of entire canvas)
             const centerX = width / 2;
             const centerY = height / 2;
-            
+
             // Helper functions to transform coordinates
             function rotatePoint(x, y, angle) {
                 const rad = -angle * Math.PI / 180; // Negative for clockwise
@@ -928,37 +941,37 @@ document.addEventListener('DOMContentLoaded', () => {
                     y: x * sin + y * cos
                 };
             }
-            
+
             function toCanvasCoords(x, y) {
                 // Translate to center origin
                 let dx = x - dxfBounds.centerX;
                 let dy = y - dxfBounds.centerY;
-                
+
                 // Apply rotation
                 const rotated = rotatePoint(dx, dy, rotationAngle);
-                
+
                 // Scale and flip Y, then translate to canvas center
                 return {
                     x: centerX + rotated.x * scale,
                     y: centerY - rotated.y * scale
                 };
             }
-            
+
             // Draw all entities (rotated)
             ctx.strokeStyle = '#6B7280';
             ctx.lineWidth = 1.5;
-            
+
             if (dxfGeometry.entities) {
                 dxfGeometry.entities.forEach(entity => {
                     ctx.beginPath();
-                    
+
                     switch(entity.type) {
                         case 'CIRCLE':
                             const cPos = toCanvasCoords(entity.center.x, entity.center.y);
                             ctx.arc(cPos.x, cPos.y, entity.radius * scale, 0, Math.PI * 2);
                             ctx.stroke();
                             break;
-                            
+
                         case 'ARC':
                             const aPos = toCanvasCoords(entity.center.x, entity.center.y);
                             // Y-flip means angles are negated, rotation subtracts from angle
@@ -966,19 +979,19 @@ document.addEventListener('DOMContentLoaded', () => {
                             const startRad = (-entity.startAngle + rotationAngle) * Math.PI / 180;
                             const endRad = (-entity.endAngle + rotationAngle) * Math.PI / 180;
                             const arcRadius = entity.radius * scale;
-                            
+
                             // Validate arc parameters
                             if (isNaN(startRad) || isNaN(endRad) || arcRadius <= 0 || !isFinite(arcRadius)) {
                                 console.warn('Invalid arc parameters:', { startRad, endRad, arcRadius });
                                 break;
                             }
-                            
+
                             // Y-flip also reverses direction: counter-clockwise becomes clockwise
                             // So we swap start and end to maintain the arc direction
                             ctx.arc(aPos.x, aPos.y, arcRadius, endRad, startRad, false);
                             ctx.stroke();
                             break;
-                            
+
                         case 'LINE':
                             const p1 = toCanvasCoords(entity.vertices[0].x, entity.vertices[0].y);
                             const p2 = toCanvasCoords(entity.vertices[1].x, entity.vertices[1].y);
@@ -986,7 +999,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             ctx.lineTo(p2.x, p2.y);
                             ctx.stroke();
                             break;
-                            
+
                         case 'LWPOLYLINE':
                         case 'POLYLINE':
                             if (entity.vertices && entity.vertices.length > 0) {
@@ -1002,7 +1015,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 ctx.stroke();
                             }
                             break;
-                            
+
                         case 'SPLINE':
                             if (entity.controlPoints && entity.controlPoints.length > 1) {
                                 const sp0 = toCanvasCoords(entity.controlPoints[0].x, entity.controlPoints[0].y);
@@ -1014,7 +1027,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 ctx.stroke();
                             }
                             break;
-                            
+
                         case 'ELLIPSE':
                             const ePos = toCanvasCoords(entity.center.x, entity.center.y);
                             const majorRadius = Math.sqrt(entity.majorAxisEndPoint.x ** 2 + entity.majorAxisEndPoint.y ** 2);
@@ -1025,24 +1038,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 });
             }
-            
+
             // Calculate bounding box corners in SCREEN coordinates (NOT rotated)
             const boxLeft = centerX - (displayWidth * scale) / 2;
             const boxRight = centerX + (displayWidth * scale) / 2;
             const boxTop = centerY - (displayHeight * scale) / 2;
             const boxBottom = centerY + (displayHeight * scale) / 2;
-            
+
             // Draw bounding box (dashed, NOT rotated)
             ctx.strokeStyle = '#8B949E';
             ctx.lineWidth = 2;
             ctx.setLineDash([5, 5]);
             ctx.strokeRect(boxLeft, boxTop, displayWidth * scale, displayHeight * scale);
             ctx.setLineDash([]);
-            
+
             // Draw origin marker at bottom-left (ALWAYS)
             const originX = boxLeft;
             const originY = boxBottom;
-            
+
             ctx.beginPath();
             ctx.arc(originX, originY, 12, 0, Math.PI * 2);
             ctx.fillStyle = '#FDB515';
@@ -1050,14 +1063,14 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.strokeStyle = '#FDB515';
             ctx.lineWidth = 3;
             ctx.stroke();
-            
+
             // Draw origin label
             ctx.fillStyle = '#FDB515';
             ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText('Origin (0,0)', originX, originY - 25);
-            
+
             // Draw axes from bottom-left origin
             // X axis (red) - points right
             ctx.beginPath();
@@ -1066,11 +1079,11 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.strokeStyle = '#FF0000';
             ctx.lineWidth = 2;
             ctx.stroke();
-            
+
             ctx.fillStyle = '#FF0000';
             ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
             ctx.fillText('X', originX + 70, originY);
-            
+
             // Y axis (green) - points up
             ctx.beginPath();
             ctx.moveTo(originX, originY);
@@ -1078,10 +1091,10 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.strokeStyle = '#00FF00';
             ctx.lineWidth = 2;
             ctx.stroke();
-            
+
             ctx.fillStyle = '#00FF00';
             ctx.fillText('Y', originX, originY - 70);
-            
+
             // Draw dimensions at top
             ctx.fillStyle = '#8B949E';
             ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
@@ -1511,7 +1524,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 side: THREE.DoubleSide,
                 depthWrite: false // Critical! Allows lines to render through transparent material
             });
-            
+
             const stockMesh = new THREE.Mesh(stockGeometry, stockMaterial);
             // Position at center of stock, halfway up from sacrifice board
             stockMesh.position.set(
@@ -1525,9 +1538,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Create tool representation (endmill)
             const toolLength = Math.max(maxZ * 1.5, 1.0);
             const toolGeometry = new THREE.CylinderGeometry(
-                toolDiameter / 2, 
-                toolDiameter / 2, 
-                toolLength, 
+                toolDiameter / 2,
+                toolDiameter / 2,
+                toolLength,
                 16
             );
             const toolMaterial = new THREE.MeshStandardMaterial({
@@ -1547,10 +1560,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const scrubber = document.getElementById('toolpathScrubber');
             const scrubberContainer = document.getElementById('scrubberContainer');
             scrubberContainer.style.display = 'block';
-            
+
             scrubber.max = toolpathMoves.length - 1;
             scrubber.value = 0;
-            
+
             scrubber.oninput = (e) => {
                 const moveIndex = parseInt(e.target.value);
                 updateToolpathDisplay(moveIndex);
@@ -1649,12 +1662,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (toolpathMoves.length === 0) return;
 
             // Update scrubber labels
-            document.getElementById('scrubberLabel').textContent = 
+            document.getElementById('scrubberLabel').textContent =
                 `Move ${moveIndex + 1} of ${toolpathMoves.length}`;
-            
+
             const currentMove = toolpathMoves[moveIndex];
             const moveType = currentMove.type === 'G0' ? 'Rapid' : 'Cut';
-            document.getElementById('scrubberOperation').textContent = 
+            document.getElementById('scrubberOperation').textContent =
                 `${moveType}: ${currentMove.line.substring(0, 40)}`;
 
             // Update tool position
@@ -1683,11 +1696,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 const upcomingGeometry = new THREE.BufferGeometry().setFromPoints(upcomingPoints);
                 upcomingLine = new THREE.Line(
                     upcomingGeometry,
-                    new THREE.LineBasicMaterial({ 
-                        color: 0xFDB515, 
+                    new THREE.LineBasicMaterial({
+                        color: 0xFDB515,
                         linewidth: 3,
-                        opacity: 0.8, 
-                        transparent: true 
+                        opacity: 0.8,
+                        transparent: true
                     })
                 );
                 scene.add(upcomingLine);
@@ -1717,7 +1730,7 @@ document.addEventListener('DOMContentLoaded', () => {
         window.addEventListener('load', () => {
             initVisualization();
             initDxfSetup();
-            
+
             // DEBUG: Check if Onshape provides context via JavaScript
             console.log('=== Onshape Context Debug ===');
             console.log('window.opener:', window.opener);
@@ -1727,7 +1740,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 onshape: typeof window.onshape !== 'undefined' ? window.onshape : 'undefined',
                 OnshapeClient: typeof window.OnshapeClient !== 'undefined' ? window.OnshapeClient : 'undefined'
             });
-            
+
             // Check for error message from Onshape import
             const errorMessage = window.ONSHAPE_DATA?.errorMessage || '';
             if (errorMessage) {
@@ -1744,11 +1757,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const dxfFile = window.ONSHAPE_DATA?.dxfFile || '';
             const fromOnshape = window.ONSHAPE_DATA?.fromOnshape || false;
             const onshapeSuggestedFilename = window.ONSHAPE_DATA?.suggestedFilename || '';
-            
+
             if (dxfFile && fromOnshape) {
                 console.log('Auto-loading DXF from Onshape:', dxfFile);
                 console.log('Fetching from:', `/uploads/${dxfFile}`);
-                
+
                 // Fetch the DXF and load it
                 fetch(`/uploads/${dxfFile}`)
                     .then(response => {
@@ -1761,11 +1774,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     .then(dxfContent => {
                         console.log('DXF content received:', dxfContent.length, 'bytes');
                         console.log('First 200 chars:', dxfContent.substring(0, 200));
-                        
+
                         // Create a File object from the DXF content
                         const blob = new Blob([dxfContent], { type: 'application/dxf' });
                         const file = new File([blob], dxfFile, { type: 'application/dxf' });
-                        
+
                         // Set file state and enable generate button
                         uploadedFile = file;
                         suggestedFilename = onshapeSuggestedFilename || null; // Store suggested name
@@ -1776,10 +1789,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         generateBtn.textContent = '🚀 Generate Program';
                         hideError();
                         hideResults();
-                        
+
                         // Parse for 2D setup view
                         parseDxfForSetup(dxfContent);
-                        
+
                         // Show success message
                         const statusDiv = document.getElementById('statusMessage');
                         if (statusDiv) {
@@ -1806,7 +1819,7 @@ document.addEventListener('DOMContentLoaded', () => {
             camera.aspect = container.clientWidth / container.clientHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(container.clientWidth, container.clientHeight);
-            
+
             // Also resize DXF canvas to maintain correct aspect ratio
             if (dxfCanvas2D && dxfGeometry) {
                 const rect = dxfCanvas2D.getBoundingClientRect();
