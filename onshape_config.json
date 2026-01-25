@@ -1,7 +1,7 @@
 {
-  "client_id": "VKDKRMPYLAC3PE6YNHRWFGRTW37ZFWTG2IDE5UI=",
+  "client_id": "RN6GHYZBINHE5G37O23C6VFGPYYFXXOVOXDYMPQ=",
   "client_secret": "",
   "dev_redirect_uri": "http://localhost:6238/onshape/oauth/callback",
-  "redirect_uri": "https://penguincam.popcornpenguins.com/onshape/oauth/callback",
+  "redirect_uri": "https://4611penguincam.up.railway.app/onshape/oauth/callback",
   "scopes": "OAuth2Read OAuth2ReadPII"
 }
