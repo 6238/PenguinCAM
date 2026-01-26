@@ -18,6 +18,7 @@
                 <label class="part-option {% if loop.first %}selected{% endif %}">
                     <input type="radio" name="partSelection" value="{{ part.body_id }}" {% if loop.first %}checked{% endif %}>
                     <span class="part-name">
+                    <span class="part-name">
                         {{ part.name }}
                         {% if part.is_largest %}
                         <span class="part-badge">LARGEST</span>
@@ -207,7 +208,7 @@
                         <div class="panel-title">Setup & Preview</div>
                         <!-- Mode Toggle -->
                         <div class="mode-toggle" id="modeToggle" style="display: none;">
-                            <button class="mode-button active" data-mode="setup">Setup DXF</button>
+                            <button class="mode-button active" data-mode="setup"><strong>Setup DXF</strong></button>
                             <button class="mode-button" data-mode="preview">Preview G-code</button>
                         </div>
                     </div>

@@ -6,7 +6,7 @@
 
         :root {
             --primary: #4AAD43;
-            --primary-dark: #1e491d;
+            --primary-dark: #3F9339;
             --secondary: #003087;
             --bg: #0A0E14;
             --surface: #151B24;
@@ -331,7 +331,7 @@
         button:hover {
             background: var(--primary-dark);
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(253, 181, 21, 0.4);
+            box-shadow: 0 4px 12px var(--secondary);
         }
 
         button:disabled {
@@ -342,12 +342,14 @@
         }
 
         button.secondary {
-            color: var(--text-dim);
+            color: #ffffff;
             background: var(--secondary);
         }
 
         button.secondary:hover {
-            background: #34495E;
+            background: var(--secondary);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px var(--primary)
         }
 
         /* Visualization */
