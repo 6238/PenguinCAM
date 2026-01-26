@@ -209,6 +209,100 @@ class OnshapeClient:
         except Exception as e:
             print(f"Error getting user info: {e}")
             return None
+
+    def get_user_session_info(self):
+        """
+        Get detailed session info for the authenticated user
+
+        Returns:
+            dict with user session info including name, email, etc.
+        """
+        try:
+            print("   Fetching user session info...")
+            response = self._make_api_request('GET', '/users/sessioninfo')
+            if response.status_code == 200:
+                user_info = response.json()
+                print(f"   ✅ User: {user_info.get('name', 'Unknown')}")
+                return user_info
+            else:
+                print(f"   ❌ Failed to get session info: HTTP {response.status_code}")
+                return None
+        except Exception as e:
+            print(f"   ❌ Error getting session info: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def get_companies(self):
+        """
+        Get list of companies/teams the user belongs to
+
+        Returns:
+            list of company dicts
+        """
+        try:
+            print("   Fetching companies...")
+            response = self._make_api_request('GET', '/companies?activeOnly=true&includeAll=false')
+            if response.status_code == 200:
+                companies = response.json().get('items', [])
+                print(f"   ✅ Found {len(companies)} companies: {[c.get('name') for c in companies]}")
+                return companies
+            else:
+                print(f"   ❌ Failed to get companies: HTTP {response.status_code}")
+                return None
+        except Exception as e:
+            print(f"   ❌ Error getting companies: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def get_document_company(self, document_id):
+        """
+        Get the company/team that owns a specific document
+
+        Args:
+            document_id: Onshape document ID
+
+        Returns:
+            dict with company info, or None if not found
+        """
+        try:
+            print("   Determining document owner company...")
+
+            # Get document info to find owner
+            doc_info = self.get_document_info(document_id)
+            if not doc_info:
+                print("   ❌ Could not get document info")
+                return None
+
+            # Documents have an 'owner' field with type and id
+            # type: 0 = user, 1 = company, 2 = team (I think - need to verify)
+            owner_info = doc_info.get('owner', {})
+            owner_type = owner_info.get('type')
+            owner_id = owner_info.get('id')
+            owner_name = owner_info.get('name', 'Unknown')
+
+            print(f"   Document owner: {owner_name} (type={owner_type}, id={owner_id[:8]}...)")
+
+            # If owner is a company/team (type 1 or 2), find it in the companies list
+            if owner_type in [1, 2]:
+                companies = self.get_companies()
+                if companies:
+                    for company in companies:
+                        if company.get('id') == owner_id:
+                            print(f"   ✅ Document belongs to company: {company.get('name')}")
+                            return company
+                    print(f"   ⚠️  Document owner company not found in user's companies")
+                    return None
+            else:
+                print(f"   ℹ️  Document is owned by user (not a company/team)")
+                return None
+
+        except Exception as e:
+            print(f"   ❌ Error getting document company: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
     
     def _calculate_view_matrix(self, normal):
         """
@@ -761,7 +855,109 @@ class OnshapeClient:
             import traceback
             traceback.print_exc()
             return None
-    
+
+    def fetch_config_file(self):
+        """
+        Search for and fetch PenguinCAM-config.json from the user's documents.
+
+        Returns:
+            dict with parsed JSON config, or None if not found or on error
+        """
+        try:
+            print("\n🔍 Searching for PenguinCAM-config.json...")
+
+            # Search for documents with the config filename
+            search_params = {
+                'q': 'PenguinCAM-config.json',
+                'filter': '0'  # 0 = all types
+            }
+            response = self._make_api_request('GET', '/documents', params=search_params)
+
+            if response.status_code != 200:
+                print(f"   ❌ Document search failed: HTTP {response.status_code}")
+                print(f"   Response: {response.text[:200]}")
+                return None
+
+            search_results = response.json()
+            items = search_results.get('items', [])
+
+            print(f"   Found {len(items)} matching document(s)")
+
+            if not items:
+                print("   ℹ️  No PenguinCAM-config.json found in documents")
+                return None
+
+            # Use the first matching document
+            config_doc = items[0]
+            doc_id = config_doc.get('id')
+            doc_name = config_doc.get('name', 'unknown')
+
+            print(f"   ✅ Found config document: {doc_name} (ID: {doc_id[:8]}...)")
+
+            # Get document details to find the default workspace
+            doc_info = self.get_document_info(doc_id)
+            if not doc_info:
+                print("   ❌ Could not get document info")
+                return None
+
+            workspace_id = doc_info.get('defaultWorkspace', {}).get('id')
+            if not workspace_id:
+                print("   ❌ No default workspace found")
+                return None
+
+            print(f"   Using workspace: {workspace_id[:8]}...")
+
+            # List elements to find the JSON file tab
+            response = self._make_api_request(
+                'GET',
+                f'/documents/d/{doc_id}/w/{workspace_id}/elements'
+            )
+
+            if response.status_code != 200:
+                print(f"   ❌ Could not list elements: HTTP {response.status_code}")
+                return None
+
+            elements = response.json()
+
+            # Look for a Blob element (which is what JSON files are stored as)
+            json_element = None
+            for elem in elements:
+                if elem.get('type') == 'Blob' and 'json' in elem.get('name', '').lower():
+                    json_element = elem
+                    break
+
+            if not json_element:
+                print("   ❌ No JSON element found in document")
+                print(f"   Available elements: {[e.get('name') for e in elements]}")
+                return None
+
+            element_id = json_element.get('id')
+            element_name = json_element.get('name')
+
+            print(f"   ✅ Found JSON element: {element_name} (ID: {element_id[:8]}...)")
+
+            # Download the blob content
+            response = self._make_api_request(
+                'GET',
+                f'/blobelements/d/{doc_id}/w/{workspace_id}/e/{element_id}'
+            )
+
+            if response.status_code != 200:
+                print(f"   ❌ Could not download blob: HTTP {response.status_code}")
+                return None
+
+            # Parse JSON content
+            config_json = response.json()
+            print(f"   ✅ Successfully fetched config file")
+
+            return config_json
+
+        except Exception as e:
+            print(f"   ❌ Error fetching config file: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
     def parse_onshape_url(self, url):
         """
         Parse an Onshape URL to extract document/workspace/element IDs

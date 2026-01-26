@@ -880,7 +880,41 @@ def onshape_import():
 
             # Redirect to Onshape OAuth
             return redirect('/onshape/auth')
-        
+
+        # === TEST: Fetch user info, company info, and config file from Onshape ===
+        print("\n" + "="*60)
+        print("TESTING: Fetching user, company, and config info")
+        print("="*60)
+
+        # 1. Get user session info
+        print("\n1️⃣  User Session Info:")
+        user_session = client.get_user_session_info()
+        if user_session:
+            print(f"   Name: {user_session.get('name')}")
+            print(f"   Email: {user_session.get('email')}")
+            print(f"   ID: {user_session.get('id', 'N/A')}")
+
+        # 2. Get document's owning company
+        print("\n2️⃣  Document Company:")
+        doc_company = client.get_document_company(document_id)
+        if doc_company:
+            print(f"   Company Name: {doc_company.get('name')}")
+            print(f"   Company ID: {doc_company.get('id')}")
+        else:
+            print("   No company found (document may be owned by user)")
+
+        # 3. Get team config file
+        print("\n3️⃣  Team Configuration File:")
+        team_config = client.fetch_config_file()
+        if team_config:
+            print("   ✅ Successfully fetched team configuration:")
+            print(json.dumps(team_config, indent=2))
+        else:
+            print("   ⚠️  No team configuration found (this is OK for testing)")
+
+        print("\n" + "="*60 + "\n")
+        # === END TEST ===
+
         # If no face_id provided, auto-select the top face
         part_name_from_body = None
         auto_selected_body_id = None
