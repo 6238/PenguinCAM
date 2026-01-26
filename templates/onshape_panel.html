@@ -8,12 +8,17 @@
         /* Team 6238 Popcorn Penguins colors */
         :root {
             --primary: #4AAD43;
-            --primary-dark: #1e491d;
+            --primary-dark: #3F9339;
             --secondary: #003087;
-            --bg: #f5f5f5;
-            --surface: #ffffff;
-            --text: #2C3E50;
-            --text-dim: #666;
+            --bg: #0A0E14;
+            --surface: #151B24;
+            --surface-light: #1E2632;
+            --text: #E6EDF3;
+            --text-dim: #8B949E;
+            --border: #30363D;
+            --success: #2EA043;
+            --warning: #D29922;
+            --error: #DA3633;
         }
 
         /* Minimal CSS - must work in iframe */
@@ -67,17 +72,27 @@
         }
         .btn-primary {
             background: var(--primary);
-            color: var(--secondary);
+            color: #000;
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            width: 100%;
         }
         .btn-primary:hover:not(:disabled) {
             background: var(--primary-dark);
         }
         .btn-secondary {
+            color: #ffffff;
             background: var(--secondary);
-            color: white;
         }
         .btn-secondary:hover:not(:disabled) {
-            background: #1a2a3a;
+            background: var(--secondary);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px var(--primary);
         }
         .logo {
             text-align: center;
