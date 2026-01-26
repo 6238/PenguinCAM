@@ -5,6 +5,8 @@ A Flask-based web interface for generating G-code from DXF files
 """
 
 from flask import Flask, render_template, request, jsonify, send_file, session, send_from_directory, redirect
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 import os
 import sys
@@ -81,6 +83,16 @@ else:
         def is_authenticated(self):
             return True
     auth = DummyAuth()
+
+# Initialize rate limiting
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per hour"],  # Global default for all routes
+    storage_uri="memory://",
+    headers_enabled=True  # Send X-RateLimit headers in responses
+)
+print("✅ Rate limiting enabled (200 requests/hour default)")
 
 # Directory for temporary files
 TEMP_DIR = tempfile.mkdtemp()
@@ -216,6 +228,7 @@ def index():
     return render_template('index.html')
 
 @app.route('/process', methods=['POST'])
+@limiter.limit("10 per minute")  # Strict limit - CPU intensive operation
 @auth.require_auth
 def process_file():
     """Process uploaded DXF file and generate G-code"""
@@ -521,6 +534,7 @@ def drive_status():
         })
 
 @app.route('/drive/upload/<filename>', methods=['POST'])
+@limiter.limit("30 per minute")  # Reasonable limit for uploads
 @auth.require_auth
 def upload_to_drive(filename):
     """Upload a G-code file to Google Drive"""
@@ -805,6 +819,7 @@ def onshape_body_faces():
         }), 500
 
 @app.route('/onshape/import', methods=['GET', 'POST'])
+@limiter.limit("20 per minute")  # Moderate limit - authenticated via Onshape OAuth
 @auth.require_auth
 def onshape_import():
     """
@@ -1100,6 +1115,7 @@ def onshape_import():
         }), 500
 
 @app.route('/onshape/save-dxf', methods=['GET', 'POST'])
+@limiter.limit("20 per minute")  # Moderate limit - authenticated via Onshape OAuth
 @auth.require_auth
 def onshape_save_dxf():
     """
