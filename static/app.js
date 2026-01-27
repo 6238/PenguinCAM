@@ -1780,8 +1780,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         console.log('First 200 chars:', dxfContent.substring(0, 200));
 
                         // Create a File object from the DXF content
+                        // Use suggested filename (not token) for the File object name
+                        const filename = onshapeSuggestedFilename ?
+                            `${onshapeSuggestedFilename}.dxf` :
+                            (dxfFile.endsWith('.dxf') ? dxfFile : `${dxfFile}.dxf`);
                         const blob = new Blob([dxfContent], { type: 'application/dxf' });
-                        const file = new File([blob], dxfFile, { type: 'application/dxf' });
+                        const file = new File([blob], filename, { type: 'application/dxf' });
 
                         // Use appState to store file (accessible across scopes)
                         appState.uploadedFile = file;
@@ -1793,7 +1797,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const fileInfoEl = document.getElementById('fileInfo');
                         const generateBtnEl = document.getElementById('generateBtn');
 
-                        if (fileNameEl) fileNameEl.textContent = dxfFile;
+                        if (fileNameEl) fileNameEl.textContent = filename;
                         if (fileSizeEl) fileSizeEl.textContent = formatFileSize(dxfContent.length);
                         if (fileInfoEl) fileInfoEl.style.display = 'flex';
                         if (generateBtnEl) {
