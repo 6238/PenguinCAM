@@ -77,6 +77,9 @@ function loadSettings() {
         const saved = localStorage.getItem('penguinCAM_settings');
         const settings = saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
 
+        // Get server-provided default tool diameter from HTML (set by team config)
+        const serverDefaultToolDiameter = document.getElementById('toolDiameter').value;
+
         // Apply settings to form elements
         document.getElementById('material').value = settings.material || DEFAULT_SETTINGS.material;
         document.getElementById('thickness').value = settings.thickness || DEFAULT_SETTINGS.thickness;
@@ -84,7 +87,8 @@ function loadSettings() {
         document.getElementById('tubeHeight').value = settings.tubeHeight || DEFAULT_SETTINGS.tubeHeight;
         document.getElementById('squareEnd').checked = settings.squareEnd !== undefined ? settings.squareEnd : DEFAULT_SETTINGS.squareEnd;
         document.getElementById('cutToLength').checked = settings.cutToLength !== undefined ? settings.cutToLength : DEFAULT_SETTINGS.cutToLength;
-        document.getElementById('toolDiameter').value = settings.toolDiameter || DEFAULT_SETTINGS.toolDiameter;
+        // Use saved value if exists, otherwise keep server-provided default
+        document.getElementById('toolDiameter').value = settings.toolDiameter || serverDefaultToolDiameter;
         appState.rotationAngle = settings.rotationAngle || DEFAULT_SETTINGS.rotationAngle;
 
         // Trigger material change to show/hide tube params

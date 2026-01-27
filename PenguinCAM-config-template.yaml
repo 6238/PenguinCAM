@@ -1,31 +1,55 @@
-# PenguinCAM Team Configuration Template
-# FRC Team XXXX
+# PenguinCAM Team Configuration
+# This file defines machine-specific settings and machining preferences
+#
+# All values are optional - any missing values will use Team 6238 defaults.
+# You only need to specify values you want to override.
 
-# Copy this file to your Onshape documents as "PenguinCAM-config.yaml"
+# Example: Another team with an Omio X-8 with Mach3 would only need to override:
+# team:
+#   number: 1234
+#   name: "Your Team Name"
+# machine:
+#   name: "Omio X-8"
+#   controller: "Mach3"
+#   park_position:
+#     x: 1.0
+#     y: 30.0
+
+# See full template with all options below:
 
 team:
-  number: 6238  # Your FRC team number
-  name: "Popcorn Penguins"  # Your team name
+  number: 6238
+  name: "Popcorn Penguins"
+
+machine:
+  name: "Avid CNC Pro4896"
+  manufacturer: "Avid CNC"
+  controller: "Mach4"
+  dimensions:
+    x_max: 48.0
+    y_max: 96.0
+    z_max: 8.0
+  park_position:
+    x: 0.5
+    y: 23.5
+  coolant: "Air"
+
+machining:
+  z_reference:
+    sacrifice_board_depth: 0.008
+    safe_height: 1.5
+    clearance_height: 0.5
+  tabs:
+    width: 0.25
+    height: 0.1
+    spacing: 6.0
+  holes:
+    detection_tolerance: 0.02
+    min_millable_multiplier: 1.2
+  default_tool:
+    diameter: 0.157
 
 integrations:
   google_drive:
-    enabled: true  # Set to false to disable Drive integration
-    folder_id: "REPLACE_WITH_YOUR_FOLDER_ID"  # Google Drive folder ID for G-code uploads
-    # To find your folder ID:
-    # 1. Open your Drive folder in a web browser
-    # 2. Check the URL: https://drive.google.com/drive/folders/FOLDER_ID_HERE
-    # 3. Copy the FOLDER_ID_HERE part and paste it above
-
-machining:
-  # Future: Custom material presets, feed rates, tool preferences
-  # default_material: "plywood"
-  # custom_feed_rates:
-  #   aluminum: 55
-  #   plywood: 75
-  #   polycarbonate: 75
-
-ui:
-  # Future: Custom branding, logo, colors
-  # logo_url: "https://your-team-website.com/logo.png"
-  # primary_color: "#1976d2"
-  # team_motto: "Popcorn Power!"
+    enabled: true
+    folder_id: "YOUR_FOLDER_ID_HERE"

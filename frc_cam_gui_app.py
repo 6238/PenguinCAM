@@ -346,11 +346,13 @@ def index():
     team_name = session.get('team_name')
     team_config = session.get('team_config', {})
     drive_enabled = team_config.get('google_drive_enabled', False)
+    default_tool_diameter = team_config.get('default_tool_diameter', 0.157)  # 4mm default
 
     return render_template('index.html',
                          user_name=user_name,
                          team_name=team_name,
-                         drive_enabled=drive_enabled)
+                         drive_enabled=drive_enabled,
+                         default_tool_diameter=default_tool_diameter)
 
 @app.route('/process', methods=['POST'])
 @limiter.limit("10 per minute")  # Strict limit - CPU intensive operation
@@ -461,6 +463,11 @@ def process_file():
 
         print(f"🚀 Running post-processor API...")
 
+        # Get team config from session (if available)
+        config_data = session.get('team_config_data', {})
+        team_config = TeamConfig.from_dict(config_data)
+        print(f"📋 Using team config: {team_config}")
+
         # Call post-processor API based on mode
         try:
             if is_aluminum_tube:
@@ -468,7 +475,8 @@ def process_file():
                 pp = FRCPostProcessor(
                     material_thickness=thickness,
                     tool_diameter=tool_diameter,
-                    units='inch'
+                    units='inch',
+                    config=team_config
                 )
 
                 # Store tube height for Z-offset calculations
@@ -503,7 +511,8 @@ def process_file():
                 pp = FRCPostProcessor(
                     material_thickness=thickness,
                     tool_diameter=tool_diameter,
-                    units='inch'
+                    units='inch',
+                    config=team_config
                 )
 
                 # Apply material preset
@@ -1037,11 +1046,14 @@ def onshape_import():
             print(f"      Drive Enabled: {team_config.google_drive_enabled}")
             if team_config.google_drive_folder_id:
                 print(f"      Drive Folder ID: {team_config.google_drive_folder_id}")
-            # Store config dict in session for UI
+            # Store full config data in session (for postprocessor reconstruction)
+            session['team_config_data'] = team_config._data
+            # Also store UI-relevant subset
             session['team_config'] = team_config.to_dict()
         else:
             print("   ⚠️  No team configuration found - using defaults")
-            team_config = TeamConfig.default()
+            team_config = TeamConfig()
+            session['team_config_data'] = {}  # Empty dict = use all defaults
             session['team_config'] = team_config.to_dict()
 
         print("\n" + "="*60 + "\n")

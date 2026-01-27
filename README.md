@@ -1,8 +1,8 @@
 # PenguinCAM
 
-**FRC Team 6238 Popcorn Penguins CAM Post-Processor**
+**Onshape-to-CNC for FRC Teams**
 
-A web-based tool for FRC robotics teams to automatically generate CNC G-code from Onshape designs. No CAM software required!
+A web-based tool for FRC robotics teams to automatically generate CNC G-code from Onshape designs. No CAM software required! Built by Team 6238, hosted for all FRC teams.
 
 🔗 **Demo video:**  
 [![Demo video](https://img.youtube.com/vi/gFReFDz-_LI/0.jpg)](https://youtu.be/zPZCTVh2n2Q)
@@ -24,6 +24,8 @@ PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC tea
 **No CAM software, no manual exports, no face selection required!** PenguinCAM knows what FRC teams need.
 
 Designed to feel like 3D printer slicers or laser cutter software. Get the design, orient it on the machine, and go. Launching directly from Onshape means no export/import steps, lost files or inconsistent naming.
+
+**Multi-team support:** Other teams can use the hosted service at https://penguincam.popcornpenguins.com! Just upload a `PenguinCAM-config.yaml` file to your Onshape documents to customize settings for your CNC machine. See "For Other FRC Teams" below.
 
 ---
 
@@ -130,9 +132,21 @@ Designed to feel like 3D printer slicers or laser cutter software. Get the desig
 
 ## For Mentors & Setup
 
-### Deployment
+### Team Configuration (5 minutes)
 
-PenguinCAM is deployed on Railway with automatic GitHub integration.
+**For teams using the hosted service:**
+
+Create a `PenguinCAM-config.yaml` file to customize machine settings for your CNC:
+- Download template: [`PenguinCAM-config-template.yaml`](https://github.com/6238/PenguinCAM/blob/main/PenguinCAM-config-template.yaml)
+- Edit for your team (machine park position, controller type, feeds/speeds, etc.)
+- Save as `PenguinCAM-config.yaml` and drag into your Onshape documents folder
+- Done! Your settings load automatically when team members use PenguinCAM
+
+See "For Other FRC Teams" section below for complete instructions.
+
+### Deployment (Advanced)
+
+For teams self-hosting PenguinCAM, it's deployed on Railway with automatic GitHub integration.
 
 **Setup guides:**
 - [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Deploy to Railway, environment variables
@@ -243,25 +257,33 @@ See [Z_COORDINATE_SYSTEM.md](docs/Z_COORDINATE_SYSTEM.md) for details.
 
 ## Default Settings
 
+PenguinCAM uses Team 6238 defaults optimized for FRC robotics:
+
 **Material:**
-- Thickness: 0.25" (configurable)
-- Sacrifice board overcut: 0.02"
+- Thickness: 0.25" (configurable per job)
+- Sacrifice board overcut: 0.008"
 
 **Tool:**
-- Diameter: 0.157" (4mm endmill)
+- Default diameter: 0.157" (4mm endmill)
 - Common alternatives: 1/8" (0.125"), 1/4" (0.250")
 
 **Feeds & Speeds:**
-- Feed rate: 30 IPM
-- Plunge rate: 10 IPM
-- Safe height: 0.1" above material top
+- Plywood: 75 IPM cutting, 18,000 RPM
+- Aluminum: 55 IPM cutting, 18,000 RPM
+- Polycarbonate: 75 IPM cutting, 18,000 RPM
 
 **Tabs:**
-- Count: 4 (evenly spaced)
 - Width: 0.25"
-- Height: 0.03" (material left in tab)
+- Height: 0.1" (material left in tab)
+- Spacing: ~6" (automatic placement)
 
-These can be customized in the code for your specific machine and materials.
+**Machine:**
+- Park position: X0.5 Y23.5 (machine coordinates)
+- Controller: Mach4
+
+**All settings can be customized** per team using a `PenguinCAM-config.yaml` file in your Onshape documents. See "For Other FRC Teams" section below for setup instructions.
+
+No code changes required - just upload your config file!
 
 ---
 
@@ -269,32 +291,34 @@ These can be customized in the code for your specific machine and materials.
 
 ```
 penguincam/
-├── README.md                      # This file
-├── ROADMAP.md                     # Future plans
-├── requirements.txt               # Python dependencies
-├── Procfile                       # Railway deployment
+├── README.md                          # This file
+├── ROADMAP.md                         # Future plans
+├── requirements.txt                   # Python dependencies
+├── Procfile                           # Railway deployment
+├── PenguinCAM-config-template.yaml    # Team configuration template
 │
-├── docs/                          # Documentation
-│   ├── DEPLOYMENT_GUIDE.md        # Setup & deployment
-│   ├── AUTHENTICATION_GUIDE.md    # Google OAuth
-│   ├── INTEGRATIONS_GUIDE.md      # Onshape & Drive
-│   ├── quick-reference-card.md    # Quick start
-│   ├── TOOL_COMPENSATION_GUIDE.md # Technical reference
-│   └── Z_COORDINATE_SYSTEM.md     # Zeroing guide
+├── docs/                              # Documentation
+│   ├── DEPLOYMENT_GUIDE.md            # Setup & deployment
+│   ├── AUTHENTICATION_GUIDE.md        # Google OAuth
+│   ├── INTEGRATIONS_GUIDE.md          # Onshape & Drive
+│   ├── quick-reference-card.md        # Quick start
+│   ├── TOOL_COMPENSATION_GUIDE.md     # Technical reference
+│   └── Z_COORDINATE_SYSTEM.md         # Zeroing guide
 │
-├── static/                        # Static assets
-│   └── popcornlogo.png            # Team logo
+├── static/                            # Static assets
+│   └── popcornlogo.png                # Team logo
 │
-├── templates/                     # HTML templates
-│   └── index.html                 # Main web interface
+├── templates/                         # HTML templates
+│   └── index.html                     # Main web interface
 │
-├── frc_cam_gui_app.py            # Flask web server
-├── frc_cam_postprocessor.py      # G-code generator
-├── onshape_integration.py        # Onshape API
-├── google_drive_integration.py   # Drive uploads
-├── penguincam_auth.py            # OAuth authentication
+├── frc_cam_gui_app.py                # Flask web server
+├── frc_cam_postprocessor.py          # G-code generator
+├── team_config.py                     # Team configuration management
+├── onshape_integration.py            # Onshape API
+├── google_drive_integration.py       # Drive uploads
+├── penguincam_auth.py                # OAuth authentication
 │
-└── [config files...]              # Various JSON configs
+└── [config files...]                  # Various JSON configs
 ```
 
 ---
@@ -378,16 +402,71 @@ For questions or support:
 
 ## For Other FRC Teams
 
-Interested in using PenguinCAM for your team? Great!
+Interested in using PenguinCAM for your team? Great! **You can use the hosted service at https://penguincam.popcornpenguins.com** - no deployment required!
+
+### Recommended Approach: Use the Hosted Service
+
+PenguinCAM is designed to support multiple teams using the same hosted instance. Each team can customize machine settings, feeds/speeds, and other preferences using a configuration file stored in your Onshape documents.
+
+**Setup steps (5 minutes):**
+
+1. **Download the configuration template:**
+   - Get [`PenguinCAM-config-template.yaml`](https://github.com/6238/PenguinCAM/blob/main/PenguinCAM-config-template.yaml) from this repository
+
+2. **Edit for your team:**
+   - Update team number and name
+   - Configure your CNC machine settings (park position, controller type)
+   - Customize feeds/speeds if needed (optional - defaults work for most teams)
+   - All values are optional! Only specify what you want to override from Team 6238 defaults
+
+3. **Upload to Onshape:**
+   - Save your edited file as `PenguinCAM-config.yaml` (exact name required)
+   - Drag the file into your team's Onshape documents folder (at root level, not in a subfolder)
+   - The file should appear alongside your parts and assemblies
+
+4. **Authenticate:**
+   - Visit https://penguincam.popcornpenguins.com
+   - Sign in with Google (one-time setup per team member)
+   - Your team's configuration will be automatically loaded!
+
+**What you can customize:**
+- Machine park position (important! - set for your specific CNC)
+- CNC controller type (Mach3, Mach4, LinuxCNC, etc.)
+- Default tool diameter shown in UI
+- Feeds, speeds, and ramp angles per material
+- Tab sizes and spacing
+- Z-axis reference heights
+- Google Drive integration settings
+
+**Example:** If you have an Omio X-8 with Mach3, you only need to override:
+```yaml
+team:
+  number: 1234
+  name: "Your Team Name"
+machine:
+  name: "Omio X-8"
+  controller: "Mach3"
+  park_position:
+    x: 1.0
+    y: 30.0
+```
+
+All other values automatically use proven Team 6238 defaults.
+
+### Advanced: Self-Hosting (Optional)
+
+Want to run your own instance? You can deploy PenguinCAM yourself:
 
 **Setup steps:**
 1. Fork this repository
 2. Follow [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) to deploy on Railway
 3. Configure Google OAuth for your Workspace
 4. Set up Onshape API credentials
-5. Customize for your team (logo, domain, etc.)
+5. Customize branding (logo, domain, etc.)
 
-The setup takes about 1-2 hours but then requires minimal maintenance. Your students will love the streamlined workflow!
+The setup takes about 1-2 hours but then requires minimal maintenance.
+
+**Most teams should use the hosted service above** - it's simpler and includes automatic updates!
 
 ---
 

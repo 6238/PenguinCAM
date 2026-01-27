@@ -24,6 +24,7 @@ import ezdxf
 # Local modules
 from shapely.geometry import Point, Polygon, LineString, MultiPolygon
 from shapely.ops import unary_union, linemerge
+from team_config import TeamConfig
 
 
 @dataclass
@@ -99,32 +100,42 @@ MATERIAL_PRESETS = {
 
 
 class FRCPostProcessor:
-    def __init__(self, material_thickness: float, tool_diameter: float, units: str = "inch"):
+    def __init__(self, material_thickness: float, tool_diameter: float, units: str = "inch",
+                 config: Optional[TeamConfig] = None):
         """
         Initialize the post-processor
-        
+
         Args:
             material_thickness: Thickness of material in inches
             tool_diameter: Diameter of cutting tool in inches (e.g., 4mm = 0.157")
             units: "inch" or "mm"
+            config: Optional TeamConfig instance for team-specific settings.
+                   If not provided, uses Team 6238 defaults.
         """
+        # Use provided config or create default (Team 6238 defaults)
+        if config is None:
+            config = TeamConfig()
+        self.config = config
+
         self.material_thickness = material_thickness
         self.tool_diameter = tool_diameter
         self.tool_radius = tool_diameter / 2
         self.units = units
-        self.tolerance = 0.02  # Tolerance for hole detection (inches)
+
+        # Hole detection tolerance from config
+        self.tolerance = config.hole_detection_tolerance
 
         # Minimum hole diameter that can be milled (must be > tool diameter for chip evacuation)
         # Holes smaller than this are skipped
-        self.min_millable_hole = tool_diameter * 1.2  # 20% larger than tool for chip clearance
-        
+        self.min_millable_hole = tool_diameter * config.min_millable_hole_multiplier
+
         # Z-axis reference: Z=0 is at BOTTOM (sacrifice board surface)
         # This allows zeroing to the sacrifice board instead of material top
-        self.sacrifice_board_depth = 0.008  # How far to cut into sacrifice board (inches)
-        self.clearance_height = 0.5  # Clearance above material top for rapid moves (inches)
+        self.sacrifice_board_depth = config.sacrifice_board_depth  # How far to cut into sacrifice board (inches)
+        self.clearance_height = config.clearance_height  # Clearance above material top for rapid moves (inches)
 
         # Calculated Z positions (Z=0 at sacrifice board)
-        self.safe_height = 1.5  # Safe height for rapid moves (absolute, not relative to material)
+        self.safe_height = config.safe_height  # Safe height for rapid moves (absolute, not relative to material)
         self.retract_height = material_thickness + self.clearance_height  # Retract above material
         self.material_top = material_thickness  # Top surface of material
         self.cut_depth = -self.sacrifice_board_depth  # Cut slightly into sacrifice board
@@ -140,30 +151,20 @@ class FRCPostProcessor:
         self.ramp_start_clearance = 0.15 if units == "inch" else 3.8  # Clearance above material to start ramping
         self.stepover_percentage = 0.6  # Radial stepover as fraction of tool diameter (default 60%)
 
-        # Tab parameters
-        self.tab_width = 0.25  # Width of tabs (inches)
-        self.tab_height = 0.1  # How much material to leave in tab (inches) - per team standards
-        self.tab_spacing = 6.0  # Desired spacing between tabs (inches) - actual spacing may be closer to ensure minimum 3 tabs
+        # Tab parameters from config
+        self.tab_width = config.tab_width  # Width of tabs (inches)
+        self.tab_height = config.tab_height  # How much material to leave in tab (inches)
+        self.tab_spacing = config.tab_spacing  # Desired spacing between tabs (inches)
 
         # Tube facing parameters
         self.tube_facing_offset = 0.0625  # Hole offset to align with faced surface at Y=+1/16" (inches)
 
-        # Tube facing operation constants
-        self.tube_facing_params = {
-            'depth_margin': 0.005,           # Extra depth beyond half tube height (inches)
-            'max_roughing_depth': 0.3,       # Maximum depth per roughing pass (inches)
-            'max_finishing_depth': 0.51,     # Maximum depth per finishing pass (inches)
-            'roughing_tool_edge_p1': 0.05,   # Roughing tool edge position, phase 1 (inches)
-            'finishing_tool_edge_p1': 0.0625, # Finishing tool edge position, phase 1 (inches)
-            'roughing_tool_edge_p2': -0.0125, # Roughing tool edge position, phase 2 (inches)
-            'finishing_tool_edge_p2': 0.0,   # Finishing tool edge position, phase 2 (inches)
-            'arc_advance': 0.04,             # Arc advance distance in X (inches)
-            'arc_radius': 0.05               # Arc radius for clearing moves (inches)
-        }
+        # Tube facing operation constants from config
+        self.tube_facing_params = config.get_tube_facing_params()
 
-        # Machine-specific constants (TODO: move to team config)
-        self.machine_park_x = 0.5   # X position for machine park (machine coordinates)
-        self.machine_park_y = 23.5  # Y position for machine park (machine coordinates)
+        # Machine-specific constants from config
+        self.machine_park_x = config.machine_park_x  # X position for machine park (machine coordinates)
+        self.machine_park_y = config.machine_park_y  # Y position for machine park (machine coordinates)
 
         # Helix entry radius multiplier (applied to tool diameter)
         # Overridden by material presets
@@ -179,13 +180,16 @@ class FRCPostProcessor:
         Args:
             material: Material name ('plywood', 'aluminum', 'polycarbonate')
         """
-        if material not in MATERIAL_PRESETS:
-            print(f"Warning: Unknown material '{material}'. Available: {', '.join(MATERIAL_PRESETS.keys())}")
-            print("Using default plywood settings.")
-            material = 'plywood'
+        # Get material preset from config (merges user config with Team 6238 defaults)
+        preset = self.config.get_material_preset(material)
 
-        preset = MATERIAL_PRESETS[material]
-        self.material_name = preset['name']  # Store material name for header
+        # Check if we got a valid preset (config returns empty dict for unknown materials)
+        if not preset:
+            print(f"Warning: Unknown material '{material}'. Available: plywood, aluminum, polycarbonate")
+            print("Using default plywood settings.")
+            preset = self.config.get_material_preset('plywood')
+
+        self.material_name = preset.get('name', material.capitalize())  # Store material name for header
 
         # Preset values are defined in IPM - convert to mm/min if needed
         if self.units == 'mm':
@@ -220,8 +224,9 @@ class FRCPostProcessor:
         # Helix entry radius multiplier
         self.helix_radius_multiplier = preset['helix_radius_multiplier']
 
-        print(f"\nApplied material preset: {preset['name']}")
-        print(f"  {preset['description']}")
+        print(f"\nApplied material preset: {preset.get('name', material.capitalize())}")
+        if 'description' in preset:
+            print(f"  {preset['description']}")
         if self.units == 'mm':
             print(f"  Feed rate: {preset['feed_rate']} IPM ({self.feed_rate:.0f} mm/min)")
             print(f"  Ramp feed rate: {preset['ramp_feed_rate']} IPM ({self.ramp_feed_rate:.0f} mm/min)")
