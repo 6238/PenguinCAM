@@ -2,6 +2,8 @@
 ezdxf>=1.0.0
 shapely>=2.0.0
 Flask==3.0.0
+flask-limiter>=4.0.0
+PyYAML>=6.0
 requests==2.31.0
 gunicorn==21.2.0
 google-auth==2.23.0

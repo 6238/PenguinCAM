@@ -558,6 +558,7 @@ def drive_status():
         })
 
 @app.route('/drive/upload/<filename>', methods=['POST'])
+@limiter.limit("30 per minute")  # Reasonable limit for uploads
 @auth.require_auth
 def upload_to_drive(filename):
     """Upload a G-code file to Google Drive"""

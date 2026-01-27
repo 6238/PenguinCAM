@@ -209,6 +209,100 @@ class OnshapeClient:
         except Exception as e:
             print(f"Error getting user info: {e}")
             return None
+
+    def get_user_session_info(self):
+        """
+        Get detailed session info for the authenticated user
+
+        Returns:
+            dict with user session info including name, email, etc.
+        """
+        try:
+            print("   Fetching user session info...")
+            response = self._make_api_request('GET', '/users/sessioninfo')
+            if response.status_code == 200:
+                user_info = response.json()
+                print(f"   ✅ User: {user_info.get('name', 'Unknown')}")
+                return user_info
+            else:
+                print(f"   ❌ Failed to get session info: HTTP {response.status_code}")
+                return None
+        except Exception as e:
+            print(f"   ❌ Error getting session info: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def get_companies(self):
+        """
+        Get list of companies/teams the user belongs to
+
+        Returns:
+            list of company dicts
+        """
+        try:
+            print("   Fetching companies...")
+            response = self._make_api_request('GET', '/companies?activeOnly=true&includeAll=false')
+            if response.status_code == 200:
+                companies = response.json().get('items', [])
+                print(f"   ✅ Found {len(companies)} companies: {[c.get('name') for c in companies]}")
+                return companies
+            else:
+                print(f"   ❌ Failed to get companies: HTTP {response.status_code}")
+                return None
+        except Exception as e:
+            print(f"   ❌ Error getting companies: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def get_document_company(self, document_id):
+        """
+        Get the company/team that owns a specific document
+
+        Args:
+            document_id: Onshape document ID
+
+        Returns:
+            dict with company info, or None if not found
+        """
+        try:
+            print("   Determining document owner company...")
+
+            # Get document info to find owner
+            doc_info = self.get_document_info(document_id)
+            if not doc_info:
+                print("   ❌ Could not get document info")
+                return None
+
+            # Documents have an 'owner' field with type and id
+            # type: 0 = user, 1 = company, 2 = team (I think - need to verify)
+            owner_info = doc_info.get('owner', {})
+            owner_type = owner_info.get('type')
+            owner_id = owner_info.get('id')
+            owner_name = owner_info.get('name', 'Unknown')
+
+            print(f"   Document owner: {owner_name} (type={owner_type}, id={owner_id[:8]}...)")
+
+            # If owner is a company/team (type 1 or 2), find it in the companies list
+            if owner_type in [1, 2]:
+                companies = self.get_companies()
+                if companies:
+                    for company in companies:
+                        if company.get('id') == owner_id:
+                            print(f"   ✅ Document belongs to company: {company.get('name')}")
+                            return company
+                    print(f"   ⚠️  Document owner company not found in user's companies")
+                    return None
+            else:
+                print(f"   ℹ️  Document is owned by user (not a company/team)")
+                return None
+
+        except Exception as e:
+            print(f"   ❌ Error getting document company: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
     
     def _calculate_view_matrix(self, normal):
         """

@@ -10,21 +10,26 @@ PenguinCAM is a web-based CAM post-processor that generates CNC G-code from DXF 
 
 ## Development Commands
 
+**Important**: This project uses `uv` for Python environment management. All Python commands should be run with `uv run`:
+
 ```bash
 # Install dependencies
 make install
 
 # Run development server (opens http://localhost:6238)
-python frc_cam_gui_app.py
+uv run python frc_cam_gui_app.py
 
 # Run G-code comparison tests
 make test
 
 # Run postprocessor directly (CLI)
-python frc_cam_postprocessor.py INPUT.dxf OUTPUT.nc \
+uv run python frc_cam_postprocessor.py INPUT.dxf OUTPUT.nc \
   --material plywood \
   --thickness 0.25 \
   --tool-diameter 0.157
+
+# Test any Python module import
+uv run python -c "from frc_cam_gui_app import app; print('OK')"
 ```
 
 ## Development Rules
