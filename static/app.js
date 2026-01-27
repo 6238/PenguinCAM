@@ -268,11 +268,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.available && data.configured) {
                     driveAvailable = true;
                     driveBtn.style.display = 'inline-block';
-                } else if (data.available && !data.configured) {
-                    driveStatus.textContent = '⚠️ Google Drive not configured - see GOOGLE_DRIVE_SETUP.md';
-                    driveStatus.style.display = 'block';
-                    driveStatus.style.color = '#FFA500';
                 }
+                // Don't show Drive warnings during DXF setup - only relevant after G-code generation
             } catch (error) {
                 // Drive integration not available - that's okay
                 console.log('Google Drive integration not available');
@@ -342,10 +339,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Generate G-code
         generateBtn.addEventListener('click', async () => {
-            if (!appState.uploadedFile) return;
+            console.log('🔍 Generate button clicked');
+            console.log('📂 appState.uploadedFile:', appState.uploadedFile);
+
+            if (!appState.uploadedFile) {
+                console.error('❌ No file in appState.uploadedFile');
+                return;
+            }
 
             const formData = new FormData();
             formData.append('file', appState.uploadedFile);
+            console.log('✅ FormData created with file:', appState.uploadedFile.name);
 
             // Generate timestamp in user's local timezone
             const now = new Date();
