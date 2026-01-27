@@ -413,11 +413,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 switchMode('preview');
                 visualizeGcode(data.gcode);
 
-                // Enable download and drive buttons
+                // Enable download button
                 downloadBtn.disabled = false;
-                if (driveAvailable) {
-                    driveBtn.disabled = false;
-                }
+
+                // Re-check Drive status (config may have been loaded during Onshape import)
+                checkDriveStatus().then(() => {
+                    if (driveAvailable) {
+                        driveBtn.disabled = false;
+                    }
+                });
 
             } catch (error) {
                 if (Object.hasOwn(error, "details")) {
