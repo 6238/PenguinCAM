@@ -345,6 +345,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const formData = new FormData();
             formData.append('file', uploadedFile);
+
+            // Generate timestamp in user's local timezone
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hour = String(now.getHours()).padStart(2, '0');
+            const minute = String(now.getMinutes()).padStart(2, '0');
+            const second = String(now.getSeconds()).padStart(2, '0');
+            const timestamp = `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+            formData.append('timestamp', timestamp);
+
             const material = document.getElementById('material').value;
             formData.append('material', material);
             formData.append('tool_diameter', document.getElementById('toolDiameter').value);

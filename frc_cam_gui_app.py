@@ -22,7 +22,6 @@ import atexit
 import time
 import threading
 from datetime import datetime
-from zoneinfo import ZoneInfo
 from urllib.parse import urlencode
 import ezdxf
 
@@ -288,11 +287,6 @@ def fetch_face_normal_and_body(client, document_id, workspace_id, element_id, fa
 
     return face_normal, auto_selected_body_id, part_name_from_body
 
-def generate_pacific_timestamp():
-    """Generate timestamp string in Pacific timezone"""
-    pacific_time = datetime.now(ZoneInfo("America/Los_Angeles"))
-    return pacific_time.strftime("%Y-%m-%d_%H-%M-%S")
-
 def generate_onshape_filename(doc_name, part_name):
     """
     Generate a clean filename from Onshape document and part names.
@@ -314,8 +308,9 @@ def generate_onshape_filename(doc_name, part_name):
         if part_clean and part_clean != 'Unnamed_Part':
             return part_clean
 
-    # Last resort: timestamp (Pacific time)
-    return f"Onshape_Part_{generate_pacific_timestamp()}"
+    # Last resort: timestamp (server's local time)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    return f"Onshape_Part_{timestamp}"
 
 # ============================================================================
 # Routes
@@ -391,6 +386,9 @@ def process_file():
         origin_corner = request.form.get('origin_corner', 'bottom-left')
         rotation = int(request.form.get('rotation', 0))
         suggested_filename = request.form.get('suggested_filename', '')
+
+        # Get timestamp from client (in user's local timezone)
+        timestamp_str = request.form.get('timestamp', '')
 
         # Material-specific parameters
         thickness = float(request.form.get('thickness', 0.25))  # Material/wall thickness (used by both modes)
@@ -497,7 +495,8 @@ def process_file():
                     cut_to_length=cut_to_length,
                     tube_width=tube_width,
                     tube_length=tube_length,
-                    suggested_filename=base_name
+                    suggested_filename=base_name,
+                    timestamp=timestamp_str
                 )
             else:
                 # Standard mode - use standard API
@@ -525,7 +524,7 @@ def process_file():
                 pp.identify_perimeter_and_pockets()
 
                 # Generate G-code using API
-                result = pp.generate_gcode(suggested_filename=base_name)
+                result = pp.generate_gcode(suggested_filename=base_name, timestamp=timestamp_str)
 
             if not result.success:
                 print(f"❌ Post-processor API failed!")
@@ -1344,9 +1343,8 @@ def onshape_save_dxf():
 
         base_filename = generate_onshape_filename(doc_name, part_name_from_body)
 
-        # Add timestamp
-        pacific_time = datetime.now(ZoneInfo("America/Los_Angeles"))
-        timestamp = pacific_time.strftime("%Y%m%d_%H%M%S")
+        # Add timestamp (server's local time)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         dxf_filename = f"{base_filename}_{timestamp}.dxf"
 
         print(f"✅ Generated filename: {dxf_filename}")
