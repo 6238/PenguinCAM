@@ -14,7 +14,7 @@ class OnshapeClient:
     """Client for interacting with Onshape API"""
     
     BASE_URL = "https://cad.onshape.com"
-    API_BASE = "https://cad.onshape.com/api/v12"
+    API_BASE = "https://cad.onshape.com/api/v13"
     
     def __init__(self):
         self.config = self._load_config()
@@ -960,12 +960,11 @@ class OnshapeClient:
         try:
             print("\n🔍 Searching for PenguinCAM-config.yaml...")
 
-            # Search for documents with the config filename
-            search_params = {
-                'q': 'PenguinCAM-config',
-                'filter': '0'  # 0 = all types
+            # Search for documents with the config filename (v13 API)
+            search_body = {
+                'rawQuery': 'PenguinCAM-config.yaml'
             }
-            response = self._make_api_request('GET', '/documents', params=search_params)
+            response = self._make_api_request('POST', '/documents/search', json=search_body)
 
             if response.status_code != 200:
                 print(f"   ❌ Document search failed: HTTP {response.status_code}")
@@ -988,16 +987,19 @@ class OnshapeClient:
 
             print(f"   ✅ Found config document: {doc_name} (ID: {doc_id[:8]}...)")
 
-            # Get document details to find the default workspace
-            doc_info = self.get_document_info(doc_id)
-            if not doc_info:
-                print("   ❌ Could not get document info")
-                return None
-
-            workspace_id = doc_info.get('defaultWorkspace', {}).get('id')
+            # Get workspace ID from search results (v13 includes defaultWorkspace)
+            workspace_id = config_doc.get('defaultWorkspace', {}).get('id')
             if not workspace_id:
-                print("   ❌ No default workspace found")
-                return None
+                print("   ⚠️  No defaultWorkspace in search results, fetching document info...")
+                # Fallback: fetch document info separately
+                doc_info = self.get_document_info(doc_id)
+                if not doc_info:
+                    print("   ❌ Could not get document info")
+                    return None
+                workspace_id = doc_info.get('defaultWorkspace', {}).get('id')
+                if not workspace_id:
+                    print("   ❌ No default workspace found")
+                    return None
 
             print(f"   Using workspace: {workspace_id[:8]}...")
 
