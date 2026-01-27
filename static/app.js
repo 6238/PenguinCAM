@@ -1104,15 +1104,38 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.fillText('Y', originX, originY - 70);
             
             // Draw dimensions at top
-            ctx.fillStyle = '#8B949E';
             ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
-            ctx.fillText(
-                `${displayWidth.toFixed(2)}" × ${displayHeight.toFixed(2)}" (${rotationAngle}°)`,
-                width / 2,
-                20
-            );
+
+            // Check if part fits within machine bounds
+            const machineXMax = window.MACHINE_CONFIG?.xMax || 48.0;
+            const machineYMax = window.MACHINE_CONFIG?.yMax || 96.0;
+            const fitsInMachine = displayWidth <= machineXMax && displayHeight <= machineYMax;
+
+            if (fitsInMachine) {
+                ctx.fillStyle = '#8B949E';
+                ctx.fillText(
+                    `${displayWidth.toFixed(2)}" × ${displayHeight.toFixed(2)}" (${rotationAngle}°)`,
+                    width / 2,
+                    20
+                );
+            } else {
+                // Part exceeds machine bounds - show error
+                ctx.fillStyle = '#FF4444';
+                ctx.fillText(
+                    `⚠️ ${displayWidth.toFixed(2)}" × ${displayHeight.toFixed(2)}" (${rotationAngle}°) - TOO LARGE`,
+                    width / 2,
+                    20
+                );
+                ctx.fillStyle = '#FF4444';
+                ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+                ctx.fillText(
+                    `Machine max: ${machineXMax.toFixed(0)}" × ${machineYMax.toFixed(0)}" - Rotate or reduce size`,
+                    width / 2,
+                    40
+                );
+            }
         }
 
         // G-code visualization

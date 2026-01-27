@@ -724,9 +724,22 @@ class FRCPostProcessor:
 
         new_minX, new_maxX = min(all_x), max(all_x)
         new_minY, new_maxY = min(all_y), max(all_y)
-        
+
         print(f"  Transformed bounds: X=[{new_minX:.3f}, {new_maxX:.3f}], Y=[{new_minY:.3f}, {new_maxY:.3f}]")
         print(f"  New origin (0,0) is at the {origin_corner} corner\n")
+
+        # Check if part fits within machine bounds
+        part_width = new_maxX - new_minX
+        part_height = new_maxY - new_minY
+        machine_x_max = self.config.machine_x_max
+        machine_y_max = self.config.machine_y_max
+
+        if part_width > machine_x_max or part_height > machine_y_max:
+            error_msg = (f"Part dimensions ({part_width:.2f}\" × {part_height:.2f}\") exceed machine bounds "
+                        f"({machine_x_max:.1f}\" × {machine_y_max:.1f}\"). "
+                        f"Try rotating 90° or reduce part size.")
+            self._add_error(error_msg)
+            print(f"  ❌ {error_msg}")
     
     def classify_holes(self):
         """Classify holes by diameter"""
@@ -979,8 +992,13 @@ class FRCPostProcessor:
             gcode.append(f"(Generated on: {timestamp_display})")
         gcode.append("")
 
-        gcode.append(f"(Machine: {machine.get('name', 'CNC Router')})")
-        gcode.append(f"(Controller: {machine.get('controller', 'Generic')})")
+        # Sanitize machine name to avoid nested parentheses in G-code comments
+        machine_name = machine.get('name', 'CNC Router').replace('(', '[').replace(')', ']')
+        controller = machine.get('controller', 'Generic').replace('(', '[').replace(')', ']')
+
+        gcode.append(f"(Machine: {machine_name})")
+        gcode.append(f"(Controller: {controller})")
+        gcode.append(f"(Machine bounds: X={self.config.machine_x_max:.1f}\" Y={self.config.machine_y_max:.1f}\" Z={self.config.machine_z_max:.1f}\")")
         gcode.append(f"(Units: {'Inches' if self.units == 'inch' else 'Millimeters'} - {'G20' if self.units == 'inch' else 'G21'})")
         gcode.append("(Coordinate system: G54)")
         gcode.append("(Plane: G17 - XY)")

@@ -229,6 +229,21 @@ class TeamConfig:
         """Machine coolant type (Air, Flood, Mist, None)"""
         return self._get('machine', 'coolant')
 
+    @property
+    def machine_x_max(self) -> float:
+        """Machine maximum X travel (inches)"""
+        return self._get('machine', 'dimensions', 'x_max')
+
+    @property
+    def machine_y_max(self) -> float:
+        """Machine maximum Y travel (inches)"""
+        return self._get('machine', 'dimensions', 'y_max')
+
+    @property
+    def machine_z_max(self) -> float:
+        """Machine maximum Z travel (inches)"""
+        return self._get('machine', 'dimensions', 'z_max')
+
     # ========================================================================
     # General Machining Preferences
     # ========================================================================
@@ -344,6 +359,9 @@ class TeamConfig:
             'team_name': self.team_name,
             'machine_name': self.machine_name,
             'machine_controller': self.machine_controller,
+            'machine_x_max': self.machine_x_max,
+            'machine_y_max': self.machine_y_max,
+            'machine_z_max': self.machine_z_max,
             'google_drive_enabled': self.google_drive_enabled,
             'google_drive_folder_id': self.google_drive_folder_id,
             'default_tool_diameter': self.default_tool_diameter,

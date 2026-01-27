@@ -347,12 +347,16 @@ def index():
     team_config = session.get('team_config', {})
     drive_enabled = team_config.get('google_drive_enabled', False)
     default_tool_diameter = team_config.get('default_tool_diameter', 0.157)  # 4mm default
+    machine_x_max = team_config.get('machine_x_max', 48.0)
+    machine_y_max = team_config.get('machine_y_max', 96.0)
 
     return render_template('index.html',
                          user_name=user_name,
                          team_name=team_name,
                          drive_enabled=drive_enabled,
-                         default_tool_diameter=default_tool_diameter)
+                         default_tool_diameter=default_tool_diameter,
+                         machine_x_max=machine_x_max,
+                         machine_y_max=machine_y_max)
 
 @app.route('/process', methods=['POST'])
 @limiter.limit("10 per minute")  # Strict limit - CPU intensive operation
