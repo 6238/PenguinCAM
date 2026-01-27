@@ -1237,12 +1237,22 @@ def onshape_import():
 
         # Render main page with DXF auto-loaded
         # The frontend will detect the dxf_file parameter and auto-upload it
+
+        # Get config values from session for template
+        team_config = session.get('team_config', {})
+        machine_x_max = team_config.get('machine_x_max', 48.0)
+        machine_y_max = team_config.get('machine_y_max', 96.0)
+        default_tool_diameter = team_config.get('default_tool_diameter', 0.157)
+
         return render_template('index.html',
                              dxf_file=dxf_token,  # Pass token instead of filename
                              from_onshape=True,
                              document_id=document_id,
                              face_id=face_id,
-                             suggested_filename=suggested_filename or '')
+                             suggested_filename=suggested_filename or '',
+                             machine_x_max=machine_x_max,
+                             machine_y_max=machine_y_max,
+                             default_tool_diameter=default_tool_diameter)
         
     except Exception as e:
         return jsonify({

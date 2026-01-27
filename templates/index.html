@@ -308,8 +308,8 @@
 
         // Machine configuration for bounds checking
         window.MACHINE_CONFIG = {
-            xMax: {{ machine_x_max }},
-            yMax: {{ machine_y_max }}
+            xMax: {{ machine_x_max if machine_x_max is defined else 48.0 }},
+            yMax: {{ machine_y_max if machine_y_max is defined else 96.0 }}
         };
     </script>
 
