@@ -43,6 +43,26 @@
     }
 
     /**
+     * Request face dimensions via Onshape postMessage API
+     */
+    function requestFaceDimensions(faceSelection) {
+        // Show loading state
+        faceIdDisplay.textContent = 'Loading...';
+
+        // Request bounding box for the selected face
+        const message = {
+            messageName: 'getBoundingBox',
+            entityId: faceSelection.selectionId,
+            documentId: context.documentId,
+            workspaceId: context.workspaceId,
+            elementId: context.elementId
+        };
+
+        window.parent.postMessage(message, '*');
+        console.log('Requested bounding box:', message);
+    }
+
+    /**
      * Handle incoming messages from Onshape parent window
      */
     function handleMessage(event) {
@@ -57,6 +77,44 @@
 
         if (data.messageName === 'SELECTION') {
             handleSelection(data);
+        } else if (data.messageName === 'boundingBox') {
+            handleBoundingBox(data);
+        }
+    }
+
+    /**
+     * Handle bounding box response from Onshape
+     */
+    function handleBoundingBox(data) {
+        console.log('Bounding box data:', data);
+
+        if (data.boundingBox) {
+            const box = data.boundingBox;
+            // Calculate dimensions from bounding box (in meters, convert to inches)
+            const width = (box.maxCorner[0] - box.minCorner[0]) * 39.3701; // meters to inches
+            const height = (box.maxCorner[1] - box.minCorner[1]) * 39.3701;
+            const depth = (box.maxCorner[2] - box.minCorner[2]) * 39.3701;
+
+            // Determine which two dimensions to show (largest two, or X×Y for planar faces)
+            let display;
+            if (depth < 0.01) {
+                // Planar face parallel to XY
+                display = `${width.toFixed(1)}" × ${height.toFixed(1)}" face`;
+            } else if (height < 0.01) {
+                // Planar face parallel to XZ
+                display = `${width.toFixed(1)}" × ${depth.toFixed(1)}" face`;
+            } else if (width < 0.01) {
+                // Planar face parallel to YZ
+                display = `${height.toFixed(1)}" × ${depth.toFixed(1)}" face`;
+            } else {
+                // Non-planar or complex face - show all dimensions
+                display = `${width.toFixed(1)}" × ${height.toFixed(1)}" × ${depth.toFixed(1)}" face`;
+            }
+
+            faceIdDisplay.textContent = display;
+        } else {
+            // Fallback if bounding box not available
+            faceIdDisplay.textContent = selectedFaceId;
         }
     }
 
@@ -81,7 +139,9 @@
             instruction.style.display = 'none';
             faceInfo.style.display = 'block';
             buttonGroup.style.display = 'flex';
-            faceIdDisplay.textContent = selectedFaceId;
+
+            // Request bounding box to get face dimensions
+            requestFaceDimensions(faceSelection);
 
             // Enable buttons
             sendBtn.disabled = false;
