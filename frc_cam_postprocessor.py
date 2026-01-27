@@ -60,6 +60,7 @@ MATERIAL_PRESETS = {
         'ramp_angle': 20.0,       # Ramp angle in degrees
         'ramp_start_clearance': 0.150,  # Clearance above material to start ramping (inches)
         'stepover_percentage': 0.65,    # Radial stepover as fraction of tool diameter (65% for plywood)
+        'helix_radius_multiplier': 0.75, # Helix entry radius as fraction of tool diameter
         'max_slotting_depth': 0.4,      # Maximum depth per pass for perimeter slotting (inches)
         'tab_width': 0.25,        # Tab width (inches)
         'tab_height': 0.15,        # Tab height (inches)
@@ -74,6 +75,7 @@ MATERIAL_PRESETS = {
         'ramp_angle': 4.0,        # Ramp angle in degrees
         'ramp_start_clearance': 0.050,  # Clearance above material to start ramping (inches)
         'stepover_percentage': 0.25,    # Radial stepover as fraction of tool diameter (25% conservative for aluminum)
+        'helix_radius_multiplier': 0.5,  # Helix entry radius as fraction of tool diameter (conservative for aluminum)
         'max_slotting_depth': 0.2,      # Maximum depth per pass for perimeter slotting (inches)
         'tab_width': 0.25,        # Tab width (inches) - same as plywood
         'tab_height': 0.15,       # Tab height (inches) - same as plywood
@@ -88,6 +90,7 @@ MATERIAL_PRESETS = {
         'ramp_angle': 20.0,       # Same as plywood
         'ramp_start_clearance': 0.100,  # Clearance above material to start ramping (inches)
         'stepover_percentage': 0.55,    # Radial stepover as fraction of tool diameter (55% moderate for polycarbonate)
+        'helix_radius_multiplier': 0.75, # Helix entry radius as fraction of tool diameter
         'max_slotting_depth': 0.25,     # Maximum depth per pass for perimeter slotting (inches)
         'tab_width': 0.25,        # Tab width (inches) - same as plywood
         'tab_height': 0.15,        # Tab height (inches) - same as plywood
@@ -146,6 +149,27 @@ class FRCPostProcessor:
         # Tube facing parameters
         self.tube_facing_offset = 0.0625  # Hole offset to align with faced surface at Y=+1/16" (inches)
 
+        # Tube facing operation constants
+        self.tube_facing_params = {
+            'depth_margin': 0.005,           # Extra depth beyond half tube height (inches)
+            'max_roughing_depth': 0.3,       # Maximum depth per roughing pass (inches)
+            'max_finishing_depth': 0.51,     # Maximum depth per finishing pass (inches)
+            'roughing_tool_edge_p1': 0.05,   # Roughing tool edge position, phase 1 (inches)
+            'finishing_tool_edge_p1': 0.0625, # Finishing tool edge position, phase 1 (inches)
+            'roughing_tool_edge_p2': -0.0125, # Roughing tool edge position, phase 2 (inches)
+            'finishing_tool_edge_p2': 0.0,   # Finishing tool edge position, phase 2 (inches)
+            'arc_advance': 0.04,             # Arc advance distance in X (inches)
+            'arc_radius': 0.05               # Arc radius for clearing moves (inches)
+        }
+
+        # Machine-specific constants (TODO: move to team config)
+        self.machine_park_x = 0.5   # X position for machine park (machine coordinates)
+        self.machine_park_y = 23.5  # Y position for machine park (machine coordinates)
+
+        # Helix entry radius multiplier (applied to tool diameter)
+        # Overridden by material presets
+        self.helix_radius_multiplier = 0.75  # Default 75% of tool diameter
+
         # Error tracking
         self.errors = []  # Collect validation errors during processing
 
@@ -193,6 +217,9 @@ class FRCPostProcessor:
         else:
             self.tab_width = preset['tab_width']
             self.tab_height = preset['tab_height']
+
+        # Helix entry radius multiplier
+        self.helix_radius_multiplier = preset['helix_radius_multiplier']
 
         print(f"\nApplied material preset: {preset['name']}")
         print(f"  {preset['description']}")
@@ -1042,7 +1069,7 @@ class FRCPostProcessor:
         gcode.append("G53 G0 Z0.  ; Move to machine coordinate Z0 (safe clearance)")
         gcode.append("M9  ; Air blast off")
         gcode.append("M5  ; Spindle off")
-        gcode.append("G53 G0 X0.5 Y23.5  ; Move gantry to back of machine for easy access")
+        gcode.append(f"G53 G0 X{self.machine_park_x} Y{self.machine_park_y}  ; Move gantry to back of machine for easy access")
         gcode.append("M30  ; Program end")
         gcode.append("")
 
@@ -1416,7 +1443,7 @@ class FRCPostProcessor:
         is_circular = self._is_pocket_circular(pocket_points)
 
         # Calculate helical entry parameters
-        helix_radius = self.tool_diameter * 0.75  # Small helix for entry
+        helix_radius = self.tool_diameter * self.helix_radius_multiplier  # Helix radius from material preset
         ramp_start_height = self.material_top + self.ramp_start_clearance
         num_helical_passes, depth_per_pass = self._calculate_helical_passes(helix_radius, ramp_start_height=ramp_start_height)
 
@@ -1705,7 +1732,7 @@ class FRCPostProcessor:
 
                     if remaining_depth > 0.001:  # Only if significant depth remains
                         # Use small helical loop instead of straight plunge
-                        helix_radius = self.tool_diameter * 0.75  # Small radius, safe for any geometry
+                        helix_radius = self.tool_diameter * self.helix_radius_multiplier  # Helix radius from material preset
                         helix_center_x = current_pos[0]
                         helix_center_y = current_pos[1]
 
@@ -1964,18 +1991,18 @@ class FRCPostProcessor:
             - finishing_depth_per_pass: Depth per finishing pass
         """
         # Cutting parameters
-        total_depth = tube_height / 2 + 0.005  # Just over half the tube height (half + 5 thou)
+        total_depth = tube_height / 2 + self.tube_facing_params['depth_margin']  # Just over half the tube height
         wall_thickness = self.material_thickness  # Wall thickness of box tubing
 
-        # Roughing: respects flute length limit (0.3" max per pass)
+        # Roughing: respects flute length limit (max per pass from params)
         # 1" tube (0.505"): 2 passes, 2" tube (1.005"): 4 passes
-        max_roughing_depth = 0.3
+        max_roughing_depth = self.tube_facing_params['max_roughing_depth']
         num_roughing_passes = max(1, int(math.ceil(total_depth / max_roughing_depth)))
         roughing_depth_per_pass = total_depth / num_roughing_passes
 
-        # Finishing: light stepover allows deeper passes (0.51" max per pass)
+        # Finishing: light stepover allows deeper passes (max per pass from params)
         # 1" tube (0.505"): 1 pass, 2" tube (1.005"): 2 passes
-        max_finishing_depth = 0.51
+        max_finishing_depth = self.tube_facing_params['max_finishing_depth']
         num_finishing_passes = max(1, int(math.ceil(total_depth / max_finishing_depth)))
         finishing_depth_per_pass = total_depth / num_finishing_passes
 
@@ -2055,17 +2082,17 @@ class FRCPostProcessor:
 
         # Tool edge positions for each phase (these are the final face positions)
         if phase == 1:
-            # Phase 1: Roughing at +0.05", finishing at +0.0625"
-            roughing_tool_edge = 0.05
-            finishing_tool_edge = 0.0625
+            # Phase 1: Roughing and finishing positions from params
+            roughing_tool_edge = self.tube_facing_params['roughing_tool_edge_p1']
+            finishing_tool_edge = self.tube_facing_params['finishing_tool_edge_p1']
         else:
-            # Phase 2: Roughing at -0.0125", finishing at 0"
-            roughing_tool_edge = -0.0125
-            finishing_tool_edge = 0.0
+            # Phase 2: Roughing and finishing positions from params
+            roughing_tool_edge = self.tube_facing_params['roughing_tool_edge_p2']
+            finishing_tool_edge = self.tube_facing_params['finishing_tool_edge_p2']
 
         # Arc clearing parameters (needed to calculate roughing_y offset)
-        arc_advance = 0.04  # How far each arc advances in X
-        arc_radius = 0.05  # Arc radius
+        arc_advance = self.tube_facing_params['arc_advance']  # How far each arc advances in X
+        arc_radius = self.tube_facing_params['arc_radius']  # Arc radius
         half_advance = arc_advance / 2
         j_offset = math.sqrt(arc_radius**2 - half_advance**2)
 
@@ -2373,7 +2400,7 @@ class FRCPostProcessor:
         gcode.append('')
         gcode.append('( === PAUSE FOR TUBE FLIP === )')
         gcode.append('G53 G0 Z0.  ; Move to machine Z0 - safe clearance')
-        gcode.append('G53 G0 X0.5 Y23.5  ; Park at back of machine')
+        gcode.append(f'G53 G0 X{self.machine_park_x} Y{self.machine_park_y}  ; Park at back of machine')
         gcode.append('M9  ; Air blast off')
         gcode.append('M5')
         gcode.append('G4 P5.0')
@@ -2408,7 +2435,7 @@ class FRCPostProcessor:
         gcode.append('')
         gcode.append('( === PROGRAM END === )')
         gcode.append('G53 G0 Z0.  ; Move to machine Z0 (safe clearance)')
-        gcode.append('G53 G0 X0.5 Y23.5  ; Park at back of machine')
+        gcode.append(f'G53 G0 X{self.machine_park_x} Y{self.machine_park_y}  ; Park at back of machine')
         gcode.append('M9  ; Air blast off')
         gcode.append('M5')
         gcode.append('G54  ; Reset to standard work coordinate system')
@@ -2603,7 +2630,7 @@ class FRCPostProcessor:
         gcode.append('')
         gcode.append('( === PAUSE FOR TUBE FLIP === )')
         gcode.append('G53 G0 Z0.  ; Safe height')
-        gcode.append('G53 G0 X0.5 Y23.5  ; Park at back')
+        gcode.append(f'G53 G0 X{self.machine_park_x} Y{self.machine_park_y}  ; Park at back')
         gcode.append('M9  ; Air blast off')
         gcode.append('M5')
         gcode.append('G4 P5.0')
@@ -2670,7 +2697,7 @@ class FRCPostProcessor:
         gcode.append('')
         gcode.append('( === PROGRAM END === )')
         gcode.append('G53 G0 Z0.')
-        gcode.append('G53 G0 X0.5 Y23.5')
+        gcode.append(f'G53 G0 X{self.machine_park_x} Y{self.machine_park_y}')
         gcode.append('M9  ; Air blast off')
         gcode.append('M5')
         gcode.append('G54  ; Reset to standard work coordinate system')

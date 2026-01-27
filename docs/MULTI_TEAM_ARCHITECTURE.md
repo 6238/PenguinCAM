@@ -6,15 +6,13 @@ PenguinCAM now supports hosting for multiple FRC teams with team-specific config
 
 ## Architecture Changes
 
-### 1. No Mandatory Authentication
+### 1. No Mandatory Google Authentication
 
 **Before:** Google OAuth required to access the webapp
 **After:** Public access for basic functionality
 
-- Anyone can use DXF upload and G-code generation
-- No authentication required for `/`, `/process`, `/download` routes
+- Onshape authentication required for `/`, `/process`, `/download` routes
 - Google OAuth only triggers when saving to Drive
-- Onshape OAuth only triggers when importing from Onshape
 
 ### 2. Team Configuration (YAML)
 

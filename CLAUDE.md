@@ -10,7 +10,7 @@ PenguinCAM is a web-based CAM post-processor that generates CNC G-code from DXF 
 
 ## Development Commands
 
-**Important**: This project uses `uv` for Python environment management. All Python commands should be run with `uv run`:
+**Important**: This project uses `uv` for Python environment management locally. All Python commands should be run with `uv run`:
 
 ```bash
 # Install dependencies
@@ -30,6 +30,21 @@ uv run python frc_cam_postprocessor.py INPUT.dxf OUTPUT.nc \
 
 # Test any Python module import
 uv run python -c "from frc_cam_gui_app import app; print('OK')"
+```
+
+## Dependency Management
+
+**CRITICAL**: This project uses `requirements.txt` for dependency specification (NOT `pyproject.toml`).
+
+- **Local development**: Uses `uv` with `requirements.txt` (run `make install` or `uv pip install -r requirements.txt`)
+- **Deployment**: Railway reads `requirements.txt` to install dependencies
+- **Adding dependencies**: Edit `requirements.txt` directly, then run `uv pip install -r requirements.txt`
+- **DO NOT** create or use `pyproject.toml` - it will cause confusion with Railway deployment
+
+```bash
+# Add a new dependency
+echo "new-package>=1.0.0" >> requirements.txt
+uv pip install -r requirements.txt
 ```
 
 ## Development Rules
