@@ -4,52 +4,192 @@
 # All values are optional - any missing values will use Team 6238 defaults.
 # You only need to specify values you want to override.
 
-# Example: Another team with an Omio X-8 with Mach3 would only need to override:
-# team:
-#   number: 1234
-#   name: "Your Team Name"
-# machine:
-#   name: "Omio X-8"
-#   controller: "Mach3"
-#   park_position:
-#     x: 1.0
-#     y: 30.0
-
-# See full template with all options below:
-
+# =============================================================================
+# TEAM INFORMATION
+# =============================================================================
 team:
   number: 6238
   name: "Popcorn Penguins"
 
+# =============================================================================
+# MACHINE & CONTROLLER
+# =============================================================================
 machine:
-  name: "Avid CNC Pro4896"
+  name: "Avid CNC Pro2424"           # Your machine model
   manufacturer: "Avid CNC"
-  controller: "Mach4"
+  controller: "Mach4"                 # Mach3, Mach4, LinuxCNC, etc.
+
+  # Machine work envelope (inches)
   dimensions:
-    x_max: 48.0
-    y_max: 96.0
+    x_max: 24.0
+    y_max: 24.0
     z_max: 8.0
+
+  # Park position (machine coordinates for safe part access)
   park_position:
-    x: 0.5
-    y: 23.5
-  coolant: "Air"
+    x: 0.5      # X position when parking (machine coords)
+    y: 23.5     # Y position when parking (machine coords)
+    # NOTE: This is machine-specific! Adjust for your CNC's safe position.
 
+  # Coordinate systems
+  standard_work_offset: "G54"       # Work offset for standard operations
+  tube_jig_work_offset: "G55"       # Work offset for tube jig operations
+
+  coolant: "Air"                    # Air, Flood, Mist, None
+
+# =============================================================================
+# GENERAL MACHINING PREFERENCES
+# =============================================================================
 machining:
+  # Z-axis reference system
   z_reference:
-    sacrifice_board_depth: 0.008
-    safe_height: 1.5
-    clearance_height: 0.5
-  tabs:
-    width: 0.25
-    height: 0.1
-    spacing: 6.0
-  holes:
-    detection_tolerance: 0.02
-    min_millable_multiplier: 1.2
-  default_tool:
-    diameter: 0.157
+    sacrifice_board_depth: 0.008    # How far to cut into sacrifice board (inches)
+    safe_height: 1.5                # Safe height for rapid moves (inches)
+    clearance_height: 0.5           # Clearance above material for rapid moves (inches)
 
+  # Tab parameters (for perimeter operations)
+  tabs:
+    width: 0.25                     # Tab width (inches)
+    height: 0.1                     # How much material to leave in tab (inches)
+    spacing: 6.0                    # Desired spacing between tabs (inches)
+    # Note: Actual spacing may be closer to ensure minimum 3 tabs
+
+  # Hole detection and processing
+  holes:
+    detection_tolerance: 0.02       # Tolerance for detecting circular holes (inches)
+    min_millable_multiplier: 1.2    # Minimum hole diameter as multiple of tool diameter
+    # Note: Holes smaller than tool_diameter * 1.2 are skipped
+
+  # Tool parameters (defaults - can be overridden per job)
+  default_tool:
+    diameter: 0.157                 # 4mm end mill (inches)
+    # Note: This sets the default in the UI, but user can override for each job
+
+# =============================================================================
+# TUBE FACING OPERATION PARAMETERS
+# =============================================================================
+tube_facing:
+  # Depth calculations
+  depth_margin: 0.005               # Extra depth beyond half tube height (inches)
+
+  # Multi-pass depth limits
+  max_roughing_depth: 0.3           # Maximum depth per roughing pass (inches)
+  max_finishing_depth: 0.51         # Maximum depth per finishing pass (inches)
+
+  # Tool edge positions for two-pass flip strategy
+  # These are the Y positions where the tool leaves the final face
+  phase_1:
+    roughing_tool_edge: 0.05        # Phase 1 roughing position (inches)
+    finishing_tool_edge: 0.0625     # Phase 1 finishing position (inches)
+
+  phase_2:
+    roughing_tool_edge: -0.0125     # Phase 2 roughing position (inches)
+    finishing_tool_edge: 0.0        # Phase 2 finishing position (inches)
+
+  # Arc clearing parameters
+  arc_advance: 0.04                 # Arc advance distance in X (inches)
+  arc_radius: 0.05                  # Arc radius for clearing moves (inches)
+
+# =============================================================================
+# MATERIAL-SPECIFIC SETTINGS
+# =============================================================================
+# You can override any or all materials. Only specify values you want to change.
+# Any missing values will use Team 6238 defaults for that material.
+
+materials:
+  plywood:
+    name: "Plywood"
+    description: "Standard plywood settings - 18K RPM, 75 IPM cutting"
+
+    # Speeds and feeds
+    spindle_speed: 18000            # RPM
+    feed_rate: 75.0                 # Cutting feed rate (IPM)
+    ramp_feed_rate: 50.0            # Ramp feed rate (IPM)
+    plunge_rate: 35.0               # Plunge feed rate for tab Z moves (IPM)
+    traverse_rate: 200.0            # Lateral moves above material (IPM)
+    approach_rate: 50.0             # Z approach to ramp start (IPM)
+
+    # Toolpath parameters
+    ramp_angle: 20.0                # Ramp angle in degrees
+    ramp_start_clearance: 0.150     # Clearance above material to start ramping (inches)
+    stepover_percentage: 0.65       # Radial stepover as fraction of tool diameter
+    helix_radius_multiplier: 0.75   # Helix entry radius as fraction of tool diameter
+
+    # Multi-pass parameters
+    max_slotting_depth: 0.4         # Maximum depth per pass for perimeter slotting (inches)
+
+    # Tab parameters (can override defaults)
+    tab_width: 0.25
+    tab_height: 0.15
+
+  aluminum:
+    name: "Aluminum"
+    description: "Aluminum box tubing - 18K RPM, 55 IPM cutting, 4° ramp"
+
+    # Speeds and feeds
+    spindle_speed: 18000
+    feed_rate: 55.0
+    ramp_feed_rate: 35.0
+    plunge_rate: 15.0               # Slower for aluminum
+    traverse_rate: 200.0
+    approach_rate: 35.0
+
+    # Toolpath parameters
+    ramp_angle: 4.0                 # Shallow ramp for aluminum
+    ramp_start_clearance: 0.050
+    stepover_percentage: 0.25       # Conservative for aluminum
+    helix_radius_multiplier: 0.5    # Conservative helix entry for aluminum
+
+    # Multi-pass parameters
+    max_slotting_depth: 0.2         # Shallower passes for aluminum
+
+    # Tab parameters
+    tab_width: 0.25
+    tab_height: 0.15
+
+  polycarbonate:
+    name: "Polycarbonate"
+    description: "Polycarbonate - same as plywood settings"
+
+    # Speeds and feeds
+    spindle_speed: 18000
+    feed_rate: 75.0
+    ramp_feed_rate: 50.0
+    plunge_rate: 20.0
+    traverse_rate: 200.0
+    approach_rate: 50.0
+
+    # Toolpath parameters
+    ramp_angle: 20.0
+    ramp_start_clearance: 0.100
+    stepover_percentage: 0.55       # Moderate for polycarbonate
+    helix_radius_multiplier: 0.75
+
+    # Multi-pass parameters
+    max_slotting_depth: 0.25
+
+    # Tab parameters
+    tab_width: 0.25
+    tab_height: 0.15
+
+# =============================================================================
+# GOOGLE DRIVE INTEGRATION (optional)
+# =============================================================================
 integrations:
   google_drive:
     enabled: true
-    folder_id: "YOUR_FOLDER_ID_HERE"
+    folder_id: "YOUR_SHARED_DRIVE_FOLDER_ID_HERE"
+    # To find your folder ID:
+    # 1. Open Google Drive in your browser
+    # 2. Navigate to: Shared drives → Your Team → CNC → G-code
+    # 3. Look at the URL: https://drive.google.com/drive/folders/FOLDER_ID_HERE
+    # 4. Copy the FOLDER_ID_HERE part and paste it above
+
+# =============================================================================
+# UI CUSTOMIZATION (optional - for future use)
+# =============================================================================
+ui:
+  theme: "default"
+  # Future: team logo, colors, branding
+  # logo_url: "https://your-team-website.com/logo.png"
+  # primary_color: "#FF6B35"

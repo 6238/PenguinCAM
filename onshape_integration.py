@@ -1013,11 +1013,13 @@ class OnshapeClient:
 
             elements = response.json()
 
-            # Look for a Blob element (YAML or text files)
+            # Look for a Blob element with exact filename match
             config_element = None
             for elem in elements:
-                elem_name = elem.get('name', '').lower()
-                if elem.get('type') == 'Blob' and ('yaml' in elem_name or 'yml' in elem_name):
+                elem_name = elem.get('name', '')
+                # Match exact filename (case-insensitive)
+                if (elem.get('type') == 'Blob' and
+                    elem_name.lower() in ['penguincam-config.yaml', 'penguincam-config.yml']):
                     config_element = elem
                     break
 
