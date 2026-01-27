@@ -476,7 +476,7 @@ Here's how everything works together:
 **Folder structure:**
 ```
 Team Documents/
-└── FRC 2025 Season/
+└── FRC 2026 Season/
     └── Robot Parts/
         ├── Chassis Plates/
         ├── Gearbox Mounts/
@@ -582,5 +582,5 @@ Shared drives → [Team Name] → CNC → G-code
 
 ---
 
-**Last Updated:** December 2025  
+**Last Updated:** January 2026
 **Maintained by:** FRC Team 6238 Popcorn Penguins

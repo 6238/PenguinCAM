@@ -270,7 +270,7 @@ Tube facing always uses the **aluminum** preset:
 
 ```gcode
 ( PENGUINCAM TUBE FACING OPERATION )
-( Generated: 2025-12-20 22:30 )
+( Generated: 2026-01-26 14:30 )
 ( Tube size: 1x1 )
 ( Tool: 0.157" end mill )
 ( )

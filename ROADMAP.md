@@ -10,27 +10,28 @@ CAM Post-Processor for Onshape → G-code workflow
 PenguinCAM is **deployed and production-ready** at https://penguincam.popcornpenguins.com
 
 **Core features working:**
-- ✅ **Onshape one-click integration** - Right-click "Applications" in Onshape → Send to PenguinCAM
+- ✅ **Onshape one-click integration** - open Onshape App → Send to PenguinCAM
 - ✅ Onshape OAuth integration with DXF export
 - ✅ Automatic top face detection
 - ✅ DXF → G-code post-processing
-- ✅ Google Workspace authentication (domain restriction)
 - ✅ Google Drive integration (uploads to shared drive)
 - ✅ **Part orientation system** - Rotate in 90° increments, fixed bottom-left origin
 - ✅ **2D Setup View** - Visualize part before generating toolpaths
 - ✅ **3D toolpath visualization** - Interactive preview with tool animation
 - ✅ Interactive scrubber to step through toolpaths
-- ✅ Hole detection (#10 screws, 1.125" bearings)
+- ✅ Hole detection
 - ✅ Non-standard holes milled as circular pockets
-- ✅ Smart tab placement
+- ✅ Smart tab placement and automatic removal
 - ✅ Tubing support - makes square ends and mirror-image pattern in opposing faces
 - ✅ Tool compensation
+- ✅ Multiple perimeter passes for thick materials
+- ✅ Alerts users to unmillable features
 
 **Preferred workflow:** One-click from Onshape (manual DXF upload also available)
 
 ---
 
-## 🎓 Ready for Student Testing
+## 🎓 Ready for FRC use!
 
 PenguinCAM is ready for real-world use:
 - Students can export parts from Onshape with one click
@@ -38,11 +39,9 @@ PenguinCAM is ready for real-world use:
 - Visual preview before committing to G-code
 - Direct save to team Google Drive
 
-**Next:** Test with actual FRC parts and compare against Fusion 360 CAM
-
 ---
 
-## 🚀 Future Enhancements
+## 🚀 Future Enhancements (in no particular order)
 
 ### #1: Support multiple parts in a single job
 
@@ -52,6 +51,25 @@ PenguinCAM is ready for real-world use:
 #### **Layout multiple instances of the same part on a single piece of stock**
 #### **Allow for multiple parts to be cut on one piece of stock in the same job**
 
+### #2: Per-team machining preferences
+
+**Priority:** Medium
+**Effort:** Medium-High
+
+#### **Some teams prefer to do plates in two steps, and reaffix the part through newly machined-holes before cutting perimeter**
+#### **Some teams will use different CNC hardware that will require different speeds & feeds**
+#### **Some teams will have different needs for air blast, coolant, etc**
+
+### #3: Per-team branding
+
+**Priority:** Low
+**Effort:** Medium
+
+### #4: Support other cloud services for program storage
+
+**Priority:** Low
+**Effort:** Medium
+
 ---
 
 ## 💡 Ideas for Consideration
@@ -60,11 +78,11 @@ PenguinCAM is ready for real-world use:
 
 - Collision detection for tool holder
 - Batch processing multiple DXFs
-- G-code optimization (reduce rapids, minimize tool changes)
+- G-code optimization (minimize tool changes)
 - Export simulation as video/animated GIF
 - Integration with other CAD platforms (Fusion 360, Inventor)
 - Library of CNC machines
-- Hosting for other teams
+- Support for 2.5D patterns
 
 ---
 
@@ -77,9 +95,9 @@ If you're interested in contributing:
 2. Fork the repo and make your changes
 3. Submit a pull request
 
-Questions? Contact: Josh Sirota <josh@popcornpenguins.com>
+Questions? Contact: Josh Sirota <penguincam@popcornpenguins.com>
 
 ---
 
-**Last Updated:** December 2025  
+**Last Updated:** January 2026
 **Maintained by:** FRC Team 6238 Popcorn Penguins

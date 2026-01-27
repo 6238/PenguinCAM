@@ -374,5 +374,5 @@ Once deployed:
 
 ---
 
-**Last Updated:** December 2025  
+**Last Updated:** January 2026
 **Maintained by:** FRC Team 6238 Popcorn Penguins
