@@ -80,7 +80,7 @@ Features are enabled/disabled based on team config:
 
 - **`frc_cam_gui_app.py`** - Removed mandatory auth, added config loading
 - **`onshape_integration.py`** - Added `fetch_config_file()`, `get_user_session_info()`, `get_document_company()`
-- **`pyproject.toml`** - Added PyYAML dependency
+- **`requirements.txt`** - Added flask-limiter and PyYAML dependencies
 
 ## Usage Flow
 
