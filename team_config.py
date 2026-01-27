@@ -37,9 +37,13 @@ TEAM_6238_DEFAULTS = {
             'clearance_height': 0.5
         },
         'tabs': {
+            'enabled': True,
             'width': 0.25,
             'height': 0.1,
             'spacing': 6.0
+        },
+        'fixturing': {
+            'pause_before_perimeter': False
         },
         'holes': {
             'detection_tolerance': 0.02,
@@ -277,6 +281,16 @@ class TeamConfig:
     def tab_spacing(self) -> float:
         """Default desired tab spacing (inches)"""
         return self._get('machining', 'tabs', 'spacing')
+
+    @property
+    def tabs_enabled(self) -> bool:
+        """Whether tabs are enabled for perimeter cutting"""
+        return self._get('machining', 'tabs', 'enabled')
+
+    @property
+    def pause_before_perimeter(self) -> bool:
+        """Whether to pause before cutting perimeter (for screw fixturing)"""
+        return self._get('machining', 'fixturing', 'pause_before_perimeter')
 
     @property
     def hole_detection_tolerance(self) -> float:

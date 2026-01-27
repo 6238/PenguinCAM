@@ -49,10 +49,18 @@ machining:
 
   # Tab parameters (for perimeter operations)
   tabs:
+    enabled: true                   # Set to false to disable tabs entirely (cuts through perimeter)
     width: 0.25                     # Tab width (inches)
     height: 0.1                     # How much material to leave in tab (inches)
     spacing: 6.0                    # Desired spacing between tabs (inches)
     # Note: Actual spacing may be closer to ensure minimum 3 tabs
+
+  # Fixturing preferences
+  fixturing:
+    pause_before_perimeter: false   # Set to true to pause before perimeter cutting
+    # When enabled: Machine cuts holes/pockets first, pauses for operator to install
+    # screws through holes into sacrifice board, then cuts perimeter without tabs.
+    # Useful if you prefer screw fixturing instead of tab-based holding.
 
   # Hole detection and processing
   holes:

@@ -51,21 +51,12 @@ PenguinCAM is ready for real-world use:
 #### **Layout multiple instances of the same part on a single piece of stock**
 #### **Allow for multiple parts to be cut on one piece of stock in the same job**
 
-### #2: Per-team machining preferences
-
-**Priority:** Medium
-**Effort:** Medium-High
-
-#### **Some teams prefer to do plates in two steps, and reaffix the part through newly machined-holes before cutting perimeter**
-#### **Some teams will use different CNC hardware that will require different speeds & feeds**
-#### **Some teams will have different needs for air blast, coolant, etc**
-
-### #3: Per-team branding
+### #2: Per-team branding
 
 **Priority:** Low
 **Effort:** Medium
 
-### #4: Support other cloud services for program storage
+### #3: Support other cloud services for program storage
 
 **Priority:** Low
 **Effort:** Medium

@@ -152,9 +152,13 @@ class FRCPostProcessor:
         self.stepover_percentage = 0.6  # Radial stepover as fraction of tool diameter (default 60%)
 
         # Tab parameters from config
+        self.tabs_enabled = config.tabs_enabled  # Whether tabs are enabled
         self.tab_width = config.tab_width  # Width of tabs (inches)
         self.tab_height = config.tab_height  # How much material to leave in tab (inches)
         self.tab_spacing = config.tab_spacing  # Desired spacing between tabs (inches)
+
+        # Fixturing preferences from config
+        self.pause_before_perimeter = config.pause_before_perimeter  # Pause before perimeter for screw fixturing
 
         # Tube facing parameters
         self.tube_facing_offset = 0.0625  # Hole offset to align with faced surface at Y=+1/16" (inches)
@@ -269,6 +273,48 @@ class FRCPostProcessor:
         """
         print(f"  ❌ ERROR: {error_msg}")
         self.errors.append(error_msg)
+
+    def _generate_pause_and_park_gcode(self, title: str, instructions: List[str]) -> List[str]:
+        """
+        Generate G-code for a safe pause-and-restart sequence with operator instructions.
+
+        This standardized pause sequence:
+        1. Moves to safe Z height (machine coordinates)
+        2. Parks at machine park position
+        3. Turns off air blast and spindle
+        4. Displays operator instructions
+        5. Pauses program (M0) waiting for operator to press CYCLE START
+        6. Restarts spindle and air blast after CYCLE START
+        7. Dwells for spindle spin-up
+
+        Args:
+            title: Title for the pause section (e.g., "PAUSE FOR TUBE FLIP")
+            instructions: List of instruction lines to display to operator
+
+        Returns:
+            List of G-code lines for the complete pause-and-restart sequence
+        """
+        gcode = []
+        gcode.append('')
+        gcode.append(f'( === {title} === )')
+        gcode.append('G53 G0 Z0.  ; Move to machine Z0 - safe clearance')
+        gcode.append(f'G53 G0 X{self.machine_park_x} Y{self.machine_park_y}  ; Park at back of machine')
+        gcode.append('M9  ; Air blast off')
+        gcode.append('M5  ; Spindle off')
+        gcode.append('G4 P5.0  ; 5 second dwell')
+        gcode.append('')
+        gcode.append('( *** OPERATOR ACTION REQUIRED *** )')
+        for instruction in instructions:
+            gcode.append(f'( {instruction} )')
+        gcode.append('( Press CYCLE START to continue )')
+        gcode.append('M0  ; Program pause')
+        gcode.append('')
+        gcode.append('( === RESTART AFTER PAUSE === )')
+        gcode.append(f'S{self.spindle_speed} M3  ; Spindle on')
+        gcode.append('M7  ; Air blast on')
+        gcode.append('G4 P3.0  ; 3 second spindle spin-up')
+        gcode.append('')
+        return gcode
 
     def load_dxf(self, filename: str):
         """Load DXF file and extract geometry"""
@@ -1081,9 +1127,25 @@ class FRCPostProcessor:
                 gcode.extend(self._generate_pocket_gcode(pocket))
                 gcode.append("")
         
-        # Perimeter with tabs
+        # Perimeter (with optional pause for screw fixturing)
         if self.perimeter:
-            gcode.append("(===== PERIMETER WITH TABS =====)")
+            # Optional pause before perimeter for teams using screw fixturing
+            if self.pause_before_perimeter:
+                gcode.extend(self._generate_pause_and_park_gcode(
+                    'PAUSE FOR FIXTURING',
+                    [
+                        'Internal features complete',
+                        'Install screws through holes into sacrifice board',
+                        'Fixture part securely before perimeter cutting'
+                    ]
+                ))
+
+            # Generate perimeter header (tabs may or may not be present depending on config)
+            if self.tabs_enabled:
+                gcode.append("(===== PERIMETER WITH TABS =====)")
+            else:
+                gcode.append("(===== PERIMETER (NO TABS) =====)")
+
             gcode.extend(self._generate_perimeter_gcode(self.perimeter))
             gcode.append("")
         
@@ -1685,9 +1747,9 @@ class FRCPostProcessor:
             ramp_distance = ramp_depth / math.tan(math.radians(self.ramp_angle))
             gcode.append(f"(Ramp-in: {ramp_distance:.4f}\" at {self.ramp_angle} deg)")
 
-            # Calculate tab zones ONLY on final pass
+            # Calculate tab zones ONLY on final pass (if tabs are enabled)
             tab_zones = []  # List of (start_dist, end_dist) tuples
-            if is_final_pass:
+            if is_final_pass and self.tabs_enabled:
                 # We cut from ramp_distance to perimeter_length, so tabs should only be in that range
                 cutting_length = perimeter_length - ramp_distance
 
@@ -1704,6 +1766,8 @@ class FRCPostProcessor:
                     tab_zones.append((tab_start, tab_end))
 
                 gcode.append(f"(Tabs: {num_tabs} tabs - desired spacing: {self.tab_spacing:.2f}\", actual: {actual_tab_spacing:.2f}\" - width: {self.tab_width:.4f}\")")
+            elif is_final_pass and not self.tabs_enabled:
+                gcode.append(f"(Tabs disabled - perimeter will be cut through completely)")
 
             # Move to start
             start = offset_points[0]
@@ -2423,28 +2487,17 @@ class FRCPostProcessor:
                 gcode.append(adjusted_line)
 
         # === PAUSE FOR FLIP ===
-        gcode.append('')
-        gcode.append('( === PAUSE FOR TUBE FLIP === )')
-        gcode.append('G53 G0 Z0.  ; Move to machine Z0 - safe clearance')
-        gcode.append(f'G53 G0 X{self.machine_park_x} Y{self.machine_park_y}  ; Park at back of machine')
-        gcode.append('M9  ; Air blast off')
-        gcode.append('M5')
-        gcode.append('G4 P5.0')
-        gcode.append('')
-        gcode.append('( *** OPERATOR ACTION REQUIRED *** )')
-        gcode.append('( Flip tube 180 degrees end-for-end )')
-        gcode.append('( Re-clamp tube in jig )')
-        gcode.append('( Press CYCLE START to continue )')
-        gcode.append('M0')
-        gcode.append('')
+        gcode.extend(self._generate_pause_and_park_gcode(
+            'PAUSE FOR TUBE FLIP',
+            [
+                'Flip tube 180 degrees end-for-end',
+                'Re-clamp tube in jig'
+            ]
+        ))
 
         # === PHASE 2: FACE SECOND HALF ===
         gcode.append('( === PHASE 2: FACE SECOND HALF === )')
         gcode.append('( Face from Y=-0.250 to Y=-0.125 )')
-        gcode.append('')
-        gcode.append(f'S{self.spindle_speed} M3')
-        gcode.append('M7  ; Air blast on')
-        gcode.append('G4 P3.0')
         gcode.append('')
         gcode.append('G53 G0 Z0.  ; Move to machine Z0 - safe clearance')
         gcode.append('G0 X0 Y0  ; Rapid to work origin')
@@ -2655,27 +2708,16 @@ class FRCPostProcessor:
             gcode.extend(cut_gcode)
 
         # === PAUSE FOR FLIP ===
-        gcode.append('')
-        gcode.append('( === PAUSE FOR TUBE FLIP === )')
-        gcode.append('G53 G0 Z0.  ; Safe height')
-        gcode.append(f'G53 G0 X{self.machine_park_x} Y{self.machine_park_y}  ; Park at back')
-        gcode.append('M9  ; Air blast off')
-        gcode.append('M5')
-        gcode.append('G4 P5.0')
-        gcode.append('')
-        gcode.append('( *** OPERATOR ACTION REQUIRED *** )')
-        gcode.append('( Flip tube 180 degrees around Y-axis )')
-        gcode.append('( Holes will be machined on opposite face )')
-        gcode.append('( Press CYCLE START to continue )')
-        gcode.append('M0')
-        gcode.append('')
+        gcode.extend(self._generate_pause_and_park_gcode(
+            'PAUSE FOR TUBE FLIP',
+            [
+                'Flip tube 180 degrees around Y-axis',
+                'Holes will be machined on opposite face'
+            ]
+        ))
 
         # === PHASE 2: SECOND FACE (SQUARE + MACHINE PATTERN) ===
         gcode.append('( === PHASE 2: SECOND FACE === )')
-        gcode.append('')
-        gcode.append(f'S{self.spindle_speed} M3')
-        gcode.append('M7  ; Air blast on')
-        gcode.append('G4 P3.0')
         gcode.append('')
 
         # Square the end first (if requested)
