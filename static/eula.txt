@@ -1,0 +1,41 @@
+PenguinCAM – End User License Agreement
+Last updated: January 26, 2006
+
+This End User License Agreement (“Agreement”) governs your use of the PenguinCAM application made available through the
+Onshape App Store (the “App”).
+
+1. License Grant
+PenguinCAM is provided free of charge. Subject to this Agreement, you are granted a non-exclusive, non-transferable,
+revocable license to use the App in connection with your Onshape account.
+
+2. Open Source Software
+PenguinCAM’s underlying software is open source and released under the MIT License. Use of the source code is governed
+solely by the terms of the MIT License, which is available at:
+https://github.com/6238/PenguinCAM
+This Agreement applies only to your use of the App and any associated hosted services, not to the open source software itself.
+
+3. No Warranty
+THE APP AND ANY ASSOCIATED SERVICES ARE PROVIDED “AS IS” AND “AS AVAILABLE,” WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+4. Limitation of Liability
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE FOR ANY DAMAGES WHATSOEVER, 
+INCLUDING BUT NOT LIMITED TO DIRECT, INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR EXEMPLARY DAMAGES, ARISING OUT OF OR IN
+CONNECTION WITH THE USE OR INABILITY TO USE THE APP OR ITS OUTPUTS.
+You are solely responsible for reviewing, validating, and safely using any designs, toolpaths, or CNC output generated through 
+the App.
+
+5. Availability and Changes
+The App and any associated services may be modified, suspended, or discontinued at any time, with or without notice.
+
+6. Termination
+This Agreement is effective until terminated. Your rights under this Agreement will terminate automatically if you violate
+its terms.
+
+7. Governing Law
+This Agreement shall be governed by and construed in accordance with the laws of the State of <your state>, excluding its
+conflict of law principles.
+
+8. Contact
+Questions about this Agreement may be directed to:
+penguincam@popcornpenguins.com
