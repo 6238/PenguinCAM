@@ -199,11 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load saved settings from localStorage
         loadSettings();
 
-    // Global state
-        let uploadedFile = null;
-        let suggestedFilename = null; // For Onshape imports
-        let gcodeContent = null;
-        let outputFilename = null;
+    // Global state (using appState object for cross-scope access)
         let scene, camera, renderer, controls;
         let optimalCameraPosition = { x: 10, y: 10, z: 10 };
         let optimalLookAtPosition = { x: 0, y: 0, z: 0 };
@@ -320,7 +316,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            uploadedFile = file;
+            // Store in appState for access across scopes
+            appState.uploadedFile = file;
             fileName.textContent = file.name;
             fileSize.textContent = formatFileSize(file.size);
             fileInfo.style.display = 'flex';
@@ -328,7 +325,7 @@ document.addEventListener('DOMContentLoaded', () => {
             generateBtn.textContent = '🚀 Generate Program';
             hideError();
             hideResults();
-            
+
             // Read DXF file for setup mode
             const reader = new FileReader();
             reader.onload = (e) => {
@@ -345,10 +342,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Generate G-code
         generateBtn.addEventListener('click', async () => {
-            if (!uploadedFile) return;
+            if (!appState.uploadedFile) return;
 
             const formData = new FormData();
-            formData.append('file', uploadedFile);
+            formData.append('file', appState.uploadedFile);
 
             // Generate timestamp in user's local timezone
             const now = new Date();
@@ -379,8 +376,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 formData.append('tab_spacing', document.getElementById('tabSpacing').value);
             }
             formData.append('rotation', rotationAngle); // Add rotation angle
-            if (suggestedFilename) {
-                formData.append('suggested_filename', suggestedFilename); // Onshape filename
+            if (appState.suggestedFilename) {
+                formData.append('suggested_filename', appState.suggestedFilename); // Onshape filename
             }
 
             showLoading();
@@ -402,8 +399,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     throw new Error(errorMsg + details);
                 }
 
-                gcodeContent = data.gcode;
-                outputFilename = data.filename;
+                appState.gcodeContent = data.gcode;
+                appState.outputFilename = data.filename;
 
                 // Show results
                 showResults(data);
@@ -430,20 +427,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Download G-code
         downloadBtn.addEventListener('click', () => {
-            if (!outputFilename) return;
-            window.location.href = `/download/${outputFilename}`;
+            if (!appState.outputFilename) return;
+            window.location.href = `/download/${appState.outputFilename}`;
         });
 
         // Upload to Google Drive
         driveBtn.addEventListener('click', async () => {
-            if (!outputFilename) return;
+            if (!appState.outputFilename) return;
             
             driveBtn.disabled = true;
             driveBtn.textContent = '⏳ Uploading...';
             driveStatus.style.display = 'none';
             
             try {
-                const response = await fetch(`/drive/upload/${outputFilename}`, {
+                const response = await fetch(`/drive/upload/${appState.outputFilename}`, {
                     method: 'POST'
                 });
                 
@@ -1777,25 +1774,32 @@ document.addEventListener('DOMContentLoaded', () => {
                     .then(dxfContent => {
                         console.log('DXF content received:', dxfContent.length, 'bytes');
                         console.log('First 200 chars:', dxfContent.substring(0, 200));
-                        
+
                         // Create a File object from the DXF content
                         const blob = new Blob([dxfContent], { type: 'application/dxf' });
                         const file = new File([blob], dxfFile, { type: 'application/dxf' });
-                        
-                        // Set file state and enable generate button
-                        uploadedFile = file;
-                        suggestedFilename = onshapeSuggestedFilename || null; // Store suggested name
-                        fileName.textContent = dxfFile;
-                        fileSize.textContent = formatFileSize(dxfContent.length);
-                        fileInfo.style.display = 'flex';
-                        generateBtn.disabled = false;
-                        generateBtn.textContent = '🚀 Generate Program';
-                        hideError();
-                        hideResults();
-                        
+
+                        // Use appState to store file (accessible across scopes)
+                        appState.uploadedFile = file;
+                        appState.suggestedFilename = onshapeSuggestedFilename || null;
+
+                        // Update UI elements
+                        const fileNameEl = document.getElementById('fileName');
+                        const fileSizeEl = document.getElementById('fileSize');
+                        const fileInfoEl = document.getElementById('fileInfo');
+                        const generateBtnEl = document.getElementById('generateBtn');
+
+                        if (fileNameEl) fileNameEl.textContent = dxfFile;
+                        if (fileSizeEl) fileSizeEl.textContent = formatFileSize(dxfContent.length);
+                        if (fileInfoEl) fileInfoEl.style.display = 'flex';
+                        if (generateBtnEl) {
+                            generateBtnEl.disabled = false;
+                            generateBtnEl.textContent = '🚀 Generate Program';
+                        }
+
                         // Parse for 2D setup view
                         parseDxfForSetup(dxfContent);
-                        
+
                         // Show success message
                         const statusDiv = document.getElementById('statusMessage');
                         if (statusDiv) {
