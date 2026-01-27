@@ -324,6 +324,28 @@ def generate_onshape_filename(doc_name, part_name):
 @app.route('/')
 def index():
     """Render the main GUI page"""
+    # ========================================================================
+    # AUTHENTICATION GATE: Require Onshape OAuth to access app
+    # ========================================================================
+    # This restricts access to authenticated Onshape users only, providing:
+    # - Natural security gate (no anonymous internet users)
+    # - Known user/team identity for configs and tracking
+    # - Better protection from abuse and cost control
+    #
+    # TO MAKE APP WIDE OPEN (allow anonymous browser access):
+    # Simply comment out or remove the code block below (lines until "End gate")
+    # ========================================================================
+    if ONSHAPE_AVAILABLE:
+        user_id = get_current_user_id()
+        client = session_manager.get_client(user_id)
+        if not client:
+            # No Onshape session - redirect to OAuth
+            print("⛔ Access denied: No Onshape authentication, redirecting to /onshape/auth")
+            return redirect('/onshape/auth')
+    # ========================================================================
+    # End authentication gate
+    # ========================================================================
+
     # Get user/team info from session (if coming from Onshape)
     user_name = session.get('user_name')
     team_name = session.get('team_name')
