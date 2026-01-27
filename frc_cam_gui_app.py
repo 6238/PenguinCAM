@@ -894,95 +894,6 @@ def onshape_status():
             'message': f'Error: {str(e)}'
         })
 
-@app.route('/onshape/list-faces', methods=['GET'])
-@limiter.limit("20 per minute")
-def onshape_list_faces():
-    """
-    List all faces in a Part Studio element
-    For debugging and exploring the Onshape API
-    """
-    try:
-        # Get parameters
-        params = extract_onshape_params(request.args.to_dict())
-        document_id = params['document_id']
-        workspace_id = params['workspace_id']
-        element_id = params['element_id']
-
-        if not all([document_id, workspace_id, element_id]):
-            return jsonify({
-                'error': 'Missing required parameters',
-                'required': ['documentId', 'workspaceId', 'elementId']
-            }), 400
-
-        # Get Onshape client for this user
-        client, error_response, status_code = get_onshape_client_or_401()
-        if not client:
-            return error_response, status_code
-        
-        # List faces
-        faces_data = client.list_faces(document_id, workspace_id, element_id)
-        
-        if faces_data:
-            return jsonify({
-                'success': True,
-                'data': faces_data
-            })
-        else:
-            return jsonify({
-                'error': 'Failed to list faces',
-                'message': 'Check console for details'
-            }), 500
-            
-    except Exception as e:
-        return jsonify({
-            'error': f'Failed: {str(e)}'
-        }), 500
-
-@app.route('/onshape/body-faces', methods=['GET'])
-@limiter.limit("20 per minute")
-def onshape_body_faces():
-    """
-    Get all faces for all bodies (or a specific body) in an element
-    """
-    try:
-        # Get parameters
-        params = extract_onshape_params(request.args.to_dict())
-        document_id = params['document_id']
-        workspace_id = params['workspace_id']
-        element_id = params['element_id']
-        body_id = params['body_id']  # Optional
-
-        if not all([document_id, workspace_id, element_id]):
-            return jsonify({
-                'error': 'Missing required parameters',
-                'required': ['documentId', 'workspaceId', 'elementId'],
-                'optional': ['bodyId']
-            }), 400
-
-        # Get Onshape client for this user
-        client, error_response, status_code = get_onshape_client_or_401()
-        if not client:
-            return error_response, status_code
-        
-        # Get faces for bodies
-        faces_by_body = client.get_body_faces(document_id, workspace_id, element_id, body_id)
-        
-        if faces_by_body:
-            return jsonify({
-                'success': True,
-                'bodies': faces_by_body
-            })
-        else:
-            return jsonify({
-                'error': 'Failed to get faces',
-                'message': 'Check console for details'
-            }), 500
-            
-    except Exception as e:
-        return jsonify({
-            'error': f'Failed: {str(e)}'
-        }), 500
-
 @app.route('/onshape/import', methods=['GET', 'POST'])
 @limiter.limit("20 per minute")  # Moderate limit - authenticated via Onshape OAuth
 def onshape_import():
@@ -1210,8 +1121,7 @@ def onshape_import():
                 print(f"Error in face detection: {str(e)}")
                 return jsonify({
                     'error': 'Face detection failed',
-                    'message': str(e),
-                    'debug_url': f'/onshape/list-faces?documentId={document_id}&workspaceId={workspace_id}&elementId={element_id}'
+                    'message': str(e)
                 }), 400
         else:
             # face_id was provided (e.g., from element panel), but we need to fetch the face normal
