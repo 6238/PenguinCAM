@@ -51,6 +51,10 @@ uv pip install -r requirements.txt
 
 **Always run `make test` after making any code changes.** If tests fail, fix the errors before proceeding with other work. Do not commit or consider a change complete until all tests pass.
 
+## Git Operations
+
+**DO NOT run any git commands** (git add, git commit, git push, etc.). The user prefers to handle all git operations themselves. Focus on making code changes and let the user manage version control.
+
 ## Architecture
 
 ```
