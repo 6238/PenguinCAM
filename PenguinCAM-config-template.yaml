@@ -1,0 +1,31 @@
+# PenguinCAM Team Configuration Template
+# FRC Team XXXX
+
+# Copy this file to your Onshape documents as "PenguinCAM-config.yaml"
+
+team:
+  number: 6238  # Your FRC team number
+  name: "Popcorn Penguins"  # Your team name
+
+integrations:
+  google_drive:
+    enabled: true  # Set to false to disable Drive integration
+    folder_id: "REPLACE_WITH_YOUR_FOLDER_ID"  # Google Drive folder ID for G-code uploads
+    # To find your folder ID:
+    # 1. Open your Drive folder in a web browser
+    # 2. Check the URL: https://drive.google.com/drive/folders/FOLDER_ID_HERE
+    # 3. Copy the FOLDER_ID_HERE part and paste it above
+
+machining:
+  # Future: Custom material presets, feed rates, tool preferences
+  # default_material: "plywood"
+  # custom_feed_rates:
+  #   aluminum: 55
+  #   plywood: 75
+  #   polycarbonate: 75
+
+ui:
+  # Future: Custom branding, logo, colors
+  # logo_url: "https://your-team-website.com/logo.png"
+  # primary_color: "#1976d2"
+  # team_motto: "Popcorn Power!"

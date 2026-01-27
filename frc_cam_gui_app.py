@@ -5,6 +5,8 @@ A Flask-based web interface for generating G-code from DXF files
 """
 
 from flask import Flask, render_template, request, jsonify, send_file, session, send_from_directory, redirect
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 import os
 import sys
@@ -50,6 +52,9 @@ except ImportError:
 # Import postprocessor directly (for API calls instead of subprocess)
 from frc_cam_postprocessor import FRCPostProcessor, PostProcessorResult
 
+# Import team config management
+from team_config import TeamConfig
+
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
 
@@ -81,6 +86,16 @@ else:
         def is_authenticated(self):
             return True
     auth = DummyAuth()
+
+# Initialize rate limiting
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per hour"],  # Global default for all routes
+    storage_uri="memory://",
+    headers_enabled=True  # Send X-RateLimit headers in responses
+)
+print("✅ Rate limiting enabled (200 requests/hour default)")
 
 # Directory for temporary files
 TEMP_DIR = tempfile.mkdtemp()
@@ -210,13 +225,21 @@ def generate_onshape_filename(doc_name, part_name):
 # ============================================================================
 
 @app.route('/')
-@auth.require_auth
 def index():
     """Render the main GUI page"""
-    return render_template('index.html')
+    # Get user/team info from session (if coming from Onshape)
+    user_name = session.get('user_name')
+    team_name = session.get('team_name')
+    team_config = session.get('team_config', {})
+    drive_enabled = team_config.get('google_drive_enabled', False)
+
+    return render_template('index.html',
+                         user_name=user_name,
+                         team_name=team_name,
+                         drive_enabled=drive_enabled)
 
 @app.route('/process', methods=['POST'])
-@auth.require_auth
+@limiter.limit("10 per minute")  # Strict limit - CPU intensive operation
 def process_file():
     """Process uploaded DXF file and generate G-code"""
     try:
@@ -462,7 +485,6 @@ def process_file():
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
 @app.route('/download/<filename>')
-@auth.require_auth
 def download_file(filename):
     """Download generated G-code file"""
     try:
@@ -488,36 +510,51 @@ def serve_upload(filename):
         return jsonify({'error': f'File not found: {str(e)}'}), 404
 
 @app.route('/drive/status')
-@auth.require_auth
 def drive_status():
     """Check if Google Drive integration is available and configured"""
     if not GOOGLE_DRIVE_AVAILABLE:
         return jsonify({
             'available': False,
+            'enabled': False,
             'message': 'Google Drive dependencies not installed'
         })
-    
-    # Check if user is authenticated and has Drive access
+
+    # Check team config to see if Drive is enabled
+    team_config = session.get('team_config', {})
+    drive_enabled = team_config.get('google_drive_enabled', False)
+    folder_id = team_config.get('google_drive_folder_id')
+
+    if not drive_enabled or not folder_id:
+        return jsonify({
+            'available': True,
+            'enabled': False,
+            'message': 'Google Drive not configured for your team. Add PenguinCAM-config.yaml to enable.'
+        })
+
+    # Check if user is authenticated with Google
     if AUTH_AVAILABLE and auth.is_enabled():
         creds = auth.get_credentials()
         if not creds:
             return jsonify({
                 'available': True,
-                'configured': False,
-                'message': 'Please log in to connect Google Drive'
+                'enabled': True,
+                'authenticated': False,
+                'message': 'Click "Save to Drive" to authenticate'
             })
-        
+
         return jsonify({
             'available': True,
-            'configured': True,
-            'message': 'Google Drive connected'
+            'enabled': True,
+            'authenticated': True,
+            'message': 'Google Drive ready',
+            'folder_id': folder_id
         })
     else:
-        # Auth disabled, Drive not available
         return jsonify({
             'available': True,
-            'configured': False,
-            'message': 'Google Drive not configured - see GOOGLE_DRIVE_SETUP.md'
+            'enabled': True,
+            'authenticated': False,
+            'message': 'Click "Save to Drive" to authenticate'
         })
 
 @app.route('/drive/upload/<filename>', methods=['POST'])
@@ -602,7 +639,6 @@ def upload_to_drive(filename):
 # ============================================================================
 
 @app.route('/onshape/auth')
-@auth.require_auth
 def onshape_auth():
     """Start Onshape OAuth flow"""
     if not ONSHAPE_AVAILABLE:
@@ -678,7 +714,6 @@ def onshape_oauth_callback():
         return f"OAuth callback error: {str(e)}", 500
 
 @app.route('/onshape/status')
-@auth.require_auth
 def onshape_status():
     """Check Onshape connection status"""
     if not ONSHAPE_AVAILABLE:
@@ -716,7 +751,6 @@ def onshape_status():
         })
 
 @app.route('/onshape/list-faces', methods=['GET'])
-@auth.require_auth
 def onshape_list_faces():
     """
     List all faces in a Part Studio element
@@ -760,7 +794,6 @@ def onshape_list_faces():
         }), 500
 
 @app.route('/onshape/body-faces', methods=['GET'])
-@auth.require_auth
 def onshape_body_faces():
     """
     Get all faces for all bodies (or a specific body) in an element
@@ -805,7 +838,7 @@ def onshape_body_faces():
         }), 500
 
 @app.route('/onshape/import', methods=['GET', 'POST'])
-@auth.require_auth
+@limiter.limit("20 per minute")  # Moderate limit - authenticated via Onshape OAuth
 def onshape_import():
     """
     Import a DXF from Onshape
@@ -880,7 +913,62 @@ def onshape_import():
 
             # Redirect to Onshape OAuth
             return redirect('/onshape/auth')
-        
+
+        # ========================================================================
+        # Fetch user info, team info, and team config
+        # ========================================================================
+        print("\n" + "="*60)
+        print("Fetching user, company, and config info from Onshape")
+        print("="*60)
+
+        # 1. Get user session info
+        print("\n1️⃣  User Session Info:")
+        user_session = client.get_user_session_info()
+        user_name = None
+        if user_session:
+            user_name = user_session.get('name')
+            user_email = user_session.get('email')
+            print(f"   Name: {user_name}")
+            print(f"   Email: {user_email}")
+            # Store in session for UI
+            session['user_name'] = user_name
+            session['user_email'] = user_email
+
+        # 2. Get document's owning company
+        print("\n2️⃣  Document Company:")
+        doc_company = client.get_document_company(document_id)
+        team_name = None
+        if doc_company:
+            team_name = doc_company.get('name')
+            print(f"   Company Name: {team_name}")
+            print(f"   Company ID: {doc_company.get('id')}")
+            # Store in session for UI
+            session['team_name'] = team_name
+        else:
+            print("   No company found (document may be owned by user)")
+
+        # 3. Get team config file
+        print("\n3️⃣  Team Configuration File:")
+        team_config = None
+        config_yaml = client.fetch_config_file()
+        if config_yaml:
+            team_config = TeamConfig.from_yaml(config_yaml)
+            print("   ✅ Successfully parsed team configuration:")
+            print(f"      Team Number: {team_config.team_number}")
+            print(f"      Team Name: {team_config.team_name}")
+            print(f"      Drive Enabled: {team_config.google_drive_enabled}")
+            if team_config.google_drive_folder_id:
+                print(f"      Drive Folder ID: {team_config.google_drive_folder_id}")
+            # Store config dict in session for UI
+            session['team_config'] = team_config.to_dict()
+        else:
+            print("   ⚠️  No team configuration found - using defaults")
+            team_config = TeamConfig.default()
+            session['team_config'] = team_config.to_dict()
+
+        print("\n" + "="*60 + "\n")
+        # ========================================================================
+
         # If no face_id provided, auto-select the top face
         part_name_from_body = None
         auto_selected_body_id = None
@@ -1066,7 +1154,7 @@ def onshape_import():
         }), 500
 
 @app.route('/onshape/save-dxf', methods=['GET', 'POST'])
-@auth.require_auth
+@limiter.limit("20 per minute")  # Moderate limit - authenticated via Onshape OAuth
 def onshape_save_dxf():
     """
     Save a DXF from Onshape directly to Google Drive without generating G-code.
