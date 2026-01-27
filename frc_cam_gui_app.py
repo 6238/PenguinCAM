@@ -19,6 +19,8 @@ import json
 import secrets
 import re
 import atexit
+import time
+import threading
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from urllib.parse import urlencode
@@ -54,6 +56,101 @@ from frc_cam_postprocessor import FRCPostProcessor, PostProcessorResult
 
 # Import team config management
 from team_config import TeamConfig
+
+# ============================================================================
+# File Token Manager - Secure file access with random tokens
+# ============================================================================
+
+class FileTokenManager:
+    """
+    Manages secure token-based file access to prevent filename guessing attacks.
+    Maps random tokens to actual file paths and handles automatic cleanup.
+    """
+
+    def __init__(self):
+        self.tokens = {}  # token → {'filepath': ..., 'filename': ..., 'created': timestamp}
+        self.lock = threading.Lock()
+
+    def register_file(self, filepath, real_filename):
+        """
+        Register a file and return a secure random token.
+
+        Args:
+            filepath: Full path to the file on disk
+            real_filename: The original filename (for download headers)
+
+        Returns:
+            Random token string (safe for URLs)
+        """
+        token = secrets.token_urlsafe(32)
+        with self.lock:
+            self.tokens[token] = {
+                'filepath': filepath,
+                'filename': real_filename,
+                'created': time.time()
+            }
+        print(f"🔐 Registered file: {real_filename} → token {token[:16]}...")
+        return token
+
+    def get_file(self, token):
+        """
+        Get file info for a token.
+
+        Args:
+            token: The secure token
+
+        Returns:
+            Dict with 'filepath' and 'filename', or None if not found
+        """
+        with self.lock:
+            return self.tokens.get(token)
+
+    def cleanup_old_files(self, max_age_seconds=3600):
+        """
+        Remove files older than max_age_seconds (default 1 hour).
+        Deletes both the file on disk and the token mapping.
+
+        Args:
+            max_age_seconds: Maximum file age in seconds (default 3600 = 1 hour)
+        """
+        current_time = time.time()
+        with self.lock:
+            expired_tokens = []
+            for token, info in self.tokens.items():
+                age = current_time - info['created']
+                if age > max_age_seconds:
+                    expired_tokens.append(token)
+                    # Delete the file from disk
+                    try:
+                        if os.path.exists(info['filepath']):
+                            os.unlink(info['filepath'])
+                            print(f"🗑️  Cleaned up expired file ({age/60:.1f} min old): {info['filename']}")
+                    except Exception as e:
+                        print(f"⚠️  Failed to delete {info['filepath']}: {e}")
+
+            # Remove expired tokens from mapping
+            for token in expired_tokens:
+                del self.tokens[token]
+
+            if expired_tokens:
+                print(f"✅ Cleanup complete: removed {len(expired_tokens)} expired file(s)")
+
+def cleanup_worker():
+    """Background thread that periodically cleans up old files"""
+    while True:
+        time.sleep(600)  # Run every 10 minutes
+        try:
+            file_token_manager.cleanup_old_files(max_age_seconds=3600)  # 1 hour
+        except Exception as e:
+            print(f"⚠️  Error in cleanup worker: {e}")
+
+# Initialize file token manager
+file_token_manager = FileTokenManager()
+
+# Start background cleanup thread
+cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
+cleanup_thread.start()
+print("✅ File token manager initialized with auto-cleanup (1 hour expiry)")
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
@@ -425,8 +522,9 @@ def process_file():
             print(f"✅ Output file created: {os.path.getsize(output_path)} bytes")
             print(f"📄 Output file: {output_path}")
 
-            # Get actual filename with timestamp for download/drive routes
+            # Register file with token manager for secure access
             actual_filename = result.filename
+            output_token = file_token_manager.register_file(output_path, actual_filename)
 
         except Exception as e:
             print(f"❌ Post-processor API error: {e}")
@@ -465,7 +563,7 @@ def process_file():
 
         response_data = {
             'success': True,
-            'filename': actual_filename,  # Return actual filename with timestamp
+            'filename': output_token,  # Return secure token (not actual filename)
             'gcode': result.gcode,
             'console': console_output,
             'parameters': parameters
@@ -484,32 +582,64 @@ def process_file():
         traceback.print_exc()
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
-@app.route('/download/<filename>')
-def download_file(filename):
-    """Download generated G-code file"""
+@app.route('/download/<token>')
+@limiter.limit("30 per minute")
+def download_file(token):
+    """
+    Download generated G-code file using secure token.
+    Token prevents filename guessing attacks.
+    """
     try:
-        file_path = os.path.join(OUTPUT_FOLDER, filename)
+        # Look up file by token
+        file_info = file_token_manager.get_file(token)
+        if not file_info:
+            return jsonify({'error': 'File not found or expired'}), 404
+
+        file_path = file_info['filepath']
+        real_filename = file_info['filename']
+
+        # Verify file still exists on disk
         if not os.path.exists(file_path):
             return jsonify({'error': 'File not found'}), 404
-        
+
+        print(f"📥 Download request: token {token[:16]}... → {real_filename}")
+
         return send_file(
             file_path,
             as_attachment=True,
-            download_name=filename,
+            download_name=real_filename,  # User sees the real filename
             mimetype='text/plain'
         )
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/uploads/<filename>')
-def serve_upload(filename):
-    """Serve uploaded DXF files for frontend preview"""
+@app.route('/uploads/<token>')
+@limiter.limit("30 per minute")
+def serve_upload(token):
+    """
+    Serve uploaded DXF files for frontend preview using secure token.
+    Token prevents filename guessing attacks.
+    """
     try:
-        return send_from_directory(UPLOAD_FOLDER, filename)
+        # Look up file by token
+        file_info = file_token_manager.get_file(token)
+        if not file_info:
+            return jsonify({'error': 'File not found or expired'}), 404
+
+        file_path = file_info['filepath']
+
+        # Verify file still exists on disk
+        if not os.path.exists(file_path):
+            return jsonify({'error': 'File not found'}), 404
+
+        print(f"📂 Upload preview: token {token[:16]}... → {file_info['filename']}")
+
+        return send_file(file_path, mimetype='application/dxf')
     except Exception as e:
         return jsonify({'error': f'File not found: {str(e)}'}), 404
 
 @app.route('/drive/status')
+@limiter.limit("30 per minute")
 def drive_status():
     """Check if Google Drive integration is available and configured"""
     if not GOOGLE_DRIVE_AVAILABLE:
@@ -557,25 +687,37 @@ def drive_status():
             'message': 'Click "Save to Drive" to authenticate'
         })
 
-@app.route('/drive/upload/<filename>', methods=['POST'])
+@app.route('/drive/upload/<token>', methods=['POST'])
 @limiter.limit("30 per minute")  # Reasonable limit for uploads
 @auth.require_auth
-def upload_to_drive(filename):
-    """Upload a G-code file to Google Drive"""
-    print(f"📤 Drive upload requested for: {filename}")
-    
+def upload_to_drive(token):
+    """Upload a G-code file to Google Drive using secure token"""
+    print(f"📤 Drive upload requested for token: {token[:16]}...")
+
     if not GOOGLE_DRIVE_AVAILABLE:
         print("❌ Google Drive integration not available")
         return jsonify({
             'success': False,
             'message': 'Google Drive integration not available'
         }), 400
-    
+
     try:
-        file_path = os.path.join(OUTPUT_FOLDER, filename)
+        # Look up file by token
+        file_info = file_token_manager.get_file(token)
+        if not file_info:
+            print(f"❌ Token not found or expired: {token[:16]}...")
+            return jsonify({
+                'success': False,
+                'message': 'File not found or expired'
+            }), 404
+
+        file_path = file_info['filepath']
+        real_filename = file_info['filename']
+
         print(f"📂 Looking for file at: {file_path}")
+        print(f"📂 Real filename: {real_filename}")
         print(f"📂 File exists: {os.path.exists(file_path)}")
-        
+
         if not os.path.exists(file_path):
             print(f"❌ File not found: {file_path}")
             return jsonify({
@@ -609,16 +751,16 @@ def upload_to_drive(filename):
             }), 500
         
         print("✅ Authenticated, uploading file...")
-        # Upload the file
-        result = uploader.upload_file(file_path, filename)
-        
+        # Upload the file with real filename
+        result = uploader.upload_file(file_path, real_filename)
+
         print(f"📤 Upload result: {result}")
-        
+
         if result and result.get('success'):
             print(f"✅ Upload successful: {result.get('web_link')}")
             return jsonify({
                 'success': True,
-                'message': f'✅ Uploaded: {filename}',
+                'message': f'✅ Uploaded: {real_filename}',
                 'file_id': result.get('file_id'),
                 'web_view_link': result.get('web_link')
             })
@@ -715,6 +857,7 @@ def onshape_oauth_callback():
         return f"OAuth callback error: {str(e)}", 500
 
 @app.route('/onshape/status')
+@limiter.limit("30 per minute")
 def onshape_status():
     """Check Onshape connection status"""
     if not ONSHAPE_AVAILABLE:
@@ -752,6 +895,7 @@ def onshape_status():
         })
 
 @app.route('/onshape/list-faces', methods=['GET'])
+@limiter.limit("20 per minute")
 def onshape_list_faces():
     """
     List all faces in a Part Studio element
@@ -795,6 +939,7 @@ def onshape_list_faces():
         }), 500
 
 @app.route('/onshape/body-faces', methods=['GET'])
+@limiter.limit("20 per minute")
 def onshape_body_faces():
     """
     Get all faces for all bodies (or a specific body) in an element
@@ -1131,19 +1276,22 @@ def onshape_import():
         )
         temp_dxf.write(dxf_content)
         temp_dxf.close()
-        
+
         dxf_filename = os.path.basename(temp_dxf.name)
         dxf_path = temp_dxf.name
-        
+
         print(f"✅ DXF imported from Onshape: {dxf_filename}")
         print(f"📂 Saved to: {dxf_path}")
         print(f"📏 File size on disk: {os.path.getsize(dxf_path)} bytes")
-        print(f"🔗 Will be served at: /uploads/{dxf_filename}")
+
+        # Register DXF file with token manager for secure access
+        dxf_token = file_token_manager.register_file(dxf_path, f"{suggested_filename}.dxf")
+        print(f"🔗 Will be served at: /uploads/{dxf_token[:16]}...")
 
         # Render main page with DXF auto-loaded
         # The frontend will detect the dxf_file parameter and auto-upload it
-        return render_template('index.html', 
-                             dxf_file=dxf_filename,
+        return render_template('index.html',
+                             dxf_file=dxf_token,  # Pass token instead of filename
                              from_onshape=True,
                              document_id=document_id,
                              face_id=face_id,
