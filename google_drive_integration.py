@@ -41,12 +41,15 @@ class GoogleDriveUploader:
         if os.path.exists(config_file):
             with open(config_file, 'r') as f:
                 return json.load(f)
-        
+
         # Environment variables override
+        # Check both GOOGLE_DRIVE_FOLDER_ID (preferred) and DRIVE_FOLDER_ID (legacy)
+        folder_id = os.environ.get('GOOGLE_DRIVE_FOLDER_ID') or os.environ.get('DRIVE_FOLDER_ID')
+
         return {
             'shared_drive_name': os.environ.get('DRIVE_NAME', 'Popcorn Penguins'),
             'folder_path': os.environ.get('DRIVE_FOLDER', 'CNC/G-code'),
-            'folder_id': os.environ.get('DRIVE_FOLDER_ID')
+            'folder_id': folder_id
         }
     
     def _save_config(self):
