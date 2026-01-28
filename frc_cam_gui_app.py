@@ -1064,6 +1064,14 @@ def onshape_import():
         # User info and team config already loaded during OAuth callback
         # Session contains: user_name, user_email, team_config, team_config_data
 
+        # Get document's owning company/classroom (Onshape Education context)
+        # This requires a document, so we fetch it here rather than during OAuth
+        doc_company = client.get_document_company(document_id)
+        if doc_company:
+            team_name = doc_company.get('name')
+            print(f"📚 Document company: {team_name}")
+            session['team_name'] = team_name
+
         # If no face_id provided, auto-select the top face
         part_name_from_body = None
         auto_selected_body_id = None
