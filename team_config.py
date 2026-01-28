@@ -359,8 +359,27 @@ class TeamConfig:
 
     @property
     def google_drive_folder_id(self) -> Optional[str]:
-        """Google Drive folder ID for uploading G-code"""
-        return self._get('integrations', 'google_drive', 'folder_id')
+        """
+        Google Drive folder ID for uploading G-code.
+        Accepts either a folder ID or a full Drive URL, returns just the ID.
+        """
+        folder_value = self._get('integrations', 'google_drive', 'folder_id')
+
+        if not folder_value:
+            return None
+
+        # If it's a full URL, extract the ID
+        if 'drive.google.com' in folder_value:
+            # Format: https://drive.google.com/drive/folders/FOLDER_ID
+            # or: https://drive.google.com/drive/u/0/folders/FOLDER_ID
+            parts = folder_value.split('/folders/')
+            if len(parts) == 2:
+                # Remove any query parameters or trailing slashes
+                folder_id = parts[1].split('?')[0].rstrip('/')
+                return folder_id
+
+        # Otherwise assume it's already just the ID
+        return folder_value
 
     # ========================================================================
     # Helpers
@@ -601,12 +620,12 @@ materials:
 integrations:
   google_drive:
     enabled: true
-    folder_id: "YOUR_SHARED_DRIVE_FOLDER_ID_HERE"
-    # To find your folder ID:
+    folder_id: "https://drive.google.com/drive/folders/YOUR_FOLDER_ID"
+    # To get your folder URL:
     # 1. Open Google Drive in your browser
     # 2. Navigate to: Shared drives → Your Team → CNC → G-code
-    # 3. Look at the URL: https://drive.google.com/drive/folders/FOLDER_ID_HERE
-    # 4. Copy the FOLDER_ID_HERE part and paste it above
+    # 3. Copy the full URL from your browser (looks like above)
+    # 4. Paste it here (you can paste either the full URL or just the folder ID)
 
 # =============================================================================
 # UI CUSTOMIZATION (optional - for future use)

@@ -66,7 +66,7 @@ machining:
   holes:
     detection_tolerance: 0.02       # Tolerance for detecting circular holes (inches)
     min_millable_multiplier: 1.2    # Minimum hole diameter as multiple of tool diameter
-    # Note: Holes smaller than tool_diameter * 1.2 are skipped
+    # Note: Holes smaller than tool_diameter * 1.2 will cause a failure (visible to user)
 
   # Tool parameters (defaults - can be overridden per job)
   default_tool:
@@ -186,12 +186,12 @@ materials:
 integrations:
   google_drive:
     enabled: true
-    folder_id: "YOUR_SHARED_DRIVE_FOLDER_ID_HERE"
-    # To find your folder ID:
+    folder_id: "https://drive.google.com/drive/folders/YOUR_FOLDER_ID"
+    # To get your folder URL:
     # 1. Open Google Drive in your browser
     # 2. Navigate to: Shared drives → Your Team → CNC → G-code
-    # 3. Look at the URL: https://drive.google.com/drive/folders/FOLDER_ID_HERE
-    # 4. Copy the FOLDER_ID_HERE part and paste it above
+    # 3. Copy the full URL from your browser (looks like above)
+    # 4. Paste it here (you can paste either the full URL or just the folder ID)
 
 # =============================================================================
 # UI CUSTOMIZATION (optional - for future use)
