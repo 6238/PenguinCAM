@@ -947,11 +947,11 @@ def onshape_status():
     try:
         user_id = get_current_user_id()
         client = session_manager.get_client(user_id)
-        
+
         if client and client.access_token:
             # Try to get user info to verify connection
             user_info = client.get_user_info()
-            
+
             return jsonify({
                 'available': True,
                 'connected': True,
@@ -963,13 +963,26 @@ def onshape_status():
                 'connected': False,
                 'message': 'Not connected to Onshape'
             })
-            
+
     except Exception as e:
         return jsonify({
             'available': True,
             'connected': False,
             'message': f'Error: {str(e)}'
         })
+
+@app.route('/debug/session')
+@limiter.limit("30 per minute")
+def debug_session():
+    """Debug endpoint to see session contents (especially team config)"""
+    return jsonify({
+        'user_name': session.get('user_name'),
+        'user_email': session.get('user_email'),
+        'team_name': session.get('team_name'),
+        'team_config': session.get('team_config', {}),
+        'team_config_data_keys': list(session.get('team_config_data', {}).keys()),
+        'onshape_authenticated': session.get('onshape_authenticated'),
+    })
 
 @app.route('/onshape/import', methods=['GET', 'POST'])
 @limiter.limit("20 per minute")  # Moderate limit - authenticated via Onshape OAuth
