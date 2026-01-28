@@ -887,6 +887,35 @@ def onshape_oauth_callback():
         session_manager.create_session(user_id, client)
         session['onshape_authenticated'] = True
 
+        # Fetch user info and team config for session
+        print("\n" + "="*60)
+        print("Fetching user and team config after OAuth")
+        print("="*60)
+
+        # Get user session info
+        user_session = client.get_user_session_info()
+        if user_session:
+            user_name = user_session.get('name')
+            user_email = user_session.get('email')
+            print(f"✅ User: {user_name} ({user_email})")
+            session['user_name'] = user_name
+            session['user_email'] = user_email
+
+        # Get team config file
+        config_yaml = client.fetch_config_file()
+        if config_yaml:
+            team_config = TeamConfig.from_yaml(config_yaml)
+            print(f"✅ Team config loaded: {team_config.team_name} (#{team_config.team_number})")
+            session['team_config_data'] = team_config._data
+            session['team_config'] = team_config.to_dict()
+        else:
+            print("⚠️  No team config found - using defaults")
+            team_config = TeamConfig()
+            session['team_config_data'] = {}
+            session['team_config'] = team_config.to_dict()
+
+        print("="*60 + "\n")
+
         # Clean up OAuth state
         session.pop('onshape_oauth_state', None)
 
@@ -1019,63 +1048,8 @@ def onshape_import():
             # Redirect to Onshape OAuth
             return redirect('/onshape/auth')
 
-        # ========================================================================
-        # Fetch user info, team info, and team config
-        # ========================================================================
-        print("\n" + "="*60)
-        print("Fetching user, company, and config info from Onshape")
-        print("="*60)
-
-        # 1. Get user session info
-        print("\n1️⃣  User Session Info:")
-        user_session = client.get_user_session_info()
-        user_name = None
-        if user_session:
-            user_name = user_session.get('name')
-            user_email = user_session.get('email')
-            print(f"   Name: {user_name}")
-            print(f"   Email: {user_email}")
-            # Store in session for UI
-            session['user_name'] = user_name
-            session['user_email'] = user_email
-
-        # 2. Get document's owning company
-        print("\n2️⃣  Document Company:")
-        doc_company = client.get_document_company(document_id)
-        team_name = None
-        if doc_company:
-            team_name = doc_company.get('name')
-            print(f"   Company Name: {team_name}")
-            print(f"   Company ID: {doc_company.get('id')}")
-            # Store in session for UI
-            session['team_name'] = team_name
-        else:
-            print("   No company found (document may be owned by user)")
-
-        # 3. Get team config file
-        print("\n3️⃣  Team Configuration File:")
-        team_config = None
-        config_yaml = client.fetch_config_file()
-        if config_yaml:
-            team_config = TeamConfig.from_yaml(config_yaml)
-            print("   ✅ Successfully parsed team configuration:")
-            print(f"      Team Number: {team_config.team_number}")
-            print(f"      Team Name: {team_config.team_name}")
-            print(f"      Drive Enabled: {team_config.google_drive_enabled}")
-            if team_config.google_drive_folder_id:
-                print(f"      Drive Folder ID: {team_config.google_drive_folder_id}")
-            # Store full config data in session (for postprocessor reconstruction)
-            session['team_config_data'] = team_config._data
-            # Also store UI-relevant subset
-            session['team_config'] = team_config.to_dict()
-        else:
-            print("   ⚠️  No team configuration found - using defaults")
-            team_config = TeamConfig()
-            session['team_config_data'] = {}  # Empty dict = use all defaults
-            session['team_config'] = team_config.to_dict()
-
-        print("\n" + "="*60 + "\n")
-        # ========================================================================
+        # User info and team config already loaded during OAuth callback
+        # Session contains: user_name, user_email, team_config, team_config_data
 
         # If no face_id provided, auto-select the top face
         part_name_from_body = None
