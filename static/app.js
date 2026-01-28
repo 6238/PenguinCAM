@@ -264,8 +264,8 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const response = await fetch('/drive/status');
                 const data = await response.json();
-                
-                if (data.available && data.configured) {
+
+                if (data.available && data.enabled) {
                     driveAvailable = true;
                     driveBtn.style.display = 'inline-block';
                 }
