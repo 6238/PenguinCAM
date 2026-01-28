@@ -9,6 +9,7 @@ import requests
 import base64
 from urllib.parse import urlencode, parse_qs
 from datetime import datetime, timedelta
+from flask import session
 
 class OnshapeClient:
     """Client for interacting with Onshape API"""
@@ -1095,32 +1096,67 @@ class OnshapeClient:
 
 
 class OnshapeSessionManager:
-    """Manages Onshape OAuth sessions for users"""
-    
-    def __init__(self):
-        self.sessions = {}  # In-memory storage (use Redis/DB in production)
-    
+    """
+    Manages Onshape OAuth sessions using Flask session (encrypted cookies).
+
+    Serverless-compatible: Tokens are stored in encrypted session cookies,
+    not server memory. Works across multiple container instances.
+    """
+
     def create_session(self, user_id, client):
-        """Store Onshape client for a user session"""
-        self.sessions[user_id] = {
-            'client': client,
-            'created': datetime.now()
+        """
+        Store Onshape tokens in Flask session (not the entire client object).
+
+        Args:
+            user_id: User identifier (for logging/debugging)
+            client: OnshapeClient with valid tokens
+        """
+        # Store only the serializable token data in Flask session
+        session['onshape_tokens'] = {
+            'access_token': client.access_token,
+            'refresh_token': client.refresh_token,
+            'expires_at': client.token_expires.isoformat() if client.token_expires else None,
+            'created': datetime.now().isoformat()
         }
-    
+
     def get_client(self, user_id):
-        """Get Onshape client for a user"""
-        session = self.sessions.get(user_id)
-        if session:
-            return session['client']
-        return None
-    
+        """
+        Reconstruct OnshapeClient from Flask session tokens.
+
+        Args:
+            user_id: User identifier (unused - tokens come from session cookie)
+
+        Returns:
+            OnshapeClient with tokens restored, or None if not authenticated
+        """
+        tokens = session.get('onshape_tokens')
+        if not tokens:
+            return None
+
+        # Reconstruct client from stored tokens
+        client = OnshapeClient()
+        client.access_token = tokens.get('access_token')
+        client.refresh_token = tokens.get('refresh_token')
+
+        # Parse expiration timestamp
+        expires_str = tokens.get('expires_at')
+        if expires_str:
+            client.token_expires = datetime.fromisoformat(expires_str)
+
+        return client
+
     def clear_session(self, user_id):
-        """Remove user's Onshape session"""
-        if user_id in self.sessions:
-            del self.sessions[user_id]
+        """
+        Remove Onshape tokens from Flask session.
+
+        Args:
+            user_id: User identifier (unused - operates on session cookie)
+        """
+        if 'onshape_tokens' in session:
+            del session['onshape_tokens']
 
 
-# Global session manager
+# Global session manager (stateless - all state in Flask session cookies)
 session_manager = OnshapeSessionManager()
 
 

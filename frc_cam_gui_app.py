@@ -146,10 +146,16 @@ def cleanup_worker():
 # Initialize file token manager
 file_token_manager = FileTokenManager()
 
-# Start background cleanup thread
-cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
-cleanup_thread.start()
-print("✅ File token manager initialized with auto-cleanup (1 hour expiry)")
+# Start background cleanup thread (only for traditional server deployments)
+# Serverless platforms (Vercel, AWS Lambda) auto-cleanup when containers terminate
+IS_SERVERLESS = os.environ.get('VERCEL') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME')
+
+if IS_SERVERLESS:
+    print("✅ File token manager initialized (serverless mode - container auto-cleanup)")
+else:
+    cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
+    cleanup_thread.start()
+    print("✅ File token manager initialized with auto-cleanup thread (1 hour expiry)")
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
@@ -194,7 +200,15 @@ limiter = Limiter(
 print("✅ Rate limiting enabled (200 requests/hour default)")
 
 # Directory for temporary files
-TEMP_DIR = tempfile.mkdtemp()
+# Serverless platforms (Vercel, Lambda) have /tmp as only writable location
+# Traditional servers get isolated temp directory
+if IS_SERVERLESS:
+    TEMP_DIR = '/tmp'
+    print("✅ Using /tmp for serverless environment")
+else:
+    TEMP_DIR = tempfile.mkdtemp()
+    print(f"✅ Created temp directory: {TEMP_DIR}")
+
 UPLOAD_FOLDER = os.path.join(TEMP_DIR, 'uploads')
 OUTPUT_FOLDER = os.path.join(TEMP_DIR, 'outputs')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -1458,12 +1472,19 @@ def onshape_element_panel():
 
 def cleanup():
     """Clean up temporary files on shutdown"""
+    # Skip cleanup for serverless - containers are ephemeral
+    if IS_SERVERLESS:
+        return
+
     try:
         shutil.rmtree(TEMP_DIR)
-    except:
-        pass
+        print(f"🗑️  Cleaned up temp directory: {TEMP_DIR}")
+    except Exception as e:
+        print(f"⚠️  Failed to clean up temp directory: {e}")
 
-atexit.register(cleanup)
+# Register cleanup only if not serverless (serverless containers auto-cleanup)
+if not IS_SERVERLESS:
+    atexit.register(cleanup)
 
 if __name__ == '__main__':
     # Get port from environment variable (Railway) or default to 6238 for local dev
