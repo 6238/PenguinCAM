@@ -442,63 +442,18 @@ document.addEventListener('DOMContentLoaded', () => {
         // Upload to Google Drive
         driveBtn.addEventListener('click', async () => {
             if (!appState.outputFilename) return;
-
+            
             driveBtn.disabled = true;
-            driveBtn.textContent = '⏳ Checking auth...';
+            driveBtn.textContent = '⏳ Uploading...';
             driveStatus.style.display = 'none';
-
+            
             try {
-                // First, check if we're authenticated
-                const statusResponse = await fetch('/drive/status');
-                const statusData = await statusResponse.json();
-
-                if (!statusData.authenticated) {
-                    // Not authenticated - open OAuth in popup
-                    driveBtn.textContent = '🔐 Authenticating...';
-                    driveStatus.textContent = 'Opening Google sign-in...';
-                    driveStatus.style.color = '#FDB515';
-                    driveStatus.style.display = 'block';
-
-                    // Open OAuth in popup window
-                    const popup = window.open(
-                        '/auth/login',
-                        'GoogleAuth',
-                        'width=600,height=700,left=100,top=100'
-                    );
-
-                    if (!popup) {
-                        // Popup blocked - fallback to full page redirect
-                        driveStatus.textContent = '⚠️ Popup blocked - redirecting to sign in...';
-                        setTimeout(() => {
-                            window.location.href = '/auth/login';
-                        }, 2000);
-                        return;
-                    }
-
-                    // Wait for popup to close (OAuth complete)
-                    const pollTimer = setInterval(() => {
-                        if (popup.closed) {
-                            clearInterval(pollTimer);
-                            // Popup closed, retry the upload
-                            console.log('Auth popup closed, retrying upload...');
-                            setTimeout(() => {
-                                driveBtn.click(); // Retry the upload
-                            }, 500);
-                        }
-                    }, 500);
-
-                    return;
-                }
-
-                // We're authenticated, proceed with upload
-                driveBtn.textContent = '⏳ Uploading...';
-
                 const response = await fetch(`/drive/upload/${appState.outputFilename}`, {
                     method: 'POST'
                 });
-
+                
                 const data = await response.json();
-
+                
                 if (data.success) {
                     driveStatus.textContent = data.message;
                     driveStatus.style.color = '#00D26A';
@@ -1806,7 +1761,7 @@ document.addEventListener('DOMContentLoaded', () => {
         window.addEventListener('load', () => {
             initVisualization();
             initDxfSetup();
-
+            
             // DEBUG: Check if Onshape provides context via JavaScript
             console.log('=== Onshape Context Debug ===');
             console.log('window.opener:', window.opener);
@@ -1816,7 +1771,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 onshape: typeof window.onshape !== 'undefined' ? window.onshape : 'undefined',
                 OnshapeClient: typeof window.OnshapeClient !== 'undefined' ? window.OnshapeClient : 'undefined'
             });
-
+            
             // Check for error message from Onshape import
             const errorMessage = window.ONSHAPE_DATA?.errorMessage || '';
             if (errorMessage) {

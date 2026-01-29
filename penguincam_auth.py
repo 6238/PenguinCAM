@@ -227,60 +227,12 @@ class PenguinCAMAuth:
                 
                 # Clear OAuth state
                 session.pop('oauth_state', None)
-
+                
+                # Redirect back to original URL if stored, otherwise home
+                return_url = session.pop('auth_return_url', '/')
                 print(f"✅ User authenticated: {email}")
-
-                # Check if opened in popup (for Drive auth flow)
-                # If there's no return URL stored, assume it's a popup
-                return_url = session.pop('auth_return_url', None)
-
-                if not return_url:
-                    # Likely opened in popup - return HTML that closes the window
-                    return '''<!DOCTYPE html>
-<html>
-<head>
-    <title>Authentication Successful</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #0A0E14 0%, #1a1f2e 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #fff;
-            margin: 0;
-        }
-        .success-container {
-            text-align: center;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(46, 160, 67, 0.3);
-            border-radius: 20px;
-            padding: 3rem;
-        }
-        .icon { font-size: 4rem; margin-bottom: 1rem; }
-        h1 { color: #2EA043; margin-bottom: 1rem; }
-        p { color: #C9D1D9; }
-    </style>
-    <script>
-        // Close popup after brief delay
-        setTimeout(() => {
-            window.close();
-        }, 1000);
-    </script>
-</head>
-<body>
-    <div class="success-container">
-        <div class="icon">✅</div>
-        <h1>Authentication Successful!</h1>
-        <p>This window will close automatically...</p>
-    </div>
-</body>
-</html>'''
-                else:
-                    # Full page flow - redirect to original URL
-                    print(f"🔙 Redirecting to: {return_url}")
-                    return redirect(return_url)
+                print(f"🔙 Redirecting to: {return_url}")
+                return redirect(return_url)
                 
             except Exception as e:
                 return self._render_error_page(
