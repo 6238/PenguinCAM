@@ -633,50 +633,95 @@ class OnshapeClient:
     def list_faces(self, document_id, workspace_id, element_id):
         """
         List all faces in a Part Studio element using bodydetails endpoint
-        
+
         Returns:
             Dict with bodies and their faces, or None if failed
         """
         endpoint = f"/partstudios/d/{document_id}/w/{workspace_id}/e/{element_id}/bodydetails"
-        
+
         try:
-            print(f"\nGetting body details for element {element_id}...")
-            print(f"API endpoint: {self.API_BASE}{endpoint}")
-            
+            print(f"\n{'='*70}")
+            print(f"ONSHAPE API: Getting body details")
+            print(f"{'='*70}")
+            print(f"Document ID: {document_id}")
+            print(f"Workspace ID: {workspace_id}")
+            print(f"Element ID: {element_id}")
+            print(f"Full endpoint: {self.API_BASE}{endpoint}")
+
             response = self._make_api_request('GET', endpoint)
-            
-            print(f"Response status: {response.status_code}")
-            
+
+            print(f"\n📡 Response status: {response.status_code}")
+            print(f"📡 Response headers: {dict(response.headers)}")
+
             if response.status_code == 200:
                 data = response.json()
-                
+
+                print(f"\n✅ API call succeeded")
+                print(f"Raw response keys: {list(data.keys())}")
+
                 # Parse bodies and faces
                 if 'bodies' in data:
-                    print(f"\nFound {len(data['bodies'])} bodies:")
+                    body_count = len(data['bodies'])
+                    print(f"\n📦 Found {body_count} bodies in element:")
+
+                    if body_count == 0:
+                        print("⚠️  WARNING: Element has ZERO bodies - this is unusual!")
+                        print("   This means the Part Studio is either empty or the API isn't returning body data")
 
                     for body in data['bodies']:
                         body_id = body.get('id', 'unknown')
                         body_name = body.get('properties', {}).get('name', 'Unnamed')
                         faces = body.get('faces', [])
-                        print(f"  Body {body_id} ({body_name}): {len(faces)} faces")
+                        face_count = len(faces)
 
-                        for i, face in enumerate(faces[:5]):  # Show first 5
-                            face_id = face.get('id', 'unknown')
-                            surface_type = face.get('surface', {}).get('type', 'unknown')
-                            print(f"    Face {face_id}: {surface_type}")
+                        print(f"\n  🔷 Body: {body_id}")
+                        print(f"     Name: {body_name}")
+                        print(f"     Faces: {face_count}")
 
-                        if len(faces) > 5:
-                            print(f"    ... and {len(faces) - 5} more faces")
-                
+                        if face_count == 0:
+                            print(f"     ⚠️  WARNING: Body has ZERO faces!")
+                        else:
+                            # Count face types
+                            face_types = {}
+                            for face in faces:
+                                surface_type = face.get('surface', {}).get('type', 'UNKNOWN')
+                                face_types[surface_type] = face_types.get(surface_type, 0) + 1
+
+                            print(f"     Face types: {face_types}")
+
+                            # Show first 5 faces with details
+                            for i, face in enumerate(faces[:5]):
+                                face_id = face.get('id', 'unknown')
+                                surface = face.get('surface', {})
+                                surface_type = surface.get('type', 'UNKNOWN')
+                                normal = surface.get('normal', {})
+                                area = face.get('area', 0)
+
+                                print(f"     Face {i+1}/{face_count}: ID={face_id}")
+                                print(f"       Type: {surface_type}")
+                                print(f"       Area: {area:.6f}")
+                                print(f"       Normal: ({normal.get('x', 0):.3f}, {normal.get('y', 0):.3f}, {normal.get('z', 0):.3f})")
+
+                            if len(faces) > 5:
+                                print(f"     ... and {len(faces) - 5} more faces")
+                else:
+                    print(f"⚠️  WARNING: Response has no 'bodies' key!")
+                    print(f"   Available keys: {list(data.keys())}")
+
+                print(f"{'='*70}\n")
                 return data
             else:
-                print(f"Failed: {response.status_code} - {response.text}")
+                print(f"\n❌ API call failed: HTTP {response.status_code}")
+                print(f"Response body: {response.text[:500]}")
+                print(f"{'='*70}\n")
                 return None
-                
+
         except Exception as e:
-            print(f"Error listing faces: {e}")
+            print(f"\n❌ Exception during list_faces:")
+            print(f"Error: {e}")
             import traceback
             traceback.print_exc()
+            print(f"{'='*70}\n")
             return None
     
     def get_body_faces(self, document_id, workspace_id, element_id, body_id=None, cached_faces_data=None):
@@ -752,14 +797,26 @@ class OnshapeClient:
         Returns:
             Tuple of (face_id, body_id, part_name, normal) or (None, None, None, None) if not found
         """
+        print(f"\n{'='*70}")
+        print(f"AUTO-SELECTING TOP FACE")
+        print(f"{'='*70}")
+        print(f"Document: {document_id}")
+        print(f"Workspace: {workspace_id}")
+        print(f"Element: {element_id}")
+        print(f"Requested body_id: {body_id if body_id else '(auto-detect)'}")
+        print(f"Using cached data: {cached_faces_data is not None}")
+
         faces_by_body = self.get_body_faces(document_id, workspace_id, element_id, body_id, cached_faces_data)
 
         if not faces_by_body:
+            print("❌ get_body_faces returned None - no bodies found")
+            print(f"{'='*70}\n")
             return None, None, None, None
 
         # Show available body IDs for debugging
         available_body_ids = list(faces_by_body.keys())
         print(f"\n📋 Available body IDs in document: {available_body_ids}")
+        print(f"   Total bodies: {len(available_body_ids)}")
 
         # If body_id was specified, check if it matches
         if body_id:
@@ -774,29 +831,51 @@ class OnshapeClient:
         all_faces = []
         for bid, body_data in faces_by_body.items():
             part_name = body_data['name']
-            for face in body_data['faces']:
+            face_list = body_data['faces']
+            print(f"\n   Processing body {bid} ({part_name}): {len(face_list)} faces")
+
+            for face in face_list:
                 face['body_id'] = bid  # The actual body ID from the loop
                 face['part_name'] = part_name
                 all_faces.append(face)
 
+        print(f"\n📊 Total faces across all bodies: {len(all_faces)}")
+
+        # Count face types
+        face_type_counts = {}
+        for face in all_faces:
+            surface_type = face.get('surfaceType', 'UNKNOWN')
+            face_type_counts[surface_type] = face_type_counts.get(surface_type, 0) + 1
+
+        print(f"📊 Face type distribution: {face_type_counts}")
+
         # Filter for PLANE faces (any orientation)
+        print(f"\n🔍 Filtering for PLANE faces...")
         plane_faces = []
         for face in all_faces:
-            if face['surfaceType'] != 'PLANE':
+            surface_type = face.get('surfaceType', 'UNKNOWN')
+
+            if surface_type != 'PLANE':
                 continue
 
+            normal = face.get('normal', {})
             plane_faces.append({
                 'face_id': face['id'],
                 'area': face['area'],
                 'part_name': face['part_name'],
                 'body_id': face['body_id'],
-                'normal': face.get('normal', {})
+                'normal': normal
             })
 
-            print(f"  Found planar face: {face['id']} ({face['part_name']}), area={face['area']:.6f}")
+            print(f"   ✓ Found planar face: {face['id'][:8]}... ({face['part_name']})")
+            print(f"      Area: {face['area']:.6f}")
+            print(f"      Normal: ({normal.get('x', 0):.3f}, {normal.get('y', 0):.3f}, {normal.get('z', 0):.3f})")
+
+        print(f"\n📊 Total planar faces found: {len(plane_faces)}")
 
         if not plane_faces:
-            print("No planar faces found")
+            print("❌ No planar faces found in any body")
+            print(f"{'='*70}\n")
             return None, None, None, None
 
         # Select the face with the largest area
@@ -808,7 +887,13 @@ class OnshapeClient:
         ny = normal.get('y', 0)
         nz = normal.get('z', 1)
 
-        print(f"\n✅ Auto-selected face: {selected_face['face_id']} from part '{selected_face['part_name']}' (body: {selected_face['body_id']}), area={selected_face['area']:.6f}, normal=({nx:.3f}, {ny:.3f}, {nz:.3f})")
+        print(f"\n✅ AUTO-SELECTED FACE:")
+        print(f"   Face ID: {selected_face['face_id']}")
+        print(f"   Part: {selected_face['part_name']}")
+        print(f"   Body: {selected_face['body_id']}")
+        print(f"   Area: {selected_face['area']:.6f}")
+        print(f"   Normal: ({nx:.3f}, {ny:.3f}, {nz:.3f})")
+        print(f"{'='*70}\n")
 
         return selected_face['face_id'], selected_face['body_id'], selected_face['part_name'], selected_face['normal']
     

@@ -984,6 +984,83 @@ def debug_session():
         'onshape_authenticated': session.get('onshape_authenticated'),
     })
 
+@app.route('/debug/onshape/faces')
+@limiter.limit("10 per minute")
+def debug_onshape_faces():
+    """Debug endpoint to test Onshape face listing"""
+    if not ONSHAPE_AVAILABLE:
+        return jsonify({'error': 'Onshape integration not available'}), 400
+
+    # Get parameters
+    document_id = request.args.get('documentId')
+    workspace_id = request.args.get('workspaceId')
+    element_id = request.args.get('elementId')
+    body_id = request.args.get('bodyId')
+
+    if not all([document_id, workspace_id, element_id]):
+        return jsonify({
+            'error': 'Missing required parameters',
+            'required': ['documentId', 'workspaceId', 'elementId']
+        }), 400
+
+    # Get Onshape client
+    user_id = get_current_user_id()
+    client = session_manager.get_client(user_id)
+
+    if not client:
+        return jsonify({
+            'error': 'Not authenticated with Onshape',
+            'auth_url': '/onshape/auth'
+        }), 401
+
+    try:
+        print("\n" + "="*70)
+        print("DEBUG ENDPOINT: Testing face listing")
+        print("="*70)
+
+        # Test list_faces
+        faces_data = client.list_faces(document_id, workspace_id, element_id)
+
+        if not faces_data:
+            return jsonify({
+                'success': False,
+                'error': 'list_faces returned None'
+            }), 500
+
+        # Test auto_select_top_face
+        face_id, body_id_result, part_name, normal = client.auto_select_top_face(
+            document_id, workspace_id, element_id, body_id, faces_data
+        )
+
+        return jsonify({
+            'success': True,
+            'faces_data_summary': {
+                'body_count': len(faces_data.get('bodies', [])),
+                'bodies': [
+                    {
+                        'id': body.get('id'),
+                        'name': body.get('properties', {}).get('name'),
+                        'face_count': len(body.get('faces', []))
+                    }
+                    for body in faces_data.get('bodies', [])
+                ]
+            },
+            'auto_selected': {
+                'face_id': face_id,
+                'body_id': body_id_result,
+                'part_name': part_name,
+                'normal': normal
+            } if face_id else None
+        })
+
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
 @app.route('/onshape/import', methods=['GET', 'POST'])
 @limiter.limit("20 per minute")  # Moderate limit - authenticated via Onshape OAuth
 def onshape_import():
@@ -995,17 +1072,34 @@ def onshape_import():
         return jsonify({'error': 'Onshape integration not available'}), 400
 
     try:
-        # Log the complete incoming URL for debugging
-        print(f"\n🔗 Complete request URL: {request.url}")
-        print(f"   Method: {request.method}")
+        print(f"\n{'='*70}")
+        print(f"ONSHAPE IMPORT REQUEST")
+        print(f"{'='*70}")
+        print(f"Request URL: {request.url}")
+        print(f"Method: {request.method}")
+        print(f"Headers: {dict(request.headers)}")
 
         # Get parameters (either from query string or JSON body)
         if request.method == 'POST':
             raw_params = request.json or {}
+            print(f"Source: POST body (JSON)")
         else:
             raw_params = request.args.to_dict()
+            print(f"Source: Query string")
+
+        print(f"\n📝 RAW PARAMETERS RECEIVED:")
+        for key, value in sorted(raw_params.items()):
+            print(f"   {key}: {value!r}")
 
         params = extract_onshape_params(raw_params)
+
+        print(f"\n🔧 EXTRACTED PARAMETERS:")
+        print(f"   document_id: {params['document_id']!r}")
+        print(f"   workspace_id: {params['workspace_id']!r}")
+        print(f"   element_id: {params['element_id']!r}")
+        print(f"   face_id: {params['face_id']!r}")
+        print(f"   body_id: {params['body_id']!r}")
+
         document_id = params['document_id']
         workspace_id = params['workspace_id']
         element_id = params['element_id']
@@ -1016,12 +1110,22 @@ def onshape_import():
         onshape_server = raw_params.get('server', 'https://cad.onshape.com')
         onshape_userid = raw_params.get('userId')
 
-        print(f"Onshape params received: {raw_params}")
-        print(f"  Extracted body_id/partId: {body_id!r}")
-        if body_id:
-            print(f"  ✅ User selected body/part: {body_id}")
+        print(f"\n🔍 PARAMETER ANALYSIS:")
+        if face_id:
+            print(f"   ✓ face_id provided: {face_id}")
+            if not face_id.startswith('J'):
+                print(f"   ⚠️  WARNING: face_id doesn't start with 'J' (unusual for Onshape IDs)")
+            if len(face_id) < 10:
+                print(f"   ⚠️  WARNING: face_id seems too short (Onshape IDs are usually longer)")
         else:
-            print(f"  ⚠️  No partId received - will search all parts in document")
+            print(f"   ℹ️  No face_id - will auto-select")
+
+        if body_id:
+            print(f"   ✓ body_id provided: {body_id}")
+        else:
+            print(f"   ℹ️  No body_id - will search all parts")
+
+        print(f"{'='*70}\n")
         
         # WORKAROUND: If params have placeholder strings, we can't proceed
         if (document_id and ('${' in str(document_id) or document_id.startswith('$'))):
