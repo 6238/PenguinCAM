@@ -21,9 +21,9 @@ PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC tea
 3. **Orient & Generate** → Rotate part, auto-generate toolpaths
 4. **Download or Save to Drive** → Ready to run on your CNC router
 
-**No difficult CAM software, no manual exports!** PenguinCAM knows what FRC teams need.
+**No CAM software, no manual exports, no face selection required!** PenguinCAM knows what FRC teams need.
 
-Designed to feel like 3D printer slicers or laser cutter software. Get the design, orient it on the machine, and go. Launching directly from Onshape means no export/import steps, lost files or inconsistent naming. Every part designed by your team members automatically get the same CNC behavior. Students don't have to know feeds & speeds, understand ramp angles, risk machine collisions. Just select the part and go.
+Designed to feel like 3D printer slicers or laser cutter software. Get the design, orient it on the machine, and go. Launching directly from Onshape means no export/import steps, lost files or inconsistent naming.
 
 **Multi-team support:** Other teams can use the hosted service at https://penguincam.popcornpenguins.com! Just upload a `PenguinCAM-config.yaml` file to your Onshape documents to customize settings for your CNC machine. See "For Other FRC Teams" below.
 
