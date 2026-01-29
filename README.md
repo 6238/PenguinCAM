@@ -16,8 +16,8 @@ A web-based tool for FRC robotics teams to automatically generate CNC G-code fro
 
 PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC teams:
 
-1. **Design in Onshape** → Create flat plates with holes and pockets
-2. **Right-click → "Send to PenguinCAM"** → One-click export from Onshape
+1. **Design in Onshape** → Create flat plates or tubes, with holes and pockets
+2. **Open app → "Send to PenguinCAM"** → One-click export from Onshape
 3. **Orient & Generate** → Rotate part, auto-generate toolpaths
 4. **Download or Save to Drive** → Ready to run on your CNC router
 
@@ -57,14 +57,13 @@ Designed to feel like 3D printer slicers or laser cutter software. Get the desig
 ### 🔗 **Onshape Integration** ⭐ Preferred Workflow
 
 **One-Click Export from Onshape:**
-- Right-click part in Onshape → "Send to PenguinCAM"
-- Auto-detects top face
+- Select top face of part in Onshape → "Send to PenguinCAM"
 - Opens PenguinCAM with part already loaded
-- No manual DXF export or face selection needed
+- No manual DXF export needed
 
 **How to Set Up:**
-1. Install PenguinCAM extension in your Onshape classroom
-2. Extension appears in right-click "Applications" menu on parts
+1. Install PenguinCAM app in your Onshape classroom
+2. Extension appears in right side panel in Parts Studios
 3. Click once to send part directly to PenguinCAM
 4. OAuth authentication (one-time per team member)
 
@@ -72,11 +71,10 @@ Designed to feel like 3D printer slicers or laser cutter software. Get the desig
 
 ### 🔐 **Team Access Control**
 
-- Google Workspace authentication
-- Restrict to your domain (e.g., @popcornpenguins.com)
+- Onshape authentication
 - Secure OAuth 2.0 login
 
-### 💾 **Google Drive Integration**
+### 💾 **Google Drive Integration (optional) **
 
 - Upload G-code directly to team Shared Drive
 - Easily accessible from CNC computer
@@ -105,13 +103,14 @@ Designed to feel like 3D printer slicers or laser cutter software. Get the desig
 
 **One-Click Workflow:**
 1. **Design your part** in Onshape (flat plate with holes/pockets)
-2. **Right-click the part** in the feature tree
-3. **Click "Send to PenguinCAM"** from the Applications menu item
+2. **Open the PenguinCAM app** in the right panel
+2. **Select the top face** by clicking on it
+3. **Click "Send to PenguinCAM"** in the PenguinCAM panel
 4. **Orient your part** - Rotate if needed in 2D setup view
 5. **Click "Generate Program"** - Review 3D preview
 6. **Download or save to Drive** - Ready for CNC!
 
-**First Time Setup:** You'll be asked to authenticate with Google (one time per team member)
+**First Time Setup:** You'll be asked to authenticate with Onshape (one time per team member)
 
 ### Method 2: Manual DXF Upload
 
@@ -124,7 +123,7 @@ Designed to feel like 3D printer slicers or laser cutter software. Get the desig
 
 ### Running on the CNC
 
-- Load G-code into your Mach4 on the CNC controller
+- Load G-code into your CNC controller
 - Set up material and zero axes (see [Quick Reference](docs/quick-reference-card.md))
 - Run the program!
 
@@ -146,7 +145,7 @@ See "For Other FRC Teams" section below for complete instructions.
 
 ### Deployment (Advanced)
 
-For teams self-hosting PenguinCAM, it's deployed on Railway with automatic GitHub integration.
+For teams self-hosting PenguinCAM, it's can be deployed on Railway (server-based) or Vercel (serverless) with automatic GitHub integration, or your own hosting service or server.
 
 **Setup guides:**
 - [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Deploy to Railway, environment variables
@@ -426,7 +425,7 @@ PenguinCAM is designed to support multiple teams using the same hosted instance.
 
 4. **Authenticate:**
    - Visit https://penguincam.popcornpenguins.com
-   - Sign in with Google (one-time setup per team member)
+   - Sign in with Onshape (one-time setup per team member)
    - Your team's configuration will be automatically loaded!
 
 **What you can customize:**
