@@ -248,7 +248,7 @@ class OnshapeClient:
         except Exception as e:
             log(f"   ❌ Error getting session info: {e}")
             import traceback
-            traceback.print_exc()
+            log(traceback.format_exc())
             return None
 
     def get_companies(self):
@@ -271,7 +271,7 @@ class OnshapeClient:
         except Exception as e:
             log(f"   ❌ Error getting companies: {e}")
             import traceback
-            traceback.print_exc()
+            log(traceback.format_exc())
             return None
 
     def get_document_company(self, document_id):
@@ -319,7 +319,7 @@ class OnshapeClient:
         except Exception as e:
             log(f"   ❌ Error getting document company: {e}")
             import traceback
-            traceback.print_exc()
+            log(traceback.format_exc())
             return None
     
     def _calculate_view_matrix(self, normal):
@@ -449,7 +449,7 @@ class OnshapeClient:
         except Exception as e:
             log(f"Error with exportinternal: {e}")
             import traceback
-            traceback.print_exc()
+            log(traceback.format_exc())
         
         # Fallback: Try async translations API
         log("\n[Method 2] Trying async translations API...")
@@ -541,7 +541,7 @@ class OnshapeClient:
         except Exception as e:
             log(f"Error starting translation: {e}")
             import traceback
-            traceback.print_exc()
+            log(traceback.format_exc())
             return None
     
     def check_translation_status(self, translation_id):
@@ -737,7 +737,7 @@ class OnshapeClient:
             log(f"\n❌ Exception during list_faces:")
             log(f"Error: {e}")
             import traceback
-            traceback.print_exc()
+            log(traceback.format_exc())
             log(f"{'='*70}\n")
             return None
     
@@ -929,7 +929,7 @@ class OnshapeClient:
         except Exception as e:
             log(f"Error getting document info: {e}")
             import traceback
-            traceback.print_exc()
+            log(traceback.format_exc())
             return None
     
     def get_element_info(self, document_id, workspace_id, element_id):
@@ -956,7 +956,7 @@ class OnshapeClient:
         except Exception as e:
             log(f"Error getting element info: {e}")
             import traceback
-            traceback.print_exc()
+            log(traceback.format_exc())
             return None
 
     def get_user_session_info(self):
@@ -979,7 +979,7 @@ class OnshapeClient:
         except Exception as e:
             log(f"   ❌ Error getting session info: {e}")
             import traceback
-            traceback.print_exc()
+            log(traceback.format_exc())
             return None
 
     def get_companies(self):
@@ -1002,7 +1002,7 @@ class OnshapeClient:
         except Exception as e:
             log(f"   ❌ Error getting companies: {e}")
             import traceback
-            traceback.print_exc()
+            log(traceback.format_exc())
             return None
 
     def get_document_company(self, document_id):
@@ -1050,7 +1050,7 @@ class OnshapeClient:
         except Exception as e:
             log(f"   ❌ Error getting document company: {e}")
             import traceback
-            traceback.print_exc()
+            log(traceback.format_exc())
             return None
 
     def fetch_config_file(self):
@@ -1157,7 +1157,7 @@ class OnshapeClient:
         except Exception as e:
             log(f"   ❌ Error fetching config file: {e}")
             import traceback
-            traceback.print_exc()
+            log(traceback.format_exc())
             return None
 
     def parse_onshape_url(self, url):

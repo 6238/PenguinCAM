@@ -592,7 +592,7 @@ def process_file():
 
         except Exception as e:
             log(f"❌ Post-processor API error: {e}")
-            traceback.print_exc()
+            log(traceback.format_exc())
             return jsonify({
                 'error': 'Post-processor API error',
                 'details': str(e)
@@ -643,7 +643,7 @@ def process_file():
     except ValueError as e:
         return jsonify({'error': f'Invalid parameter value: {str(e)}'}), 400
     except Exception as e:
-        traceback.print_exc()
+        log(traceback.format_exc())
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
 @app.route('/download/<token>')
@@ -1561,7 +1561,7 @@ def onshape_save_dxf():
 
     except Exception as e:
         log(f"❌ Error in save-dxf: {str(e)}")
-        traceback.print_exc()
+        log(traceback.format_exc())
         return jsonify({
             'error': f'Save DXF failed: {str(e)}'
         }), 500
