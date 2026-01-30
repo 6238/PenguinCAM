@@ -11,14 +11,22 @@ import base64
 from urllib.parse import urlencode, parse_qs
 from datetime import datetime, timedelta
 from flask import session
+import logging
+
+# Configure logging for Vercel
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(message)s',
+    stream=sys.stderr,
+    force=True
+)
+logger = logging.getLogger(__name__)
 
 # Logging helper for Vercel/serverless environments
 def log(*args, **kwargs):
-    """Print with immediate flush to both stdout and stderr for Vercel logs"""
-    print(*args, **kwargs, file=sys.stdout)
-    sys.stdout.flush()
-    print(*args, **kwargs, file=sys.stderr)
-    sys.stderr.flush()
+    """Log to stderr using Python logging module for better Vercel compatibility"""
+    message = ' '.join(str(arg) for arg in args)
+    logger.info(message)
 
 class OnshapeClient:
     """Client for interacting with Onshape API"""
