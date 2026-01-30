@@ -35,6 +35,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Disable Werkzeug's request logging (clutters Vercel logs)
+logging.getLogger('werkzeug').disabled = True
+
 # Logging helper for Vercel/serverless environments
 def log(*args, **kwargs):
     """Log to stderr using Python logging module for better Vercel compatibility"""
