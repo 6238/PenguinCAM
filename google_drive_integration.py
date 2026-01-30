@@ -4,6 +4,7 @@ Saves G-code files directly to team's shared Google Drive
 """
 
 import os
+import sys
 import json
 import pickle
 from pathlib import Path
@@ -13,6 +14,12 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
+
+# Logging helper for Vercel/serverless environments
+def log(*args, **kwargs):
+    """Print with immediate flush for Vercel logs"""
+    print(*args, **kwargs)
+    sys.stdout.flush()
 
 # Scopes needed - only Drive file access
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
@@ -69,7 +76,7 @@ class GoogleDriveUploader:
             self.service = build('drive', 'v3', credentials=self.credentials)
             return True
         except Exception as e:
-            print(f"Drive authentication error: {e}")
+            log(f"Drive authentication error: {e}")
             return False
     
     def find_shared_drive(self, drive_name):
@@ -86,7 +93,7 @@ class GoogleDriveUploader:
             
             return None
         except HttpError as error:
-            print(f"Error finding shared drive: {error}")
+            log(f"Error finding shared drive: {error}")
             return None
     
     def find_folder_in_drive(self, drive_id, folder_path):
@@ -128,7 +135,7 @@ class GoogleDriveUploader:
                 current_folder_id = folders[0]['id']
                 
             except HttpError as error:
-                print(f"Error finding folder '{folder_name}': {error}")
+                log(f"Error finding folder '{folder_name}': {error}")
                 return None
         
         return current_folder_id
@@ -152,7 +159,7 @@ class GoogleDriveUploader:
             return folder['id']
             
         except HttpError as error:
-            print(f"Error creating folder: {error}")
+            log(f"Error creating folder: {error}")
             return None
     
     def upload_file(self, file_path, filename=None):

@@ -4,6 +4,7 @@ Google OAuth 2.0 with Drive API access
 """
 
 import os
+import sys
 import json
 from functools import wraps
 from flask import session, redirect, url_for, request, jsonify
@@ -12,6 +13,12 @@ from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request as GoogleRequest
 from googleapiclient.discovery import build
 import secrets
+
+# Logging helper for Vercel/serverless environments
+def log(*args, **kwargs):
+    """Print with immediate flush for Vercel logs"""
+    print(*args, **kwargs)
+    sys.stdout.flush()
 
 class PenguinCAMAuth:
     """Handles Google OAuth authentication with Drive API access"""
@@ -36,7 +43,7 @@ class PenguinCAMAuth:
                 app.secret_key = secret_key
             else:
                 app.secret_key = secrets.token_hex(32)
-                print("⚠️  WARNING: Using random secret key. Set FLASK_SECRET_KEY environment variable for persistent sessions across redeploys.")
+                log("⚠️  WARNING: Using random secret key. Set FLASK_SECRET_KEY environment variable for persistent sessions across redeploys.")
         
         # Configure session lifetime (30 days)
         from datetime import timedelta
@@ -228,7 +235,7 @@ class PenguinCAMAuth:
                 # Clear OAuth state
                 session.pop('oauth_state', None)
 
-                print(f"✅ User authenticated: {email}")
+                log(f"✅ User authenticated: {email}")
 
                 # Check if opened in popup (for Drive auth flow)
                 # If there's no return URL stored, assume it's a popup
@@ -279,7 +286,7 @@ class PenguinCAMAuth:
 </html>'''
                 else:
                     # Full page flow - redirect to original URL
-                    print(f"🔙 Redirecting to: {return_url}")
+                    log(f"🔙 Redirecting to: {return_url}")
                     return redirect(return_url)
                 
             except Exception as e:
