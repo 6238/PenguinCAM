@@ -17,9 +17,11 @@ from googleapiclient.errors import HttpError
 
 # Logging helper for Vercel/serverless environments
 def log(*args, **kwargs):
-    """Print with immediate flush for Vercel logs"""
-    print(*args, **kwargs)
+    """Print with immediate flush to both stdout and stderr for Vercel logs"""
+    print(*args, **kwargs, file=sys.stdout)
     sys.stdout.flush()
+    print(*args, **kwargs, file=sys.stderr)
+    sys.stderr.flush()
 
 # Scopes needed - only Drive file access
 SCOPES = ['https://www.googleapis.com/auth/drive.file']

@@ -14,9 +14,11 @@ from flask import session
 
 # Logging helper for Vercel/serverless environments
 def log(*args, **kwargs):
-    """Print with immediate flush for Vercel logs"""
-    print(*args, **kwargs)
+    """Print with immediate flush to both stdout and stderr for Vercel logs"""
+    print(*args, **kwargs, file=sys.stdout)
     sys.stdout.flush()
+    print(*args, **kwargs, file=sys.stderr)
+    sys.stderr.flush()
 
 class OnshapeClient:
     """Client for interacting with Onshape API"""
