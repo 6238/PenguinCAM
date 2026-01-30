@@ -36,7 +36,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Disable Werkzeug's request logging (clutters Vercel logs)
+# Try multiple approaches since WSGI environment might be tricky
 logging.getLogger('werkzeug').disabled = True
+logging.getLogger('werkzeug').setLevel(logging.ERROR)  # Only show errors, not INFO
+werkzeug_logger = logging.getLogger('werkzeug')
+werkzeug_logger.handlers = []  # Remove all handlers
 
 # Logging helper for Vercel/serverless environments
 def log(*args, **kwargs):
@@ -83,11 +87,16 @@ class FileTokenManager:
     """
     Manages secure token-based file access to prevent filename guessing attacks.
     Maps random tokens to actual file paths and handles automatic cleanup.
+
+    For serverless (Vercel), tokens are stored in Flask session cookies to work
+    across different container instances.
     """
 
     def __init__(self):
+        # For backwards compatibility with non-serverless environments
         self.tokens = {}  # token → {'filepath': ..., 'filename': ..., 'created': timestamp}
         self.lock = threading.Lock()
+        self.use_session = os.environ.get('VERCEL') == '1'  # Use session storage on Vercel
 
     def register_file(self, filepath, real_filename):
         """
@@ -101,13 +110,24 @@ class FileTokenManager:
             Random token string (safe for URLs)
         """
         token = secrets.token_urlsafe(32)
-        with self.lock:
-            self.tokens[token] = {
-                'filepath': filepath,
-                'filename': real_filename,
-                'created': time.time()
-            }
-        log(f"🔐 Registered file: {real_filename} → token {token[:16]}...")
+        file_info = {
+            'filepath': filepath,
+            'filename': real_filename,
+            'created': time.time()
+        }
+
+        if self.use_session:
+            # Store in Flask session (cookie-based, works across serverless instances)
+            if 'file_tokens' not in session:
+                session['file_tokens'] = {}
+            session['file_tokens'][token] = file_info
+            session.modified = True  # Force session save
+        else:
+            # Store in memory (for non-serverless environments)
+            with self.lock:
+                self.tokens[token] = file_info
+
+        log(f"🔐 Registered file: {real_filename} → token {token[:16]}... ({'session' if self.use_session else 'memory'})")
         return token
 
     def get_file(self, token):
@@ -120,8 +140,14 @@ class FileTokenManager:
         Returns:
             Dict with 'filepath' and 'filename', or None if not found
         """
-        with self.lock:
-            return self.tokens.get(token)
+        if self.use_session:
+            # Retrieve from Flask session
+            file_tokens = session.get('file_tokens', {})
+            return file_tokens.get(token)
+        else:
+            # Retrieve from memory
+            with self.lock:
+                return self.tokens.get(token)
 
     def cleanup_old_files(self, max_age_seconds=3600):
         """
@@ -178,6 +204,12 @@ else:
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
+
+# Disable Flask/Werkzeug request logging in production (Vercel)
+if os.environ.get('VERCEL'):
+    app.logger.disabled = True
+    log_werkzeug = logging.getLogger('werkzeug')
+    log_werkzeug.disabled = True
 
 # Trust proxy headers (Railway, nginx, etc.)
 # This tells Flask it's behind HTTPS even if internal requests are HTTP

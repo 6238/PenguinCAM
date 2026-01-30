@@ -466,12 +466,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         'width=600,height=700,left=100,top=100'
                     );
 
-                    if (!popup) {
-                        // Popup blocked - fallback to full page redirect
-                        driveStatus.textContent = '⚠️ Popup blocked - redirecting to sign in...';
-                        setTimeout(() => {
-                            window.location.href = '/auth/login';
-                        }, 2000);
+                    if (!popup || popup.closed) {
+                        // Popup blocked - show instructions instead of auto-redirecting
+                        driveBtn.textContent = '💾 Save to Google Drive';
+                        driveBtn.disabled = false;
+                        driveStatus.innerHTML = '⚠️ Popup blocked! Please allow popups for this site and try again.<br>' +
+                                               'Or <a href="/auth/login" target="_blank" style="color: #FDB515; text-decoration: underline;">click here</a> to authenticate in a new tab.';
+                        driveStatus.style.color = 'var(--warning)';
+                        driveStatus.style.display = 'block';
                         return;
                     }
 
