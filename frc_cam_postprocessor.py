@@ -1681,7 +1681,7 @@ class FRCPostProcessor:
 
         if num_passes > 1:
             actual_depth_per_pass = total_cut_depth / num_passes
-            gcode.append(f"(Multi-pass perimeter: {num_passes} passes @ {actual_depth_per_pass:.3f}\" each (max {self.max_slotting_depth:.3f}\"))")
+            gcode.append(f"(Multi-pass perimeter: {num_passes} passes @ {actual_depth_per_pass:.3f}\" each, max {self.max_slotting_depth:.3f}\" per pass)")
 
         # Create offset path (outward by tool radius)
         perimeter_poly = Polygon(perimeter_points)
