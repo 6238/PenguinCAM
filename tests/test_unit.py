@@ -12,6 +12,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from frc_cam_postprocessor import FRCPostProcessor, MATERIAL_PRESETS
+from team_config import TeamConfig
 
 
 class TestLowLevelUtilities(unittest.TestCase):
@@ -460,6 +461,233 @@ class TestGCodeFormatting(unittest.TestCase):
                         f"Line {line_num} has square bracket inside parenthesis comment: "
                         f"{line.strip()}"
                     )
+
+
+class TestTeamConfigIntegration(unittest.TestCase):
+    """Test that team config values are properly applied to generated G-code."""
+
+    def test_custom_spindle_speed_from_config(self):
+        """Test that custom spindle speed from config appears in G-code."""
+        # Create custom config with different spindle speed
+        config_data = {
+            'materials': {
+                'plywood': {
+                    'spindle_speed': 24000,  # Different from default 18000
+                    'feed_rate': 75.0,
+                    'plunge_rate': 35.0,
+                }
+            }
+        }
+        config = TeamConfig(config_data)
+
+        # Get material preset from config
+        material_preset = config.get_material_preset('plywood')
+
+        # Create postprocessor and apply custom preset
+        pp = FRCPostProcessor(0.25, 0.157)
+        pp.spindle_speed = material_preset['spindle_speed']
+        pp.feed_rate = material_preset['feed_rate']
+        pp.plunge_rate = material_preset['plunge_rate']
+        pp.max_slotting_depth = material_preset.get('max_slotting_depth', 0.4)
+
+        # Add simple geometry
+        pp.circles = [{'center': (0.5, 0.5), 'diameter': 0.25}]
+        pp.polylines = [[(0, 0), (2, 0), (2, 2), (0, 2)]]
+
+        # Generate G-code
+        pp.classify_holes()
+        pp.identify_perimeter_and_pockets()
+        result = pp.generate_gcode()
+
+        self.assertTrue(result.success)
+
+        # Check that G-code contains custom spindle speed
+        self.assertIn('S24000', result.gcode,
+                     "G-code should contain custom spindle speed S24000")
+
+    def test_custom_feed_rates_from_config(self):
+        """Test that custom feed rates from config appear in G-code."""
+        # Create custom config with different feed rates
+        config_data = {
+            'materials': {
+                'aluminum': {
+                    'spindle_speed': 18000,
+                    'feed_rate': 42.0,       # Different from default 55.0
+                    'plunge_rate': 10.0,     # Different from default 15.0
+                    'ramp_feed_rate': 28.0,  # Different from default 35.0
+                }
+            }
+        }
+        config = TeamConfig(config_data)
+
+        # Get material preset from config
+        material_preset = config.get_material_preset('aluminum')
+
+        # Create postprocessor and apply custom preset
+        pp = FRCPostProcessor(0.25, 0.157, units='mm')  # Use mm to make values more distinctive
+        pp.spindle_speed = material_preset['spindle_speed']
+        pp.feed_rate = material_preset['feed_rate'] * 25.4  # Convert to mm/min
+        pp.plunge_rate = material_preset['plunge_rate'] * 25.4
+        pp.ramp_feed_rate = material_preset['ramp_feed_rate'] * 25.4
+        pp.max_slotting_depth = 0.2  # Aluminum default
+
+        # Add simple geometry that will generate plunge and cutting moves
+        pp.circles = [{'center': (12.7, 12.7), 'diameter': 6.35}]  # 0.5" hole at 0.5, 0.5 inches
+        pp.polylines = [[(0, 0), (50.8, 0), (50.8, 50.8), (0, 50.8)]]  # 2" square
+
+        # Generate G-code
+        pp.classify_holes()
+        pp.identify_perimeter_and_pockets()
+        result = pp.generate_gcode()
+
+        self.assertTrue(result.success)
+
+        # Check that G-code contains custom feed rates (in mm/min)
+        # Custom cutting feed: 42 IPM * 25.4 = 1066.8 mm/min
+        # Custom plunge feed: 10 IPM * 25.4 = 254.0 mm/min
+        # Custom ramp feed: 28 IPM * 25.4 = 711.2 mm/min
+
+        # Look for feed rate commands
+        feed_rates = []
+        for line in result.gcode.split('\n'):
+            if 'F' in line:
+                # Extract F values
+                import re
+                matches = re.findall(r'F([\d.]+)', line)
+                feed_rates.extend([float(f) for f in matches])
+
+        # Check that custom cutting feed rate appears
+        self.assertIn(1066.8, feed_rates,
+                     "G-code should contain custom cutting feed rate F1066.8 (42 IPM)")
+
+        # Check that custom plunge feed rate appears
+        self.assertIn(254.0, feed_rates,
+                     "G-code should contain custom plunge feed rate F254.0 (10 IPM)")
+
+    def test_pause_before_perimeter_enabled(self):
+        """Test that pause_before_perimeter config inserts M0 pause before perimeter."""
+        # Create config with pause enabled
+        config_data = {
+            'machining': {
+                'fixturing': {
+                    'pause_before_perimeter': True
+                }
+            }
+        }
+        config = TeamConfig(config_data)
+
+        # Verify config value is correct
+        self.assertTrue(config.pause_before_perimeter)
+
+        # Create postprocessor with pause enabled
+        pp = FRCPostProcessor(0.25, 0.157, config=config)
+        pp.apply_material_preset('plywood')
+
+        # Verify pause_before_perimeter is set
+        self.assertTrue(pp.pause_before_perimeter)
+
+        # Add simple perimeter
+        pp.circles = []
+        pp.polylines = [[(0, 0), (2, 0), (2, 2), (0, 2)]]
+
+        # Generate G-code
+        pp.classify_holes()
+        pp.identify_perimeter_and_pockets()
+        result = pp.generate_gcode()
+
+        self.assertTrue(result.success)
+
+        # Check that G-code contains pause command
+        # The pause includes "M0  ; Program pause"
+        self.assertIn('M0', result.gcode,
+                     "G-code should contain M0 pause command")
+        self.assertIn('PAUSE FOR FIXTURING', result.gcode,
+                     "G-code should contain fixturing pause message")
+        self.assertIn('Program pause', result.gcode,
+                     "G-code should contain program pause comment")
+
+    def test_pause_before_perimeter_disabled(self):
+        """Test that pause_before_perimeter=False does not insert M0 pause."""
+        # Create config with pause disabled
+        config_data = {
+            'machining': {
+                'fixturing': {
+                    'pause_before_perimeter': False
+                }
+            }
+        }
+        config = TeamConfig(config_data)
+
+        # Verify config value is correct
+        self.assertFalse(config.pause_before_perimeter)
+
+        # Create postprocessor with pause disabled
+        pp = FRCPostProcessor(0.25, 0.157, config=config)
+        pp.apply_material_preset('plywood')
+
+        # Verify pause_before_perimeter is not set
+        self.assertFalse(pp.pause_before_perimeter)
+
+        # Add simple perimeter
+        pp.circles = []
+        pp.polylines = [[(0, 0), (2, 0), (2, 2), (0, 2)]]
+
+        # Generate G-code
+        pp.classify_holes()
+        pp.identify_perimeter_and_pockets()
+        result = pp.generate_gcode()
+
+        self.assertTrue(result.success)
+
+        # Check that G-code does NOT contain fixturing pause
+        # (Note: there will still be an M0 at the end of the program, which is fine)
+        self.assertNotIn('PAUSE FOR FIXTURING', result.gcode,
+                        "G-code should not contain fixturing pause when pause_before_perimeter=False")
+
+    def test_custom_ramp_angle_from_config(self):
+        """Test that custom ramp angle from config affects toolpath generation."""
+        # Create config with custom ramp angle
+        config_data = {
+            'materials': {
+                'plywood': {
+                    'ramp_angle': 10.0,  # Different from default 20.0
+                }
+            }
+        }
+        config = TeamConfig(config_data)
+
+        # Get material preset from config
+        material_preset = config.get_material_preset('plywood')
+
+        # Create two postprocessors: one with default, one with custom
+        pp_default = FRCPostProcessor(0.25, 0.157)
+        pp_default.apply_material_preset('plywood')
+
+        pp_custom = FRCPostProcessor(0.25, 0.157)
+        pp_custom.apply_material_preset('plywood')
+        pp_custom.ramp_angle = material_preset['ramp_angle']
+
+        # Verify ramp angles are different
+        self.assertEqual(pp_default.ramp_angle, 20.0)
+        self.assertEqual(pp_custom.ramp_angle, 10.0)
+
+        # Add same geometry to both
+        for pp in [pp_default, pp_custom]:
+            pp.circles = []
+            pp.polylines = [[(0, 0), (2, 0), (2, 2), (0, 2)]]
+            pp.classify_holes()
+            pp.identify_perimeter_and_pockets()
+
+        # Generate G-code for both
+        result_default = pp_default.generate_gcode()
+        result_custom = pp_custom.generate_gcode()
+
+        self.assertTrue(result_default.success)
+        self.assertTrue(result_custom.success)
+
+        # G-code should be different (shallower angle = different ramp path)
+        self.assertNotEqual(result_default.gcode, result_custom.gcode,
+                          "G-code should differ when using different ramp angles")
 
 
 if __name__ == '__main__':

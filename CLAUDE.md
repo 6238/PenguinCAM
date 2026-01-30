@@ -51,6 +51,30 @@ uv pip install -r requirements.txt
 
 **Always run `make test` after making any code changes.** If tests fail, fix the errors before proceeding with other work. Do not commit or consider a change complete until all tests pass.
 
+## G-code Generation Rules
+
+**CRITICAL**: The CNC machines that run our G-code have strict requirements. Violating these rules will cause machine failures:
+
+### Nested Comments - FORBIDDEN
+- **NEVER use nested parenthesis comments** in G-code output
+- ❌ Bad: `(Outer comment (nested comment) more text)`
+- ✅ Good: `(Outer comment, nested text, more text)`
+- CNC controllers will fail or produce unpredictable behavior with nested comments
+- There is a unit test (`test_no_nested_comments`) but it doesn't catch every case since some G-code is conditional
+
+### Unicode Characters - FORBIDDEN
+- **All G-code must be pure ASCII** - no unicode characters
+- ❌ Bad: `(Cut depth: 0.25″)` (curly quotes), `(Feedrate → 75 IPM)` (arrows)
+- ✅ Good: `(Cut depth: 0.25")` (straight quotes), `(Feedrate: 75 IPM)` (colon)
+- There is a unit test (`test_no_unicode_characters`) but it doesn't catch every case
+
+### Best Practices
+When generating G-code comments:
+1. Use commas or semicolons instead of nested parentheses
+2. Use straight ASCII quotes and standard punctuation
+3. Test conditional code paths manually if they generate comments
+4. Be especially careful with f-strings that include measurements or user data
+
 ## Git Operations
 
 **DO NOT run any git commands** (git add, git commit, git push, etc.). The user prefers to handle all git operations themselves. Focus on making code changes and let the user manage version control.
