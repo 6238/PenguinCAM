@@ -757,13 +757,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     minX, maxX, minY, maxY,
                     entities: dxf.entities || []
                 };
-                dxfBounds = { 
-                    width: maxX - minX, 
+                dxfBounds = {
+                    width: maxX - minX,
                     height: maxY - minY,
                     centerX: (minX + maxX) / 2,
                     centerY: (minY + maxY) / 2
                 };
-                
+
+                // Debug: Log bounds calculation
+                console.log('DXF Bounds Debug:');
+                console.log(`  minX: ${minX.toFixed(4)}, maxX: ${maxX.toFixed(4)}`);
+                console.log(`  minY: ${minY.toFixed(4)}, maxY: ${maxY.toFixed(4)}`);
+                console.log(`  Width: ${dxfBounds.width.toFixed(4)}", Height: ${dxfBounds.height.toFixed(4)}"`);
+                console.log(`  Total entities processed: ${dxf.entities ? dxf.entities.length : 0}`);
+
                 // Show mode toggle and switch to setup mode
                 document.getElementById('modeToggle').style.display = 'flex';
                 switchMode('setup');
