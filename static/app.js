@@ -889,23 +889,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 maxY = Math.max(maxY, y);
             }
 
-            entities.forEach(entity => {
+            console.log(`Calculating bounds from ${entities.length} entities...`);
+            entities.forEach((entity, idx) => {
                 if (entity.type === 'CIRCLE') {
+                    if (idx < 3) console.log(`  Entity ${idx}: CIRCLE at (${entity.center.x}, ${entity.center.y}) r=${entity.radius}`);
                     updateBounds(entity.center.x - entity.radius, entity.center.y - entity.radius);
                     updateBounds(entity.center.x + entity.radius, entity.center.y + entity.radius);
                 } else if (entity.type === 'ARC') {
+                    if (idx < 3) console.log(`  Entity ${idx}: ARC at (${entity.center.x}, ${entity.center.y}) r=${entity.radius}`);
                     updateBounds(entity.center.x - entity.radius, entity.center.y - entity.radius);
                     updateBounds(entity.center.x + entity.radius, entity.center.y + entity.radius);
                 } else if (entity.type === 'LINE') {
+                    if (idx < 3) console.log(`  Entity ${idx}: LINE with ${entity.vertices.length} vertices`);
                     entity.vertices.forEach(v => updateBounds(v.x, v.y));
                 } else if (entity.type === 'LWPOLYLINE' || entity.type === 'POLYLINE') {
+                    if (idx < 3) console.log(`  Entity ${idx}: ${entity.type} with ${entity.vertices.length} vertices`);
                     entity.vertices.forEach(v => updateBounds(v.x, v.y));
                 } else if (entity.type === 'SPLINE' && entity.controlPoints) {
-                    // For splines, only use control points as rough approximation
-                    // (Actual curve may be slightly outside, but much better than including all raw coords)
+                    if (idx < 3) console.log(`  Entity ${idx}: SPLINE with ${entity.controlPoints.length} control points`);
                     entity.controlPoints.forEach(p => updateBounds(p.x, p.y));
                 }
             });
+            console.log(`After bounds calculation: X=[${minX.toFixed(3)}, ${maxX.toFixed(3)}], Y=[${minY.toFixed(3)}, ${maxY.toFixed(3)}]`);
             
             if (minX === Infinity) {
                 console.warn('⚠️ No valid geometry found, using fallback 10×10 bounds');
