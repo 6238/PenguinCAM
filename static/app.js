@@ -889,32 +889,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 maxY = Math.max(maxY, y);
             }
 
-            // Filter to match backend behavior: only closed contours + circles
-            // Backend (frc_cam_postprocessor.py) only processes closed polylines and circles
-            // Isolated LINE/ARC entities are construction geometry and should be ignored
-            const filteredEntities = entities.filter((entity, idx) => {
-                // Always include circles (holes/pockets)
-                if (entity.type === 'CIRCLE') {
-                    return true;
-                }
+            // Calculate bounds only from closed contours + circles (match backend behavior)
+            // But still render all entities for preview
+            console.log(`Calculating bounds from entities (filtering construction geometry)...`);
+            entities.forEach((entity, idx) => {
+                // Skip bounds calculation for isolated LINE/ARC entities
+                // These are construction lines that won't be processed by backend
+                let skipForBounds = false;
 
-                // Only include closed polylines (perimeter/pockets)
-                if ((entity.type === 'LWPOLYLINE' || entity.type === 'POLYLINE') && entity.closed) {
-                    return true;
-                }
-
-                // Filter out loose LINE/ARC entities (construction geometry)
                 if (entity.type === 'LINE' || entity.type === 'ARC') {
-                    console.log(`  Filtered out isolated ${entity.type} ${idx} (construction geometry - not part of closed contour)`);
-                    return false;
+                    // Check if this is an isolated construction entity (very large)
+                    let isConstruction = false;
+
+                    if (entity.type === 'LINE' && entity.vertices.length === 2) {
+                        const dx = entity.vertices[1].x - entity.vertices[0].x;
+                        const dy = entity.vertices[1].y - entity.vertices[0].y;
+                        const length = Math.sqrt(dx * dx + dy * dy);
+                        if (length > 12.0) {  // Suspiciously long isolated line
+                            isConstruction = true;
+                            console.log(`  Skipping LINE ${idx} for bounds (${length.toFixed(1)}" long, likely construction)`);
+                        }
+                    } else if (entity.type === 'ARC' && entity.radius > 3.0) {
+                        isConstruction = true;
+                        console.log(`  Skipping ARC ${idx} for bounds (${entity.radius.toFixed(1)}" radius, likely construction)`);
+                    }
+
+                    skipForBounds = isConstruction;
                 }
 
-                // Include other types (SPLINE, etc.) - rare but handle gracefully
-                return true;
-            });
-
-            console.log(`Calculating bounds from ${filteredEntities.length}/${entities.length} entities (filtered ${entities.length - filteredEntities.length} construction entities)...`);
-            filteredEntities.forEach((entity, idx) => {
+                if (skipForBounds) {
+                    return;  // Skip this entity for bounds calculation
+                }
                 let entityMinX = Infinity, entityMaxX = -Infinity;
                 let entityMinY = Infinity, entityMaxY = -Infinity;
 
@@ -975,12 +980,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 minY = 0; maxY = 10;
             }
 
-            console.log(`Manual parse: ${filteredEntities.length}/${entities.length} entities (filtered ${entities.length - filteredEntities.length} construction)`);
+            console.log(`Manual parse: ${entities.length} entities`);
             console.log(`Bounds: X=[${minX.toFixed(3)}, ${maxX.toFixed(3)}], Y=[${minY.toFixed(3)}, ${maxY.toFixed(3)}]`);
 
             dxfGeometry = {
                 minX, maxX, minY, maxY,
-                entities: filteredEntities  // Use filtered entities
+                entities: entities  // Use all entities for rendering
             };
             dxfBounds = { 
                 width: maxX - minX, 
