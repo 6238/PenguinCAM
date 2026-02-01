@@ -1996,20 +1996,20 @@ class FRCPostProcessor:
 
                 gcode.append(f"(Tab {tab_order_idx + 1} removal - #{removal_num} in sequence)")
 
-                # Rapid to safe height (should already be there, but be safe)
-                gcode.append(f"G0 Z{self.safe_height:.4f}")
+                # Rapid to retract height (like moving between holes)
+                gcode.append(f"G0 Z{self.retract_height:.4f}")
 
                 # Rapid to position just before the tab (in the kerf)
                 gcode.append(f"G0 X{start_x:.4f} Y{start_y:.4f}  ; Move to tab start (in kerf)")
 
-                # Plunge to cut depth in empty kerf (safe - no material)
-                gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.plunge_rate}  ; Plunge in kerf")
+                # Plunge to cut depth in empty kerf at approach rate (faster - no material)
+                gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.approach_rate}  ; Plunge in kerf")
 
                 # Cut across the tab at contour feed rate
                 gcode.append(f"G1 X{end_x:.4f} Y{end_y:.4f} F{self.feed_rate}  ; Cut through tab")
 
                 # Retract after each tab
-                gcode.append(f"G0 Z{self.safe_height:.4f}  ; Retract")
+                gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
                 gcode.append("")
 
         return gcode
