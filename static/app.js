@@ -889,8 +889,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 maxY = Math.max(maxY, y);
             }
 
-            console.log(`Calculating bounds from ${entities.length} entities...`);
-            entities.forEach((entity, idx) => {
+            // Filter to match backend behavior: only closed contours + circles
+            // Backend (frc_cam_postprocessor.py) only processes closed polylines and circles
+            // Isolated LINE/ARC entities are construction geometry and should be ignored
+            const filteredEntities = entities.filter((entity, idx) => {
+                // Always include circles (holes/pockets)
+                if (entity.type === 'CIRCLE') {
+                    return true;
+                }
+
+                // Only include closed polylines (perimeter/pockets)
+                if ((entity.type === 'LWPOLYLINE' || entity.type === 'POLYLINE') && entity.closed) {
+                    return true;
+                }
+
+                // Filter out loose LINE/ARC entities (construction geometry)
+                if (entity.type === 'LINE' || entity.type === 'ARC') {
+                    console.log(`  Filtered out isolated ${entity.type} ${idx} (construction geometry - not part of closed contour)`);
+                    return false;
+                }
+
+                // Include other types (SPLINE, etc.) - rare but handle gracefully
+                return true;
+            });
+
+            console.log(`Calculating bounds from ${filteredEntities.length}/${entities.length} entities (filtered ${entities.length - filteredEntities.length} construction entities)...`);
+            filteredEntities.forEach((entity, idx) => {
                 let entityMinX = Infinity, entityMaxX = -Infinity;
                 let entityMinY = Infinity, entityMaxY = -Infinity;
 
@@ -944,19 +968,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
             console.log(`After bounds calculation: X=[${minX.toFixed(3)}, ${maxX.toFixed(3)}], Y=[${minY.toFixed(3)}, ${maxY.toFixed(3)}]`);
-            
+
             if (minX === Infinity) {
                 console.warn('⚠️ No valid geometry found, using fallback 10×10 bounds');
                 minX = 0; maxX = 10;
                 minY = 0; maxY = 10;
             }
-            
-            console.log(`Manual parse: ${entities.length} entities`);
+
+            console.log(`Manual parse: ${filteredEntities.length}/${entities.length} entities (filtered ${entities.length - filteredEntities.length} construction)`);
             console.log(`Bounds: X=[${minX.toFixed(3)}, ${maxX.toFixed(3)}], Y=[${minY.toFixed(3)}, ${maxY.toFixed(3)}]`);
-            
-            dxfGeometry = { 
+
+            dxfGeometry = {
                 minX, maxX, minY, maxY,
-                entities: entities
+                entities: filteredEntities  // Use filtered entities
             };
             dxfBounds = { 
                 width: maxX - minX, 
@@ -996,7 +1020,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 return {
                     type: 'LWPOLYLINE',
                     vertices: data.vertices || [],
-                    shape: data.closed || false  // 'shape' property is used by renderer to close path
+                    closed: data.closed || false,  // Used to filter construction geometry
+                    shape: data.closed || false  // Used by renderer to close path
                 };
             } else if (type === 'SPLINE') {
                 return {
