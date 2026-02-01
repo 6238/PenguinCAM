@@ -21,11 +21,11 @@ TEAM_6238_DEFAULTS = {
         'name': 'Popcorn Penguins'
     },
     'machine': {
-        'name': 'Avid CNC Pro4896',
-        'manufacturer': 'Avid CNC',
-        'controller': 'Mach4',
-        'dimensions': {'x_max': 48.0, 'y_max': 96.0, 'z_max': 8.0},
-        'park_position': {'x': 0.5, 'y': 23.5},
+        'name': 'Generic CNC Router',
+        'manufacturer': 'Generic',
+        'controller': 'Generic',
+        'dimensions': {'x_max': 24.0, 'y_max': 24.0, 'z_max': 8.0},
+        'park_position': {'x': 0.5, 'y': 0.5},
         'standard_work_offset': 'G54',
         'tube_jig_work_offset': 'G55',
         'coolant': 'Air'

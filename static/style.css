@@ -502,6 +502,12 @@
             color: var(--error);
         }
 
+        .alert.info {
+            background: rgba(52, 152, 219, 0.1);
+            border: 1px solid #3498db;
+            color: #2980b9;
+        }
+
         .alert-title {
             font-weight: 600;
             margin-bottom: 0.5rem;

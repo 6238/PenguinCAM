@@ -421,7 +421,8 @@ def index():
                          drive_enabled=drive_enabled,
                          default_tool_diameter=default_tool_diameter,
                          machine_x_max=machine_x_max,
-                         machine_y_max=machine_y_max)
+                         machine_y_max=machine_y_max,
+                         using_default_config=session.get('using_default_config', False))
 
 @app.route('/process', methods=['POST'])
 @limiter.limit("10 per minute")  # Strict limit - CPU intensive operation
@@ -959,11 +960,13 @@ def onshape_oauth_callback():
             log(f"✅ Team config loaded: {team_config.team_name} (#{team_config.team_number})")
             session['team_config_data'] = team_config._data
             session['team_config'] = team_config.to_dict()
+            session['using_default_config'] = False
         else:
             log("⚠️  No team config found - using defaults")
             team_config = TeamConfig()
             session['team_config_data'] = {}
             session['team_config'] = team_config.to_dict()
+            session['using_default_config'] = True
 
         log("="*60 + "\n")
 
@@ -1190,7 +1193,8 @@ def onshape_import():
                                      'issue': 'Onshape extension not substituting variables',
                                      'received_params': str(raw_params),
                                      'workaround': 'Export DXF manually from Onshape and upload it here'
-                                 }), 400
+                                 },
+                                 using_default_config=session.get('using_default_config', False)), 400
 
         if not all([document_id, workspace_id, element_id]):
             return jsonify({
@@ -1291,7 +1295,8 @@ def onshape_import():
                                              'workspace_id': workspace_id,
                                              'element_id': element_id
                                          },
-                                         from_onshape=True)
+                                         from_onshape=True,
+                                         using_default_config=session.get('using_default_config', False))
 
                 # This now returns (face_id, body_id, part_name, normal)
                 # Pass body_id if user selected a specific part in Onshape, and cached data to avoid duplicate API call
@@ -1314,7 +1319,8 @@ def onshape_import():
                                              'workspaceId': workspace_id,
                                              'elementId': element_id,
                                              'bodies_found': face_count if faces_data else 0
-                                         }), 400
+                                         },
+                                         using_default_config=session.get('using_default_config', False)), 400
 
                 log(f"Auto-selected face: {face_id} from part: {part_name_from_body}")
 
@@ -1416,7 +1422,8 @@ def onshape_import():
                              suggested_filename=suggested_filename or '',
                              machine_x_max=machine_x_max,
                              machine_y_max=machine_y_max,
-                             default_tool_diameter=default_tool_diameter)
+                             default_tool_diameter=default_tool_diameter,
+                             using_default_config=session.get('using_default_config', False))
         
     except Exception as e:
         return jsonify({

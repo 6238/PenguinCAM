@@ -179,6 +179,11 @@
                         <div>Processing your file...</div>
                     </div>
 
+                    <div class="alert info" id="configInfoAlert" style="display: none;">
+                        <div class="alert-title">ℹ️ Using Default Configuration</div>
+                        <div>No team-specific PenguinCAM-config.yaml found. Using default settings (24"x24" machine). To customize for your CNC, add a PenguinCAM-config.yaml file to your Onshape documents.</div>
+                    </div>
+
                     <div class="alert error" id="errorAlert">
                         <div class="alert-title">Error</div>
                         <div id="errorMessage"></div>
@@ -303,7 +308,8 @@
             errorMessage: '{{ error_message if error_message else "" }}',
             dxfFile: '{{ dxf_file if dxf_file else "" }}',
             fromOnshape: {{ 'true' if from_onshape else 'false' }},
-            suggestedFilename: '{{ suggested_filename if suggested_filename else "" }}'
+            suggestedFilename: '{{ suggested_filename if suggested_filename else "" }}',
+            usingDefaultConfig: {{ 'true' if using_default_config else 'false' }}
         };
 
         // Machine configuration for bounds checking

@@ -1919,6 +1919,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 return; // Don't try to load DXF
             }
 
+            // Show info alert if using default config
+            const usingDefaultConfig = window.ONSHAPE_DATA?.usingDefaultConfig || false;
+            if (usingDefaultConfig) {
+                const configInfoAlert = document.getElementById('configInfoAlert');
+                if (configInfoAlert) {
+                    configInfoAlert.style.display = 'block';
+                }
+            }
+
             // Auto-load DXF if coming from Onshape
             const dxfFile = window.ONSHAPE_DATA?.dxfFile || '';
             const fromOnshape = window.ONSHAPE_DATA?.fromOnshape || false;

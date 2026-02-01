@@ -260,7 +260,7 @@ class TestTubeFacingGeneration(unittest.TestCase):
             self._generate_tube_gcode_to_file(output_path, '1x1')
             with open(output_path) as f:
                 content = f.read()
-            self.assertIn("G53 G0 X0.5 Y23.5", content)
+            self.assertIn("G53 G0 X0.5 Y0.5", content)  # Default generic parking position
             self.assertNotIn("G0 X0 Y-2.0", content)  # Old work coord parking
         finally:
             os.unlink(output_path)
