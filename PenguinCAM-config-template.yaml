@@ -121,7 +121,7 @@ materials:
     ramp_angle: 20.0                # Ramp angle in degrees
     ramp_start_clearance: 0.150     # Clearance above material to start ramping (inches)
     stepover_percentage: 0.65       # Radial stepover as fraction of tool diameter
-    helix_radius_multiplier: 0.75   # Helix entry radius as fraction of tool diameter
+    helix_radius_multiplier: 0.75   # Helix entry radius as fraction of tool radius
 
     # Multi-pass parameters
     max_slotting_depth: 0.4         # Maximum depth per pass for perimeter slotting (inches)

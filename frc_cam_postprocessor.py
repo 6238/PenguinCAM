@@ -60,7 +60,7 @@ MATERIAL_PRESETS = {
         'ramp_angle': 20.0,       # Ramp angle in degrees
         'ramp_start_clearance': 0.150,  # Clearance above material to start ramping (inches)
         'stepover_percentage': 0.65,    # Radial stepover as fraction of tool diameter (65% for plywood)
-        'helix_radius_multiplier': 0.75, # Helix entry radius as fraction of tool diameter
+        'helix_radius_multiplier': 0.75, # Helix entry radius as fraction of tool radius
         'max_slotting_depth': 0.4,      # Maximum depth per pass for perimeter slotting (inches)
         'tab_width': 0.25,        # Tab width (inches)
         'tab_height': 0.15,        # Tab height (inches)
@@ -75,7 +75,7 @@ MATERIAL_PRESETS = {
         'ramp_angle': 4.0,        # Ramp angle in degrees
         'ramp_start_clearance': 0.050,  # Clearance above material to start ramping (inches)
         'stepover_percentage': 0.25,    # Radial stepover as fraction of tool diameter (25% conservative for aluminum)
-        'helix_radius_multiplier': 0.5,  # Helix entry radius as fraction of tool diameter (conservative for aluminum)
+        'helix_radius_multiplier': 0.5,  # Helix entry radius as fraction of tool radius (conservative for aluminum)
         'max_slotting_depth': 0.2,      # Maximum depth per pass for perimeter slotting (inches)
         'tab_width': 0.25,        # Tab width (inches) - same as plywood
         'tab_height': 0.15,       # Tab height (inches) - same as plywood
@@ -90,7 +90,7 @@ MATERIAL_PRESETS = {
         'ramp_angle': 20.0,       # Same as plywood
         'ramp_start_clearance': 0.100,  # Clearance above material to start ramping (inches)
         'stepover_percentage': 0.55,    # Radial stepover as fraction of tool diameter (55% moderate for polycarbonate)
-        'helix_radius_multiplier': 0.75, # Helix entry radius as fraction of tool diameter
+        'helix_radius_multiplier': 0.75, # Helix entry radius as fraction of tool radius
         'max_slotting_depth': 0.25,     # Maximum depth per pass for perimeter slotting (inches)
         'tab_width': 0.25,        # Tab width (inches) - same as plywood
         'tab_height': 0.15,        # Tab height (inches) - same as plywood
@@ -172,7 +172,7 @@ class FRCPostProcessor:
 
         # Helix entry radius multiplier (applied to tool diameter)
         # Overridden by material presets
-        self.helix_radius_multiplier = 0.75  # Default 75% of tool diameter
+        self.helix_radius_multiplier = 0.75  # Default 75% of tool radius
 
         # Error tracking
         self.errors = []  # Collect validation errors during processing
@@ -1572,7 +1572,7 @@ class FRCPostProcessor:
         entry_y = offset_poly.centroid.y
 
         # Calculate helical entry parameters
-        helix_radius = self.tool_diameter * self.helix_radius_multiplier  # Helix radius from material preset
+        helix_radius = self.tool_radius * self.helix_radius_multiplier  # Helix radius from material preset
         ramp_start_height = self.material_top + self.ramp_start_clearance
         num_helical_passes, depth_per_pass = self._calculate_helical_passes(helix_radius, ramp_start_height=ramp_start_height)
 
@@ -1805,7 +1805,7 @@ class FRCPostProcessor:
 
                     if remaining_depth > 0.001:  # Only if significant depth remains
                         # Use small helical loop instead of straight plunge
-                        helix_radius = self.tool_diameter * self.helix_radius_multiplier  # Helix radius from material preset
+                        helix_radius = self.tool_radius * self.helix_radius_multiplier  # Helix radius from material preset
                         helix_center_x = current_pos[0]
                         helix_center_y = current_pos[1]
 
