@@ -891,23 +891,56 @@ document.addEventListener('DOMContentLoaded', () => {
 
             console.log(`Calculating bounds from ${entities.length} entities...`);
             entities.forEach((entity, idx) => {
+                let entityMinX = Infinity, entityMaxX = -Infinity;
+                let entityMinY = Infinity, entityMaxY = -Infinity;
+
                 if (entity.type === 'CIRCLE') {
-                    if (idx < 3) console.log(`  Entity ${idx}: CIRCLE at (${entity.center.x}, ${entity.center.y}) r=${entity.radius}`);
-                    updateBounds(entity.center.x - entity.radius, entity.center.y - entity.radius);
-                    updateBounds(entity.center.x + entity.radius, entity.center.y + entity.radius);
+                    entityMinX = entity.center.x - entity.radius;
+                    entityMaxX = entity.center.x + entity.radius;
+                    entityMinY = entity.center.y - entity.radius;
+                    entityMaxY = entity.center.y + entity.radius;
+                    updateBounds(entityMinX, entityMinY);
+                    updateBounds(entityMaxX, entityMaxY);
                 } else if (entity.type === 'ARC') {
-                    if (idx < 3) console.log(`  Entity ${idx}: ARC at (${entity.center.x}, ${entity.center.y}) r=${entity.radius}`);
-                    updateBounds(entity.center.x - entity.radius, entity.center.y - entity.radius);
-                    updateBounds(entity.center.x + entity.radius, entity.center.y + entity.radius);
+                    entityMinX = entity.center.x - entity.radius;
+                    entityMaxX = entity.center.x + entity.radius;
+                    entityMinY = entity.center.y - entity.radius;
+                    entityMaxY = entity.center.y + entity.radius;
+                    updateBounds(entityMinX, entityMinY);
+                    updateBounds(entityMaxX, entityMaxY);
                 } else if (entity.type === 'LINE') {
-                    if (idx < 3) console.log(`  Entity ${idx}: LINE with ${entity.vertices.length} vertices`);
-                    entity.vertices.forEach(v => updateBounds(v.x, v.y));
+                    entity.vertices.forEach(v => {
+                        entityMinX = Math.min(entityMinX, v.x);
+                        entityMaxX = Math.max(entityMaxX, v.x);
+                        entityMinY = Math.min(entityMinY, v.y);
+                        entityMaxY = Math.max(entityMaxY, v.y);
+                        updateBounds(v.x, v.y);
+                    });
                 } else if (entity.type === 'LWPOLYLINE' || entity.type === 'POLYLINE') {
-                    if (idx < 3) console.log(`  Entity ${idx}: ${entity.type} with ${entity.vertices.length} vertices`);
-                    entity.vertices.forEach(v => updateBounds(v.x, v.y));
+                    entity.vertices.forEach(v => {
+                        entityMinX = Math.min(entityMinX, v.x);
+                        entityMaxX = Math.max(entityMaxX, v.x);
+                        entityMinY = Math.min(entityMinY, v.y);
+                        entityMaxY = Math.max(entityMaxY, v.y);
+                        updateBounds(v.x, v.y);
+                    });
                 } else if (entity.type === 'SPLINE' && entity.controlPoints) {
-                    if (idx < 3) console.log(`  Entity ${idx}: SPLINE with ${entity.controlPoints.length} control points`);
-                    entity.controlPoints.forEach(p => updateBounds(p.x, p.y));
+                    entity.controlPoints.forEach(p => {
+                        entityMinX = Math.min(entityMinX, p.x);
+                        entityMaxX = Math.max(entityMaxX, p.x);
+                        entityMinY = Math.min(entityMinY, p.y);
+                        entityMaxY = Math.max(entityMaxY, p.y);
+                        updateBounds(p.x, p.y);
+                    });
+                }
+
+                // Log entities that extend beyond expected bounds
+                if (entityMinX < -27 || entityMaxX > -9 || entityMinY < -1 || entityMaxY > 8) {
+                    console.log(`  ⚠️ Entity ${idx} (${entity.type}) extends bounds significantly:`);
+                    console.log(`     X=[${entityMinX.toFixed(3)}, ${entityMaxX.toFixed(3)}], Y=[${entityMinY.toFixed(3)}, ${entityMaxY.toFixed(3)}]`);
+                    if (entity.type === 'CIRCLE' || entity.type === 'ARC') {
+                        console.log(`     Center: (${entity.center.x.toFixed(3)}, ${entity.center.y.toFixed(3)}), Radius: ${entity.radius.toFixed(3)}`);
+                    }
                 }
             });
             console.log(`After bounds calculation: X=[${minX.toFixed(3)}, ${maxX.toFixed(3)}], Y=[${minY.toFixed(3)}, ${maxY.toFixed(3)}]`);
