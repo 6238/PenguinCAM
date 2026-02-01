@@ -355,29 +355,44 @@ class FRCPostProcessor:
         lines = list(msp.query('LINE'))
         arcs = list(msp.query('ARC'))
         splines = list(msp.query('SPLINE'))
-        
-        if lines or arcs or splines:
-            print(f"Found {len(lines)} lines, {len(arcs)} arcs, {len(splines)} splines - attempting to form closed paths...")
-            closed_paths = self._chain_entities_to_paths(lines, arcs, splines)
+
+        # Also collect unclosed LWPOLYLINEs - they may be part of a perimeter that needs stitching
+        unclosed_lwpolylines = []
+        for entity in msp.query('LWPOLYLINE'):
+            if not entity.closed and len(list(entity.get_points('xy'))) > 1:
+                unclosed_lwpolylines.append(entity)
+
+        if lines or arcs or splines or unclosed_lwpolylines:
+            print(f"Found {len(lines)} lines, {len(arcs)} arcs, {len(splines)} splines, {len(unclosed_lwpolylines)} unclosed polylines - attempting to form closed paths...")
+            closed_paths = self._chain_entities_to_paths(lines, arcs, splines, unclosed_lwpolylines)
             self.polylines.extend(closed_paths)
         
         print(f"Found {len(self.circles)} circles and {len(self.polylines)} closed paths")
     
-    def _chain_entities_to_paths(self, lines, arcs, splines):
+    def _chain_entities_to_paths(self, lines, arcs, splines, unclosed_polylines=None):
         """
-        Chain individual LINE, ARC, and SPLINE entities into closed paths.
+        Chain individual LINE, ARC, SPLINE, and unclosed LWPOLYLINE entities into closed paths.
         This handles DXF exports from Onshape and other CAD programs that don't use polylines.
         """
+        if unclosed_polylines is None:
+            unclosed_polylines = []
+
         # First, try the graph-based approach for exact geometry
         print("  Attempting to connect segments into exact paths...")
-        exact_paths = self._connect_segments_graph_based(lines, arcs, splines)
+        exact_paths = self._connect_segments_graph_based(lines, arcs, splines, unclosed_polylines)
         if exact_paths:
             return exact_paths
-        
+
         # Fallback: Convert all entities to linestrings and try merge
         print("  Falling back to linestring merge...")
         all_linestrings = []
-        
+
+        # Add unclosed LWPOLYLINE entities
+        for lwpoly in unclosed_polylines:
+            points = [(p[0], p[1]) for p in lwpoly.get_points('xy')]
+            if len(points) >= 2:
+                all_linestrings.append(LineString(points))
+
         # Add LINE entities
         for line in lines:
             start = (line.dxf.start.x, line.dxf.start.y)
@@ -456,27 +471,36 @@ class FRCPostProcessor:
             print(f"Warning: Could not automatically chain entities into paths: {e}")
             return []
     
-    def _connect_segments_graph_based(self, lines, arcs, splines):
+    def _connect_segments_graph_based(self, lines, arcs, splines, unclosed_polylines=None):
         """
         Build a connectivity graph and find closed cycles.
         This preserves exact geometry including curves.
         """
+        if unclosed_polylines is None:
+            unclosed_polylines = []
+
         # Build list of all segments with their endpoints
         segments = []
-        
+
+        # Add unclosed LWPOLYLINE entities (treat as multi-point path segment)
+        for lwpoly in unclosed_polylines:
+            points = [(p[0], p[1]) for p in lwpoly.get_points('xy')]
+            if len(points) >= 2:
+                segments.append({'type': 'polyline', 'points': points, 'start': points[0], 'end': points[-1]})
+
         # Add lines
         for line in lines:
             start = (line.dxf.start.x, line.dxf.start.y)
             end = (line.dxf.end.x, line.dxf.end.y)
             points = [start, end]
             segments.append({'type': 'line', 'points': points, 'start': start, 'end': end})
-        
+
         # Add arcs (sampled)
         for arc in arcs:
             points = self._sample_arc(arc, num_points=20)
             if len(points) >= 2:
                 segments.append({'type': 'arc', 'points': points, 'start': points[0], 'end': points[-1]})
-        
+
         # Add splines (sampled)
         for spline in splines:
             points = self._sample_spline(spline, num_points=30)
@@ -963,7 +987,29 @@ class FRCPostProcessor:
         
         # Find the largest polygon (perimeter)
         polygons.sort(key=lambda x: x[0].area, reverse=True)
-        self.perimeter = polygons[0][1]  # Get the original points
+        candidate_perimeter = polygons[0][1]  # Get the original points
+        candidate_poly = polygons[0][0]
+
+        # Validate that the perimeter is reasonable
+        # If we have holes, the perimeter should be significantly larger than the bounding box of holes
+        if hasattr(self, 'circles') and self.circles:
+            xs = [c['center'][0] for c in self.circles]
+            ys = [c['center'][1] for c in self.circles]
+            bbox_width = max(xs) - min(xs)
+            bbox_height = max(ys) - min(ys)
+            bbox_area = bbox_width * bbox_height
+
+            # If the candidate perimeter is < 10% of the bounding box area, it's probably not the real perimeter
+            perimeter_area = candidate_poly.area
+            if perimeter_area < 0.1 * bbox_area:
+                error_msg = f"Perimeter too small ({perimeter_area:.2f} sq in) compared to part bounding box ({bbox_area:.2f} sq in). DXF may be missing perimeter outline geometry."
+                print(f"\n❌ ERROR: {error_msg}")
+                self.errors.append(error_msg)
+                self.perimeter = None
+                self.pockets = []
+                return
+
+        self.perimeter = candidate_perimeter
         self.pockets = [p[1] for p in polygons[1:]]
 
         print(f"\nIdentified perimeter and {len(self.pockets)} pockets")
