@@ -1525,9 +1525,6 @@ class FRCPostProcessor:
         entry_x = offset_poly.centroid.x
         entry_y = offset_poly.centroid.y
 
-        # Detect if pocket is circular
-        is_circular = self._is_pocket_circular(pocket_points)
-
         # Calculate helical entry parameters
         helix_radius = self.tool_diameter * self.helix_radius_multiplier  # Helix radius from material preset
         ramp_start_height = self.material_top + self.ramp_start_clearance
@@ -1551,108 +1548,50 @@ class FRCPostProcessor:
         # Return to center after helix
         gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.feed_rate}  ; Return to pocket center")
 
-        # Spiral outward from center to perimeter
-        # Calculate maximum distance from center to any perimeter point
-        max_radius = 0
-        for point in offset_points:
-            dist = self._distance_2d(point, (entry_x, entry_y))
-            max_radius = max(max_radius, dist)
-
-        # Calculate spiral passes (similar to hole clearing)
+        # Calculate stepover for pocket clearing
         stepover = self.tool_diameter * self.stepover_percentage
-        num_passes = max(1, int(math.ceil(max_radius / stepover)))
 
-        if is_circular:
-            # CIRCULAR POCKET: Use efficient Archimedean spiral
-            gcode.append(f"(Circular pocket detected - using Archimedean spiral clearing)")
+        # Always use contour-parallel clearing for reliable material removal
+        # (Previous circular spiral optimization left material in slot-shaped pockets)
+        gcode.append(f"(Pocket clearing - using contour-parallel stepover passes)")
 
-            # Calculate inscribed radius (minimum distance from center to any EDGE)
-            # This prevents circular spiral from cutting outside pocket sides
-            from shapely.geometry import LineString, Point
-            center_point = Point(entry_x, entry_y)
+        # Generate inward offsets from perimeter to center
+        current_offset_distance = -self.tool_radius  # Start from tool-compensated perimeter
+        contours = []
 
-            min_edge_distance = float('inf')
-            for i in range(len(offset_points)):
-                # Create line segment for each edge
-                p1 = offset_points[i]
-                p2 = offset_points[(i + 1) % len(offset_points)]
-                edge = LineString([p1, p2])
+        # Calculate how many offset passes we need
+        # Find the maximum inset we can do (when pocket becomes too small)
+        test_offset = current_offset_distance
+        while True:
+            test_offset -= stepover
+            test_poly = pocket_poly.buffer(test_offset)
+            if test_poly.is_empty or test_poly.area < 0.001:
+                break
+            if not hasattr(test_poly, 'exterior'):
+                break
+            contours.append(test_poly)
 
-                # Calculate perpendicular distance from center to this edge
-                edge_dist = center_point.distance(edge)
-                min_edge_distance = min(min_edge_distance, edge_dist)
+        gcode.append(f"(Contour-parallel clearing: {len(contours)} offset passes)")
 
-            # Use inscribed radius (not circumscribed radius to vertices!)
-            max_radius = min_edge_distance
+        # Cut contours from outside-in (perimeter to center)
+        for idx, contour_poly in enumerate(reversed(contours)):
+            if hasattr(contour_poly, 'exterior'):
+                contour_points = list(contour_poly.exterior.coords)[:-1]
 
-            # Archimedean spiral: r = b*θ where b = stepover/(2π)
-            spiral_constant = stepover / (2 * math.pi)
+                gcode.append(f"(Contour pass {idx + 1}/{len(contours)})")
 
-            # Calculate total angle needed to reach max_radius
-            if spiral_constant > 0:
-                total_angle = max_radius / spiral_constant
-            else:
-                total_angle = 0
+                # Move to start of contour
+                gcode.append(f"G1 X{contour_points[0][0]:.4f} Y{contour_points[0][1]:.4f} F{self.feed_rate}")
 
-            # Generate spiral points
-            angle_increment = math.radians(10)  # 10 degrees per segment
-            num_points = int(math.ceil(total_angle / angle_increment))
+                # Cut the contour
+                for point in contour_points[1:]:
+                    gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
 
-            gcode.append(f"(Archimedean spiral: {num_points} points to radius {max_radius:.4f}\")")
+                # Close the contour
+                gcode.append(f"G1 X{contour_points[0][0]:.4f} Y{contour_points[0][1]:.4f} F{self.feed_rate}")
 
-            # Cut continuous spiral from center to max_radius
-            # Use positive angle for counter-clockwise spiral (climb milling on inside feature)
-            for i in range(num_points):
-                current_angle = i * angle_increment  # Positive for counter-clockwise
-                current_radius = spiral_constant * current_angle
-
-                # Convert polar coordinates to Cartesian
-                x = entry_x + current_radius * math.cos(current_angle)
-                y = entry_y + current_radius * math.sin(current_angle)
-
-                gcode.append(f"G1 X{x:.4f} Y{y:.4f} F{self.feed_rate}")
-
-        else:
-            # NON-CIRCULAR POCKET: Use contour-parallel offset clearing
-            gcode.append(f"(Non-circular pocket detected - using contour-parallel clearing)")
-
-            # Generate inward offsets from perimeter to center
-            current_offset_distance = -self.tool_radius  # Start from tool-compensated perimeter
-            contours = []
-
-            # Calculate how many offset passes we need
-            # Find the maximum inset we can do (when pocket becomes too small)
-            test_offset = current_offset_distance
-            while True:
-                test_offset -= stepover
-                test_poly = pocket_poly.buffer(test_offset)
-                if test_poly.is_empty or test_poly.area < 0.001:
-                    break
-                if not hasattr(test_poly, 'exterior'):
-                    break
-                contours.append(test_poly)
-
-            gcode.append(f"(Contour-parallel clearing: {len(contours)} offset passes)")
-
-            # Cut contours from outside-in (perimeter to center)
-            for idx, contour_poly in enumerate(reversed(contours)):
-                if hasattr(contour_poly, 'exterior'):
-                    contour_points = list(contour_poly.exterior.coords)[:-1]
-
-                    gcode.append(f"(Contour pass {idx + 1}/{len(contours)})")
-
-                    # Move to start of contour
-                    gcode.append(f"G1 X{contour_points[0][0]:.4f} Y{contour_points[0][1]:.4f} F{self.feed_rate}")
-
-                    # Cut the contour
-                    for point in contour_points[1:]:
-                        gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
-
-                    # Close the contour
-                    gcode.append(f"G1 X{contour_points[0][0]:.4f} Y{contour_points[0][1]:.4f} F{self.feed_rate}")
-
-                    # Return to center between passes for safety
-                    gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.feed_rate}")
+                # Return to center between passes for safety
+                gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.feed_rate}")
 
         # Final pass - cut actual perimeter at exact size
         gcode.append(f"(Final pass: cut exact perimeter)")
