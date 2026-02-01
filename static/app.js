@@ -786,24 +786,22 @@ document.addEventListener('DOMContentLoaded', () => {
         // Fallback manual DXF parser (simple but works for basic shapes)
         function parseDxfManually(dxfContent) {
             const lines = dxfContent.split('\n');
-            let minX = Infinity, maxX = -Infinity;
-            let minY = Infinity, maxY = -Infinity;
-            
+
             const entities = [];
             let inEntitiesSection = false;
             let currentEntity = null;
             let entityData = {};
-            
+
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
-                
+
                 if (line === 'ENTITIES') {
                     inEntitiesSection = true;
                     continue;
                 }
                 if (line === 'ENDSEC' && inEntitiesSection) break;
                 if (!inEntitiesSection) continue;
-                
+
                 // Detect entity type
                 if (line === 'CIRCLE' || line === 'ARC' || line === 'LINE' || line === 'LWPOLYLINE' || line === 'SPLINE') {
                     if (currentEntity) {
@@ -818,8 +816,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         entityData.controlPoints = [];
                     }
                 }
-                
-                // Parse coordinates
+
+                // Parse coordinates (store in entity data, don't update bounds yet)
                 if (line === '10' && i + 1 < lines.length) {
                     const val = parseFloat(lines[i + 1]);
                     if (!isNaN(val) && Math.abs(val) < 1e10) {
@@ -832,8 +830,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         } else if (currentEntity === 'SPLINE') {
                             entityData.tempX = val;
                         }
-                        minX = Math.min(minX, val);
-                        maxX = Math.max(maxX, val);
                     }
                 } else if (line === '20' && i + 1 < lines.length) {
                     const val = parseFloat(lines[i + 1]);
@@ -849,19 +845,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             entityData.controlPoints.push({ x: entityData.tempX, y: val });
                             delete entityData.tempX;
                         }
-                        minY = Math.min(minY, val);
-                        maxY = Math.max(maxY, val);
                     }
                 } else if (line === '40' && i + 1 < lines.length) {
                     const val = parseFloat(lines[i + 1]);
                     if (!isNaN(val) && val < 1e10) {
                         entityData.radius = val;
-                        if (entityData.centerX !== undefined) {
-                            minX = Math.min(minX, entityData.centerX - val);
-                            maxX = Math.max(maxX, entityData.centerX + val);
-                            minY = Math.min(minY, entityData.centerY - val);
-                            maxY = Math.max(maxY, entityData.centerY + val);
-                        }
                     }
                 } else if (line.trim() === '50' && i + 1 < lines.length && currentEntity === 'ARC') {
                     entityData.startAngle = parseFloat(lines[i + 1].trim());
@@ -871,15 +859,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     const val = parseFloat(lines[i + 1]);
                     if (!isNaN(val) && Math.abs(val) < 1e10) {
                         entityData.x2 = val;
-                        minX = Math.min(minX, val);
-                        maxX = Math.max(maxX, val);
                     }
                 } else if (line === '21' && i + 1 < lines.length) {
                     const val = parseFloat(lines[i + 1]);
                     if (!isNaN(val) && Math.abs(val) < 1e10) {
                         entityData.y2 = val;
-                        minY = Math.min(minY, val);
-                        maxY = Math.max(maxY, val);
                     }
                 } else if (line === '70' && i + 1 < lines.length && currentEntity === 'LWPOLYLINE') {
                     // Group code 70 contains polyline flags; bit 0 (value & 1) indicates closed
@@ -889,10 +873,39 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             }
-            
+
             if (currentEntity) {
                 entities.push(createEntity(currentEntity, entityData));
             }
+
+            // Calculate bounds from rendered entities only (not raw DXF coordinates)
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+
+            function updateBounds(x, y) {
+                minX = Math.min(minX, x);
+                maxX = Math.max(maxX, x);
+                minY = Math.min(minY, y);
+                maxY = Math.max(maxY, y);
+            }
+
+            entities.forEach(entity => {
+                if (entity.type === 'CIRCLE') {
+                    updateBounds(entity.center.x - entity.radius, entity.center.y - entity.radius);
+                    updateBounds(entity.center.x + entity.radius, entity.center.y + entity.radius);
+                } else if (entity.type === 'ARC') {
+                    updateBounds(entity.center.x - entity.radius, entity.center.y - entity.radius);
+                    updateBounds(entity.center.x + entity.radius, entity.center.y + entity.radius);
+                } else if (entity.type === 'LINE') {
+                    entity.vertices.forEach(v => updateBounds(v.x, v.y));
+                } else if (entity.type === 'LWPOLYLINE' || entity.type === 'POLYLINE') {
+                    entity.vertices.forEach(v => updateBounds(v.x, v.y));
+                } else if (entity.type === 'SPLINE' && entity.controlPoints) {
+                    // For splines, only use control points as rough approximation
+                    // (Actual curve may be slightly outside, but much better than including all raw coords)
+                    entity.controlPoints.forEach(p => updateBounds(p.x, p.y));
+                }
+            });
             
             if (minX === Infinity) {
                 console.warn('⚠️ No valid geometry found, using fallback 10×10 bounds');
