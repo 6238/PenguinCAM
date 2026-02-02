@@ -32,6 +32,11 @@
         window.parent.postMessage(initMessage, '*');
         console.log('Sent applicationInit:', initMessage);
 
+        // Request current selection state (in case face is already selected)
+        // Onshape will respond with a SELECTION message
+        window.parent.postMessage({ messageName: 'getSelections' }, '*');
+        console.log('Requested current selections');
+
         // Listen for messages from Onshape
         window.addEventListener('message', handleMessage);
 
