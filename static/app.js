@@ -1909,8 +1909,8 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const currentMove = toolpathMoves[moveIndex];
             const moveType = currentMove.type === 'G0' ? 'Rapid' : 'Cut';
-            document.getElementById('scrubberOperation').textContent = 
-                `${moveType}: ${currentMove.line.substring(0, 40)}`;
+            document.getElementById('scrubberOperation').textContent =
+                `${moveType}: ${currentMove.line}`;
 
             // Update tool position
             if (toolMesh) {
