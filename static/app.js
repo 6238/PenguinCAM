@@ -1500,6 +1500,99 @@ document.addEventListener('DOMContentLoaded', () => {
             renderer.render(scene, camera);
         }
 
+        /**
+         * Render DXF geometry entities as white lines on the stock top surface
+         * This shows the "cutting geometry" - the original design shapes
+         */
+        function renderDxfGeometry(scene, entities, zHeight) {
+            const dxfMaterial = new THREE.LineBasicMaterial({
+                color: 0xFFFFFF, // White for visibility
+                linewidth: 2,
+                opacity: 0.8,
+                transparent: true
+            });
+
+            entities.forEach(entity => {
+                let points = [];
+
+                switch(entity.type) {
+                    case 'LINE':
+                        // Straight line from start to end
+                        points = [
+                            new THREE.Vector3(entity.vertices[0].x, zHeight, -entity.vertices[0].y),
+                            new THREE.Vector3(entity.vertices[1].x, zHeight, -entity.vertices[1].y)
+                        ];
+                        break;
+
+                    case 'CIRCLE':
+                        // Full circle using EllipseCurve
+                        {
+                            const curve = new THREE.EllipseCurve(
+                                entity.center.x, -entity.center.y, // center X, Z (Y negated)
+                                entity.radius, entity.radius, // xRadius, yRadius
+                                0, 2 * Math.PI, // startAngle, endAngle
+                                false, // clockwise
+                                0 // rotation
+                            );
+                            const curvePoints = curve.getPoints(50);
+                            points = curvePoints.map(p => new THREE.Vector3(p.x, zHeight, p.y));
+                        }
+                        break;
+
+                    case 'ARC':
+                        // Partial arc using EllipseCurve
+                        {
+                            // Convert degrees to radians
+                            const startAngle = (entity.startAngle || 0) * Math.PI / 180;
+                            const endAngle = (entity.endAngle || 360) * Math.PI / 180;
+
+                            const curve = new THREE.EllipseCurve(
+                                entity.center.x, -entity.center.y, // center X, Z
+                                entity.radius, entity.radius, // xRadius, yRadius
+                                startAngle, endAngle, // angles in radians
+                                false, // clockwise
+                                0 // rotation
+                            );
+                            const curvePoints = curve.getPoints(50);
+                            points = curvePoints.map(p => new THREE.Vector3(p.x, zHeight, p.y));
+                        }
+                        break;
+
+                    case 'LWPOLYLINE':
+                    case 'POLYLINE':
+                        // Connected line segments through vertices
+                        points = entity.vertices.map(v =>
+                            new THREE.Vector3(v.x, zHeight, -v.y)
+                        );
+                        // Close the polyline if it's marked as closed
+                        if (entity.closed && points.length > 0) {
+                            points.push(points[0].clone());
+                        }
+                        break;
+
+                    case 'SPLINE':
+                        // Approximate spline with control points
+                        if (entity.controlPoints && entity.controlPoints.length > 1) {
+                            points = entity.controlPoints.map(p =>
+                                new THREE.Vector3(p.x, zHeight, -p.y)
+                            );
+                        }
+                        break;
+
+                    default:
+                        // Skip unsupported entity types
+                        return;
+                }
+
+                // Create and add the line to the scene
+                if (points.length >= 2) {
+                    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                    const line = new THREE.Line(geometry, dxfMaterial);
+                    scene.add(line);
+                }
+            });
+        }
+
         function visualizeGcode(gcode) {
             // Parse G-code into moves
             const lines = gcode.split('\n');
@@ -1776,6 +1869,11 @@ document.addEventListener('DOMContentLoaded', () => {
             );
             stockMesh.renderOrder = -1; // Render stock before toolpaths
             scene.add(stockMesh);
+
+            // Render DXF geometry overlay (white lines on stock top surface)
+            if (dxfGeometry && dxfGeometry.entities) {
+                renderDxfGeometry(scene, dxfGeometry.entities, materialThickness);
+            }
 
             // Create tool representation (endmill)
             const toolLength = Math.max(maxZ * 1.5, 1.0);
