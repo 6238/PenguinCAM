@@ -30,6 +30,68 @@ const appState = {
 };
 
 // ============================================================================
+// DXF Geometry Utilities
+// ============================================================================
+
+/**
+ * Check if an angle is within an arc's angular range
+ * Handles arcs that cross the 0° boundary
+ */
+function angleInArcRange(angle, startAngle, endAngle) {
+    // Normalize angles to 0-360
+    angle = ((angle % 360) + 360) % 360;
+    startAngle = ((startAngle % 360) + 360) % 360;
+    endAngle = ((endAngle % 360) + 360) % 360;
+
+    if (startAngle <= endAngle) {
+        return angle >= startAngle && angle <= endAngle;
+    } else {
+        // Arc crosses 0°
+        return angle >= startAngle || angle <= endAngle;
+    }
+}
+
+/**
+ * Calculate tight bounding box for an arc (not full circle)
+ * Returns {minX, maxX, minY, maxY}
+ */
+function calculateArcBounds(centerX, centerY, radius, startAngle, endAngle) {
+    // Start with arc endpoints
+    const startRad = startAngle * Math.PI / 180;
+    const endRad = endAngle * Math.PI / 180;
+
+    const points = [
+        { x: centerX + radius * Math.cos(startRad), y: centerY + radius * Math.sin(startRad) },
+        { x: centerX + radius * Math.cos(endRad), y: centerY + radius * Math.sin(endRad) }
+    ];
+
+    // Check if arc crosses any cardinal directions (extrema)
+    if (angleInArcRange(0, startAngle, endAngle)) {
+        points.push({ x: centerX + radius, y: centerY });  // Right (0°)
+    }
+    if (angleInArcRange(90, startAngle, endAngle)) {
+        points.push({ x: centerX, y: centerY + radius });  // Top (90°)
+    }
+    if (angleInArcRange(180, startAngle, endAngle)) {
+        points.push({ x: centerX - radius, y: centerY });  // Left (180°)
+    }
+    if (angleInArcRange(270, startAngle, endAngle)) {
+        points.push({ x: centerX, y: centerY - radius });  // Bottom (270°)
+    }
+
+    // Calculate bounds from all critical points
+    const xs = points.map(p => p.x);
+    const ys = points.map(p => p.y);
+
+    return {
+        minX: Math.min(...xs),
+        maxX: Math.max(...xs),
+        minY: Math.min(...ys),
+        maxY: Math.max(...ys)
+    };
+}
+
+// ============================================================================
 // Settings Persistence (localStorage)
 // ============================================================================
 
@@ -717,8 +779,18 @@ document.addEventListener('DOMContentLoaded', () => {
                                 updateBounds(entity.center.x + entity.radius, entity.center.y + entity.radius);
                                 break;
                             case 'ARC':
-                                updateBounds(entity.center.x - entity.radius, entity.center.y - entity.radius);
-                                updateBounds(entity.center.x + entity.radius, entity.center.y + entity.radius);
+                                // Calculate proper arc bounds (not full circle)
+                                {
+                                    const bounds = calculateArcBounds(
+                                        entity.center.x,
+                                        entity.center.y,
+                                        entity.radius,
+                                        entity.startAngle || 0,
+                                        entity.endAngle || 360
+                                    );
+                                    updateBounds(bounds.minX, bounds.minY);
+                                    updateBounds(bounds.maxX, bounds.maxY);
+                                }
                                 break;
                             case 'LINE':
                                 updateBounds(entity.vertices[0].x, entity.vertices[0].y);
@@ -931,12 +1003,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateBounds(entityMinX, entityMinY);
                     updateBounds(entityMaxX, entityMaxY);
                 } else if (entity.type === 'ARC') {
-                    entityMinX = entity.center.x - entity.radius;
-                    entityMaxX = entity.center.x + entity.radius;
-                    entityMinY = entity.center.y - entity.radius;
-                    entityMaxY = entity.center.y + entity.radius;
-                    updateBounds(entityMinX, entityMinY);
-                    updateBounds(entityMaxX, entityMaxY);
+                    // Calculate proper arc bounds (not full circle)
+                    const bounds = calculateArcBounds(
+                        entity.center.x,
+                        entity.center.y,
+                        entity.radius,
+                        entity.startAngle || 0,
+                        entity.endAngle || 360
+                    );
+                    updateBounds(bounds.minX, bounds.minY);
+                    updateBounds(bounds.maxX, bounds.maxY);
                 } else if (entity.type === 'LINE') {
                     entity.vertices.forEach(v => {
                         entityMinX = Math.min(entityMinX, v.x);
