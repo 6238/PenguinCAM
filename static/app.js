@@ -1514,24 +1514,84 @@ document.addEventListener('DOMContentLoaded', () => {
                 transparent: true
             });
 
-            // Helper to transform a point: center, rotate, then position
-            function transformPoint(x, y) {
-                // Step 1: Center the DXF around origin
-                let tx = x - dxfBounds.centerX;
-                let ty = y - dxfBounds.centerY;
+            // Calculate rotated bounding box to determine offset
+            // We need to rotate all points, find their bounds, then offset so min is at (0,0)
+            const radians = rotationAngle * Math.PI / 180;
+            const cos = Math.cos(radians);
+            const sin = Math.sin(radians);
 
-                // Step 2: Apply rotation
-                const radians = rotationAngle * Math.PI / 180;
-                const cos = Math.cos(radians);
-                const sin = Math.sin(radians);
+            // Helper to rotate a point around DXF center
+            function rotatePoint(x, y) {
+                // Translate to origin
+                const tx = x - dxfBounds.centerX;
+                const ty = y - dxfBounds.centerY;
+                // Rotate
                 const rx = tx * cos - ty * sin;
                 const ry = tx * sin + ty * cos;
+                // Translate back
+                return { x: rx + dxfBounds.centerX, y: ry + dxfBounds.centerY };
+            }
 
-                // Step 3: Return transformed coordinates
-                // Three.js uses X (right), Y (up), Z (back)
-                // Our G-code uses X (right), Y (forward), Z (up)
-                // So we map: DXF X -> THREE X, DXF Y -> THREE -Z
-                return new THREE.Vector3(rx, zHeight, -ry);
+            // First pass: find bounding box of rotated geometry
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+
+            entities.forEach(entity => {
+                function updateBounds(x, y) {
+                    const rotated = rotatePoint(x, y);
+                    minX = Math.min(minX, rotated.x);
+                    maxX = Math.max(maxX, rotated.x);
+                    minY = Math.min(minY, rotated.y);
+                    maxY = Math.max(maxY, rotated.y);
+                }
+
+                switch(entity.type) {
+                    case 'LINE':
+                        updateBounds(entity.vertices[0].x, entity.vertices[0].y);
+                        updateBounds(entity.vertices[1].x, entity.vertices[1].y);
+                        break;
+                    case 'CIRCLE':
+                        // Sample circle perimeter
+                        for (let i = 0; i < 8; i++) {
+                            const angle = (i / 8) * 2 * Math.PI;
+                            const x = entity.center.x + entity.radius * Math.cos(angle);
+                            const y = entity.center.y + entity.radius * Math.sin(angle);
+                            updateBounds(x, y);
+                        }
+                        break;
+                    case 'ARC':
+                        // Sample arc perimeter
+                        const startAngle = (entity.startAngle || 0) * Math.PI / 180;
+                        const endAngle = (entity.endAngle || 360) * Math.PI / 180;
+                        for (let i = 0; i <= 8; i++) {
+                            const t = i / 8;
+                            const angle = startAngle + (endAngle - startAngle) * t;
+                            const x = entity.center.x + entity.radius * Math.cos(angle);
+                            const y = entity.center.y + entity.radius * Math.sin(angle);
+                            updateBounds(x, y);
+                        }
+                        break;
+                    case 'LWPOLYLINE':
+                    case 'POLYLINE':
+                        entity.vertices.forEach(v => updateBounds(v.x, v.y));
+                        break;
+                    case 'SPLINE':
+                        if (entity.controlPoints) {
+                            entity.controlPoints.forEach(p => updateBounds(p.x, p.y));
+                        }
+                        break;
+                }
+            });
+
+            // Helper to transform a point: rotate around center, then translate so lower-left is at (0,0)
+            function transformPoint(x, y) {
+                // Rotate
+                const rotated = rotatePoint(x, y);
+                // Translate so lower-left (minX, minY) is at origin
+                const tx = rotated.x - minX;
+                const ty = rotated.y - minY;
+                // Map to Three.js coordinates: X -> X, Y -> -Z
+                return new THREE.Vector3(tx, zHeight, -ty);
             }
 
             entities.forEach(entity => {
