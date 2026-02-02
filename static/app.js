@@ -1505,12 +1505,34 @@ document.addEventListener('DOMContentLoaded', () => {
          * This shows the "cutting geometry" - the original design shapes
          */
         function renderDxfGeometry(scene, entities, zHeight) {
+            if (!dxfBounds) return;
+
             const dxfMaterial = new THREE.LineBasicMaterial({
                 color: 0xFFFFFF, // White for visibility
                 linewidth: 2,
                 opacity: 0.8,
                 transparent: true
             });
+
+            // Helper to transform a point: center, rotate, then position
+            function transformPoint(x, y) {
+                // Step 1: Center the DXF around origin
+                let tx = x - dxfBounds.centerX;
+                let ty = y - dxfBounds.centerY;
+
+                // Step 2: Apply rotation
+                const radians = rotationAngle * Math.PI / 180;
+                const cos = Math.cos(radians);
+                const sin = Math.sin(radians);
+                const rx = tx * cos - ty * sin;
+                const ry = tx * sin + ty * cos;
+
+                // Step 3: Return transformed coordinates
+                // Three.js uses X (right), Y (up), Z (back)
+                // Our G-code uses X (right), Y (forward), Z (up)
+                // So we map: DXF X -> THREE X, DXF Y -> THREE -Z
+                return new THREE.Vector3(rx, zHeight, -ry);
+            }
 
             entities.forEach(entity => {
                 let points = [];
@@ -1519,51 +1541,45 @@ document.addEventListener('DOMContentLoaded', () => {
                     case 'LINE':
                         // Straight line from start to end
                         points = [
-                            new THREE.Vector3(entity.vertices[0].x, zHeight, -entity.vertices[0].y),
-                            new THREE.Vector3(entity.vertices[1].x, zHeight, -entity.vertices[1].y)
+                            transformPoint(entity.vertices[0].x, entity.vertices[0].y),
+                            transformPoint(entity.vertices[1].x, entity.vertices[1].y)
                         ];
                         break;
 
                     case 'CIRCLE':
-                        // Full circle using EllipseCurve
+                        // Full circle - tessellate into line segments
                         {
-                            const curve = new THREE.EllipseCurve(
-                                entity.center.x, -entity.center.y, // center X, Z (Y negated)
-                                entity.radius, entity.radius, // xRadius, yRadius
-                                0, 2 * Math.PI, // startAngle, endAngle
-                                false, // clockwise
-                                0 // rotation
-                            );
-                            const curvePoints = curve.getPoints(50);
-                            points = curvePoints.map(p => new THREE.Vector3(p.x, zHeight, p.y));
+                            const numPoints = 50;
+                            for (let i = 0; i <= numPoints; i++) {
+                                const angle = (i / numPoints) * 2 * Math.PI;
+                                const x = entity.center.x + entity.radius * Math.cos(angle);
+                                const y = entity.center.y + entity.radius * Math.sin(angle);
+                                points.push(transformPoint(x, y));
+                            }
                         }
                         break;
 
                     case 'ARC':
-                        // Partial arc using EllipseCurve
+                        // Partial arc - tessellate into line segments
                         {
-                            // Convert degrees to radians
                             const startAngle = (entity.startAngle || 0) * Math.PI / 180;
                             const endAngle = (entity.endAngle || 360) * Math.PI / 180;
+                            const numPoints = 50;
 
-                            const curve = new THREE.EllipseCurve(
-                                entity.center.x, -entity.center.y, // center X, Z
-                                entity.radius, entity.radius, // xRadius, yRadius
-                                startAngle, endAngle, // angles in radians
-                                false, // clockwise
-                                0 // rotation
-                            );
-                            const curvePoints = curve.getPoints(50);
-                            points = curvePoints.map(p => new THREE.Vector3(p.x, zHeight, p.y));
+                            for (let i = 0; i <= numPoints; i++) {
+                                const t = i / numPoints;
+                                const angle = startAngle + (endAngle - startAngle) * t;
+                                const x = entity.center.x + entity.radius * Math.cos(angle);
+                                const y = entity.center.y + entity.radius * Math.sin(angle);
+                                points.push(transformPoint(x, y));
+                            }
                         }
                         break;
 
                     case 'LWPOLYLINE':
                     case 'POLYLINE':
                         // Connected line segments through vertices
-                        points = entity.vertices.map(v =>
-                            new THREE.Vector3(v.x, zHeight, -v.y)
-                        );
+                        points = entity.vertices.map(v => transformPoint(v.x, v.y));
                         // Close the polyline if it's marked as closed
                         if (entity.closed && points.length > 0) {
                             points.push(points[0].clone());
@@ -1573,9 +1589,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     case 'SPLINE':
                         // Approximate spline with control points
                         if (entity.controlPoints && entity.controlPoints.length > 1) {
-                            points = entity.controlPoints.map(p =>
-                                new THREE.Vector3(p.x, zHeight, -p.y)
-                            );
+                            points = entity.controlPoints.map(p => transformPoint(p.x, p.y));
                         }
                         break;
 
