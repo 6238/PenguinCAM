@@ -96,6 +96,23 @@
                     </div>
 
                     <form id="paramForm">
+                        {% if machines|length > 1 %}
+                        <div class="param-group">
+                            <label>
+                                Machine
+                                <span class="label-hint">Select which machine to use</span>
+                            </label>
+                            <select id="machineId" required>
+                                {% for machine_id, machine_info in machines.items() %}
+                                <option value="{{ machine_id }}"
+                                        {% if machine_id == current_machine_id %}selected{% endif %}>
+                                    {{ machine_info.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% endif %}
+
                         <div class="param-group">
                             <label>
                                 Material Type

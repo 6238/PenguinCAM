@@ -113,7 +113,9 @@ const DEFAULT_SETTINGS = {
  * Save current form settings to localStorage
  */
 function saveSettings() {
+    const machineSelect = document.getElementById('machineId');
     const settings = {
+        machineId: machineSelect ? machineSelect.value : null,
         material: document.getElementById('material').value,
         thickness: document.getElementById('thickness').value,
         tabSpacing: document.getElementById('tabSpacing').value,
@@ -143,6 +145,10 @@ function loadSettings() {
         const serverDefaultToolDiameter = document.getElementById('toolDiameter').value;
 
         // Apply settings to form elements
+        const machineSelect = document.getElementById('machineId');
+        if (machineSelect && settings.machineId) {
+            machineSelect.value = settings.machineId;
+        }
         document.getElementById('material').value = settings.material || DEFAULT_SETTINGS.material;
         document.getElementById('thickness').value = settings.thickness || DEFAULT_SETTINGS.thickness;
         document.getElementById('tabSpacing').value = settings.tabSpacing || DEFAULT_SETTINGS.tabSpacing;
@@ -330,6 +336,36 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tabsGroup) tabsGroup.style.display = isAluminumTube ? 'none' : 'block';
         });
 
+        // Handle machine selection change
+        const machineSelect = document.getElementById('machineId');
+        if (machineSelect) {
+            machineSelect.addEventListener('change', async (e) => {
+                const machineId = e.target.value;
+                console.log('Machine changed to:', machineId);
+
+                try {
+                    // Update session with new machine
+                    const response = await fetch('/set-machine', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ machine_id: machineId })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log('Machine updated:', data.machine_name);
+
+                        // Reload page to get machine-specific materials and settings
+                        window.location.reload();
+                    } else {
+                        console.error('Failed to update machine');
+                    }
+                } catch (error) {
+                    console.error('Error updating machine:', error);
+                }
+            });
+        }
+
         // Check Google Drive availability
         let driveAvailable = false;
         async function checkDriveStatus() {
@@ -433,6 +469,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const second = String(now.getSeconds()).padStart(2, '0');
             const timestamp = `${year}-${month}-${day} ${hour}:${minute}:${second}`;
             formData.append('timestamp', timestamp);
+
+            // Add machine ID if multiple machines available
+            const machineSelect = document.getElementById('machineId');
+            if (machineSelect) {
+                formData.append('machine_id', machineSelect.value);
+            }
 
             const material = document.getElementById('material').value;
             formData.append('material', material);

@@ -409,29 +409,37 @@ def index():
     # Get user/team info from session (if coming from Onshape)
     user_name = session.get('user_name')
     team_name = session.get('team_name')
-    team_config_dict = session.get('team_config', {})
-    drive_enabled = team_config_dict.get('google_drive_enabled', False)
-    default_tool_diameter = team_config_dict.get('default_tool_diameter', 0.157)  # 4mm default
-    machine_x_max = team_config_dict.get('machine_x_max', 48.0)
-    machine_y_max = team_config_dict.get('machine_y_max', 96.0)
 
-    # Reconstruct TeamConfig to get materials list
+    # Reconstruct TeamConfig
     team_config_data = session.get('team_config_data', {})
     team_config = TeamConfig(team_config_data)
 
-    # Get available materials and check which are incomplete
-    available_materials = team_config.get_available_materials()
+    # Get available machines
+    machines = team_config.get_available_machines()
+
+    # Get current machine (from session, or use default)
+    current_machine_id = session.get('machine_id', team_config.default_machine_id)
+
+    # Get machine-specific config dict
+    team_config_dict = team_config.to_dict(current_machine_id)
+    drive_enabled = team_config_dict.get('google_drive_enabled', False)
+    default_tool_diameter = team_config_dict.get('default_tool_diameter', 0.157)
+    machine_x_max = team_config_dict.get('machine_x_max', 48.0)
+    machine_y_max = team_config_dict.get('machine_y_max', 96.0)
+
+    # Get available materials for current machine
+    available_materials = team_config.get_available_materials(current_machine_id)
 
     # Add 'aluminum_tube' as a special UI-only material (uses aluminum preset)
     available_materials['aluminum_tube'] = {
-        **available_materials['aluminum'],
+        **available_materials.get('aluminum', {}),
         'name': 'Aluminum Tube'
     }
 
     # Check for incomplete materials (custom materials missing required params)
     incomplete_materials = {
         material_id for material_id in available_materials.keys()
-        if not team_config.is_material_complete(material_id) and material_id != 'aluminum_tube'
+        if not team_config.is_material_complete(material_id, current_machine_id) and material_id != 'aluminum_tube'
     }
 
     return render_template('index.html',
@@ -442,6 +450,8 @@ def index():
                          machine_x_max=machine_x_max,
                          machine_y_max=machine_y_max,
                          using_default_config=session.get('using_default_config', False),
+                         machines=machines,
+                         current_machine_id=current_machine_id,
                          materials=available_materials,
                          incomplete_materials=incomplete_materials)
 
@@ -464,6 +474,7 @@ def process_file():
         # Get parameters
         material = request.form.get('material', 'plywood')
         is_aluminum_tube = (material.lower() == 'aluminum_tube')
+        machine_id = request.form.get('machine_id', None)  # Optional machine selection
 
         # Map special cases:
         # - 'aluminum_tube' -> 'aluminum' (aluminum_tube is UI-only, uses aluminum preset)
@@ -572,8 +583,8 @@ def process_file():
                 # Store tube height for Z-offset calculations
                 pp.tube_height = tube_height
 
-                # Apply material preset
-                pp.apply_material_preset(material)
+                # Apply material preset (for specific machine if selected)
+                pp.apply_material_preset(material, machine_id)
 
                 # Add user name if authenticated
                 user_name = session.get('user_name')
@@ -605,8 +616,8 @@ def process_file():
                     config=team_config
                 )
 
-                # Apply material preset
-                pp.apply_material_preset(material)
+                # Apply material preset (for specific machine if selected)
+                pp.apply_material_preset(material, machine_id)
 
                 # Add user name if authenticated
                 user_name = session.get('user_name')
@@ -1044,6 +1055,40 @@ def onshape_status():
             'connected': False,
             'message': f'Error: {str(e)}'
         })
+
+@app.route('/set-machine', methods=['POST'])
+@limiter.limit("30 per minute")
+def set_machine():
+    """Set the current machine for the session"""
+    try:
+        machine_id = request.json.get('machine_id')
+        if not machine_id:
+            return jsonify({'error': 'No machine_id provided'}), 400
+
+        # Verify machine exists in config
+        team_config_data = session.get('team_config_data', {})
+        team_config = TeamConfig(team_config_data)
+        machines = team_config.get_available_machines()
+
+        if machine_id not in machines:
+            return jsonify({'error': f'Unknown machine: {machine_id}'}), 400
+
+        # Store in session
+        session['machine_id'] = machine_id
+
+        # Return updated config for this machine
+        team_config_dict = team_config.to_dict(machine_id)
+
+        return jsonify({
+            'success': True,
+            'machine_id': machine_id,
+            'machine_name': machines[machine_id].get('name', machine_id),
+            'config': team_config_dict
+        })
+
+    except Exception as e:
+        log(f"Error setting machine: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/debug/session')
 @limiter.limit("30 per minute")
