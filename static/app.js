@@ -366,6 +366,21 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
+        // Handle settings button click
+        const settingsBtn = document.getElementById('settingsBtn');
+        if (settingsBtn) {
+            settingsBtn.addEventListener('click', async () => {
+                console.log('Downloading config template...');
+                try {
+                    // Trigger download
+                    window.location.href = '/download-config-template';
+                } catch (error) {
+                    console.error('Error downloading config template:', error);
+                    alert('Failed to download config template');
+                }
+            });
+        }
+
         // Check Google Drive availability
         let driveAvailable = false;
         async function checkDriveStatus() {

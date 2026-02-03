@@ -52,6 +52,12 @@
             <div class="user-details">
                 <span class="user-icon">👤</span>
                 <span class="user-name">{{ session.get('user_name') }}</span>
+                <button id="settingsBtn" class="icon-btn" title="Download config template">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M12 1v6m0 6v6m8.66-13.66l-3 3m-5.32 5.32l-3 3M23 12h-6m-6 0H1m20.66 8.66l-3-3m-5.32-5.32l-3-3"></path>
+                    </svg>
+                </button>
             </div>
             <a href="/auth/logout" class="logout-btn">Logout</a>
         </div>

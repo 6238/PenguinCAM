@@ -1,203 +1,318 @@
-# PenguinCAM Team Configuration
+# PenguinCAM Team Configuration (Version 2)
 # This file defines machine-specific settings and machining preferences
 #
+# VERSION 2 FEATURES:
+# - Support for multiple machines with different settings
+# - Each machine can have its own materials with custom feeds/speeds
+# - Machine-specific dimensions, tooling, and preferences
+#
 # All values are optional - any missing values will use Team 6238 defaults.
-# You only need to specify values you want to override.
 
 # =============================================================================
-# TEAM INFORMATION
+# CONFIG VERSION AND DEFAULT MACHINE
+# =============================================================================
+version: 2
+
+# Which machine to use by default (if not specified in UI)
+default_machine: shop_router
+
+# =============================================================================
+# TEAM INFORMATION (applies to all machines)
 # =============================================================================
 team:
   number: 6238
   name: "Popcorn Penguins"
 
 # =============================================================================
-# MACHINE & CONTROLLER
+# MACHINES
 # =============================================================================
-machine:
-  name: "Avid CNC Pro2424"           # Your machine model
-  manufacturer: "Avid CNC"
-  controller: "Mach4"                 # Mach3, Mach4, LinuxCNC, etc.
+# Define each machine your team uses. Each can have different:
+# - Work envelope dimensions
+# - Feeds/speeds for each material (based on machine rigidity)
+# - Default tooling
+# - Controller settings
 
-  # Machine work envelope (inches)
-  dimensions:
-    x_max: 24.0
-    y_max: 24.0
-    z_max: 8.0
+machines:
+  # -------------------------------------------------------------------------
+  # MACHINE 1: Large shop router (primary machine)
+  # -------------------------------------------------------------------------
+  shop_router:
+    name: "Shop Router (48x96)"
 
-  # Park position (machine coordinates for safe part access)
-  park_position:
-    x: 0.5      # X position when parking (machine coords)
-    y: 23.5     # Y position when parking (machine coords)
-    # NOTE: This is machine-specific! Adjust for your CNC's safe position.
+    # Machine specifications
+    machine:
+      manufacturer: "ShopBot"
+      controller: "Mach4"
 
-  # Coordinate systems
-  standard_work_offset: "G54"       # Work offset for standard operations
-  tube_jig_work_offset: "G55"       # Work offset for tube jig operations
+      # Machine work envelope (inches)
+      dimensions:
+        x_max: 48.0
+        y_max: 96.0
+        z_max: 8.0
 
-  coolant: "Air"                    # Air, Flood, Mist, None
+      # Park position (machine coordinates for safe part access)
+      park_position:
+        x: 0.5      # X position when parking (machine coords)
+        y: 95.5     # Y position when parking (machine coords)
+
+      # Coordinate systems
+      standard_work_offset: "G54"       # Work offset for standard operations
+      tube_jig_work_offset: "G55"       # Work offset for tube jig operations
+
+      coolant: "Air"                    # Air, Flood, Mist, None
+
+    # Default tooling for this machine
+    default_tool:
+      diameter: 0.157                   # 4mm end mill (inches)
+
+    # General machining preferences
+    machining:
+      # Z-axis reference system
+      z_reference:
+        sacrifice_board_depth: 0.008    # How far to cut into sacrifice board (inches)
+        safe_height: 1.5                # Safe height for rapid moves (inches)
+        clearance_height: 0.5           # Clearance above material for rapid moves (inches)
+
+      # Tab parameters (for perimeter operations)
+      tabs:
+        enabled: true                   # Whether to use tabs at all
+        width: 0.25                     # Default tab width (inches)
+        height: 0.15                    # Default tab height (inches)
+
+      # Hole detection
+      holes:
+        detection_tolerance: 0.0001     # Tolerance for detecting circular holes (inches)
+        min_millable_multiplier: 1.2    # Minimum hole diameter as multiple of tool diameter
+
+      # Fixturing options
+      fixturing:
+        pause_before_perimeter: false   # M0 pause before perimeter for screw fixturing
+
+    # Tube facing parameters (for aluminum tube operations)
+    tube_facing:
+      depth_margin: 0.005               # Extra depth beyond half tube height (inches)
+      max_roughing_depth: 0.3           # Maximum depth per roughing pass (inches)
+      max_finishing_depth: 0.51         # Maximum depth per finishing pass (inches)
+
+      phase_1:
+        roughing_tool_edge: 0.05        # Phase 1 roughing position (inches)
+        finishing_tool_edge: 0.0625     # Phase 1 finishing position (inches)
+
+      phase_2:
+        roughing_tool_edge: -0.0125     # Phase 2 roughing position (inches)
+        finishing_tool_edge: 0.0        # Phase 2 finishing position (inches)
+
+      arc_advance: 0.04                 # Arc advance distance in X (inches)
+      arc_radius: 0.05                  # Arc radius for clearing moves (inches)
+
+    # Material-specific settings for THIS MACHINE
+    # Large, rigid machine can handle full speeds
+    materials:
+      plywood:
+        name: "Plywood"
+        description: "Standard plywood settings - 18K RPM, 75 IPM cutting"
+
+        spindle_speed: 18000            # RPM
+        feed_rate: 75.0                 # Cutting feed rate (IPM)
+        ramp_feed_rate: 50.0            # Ramp feed rate (IPM)
+        plunge_rate: 35.0               # Plunge feed rate for tab Z moves (IPM)
+        traverse_rate: 200.0            # Lateral moves above material (IPM)
+        approach_rate: 50.0             # Z approach to ramp start (IPM)
+
+        ramp_angle: 20.0                # Ramp angle in degrees
+        ramp_start_clearance: 0.150     # Clearance above material to start ramping (inches)
+        stepover_percentage: 0.65       # Radial stepover as fraction of tool diameter
+        helix_radius_multiplier: 0.75   # Helix entry radius as fraction of tool radius
+        max_slotting_depth: 0.4         # Maximum depth per pass for perimeter slotting (inches)
+
+        tab_width: 0.25
+        tab_height: 0.15
+
+      aluminum:
+        name: "Aluminum"
+        description: "Aluminum - 18K RPM, 55 IPM cutting, 4° ramp"
+
+        spindle_speed: 18000
+        feed_rate: 55.0
+        ramp_feed_rate: 35.0
+        plunge_rate: 15.0
+        traverse_rate: 200.0
+        approach_rate: 35.0
+
+        ramp_angle: 4.0
+        ramp_start_clearance: 0.050
+        stepover_percentage: 0.25
+        helix_radius_multiplier: 0.5
+        max_slotting_depth: 0.2
+
+        tab_width: 0.25
+        tab_height: 0.15
+
+      polycarbonate:
+        name: "Polycarbonate"
+        description: "Polycarbonate - same as plywood settings"
+
+        spindle_speed: 18000
+        feed_rate: 75.0
+        ramp_feed_rate: 50.0
+        plunge_rate: 20.0
+        traverse_rate: 200.0
+        approach_rate: 50.0
+
+        ramp_angle: 20.0
+        ramp_start_clearance: 0.100
+        stepover_percentage: 0.55
+        helix_radius_multiplier: 0.75
+        max_slotting_depth: 0.25
+
+        tab_width: 0.25
+        tab_height: 0.15
+
+    # Integrations (Google Drive, etc.)
+    integrations:
+      google_drive:
+        enabled: false
+        # folder_id: "your_folder_id_here"  # Get from Drive folder URL
+
+  # -------------------------------------------------------------------------
+  # MACHINE 2: Small competition mill (more conservative settings)
+  # -------------------------------------------------------------------------
+  competition_mill:
+    name: "Competition Mill (24x24)"
+
+    # Machine specifications
+    machine:
+      manufacturer: "Generic"
+      controller: "Mach3"
+
+      # Smaller work envelope
+      dimensions:
+        x_max: 24.0
+        y_max: 24.0
+        z_max: 6.0
+
+      park_position:
+        x: 0.5
+        y: 23.5
+
+      standard_work_offset: "G54"
+      tube_jig_work_offset: "G55"
+
+      coolant: "None"
+
+    # Default tooling
+    default_tool:
+      diameter: 0.157
+
+    # General machining preferences (same as shop_router)
+    machining:
+      z_reference:
+        sacrifice_board_depth: 0.008
+        safe_height: 1.5
+        clearance_height: 0.5
+
+      tabs:
+        enabled: true
+        width: 0.25
+        height: 0.15
+
+      holes:
+        detection_tolerance: 0.0001
+        min_millable_multiplier: 1.2
+
+      fixturing:
+        pause_before_perimeter: false
+
+    # Tube facing (same as shop_router)
+    tube_facing:
+      depth_margin: 0.005
+      max_roughing_depth: 0.3
+      max_finishing_depth: 0.51
+
+      phase_1:
+        roughing_tool_edge: 0.05
+        finishing_tool_edge: 0.0625
+
+      phase_2:
+        roughing_tool_edge: -0.0125
+        finishing_tool_edge: 0.0
+
+      arc_advance: 0.04
+      arc_radius: 0.05
+
+    # Material-specific settings for THIS MACHINE
+    # Smaller, less rigid machine needs more conservative speeds
+    materials:
+      plywood:
+        name: "Plywood"
+        description: "Conservative plywood for small mill"
+
+        spindle_speed: 18000
+        feed_rate: 60.0               # SLOWER - less rigid machine
+        ramp_feed_rate: 40.0          # SLOWER
+        plunge_rate: 30.0
+        traverse_rate: 150.0
+        approach_rate: 40.0
+
+        ramp_angle: 20.0
+        ramp_start_clearance: 0.150
+        stepover_percentage: 0.60     # More conservative
+        helix_radius_multiplier: 0.75
+        max_slotting_depth: 0.3       # Shallower passes
+
+        tab_width: 0.25
+        tab_height: 0.15
+
+      aluminum:
+        name: "Aluminum"
+        description: "Very conservative aluminum for small mill"
+
+        spindle_speed: 15000          # Lower RPM
+        feed_rate: 35.0               # MUCH SLOWER - small machine
+        ramp_feed_rate: 25.0          # SLOWER
+        plunge_rate: 12.0
+        traverse_rate: 150.0
+        approach_rate: 25.0
+
+        ramp_angle: 6.0               # Gentler ramp
+        ramp_start_clearance: 0.050
+        stepover_percentage: 0.20     # Very conservative
+        helix_radius_multiplier: 0.5
+        max_slotting_depth: 0.15      # Shallow passes
+
+        tab_width: 0.25
+        tab_height: 0.15
+
+      polycarbonate:
+        name: "Polycarbonate"
+        description: "Conservative polycarbonate for small mill"
+
+        spindle_speed: 15000
+        feed_rate: 60.0
+        ramp_feed_rate: 40.0
+        plunge_rate: 18.0
+        traverse_rate: 150.0
+        approach_rate: 40.0
+
+        ramp_angle: 20.0
+        ramp_start_clearance: 0.100
+        stepover_percentage: 0.50
+        helix_radius_multiplier: 0.75
+        max_slotting_depth: 0.20
+
+        tab_width: 0.25
+        tab_height: 0.15
+
+    # Integrations
+    integrations:
+      google_drive:
+        enabled: false
 
 # =============================================================================
-# GENERAL MACHINING PREFERENCES
+# NOTES
 # =============================================================================
-machining:
-  # Z-axis reference system
-  z_reference:
-    sacrifice_board_depth: 0.008    # How far to cut into sacrifice board (inches)
-    safe_height: 1.5                # Safe height for rapid moves (inches)
-    clearance_height: 0.5           # Clearance above material for rapid moves (inches)
-
-  # Tab parameters (for perimeter operations)
-  tabs:
-    enabled: true                   # Set to false to disable tabs entirely (cuts through perimeter)
-    width: 0.25                     # Tab width (inches)
-    height: 0.1                     # How much material to leave in tab (inches)
-    spacing: 6.0                    # Desired spacing between tabs (inches)
-    # Note: Actual spacing may be closer to ensure minimum 3 tabs
-
-  # Fixturing preferences
-  fixturing:
-    pause_before_perimeter: false   # Set to true to pause before perimeter cutting
-    # When enabled: Machine cuts holes/pockets first, pauses for operator to install
-    # screws through holes into sacrifice board, then cuts perimeter without tabs.
-    # Useful if you prefer screw fixturing instead of tab-based holding.
-
-  # Hole detection and processing
-  holes:
-    detection_tolerance: 0.02       # Tolerance for detecting circular holes (inches)
-    min_millable_multiplier: 1.2    # Minimum hole diameter as multiple of tool diameter
-    # Note: Holes smaller than tool_diameter * 1.2 will cause a failure (visible to user)
-
-  # Tool parameters (defaults - can be overridden per job)
-  default_tool:
-    diameter: 0.157                 # 4mm end mill (inches)
-    # Note: This sets the default in the UI, but user can override for each job
-
-# =============================================================================
-# TUBE FACING OPERATION PARAMETERS
-# =============================================================================
-tube_facing:
-  # Depth calculations
-  depth_margin: 0.005               # Extra depth beyond half tube height (inches)
-
-  # Multi-pass depth limits
-  max_roughing_depth: 0.3           # Maximum depth per roughing pass (inches)
-  max_finishing_depth: 0.51         # Maximum depth per finishing pass (inches)
-
-  # Tool edge positions for two-pass flip strategy
-  # These are the Y positions where the tool leaves the final face
-  phase_1:
-    roughing_tool_edge: 0.05        # Phase 1 roughing position (inches)
-    finishing_tool_edge: 0.0625     # Phase 1 finishing position (inches)
-
-  phase_2:
-    roughing_tool_edge: -0.0125     # Phase 2 roughing position (inches)
-    finishing_tool_edge: 0.0        # Phase 2 finishing position (inches)
-
-  # Arc clearing parameters
-  arc_advance: 0.04                 # Arc advance distance in X (inches)
-  arc_radius: 0.05                  # Arc radius for clearing moves (inches)
-
-# =============================================================================
-# MATERIAL-SPECIFIC SETTINGS
-# =============================================================================
-# You can override any or all materials. Only specify values you want to change.
-# Any missing values will use Team 6238 defaults for that material.
-
-materials:
-  plywood:
-    name: "Plywood"
-    description: "Standard plywood settings - 18K RPM, 75 IPM cutting"
-
-    # Speeds and feeds
-    spindle_speed: 18000            # RPM
-    feed_rate: 75.0                 # Cutting feed rate (IPM)
-    ramp_feed_rate: 50.0            # Ramp feed rate (IPM)
-    plunge_rate: 35.0               # Plunge feed rate for tab Z moves (IPM)
-    traverse_rate: 200.0            # Lateral moves above material (IPM)
-    approach_rate: 50.0             # Z approach to ramp start (IPM)
-
-    # Toolpath parameters
-    ramp_angle: 20.0                # Ramp angle in degrees
-    ramp_start_clearance: 0.150     # Clearance above material to start ramping (inches)
-    stepover_percentage: 0.65       # Radial stepover as fraction of tool diameter
-    helix_radius_multiplier: 0.75   # Helix entry radius as fraction of tool radius
-
-    # Multi-pass parameters
-    max_slotting_depth: 0.4         # Maximum depth per pass for perimeter slotting (inches)
-
-    # Tab parameters (can override defaults)
-    tab_width: 0.25
-    tab_height: 0.15
-
-  aluminum:
-    name: "Aluminum"
-    description: "Aluminum box tubing - 18K RPM, 55 IPM cutting, 4° ramp"
-
-    # Speeds and feeds
-    spindle_speed: 18000
-    feed_rate: 55.0
-    ramp_feed_rate: 35.0
-    plunge_rate: 15.0               # Slower for aluminum
-    traverse_rate: 200.0
-    approach_rate: 35.0
-
-    # Toolpath parameters
-    ramp_angle: 4.0                 # Shallow ramp for aluminum
-    ramp_start_clearance: 0.050
-    stepover_percentage: 0.25       # Conservative for aluminum
-    helix_radius_multiplier: 0.5    # Conservative helix entry for aluminum
-
-    # Multi-pass parameters
-    max_slotting_depth: 0.2         # Shallower passes for aluminum
-
-    # Tab parameters
-    tab_width: 0.25
-    tab_height: 0.15
-
-  polycarbonate:
-    name: "Polycarbonate"
-    description: "Polycarbonate - same as plywood settings"
-
-    # Speeds and feeds
-    spindle_speed: 18000
-    feed_rate: 75.0
-    ramp_feed_rate: 50.0
-    plunge_rate: 20.0
-    traverse_rate: 200.0
-    approach_rate: 50.0
-
-    # Toolpath parameters
-    ramp_angle: 20.0
-    ramp_start_clearance: 0.100
-    stepover_percentage: 0.55       # Moderate for polycarbonate
-    helix_radius_multiplier: 0.75
-
-    # Multi-pass parameters
-    max_slotting_depth: 0.25
-
-    # Tab parameters
-    tab_width: 0.25
-    tab_height: 0.15
-
-# =============================================================================
-# GOOGLE DRIVE INTEGRATION (optional)
-# =============================================================================
-integrations:
-  google_drive:
-    enabled: true
-    folder_id: "https://drive.google.com/drive/folders/YOUR_FOLDER_ID"
-    # To get your folder URL:
-    # 1. Open Google Drive in your browser
-    # 2. Navigate to: Shared drives → Your Team → CNC → G-code
-    # 3. Copy the full URL from your browser (looks like above)
-    # 4. Paste it here (you can paste either the full URL or just the folder ID)
-
-# =============================================================================
-# UI CUSTOMIZATION (optional - for future use)
-# =============================================================================
-ui:
-  theme: "default"
-  # Future: team logo, colors, branding
-  # logo_url: "https://your-team-website.com/logo.png"
-  # primary_color: "#FF6B35"
+# - To use this config, upload it to your Onshape document as "PenguinCAM-config.yaml"
+# - The machine selector will appear in the UI if you have multiple machines
+# - Each machine can have completely different feeds/speeds based on rigidity
+# - You can add custom materials to any machine
+# - V1 configs (without "version: 2") still work and are treated as single machine

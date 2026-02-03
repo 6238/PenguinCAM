@@ -1056,6 +1056,26 @@ def onshape_status():
             'message': f'Error: {str(e)}'
         })
 
+@app.route('/download-config-template')
+@limiter.limit("30 per minute")
+def download_config_template():
+    """Download the PenguinCAM config template file"""
+    try:
+        template_path = os.path.join(os.path.dirname(__file__), 'PenguinCAM-config-template.yaml')
+
+        if not os.path.exists(template_path):
+            return jsonify({'error': 'Template file not found'}), 404
+
+        return send_file(
+            template_path,
+            as_attachment=True,
+            download_name='PenguinCAM-config.yaml',
+            mimetype='text/yaml'
+        )
+    except Exception as e:
+        log(f"Error downloading config template: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/set-machine', methods=['POST'])
 @limiter.limit("30 per minute")
 def set_machine():

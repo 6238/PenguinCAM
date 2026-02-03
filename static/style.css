@@ -101,6 +101,24 @@
             font-family: 'Monaco', 'Courier New', monospace;
         }
 
+        .icon-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-dim);
+            padding: 0.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .icon-btn:hover {
+            background: var(--surface);
+            color: var(--primary);
+        }
+
         .logout-btn {
             background: var(--bg);
             border: 1px solid var(--border);
