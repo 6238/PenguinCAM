@@ -153,11 +153,13 @@ function loadSettings() {
         document.getElementById('toolDiameter').value = settings.toolDiameter || serverDefaultToolDiameter;
         appState.rotationAngle = settings.rotationAngle || DEFAULT_SETTINGS.rotationAngle;
 
-        // Trigger material change to show/hide tube params
+        // Trigger material change to show/hide tube params and warnings
         const materialSelect = document.getElementById('material');
         if (materialSelect.value === 'aluminum_tube') {
             document.getElementById('tubeParams').style.display = 'block';
         }
+        // Trigger change event to check for incomplete materials
+        materialSelect.dispatchEvent(new Event('change'));
 
         console.log('Settings loaded from localStorage');
     } catch (e) {
@@ -290,6 +292,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const isAluminumTube = e.target.value === 'aluminum_tube';
             if (tubeParams) {
                 tubeParams.style.display = isAluminumTube ? 'block' : 'none';
+            }
+
+            // Show/hide warning for incomplete materials
+            const materialWarning = document.getElementById('materialWarning');
+            const selectedOption = e.target.selectedOptions[0];
+            const isIncomplete = selectedOption?.getAttribute('data-incomplete') === 'true';
+            if (materialWarning) {
+                materialWarning.style.display = isIncomplete ? 'block' : 'none';
             }
 
             // Update thickness label, default value, and hide tabs for aluminum tube

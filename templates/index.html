@@ -102,11 +102,17 @@
                                 <span class="label-hint">Cutting parameters preset</span>
                             </label>
                             <select id="material" required>
-                                <option value="polycarb">Polycarb Plate</option>
-                                <option value="plywood">Plywood Plate</option>
-                                <option value="aluminum">Aluminum Plate</option>
-                                <option value="aluminum_tube">Aluminum Tube</option>
+                                {% for material_id, material_info in materials.items() %}
+                                <option value="{{ material_id }}"
+                                        {% if material_id == 'plywood' %}selected{% endif %}
+                                        {% if material_id in incomplete_materials %}data-incomplete="true"{% endif %}>
+                                    {{ material_info.name }}
+                                </option>
+                                {% endfor %}
                             </select>
+                            <div id="materialWarning" class="warning-message" style="display: none;">
+                                ⚠️ This material has incomplete settings in your config. Using plywood defaults for missing parameters.
+                            </div>
                         </div>
 
                         <div class="param-group">

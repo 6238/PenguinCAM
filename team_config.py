@@ -329,23 +329,75 @@ class TeamConfig:
     # Material Presets
     # ========================================================================
 
+    def get_available_materials(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Get all available materials (Team 6238 defaults + custom from config).
+
+        Returns:
+            Dictionary mapping material ID to material info (with 'name' and other params)
+        """
+        # Start with Team 6238 defaults
+        materials = dict(TEAM_6238_DEFAULTS['materials'])
+
+        # Add any custom materials from user config
+        user_materials = self._data.get('materials', {})
+        for material_id, material_data in user_materials.items():
+            if material_id not in materials:
+                # New custom material - add it with plywood fallback
+                materials[material_id] = self.get_material_preset(material_id)
+
+        return materials
+
+    def is_material_complete(self, material: str) -> bool:
+        """
+        Check if a material has all required parameters defined.
+
+        Args:
+            material: Material name
+
+        Returns:
+            True if material has all required params, False if using fallback
+        """
+        # Required parameters for a complete material definition
+        required_params = {
+            'name', 'spindle_speed', 'feed_rate', 'ramp_feed_rate', 'plunge_rate',
+            'traverse_rate', 'approach_rate', 'ramp_angle', 'ramp_start_clearance',
+            'stepover_percentage', 'helix_radius_multiplier', 'max_slotting_depth',
+            'tab_width', 'tab_height'
+        }
+
+        # Check if material exists in defaults
+        if material in TEAM_6238_DEFAULTS['materials']:
+            return True
+
+        # Check if user config has all required parameters
+        user_preset = self._data.get('materials', {}).get(material, {})
+        return required_params.issubset(user_preset.keys())
+
     def get_material_preset(self, material: str) -> Dict[str, Any]:
         """
         Get material preset parameters with fallback to Team 6238 defaults.
 
         Args:
-            material: Material name ('plywood', 'aluminum', 'polycarbonate')
+            material: Material name ('plywood', 'aluminum', 'polycarbonate', or custom)
 
         Returns:
-            Dictionary of material parameters
+            Dictionary of material parameters (always complete, uses plywood fallback)
         """
         # Get from user config if present
         user_preset = self._data.get('materials', {}).get(material, {})
 
-        # Get Team 6238 default
+        # Get Team 6238 default for this material
         default_preset = TEAM_6238_DEFAULTS['materials'].get(material, {})
 
-        # Merge: user config overrides defaults
+        # If no default found, use plywood as universal fallback
+        if not default_preset:
+            default_preset = TEAM_6238_DEFAULTS['materials']['plywood'].copy()
+            # Use custom name if provided, otherwise capitalize the material ID
+            if 'name' not in user_preset:
+                user_preset = {**user_preset, 'name': material.replace('_', ' ').title()}
+
+        # Merge: defaults → user overrides
         return {**default_preset, **user_preset}
 
     # ========================================================================

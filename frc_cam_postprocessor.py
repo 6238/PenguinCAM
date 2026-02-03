@@ -3247,8 +3247,7 @@ def main():
     parser.add_argument('--cut-to-length', action='store_true',
                        help='Machine tube to length after pattern (tube-pattern mode)')
     parser.add_argument('--material', type=str, default='plywood',
-                       choices=['plywood', 'aluminum', 'polycarbonate'],
-                       help='Material preset (default: plywood) - sets feeds, speeds, and ramp angles')
+                       help='Material preset (default: plywood). Built-in: plywood, aluminum, polycarbonate. Custom materials from config also supported.')
     parser.add_argument('--thickness', type=float, default=0.25,
                        help='Material thickness in inches (default: 0.25)')
     parser.add_argument('--tool-diameter', type=float, default=0.157,

@@ -409,11 +409,30 @@ def index():
     # Get user/team info from session (if coming from Onshape)
     user_name = session.get('user_name')
     team_name = session.get('team_name')
-    team_config = session.get('team_config', {})
-    drive_enabled = team_config.get('google_drive_enabled', False)
-    default_tool_diameter = team_config.get('default_tool_diameter', 0.157)  # 4mm default
-    machine_x_max = team_config.get('machine_x_max', 48.0)
-    machine_y_max = team_config.get('machine_y_max', 96.0)
+    team_config_dict = session.get('team_config', {})
+    drive_enabled = team_config_dict.get('google_drive_enabled', False)
+    default_tool_diameter = team_config_dict.get('default_tool_diameter', 0.157)  # 4mm default
+    machine_x_max = team_config_dict.get('machine_x_max', 48.0)
+    machine_y_max = team_config_dict.get('machine_y_max', 96.0)
+
+    # Reconstruct TeamConfig to get materials list
+    team_config_data = session.get('team_config_data', {})
+    team_config = TeamConfig(team_config_data)
+
+    # Get available materials and check which are incomplete
+    available_materials = team_config.get_available_materials()
+
+    # Add 'aluminum_tube' as a special UI-only material (uses aluminum preset)
+    available_materials['aluminum_tube'] = {
+        **available_materials['aluminum'],
+        'name': 'Aluminum Tube'
+    }
+
+    # Check for incomplete materials (custom materials missing required params)
+    incomplete_materials = {
+        material_id for material_id in available_materials.keys()
+        if not team_config.is_material_complete(material_id) and material_id != 'aluminum_tube'
+    }
 
     return render_template('index.html',
                          user_name=user_name,
@@ -422,7 +441,9 @@ def index():
                          default_tool_diameter=default_tool_diameter,
                          machine_x_max=machine_x_max,
                          machine_y_max=machine_y_max,
-                         using_default_config=session.get('using_default_config', False))
+                         using_default_config=session.get('using_default_config', False),
+                         materials=available_materials,
+                         incomplete_materials=incomplete_materials)
 
 @app.route('/process', methods=['POST'])
 @limiter.limit("10 per minute")  # Strict limit - CPU intensive operation
@@ -444,15 +465,14 @@ def process_file():
         material = request.form.get('material', 'plywood')
         is_aluminum_tube = (material.lower() == 'aluminum_tube')
 
-        # Map UI material names to post-processor material names
-        material_mapping = {
-            'polycarb': 'polycarbonate',
-            'polycarbonate': 'polycarbonate',
-            'plywood': 'plywood',
-            'aluminum': 'aluminum',
-            'aluminum_tube': 'aluminum'  # Use aluminum presets for tube
-        }
-        material = material_mapping.get(material.lower(), 'plywood')
+        # Map special cases:
+        # - 'aluminum_tube' -> 'aluminum' (aluminum_tube is UI-only, uses aluminum preset)
+        # - 'polycarb' -> 'polycarbonate' (legacy compatibility)
+        # All other materials pass through as-is (including custom materials from config)
+        if material.lower() == 'aluminum_tube':
+            material = 'aluminum'
+        elif material.lower() == 'polycarb':
+            material = 'polycarbonate'
 
         tool_diameter = float(request.form.get('tool_diameter', 0.157))
         origin_corner = request.form.get('origin_corner', 'bottom-left')
