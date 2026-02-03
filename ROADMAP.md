@@ -61,6 +61,16 @@ PenguinCAM is ready for real-world use:
 **Priority:** Low
 **Effort:** Medium
 
+### #4: Support for multiple machines on the same team
+
+**Priority:** Medium
+**Effort:** Medium
+
+### #5: Support for additional material types via the config file
+
+**Priority:** Medium
+**Effort:** Medium
+
 ---
 
 ## 💡 Ideas for Consideration
