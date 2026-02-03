@@ -366,19 +366,35 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // Handle settings button click
+        // Handle settings dropdown
         const settingsBtn = document.getElementById('settingsBtn');
-        if (settingsBtn) {
-            settingsBtn.addEventListener('click', async () => {
-                console.log('Downloading config template...');
-                try {
-                    // Trigger download
-                    window.location.href = '/download-config-template';
-                } catch (error) {
-                    console.error('Error downloading config template:', error);
-                    alert('Failed to download config template');
+        const settingsDropdown = document.getElementById('settingsDropdown');
+        const downloadConfigBtn = document.getElementById('downloadConfigBtn');
+
+        if (settingsBtn && settingsDropdown) {
+            // Toggle dropdown on settings button click
+            settingsBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isVisible = settingsDropdown.style.display === 'block';
+                settingsDropdown.style.display = isVisible ? 'none' : 'block';
+            });
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!settingsBtn.contains(e.target) && !settingsDropdown.contains(e.target)) {
+                    settingsDropdown.style.display = 'none';
                 }
             });
+
+            // Handle download config template
+            if (downloadConfigBtn) {
+                downloadConfigBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    console.log('Downloading config template...');
+                    window.location.href = '/download-config-template';
+                    settingsDropdown.style.display = 'none';
+                });
+            }
         }
 
         // Check Google Drive availability

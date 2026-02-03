@@ -14,7 +14,7 @@
 version: 2
 
 # Which machine to use by default (if not specified in UI)
-default_machine: shop_router
+default_machine: omio_x8
 
 # =============================================================================
 # TEAM INFORMATION (applies to all machines)
@@ -34,26 +34,26 @@ team:
 
 machines:
   # -------------------------------------------------------------------------
-  # MACHINE 1: Large shop router (primary machine)
+  # MACHINE 1: Omio X8-2200 (most common FRC machine)
   # -------------------------------------------------------------------------
-  shop_router:
-    name: "Shop Router (48x96)"
+  omio_x8:
+    name: "Omio X8-2200"
 
     # Machine specifications
     machine:
-      manufacturer: "ShopBot"
-      controller: "Mach4"
+      manufacturer: "Omio"
+      controller: "Mach3"
 
       # Machine work envelope (inches)
       dimensions:
-        x_max: 48.0
-        y_max: 96.0
-        z_max: 8.0
+        x_max: 22.2
+        y_max: 30.3
+        z_max: 3.3
 
       # Park position (machine coordinates for safe part access)
       park_position:
         x: 0.5      # X position when parking (machine coords)
-        y: 95.5     # Y position when parking (machine coords)
+        y: 0.5      # Y position when parking (machine coords)
 
       # Coordinate systems
       standard_work_offset: "G54"       # Work offset for standard operations
@@ -106,16 +106,16 @@ machines:
       arc_radius: 0.05                  # Arc radius for clearing moves (inches)
 
     # Material-specific settings for THIS MACHINE
-    # Large, rigid machine can handle full speeds
+    # Desktop mill with good rigidity - moderate speeds
     materials:
       plywood:
         name: "Plywood"
-        description: "Standard plywood settings - 18K RPM, 75 IPM cutting"
+        description: "Standard plywood settings - 18K RPM, 70 IPM cutting"
 
         spindle_speed: 18000            # RPM
-        feed_rate: 75.0                 # Cutting feed rate (IPM)
-        ramp_feed_rate: 50.0            # Ramp feed rate (IPM)
-        plunge_rate: 35.0               # Plunge feed rate for tab Z moves (IPM)
+        feed_rate: 70.0                 # Cutting feed rate (IPM)
+        ramp_feed_rate: 45.0            # Ramp feed rate (IPM)
+        plunge_rate: 32.0               # Plunge feed rate for tab Z moves (IPM)
         traverse_rate: 200.0            # Lateral moves above material (IPM)
         approach_rate: 50.0             # Z approach to ramp start (IPM)
 
@@ -130,12 +130,12 @@ machines:
 
       aluminum:
         name: "Aluminum"
-        description: "Aluminum - 18K RPM, 55 IPM cutting, 4° ramp"
+        description: "Aluminum - 18K RPM, 50 IPM cutting, 4° ramp"
 
         spindle_speed: 18000
-        feed_rate: 55.0
-        ramp_feed_rate: 35.0
-        plunge_rate: 15.0
+        feed_rate: 50.0
+        ramp_feed_rate: 32.0
+        plunge_rate: 14.0
         traverse_rate: 200.0
         approach_rate: 35.0
 
@@ -150,12 +150,12 @@ machines:
 
       polycarbonate:
         name: "Polycarbonate"
-        description: "Polycarbonate - same as plywood settings"
+        description: "Polycarbonate - similar to plywood settings"
 
         spindle_speed: 18000
-        feed_rate: 75.0
-        ramp_feed_rate: 50.0
-        plunge_rate: 20.0
+        feed_rate: 70.0
+        ramp_feed_rate: 45.0
+        plunge_rate: 18.0
         traverse_rate: 200.0
         approach_rate: 50.0
 
@@ -175,21 +175,21 @@ machines:
         # folder_id: "your_folder_id_here"  # Get from Drive folder URL
 
   # -------------------------------------------------------------------------
-  # MACHINE 2: Small competition mill (more conservative settings)
+  # MACHINE 2: Avid CNC Pro2424 (Team 6238's machine)
   # -------------------------------------------------------------------------
-  competition_mill:
-    name: "Competition Mill (24x24)"
+  avid_pro2424:
+    name: "Avid CNC Pro2424"
 
     # Machine specifications
     machine:
-      manufacturer: "Generic"
-      controller: "Mach3"
+      manufacturer: "Avid CNC"
+      controller: "Mach4"
 
-      # Smaller work envelope
+      # Work envelope
       dimensions:
         x_max: 24.0
         y_max: 24.0
-        z_max: 6.0
+        z_max: 8.0
 
       park_position:
         x: 0.5
@@ -198,7 +198,7 @@ machines:
       standard_work_offset: "G54"
       tube_jig_work_offset: "G55"
 
-      coolant: "None"
+      coolant: "Air"
 
     # Default tooling
     default_tool:
@@ -241,64 +241,64 @@ machines:
       arc_radius: 0.05
 
     # Material-specific settings for THIS MACHINE
-    # Smaller, less rigid machine needs more conservative speeds
+    # Large, industrial-grade machine can handle full speeds
     materials:
       plywood:
         name: "Plywood"
-        description: "Conservative plywood for small mill"
+        description: "Full-speed plywood for industrial router"
 
         spindle_speed: 18000
-        feed_rate: 60.0               # SLOWER - less rigid machine
-        ramp_feed_rate: 40.0          # SLOWER
-        plunge_rate: 30.0
-        traverse_rate: 150.0
-        approach_rate: 40.0
+        feed_rate: 75.0               # Full speed - very rigid machine
+        ramp_feed_rate: 50.0
+        plunge_rate: 35.0
+        traverse_rate: 200.0
+        approach_rate: 50.0
 
         ramp_angle: 20.0
         ramp_start_clearance: 0.150
-        stepover_percentage: 0.60     # More conservative
+        stepover_percentage: 0.65
         helix_radius_multiplier: 0.75
-        max_slotting_depth: 0.3       # Shallower passes
+        max_slotting_depth: 0.4
 
         tab_width: 0.25
         tab_height: 0.15
 
       aluminum:
         name: "Aluminum"
-        description: "Very conservative aluminum for small mill"
+        description: "Full-speed aluminum for industrial router"
 
-        spindle_speed: 15000          # Lower RPM
-        feed_rate: 35.0               # MUCH SLOWER - small machine
-        ramp_feed_rate: 25.0          # SLOWER
-        plunge_rate: 12.0
-        traverse_rate: 150.0
-        approach_rate: 25.0
+        spindle_speed: 18000
+        feed_rate: 55.0               # Full speed - rigid machine
+        ramp_feed_rate: 35.0
+        plunge_rate: 15.0
+        traverse_rate: 200.0
+        approach_rate: 35.0
 
-        ramp_angle: 6.0               # Gentler ramp
+        ramp_angle: 4.0
         ramp_start_clearance: 0.050
-        stepover_percentage: 0.20     # Very conservative
+        stepover_percentage: 0.25
         helix_radius_multiplier: 0.5
-        max_slotting_depth: 0.15      # Shallow passes
+        max_slotting_depth: 0.2
 
         tab_width: 0.25
         tab_height: 0.15
 
       polycarbonate:
         name: "Polycarbonate"
-        description: "Conservative polycarbonate for small mill"
+        description: "Full-speed polycarbonate for industrial router"
 
-        spindle_speed: 15000
-        feed_rate: 60.0
-        ramp_feed_rate: 40.0
-        plunge_rate: 18.0
-        traverse_rate: 150.0
-        approach_rate: 40.0
+        spindle_speed: 18000
+        feed_rate: 75.0
+        ramp_feed_rate: 50.0
+        plunge_rate: 20.0
+        traverse_rate: 200.0
+        approach_rate: 50.0
 
         ramp_angle: 20.0
         ramp_start_clearance: 0.100
-        stepover_percentage: 0.50
+        stepover_percentage: 0.55
         helix_radius_multiplier: 0.75
-        max_slotting_depth: 0.20
+        max_slotting_depth: 0.25
 
         tab_width: 0.25
         tab_height: 0.15
