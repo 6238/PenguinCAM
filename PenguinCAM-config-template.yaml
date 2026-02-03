@@ -311,7 +311,10 @@ machines:
 # =============================================================================
 # NOTES
 # =============================================================================
-# - To use this config, upload it to your Onshape document as "PenguinCAM-config.yaml"
+# - To use this config, upload it to the root of your Onshape document tree
+# - as "PenguinCAM-config.yaml" and make sure it is shared with your classroom
+# - AND with the PenguinCAM app.
+#
 # - The machine selector will appear in the UI if you have multiple machines
 # - Each machine can have completely different feeds/speeds based on rigidity
 # - You can add custom materials to any machine
