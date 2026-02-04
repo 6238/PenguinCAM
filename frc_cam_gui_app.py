@@ -1493,11 +1493,36 @@ def onshape_import():
         # Render main page with DXF auto-loaded
         # The frontend will detect the dxf_file parameter and auto-upload it
 
-        # Get config values from session for template
-        team_config = session.get('team_config', {})
-        machine_x_max = team_config.get('machine_x_max', 48.0)
-        machine_y_max = team_config.get('machine_y_max', 96.0)
-        default_tool_diameter = team_config.get('default_tool_diameter', 0.157)
+        # Reconstruct TeamConfig to get materials list
+        team_config_data = session.get('team_config_data', {})
+        team_config = TeamConfig(team_config_data)
+
+        # Get available machines
+        machines = team_config.get_available_machines()
+
+        # Get current machine (from session, or use default)
+        current_machine_id = session.get('machine_id', team_config.default_machine_id)
+
+        # Get machine-specific config dict
+        team_config_dict = team_config.to_dict(current_machine_id)
+        machine_x_max = team_config_dict.get('machine_x_max', 48.0)
+        machine_y_max = team_config_dict.get('machine_y_max', 96.0)
+        default_tool_diameter = team_config_dict.get('default_tool_diameter', 0.157)
+
+        # Get available materials for current machine
+        available_materials = team_config.get_available_materials(current_machine_id)
+
+        # Add 'aluminum_tube' as a special UI-only material (uses aluminum preset)
+        available_materials['aluminum_tube'] = {
+            **available_materials.get('aluminum', {}),
+            'name': 'Aluminum Tube'
+        }
+
+        # Check for incomplete materials
+        incomplete_materials = {
+            material_id for material_id in available_materials.keys()
+            if not team_config.is_material_complete(material_id, current_machine_id) and material_id != 'aluminum_tube'
+        }
 
         return render_template('index.html',
                              dxf_file=dxf_token,  # Pass token instead of filename
@@ -1508,7 +1533,11 @@ def onshape_import():
                              machine_x_max=machine_x_max,
                              machine_y_max=machine_y_max,
                              default_tool_diameter=default_tool_diameter,
-                             using_default_config=session.get('using_default_config', False))
+                             using_default_config=session.get('using_default_config', False),
+                             machines=machines,
+                             current_machine_id=current_machine_id,
+                             materials=available_materials,
+                             incomplete_materials=incomplete_materials)
         
     except Exception as e:
         return jsonify({
