@@ -87,6 +87,7 @@
                         <div class="panel-title">Upload DXF File</div>
                     </div>
 
+                    <!-- Big drop zone (shown when no file loaded) -->
                     <div class="drop-zone" id="dropZone">
                         <div class="drop-zone-icon">📄</div>
                         <div class="drop-zone-text">Drag & drop your DXF file here</div>
@@ -94,16 +95,23 @@
                         <input type="file" id="fileInput" accept=".dxf" style="display: none;">
                     </div>
 
-                    <div id="fileInfo" style="display: none;" class="file-info">
-                        <div class="file-info-icon">📄</div>
-                        <div class="file-info-details">
-                            <div class="file-info-name" id="fileName"></div>
-                            <div class="file-info-size" id="fileSize"></div>
+                    <!-- File loaded card (shown when file is loaded) -->
+                    <div id="fileLoadedCard" style="display: none;">
+                        <div class="file-info">
+                            <div class="file-info-icon">📄</div>
+                            <div class="file-info-details">
+                                <div class="file-info-name" id="fileName"></div>
+                                <div class="file-info-size" id="fileSize"></div>
+                            </div>
+                        </div>
+                        <!-- Status message (for Onshape imports) -->
+                        <div id="statusMessage" style="display: none;"></div>
+
+                        <!-- Upload different file option -->
+                        <div class="upload-different" id="uploadDifferent">
+                            <a href="#" id="uploadDifferentLink">Upload a different file</a>
                         </div>
                     </div>
-
-                    <!-- Status message for Onshape imports -->
-                    <div id="statusMessage" style="display: none; margin-top: 1rem; padding: 0.75rem; border-radius: 6px; font-size: 0.9rem;"></div>
                 </div>
 
                 <!-- Step 2: Parameters -->
