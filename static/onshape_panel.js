@@ -39,6 +39,7 @@
         // Do this AFTER listener is set up so we can receive the response
         const selectionMessage = {
             messageName: 'requestSelection',
+            messageId: 'penguincam-init-' + Date.now(), // Unique ID for this request
             documentId: context.documentId,
             workspaceId: context.workspaceId,
             elementId: context.elementId
