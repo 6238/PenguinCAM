@@ -2029,7 +2029,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Render DXF geometry overlay (white lines on stock top surface)
             if (dxfGeometry && dxfGeometry.entities) {
-                renderDxfGeometry(scene, dxfGeometry.entities, materialThickness);
+                renderDxfGeometry(scene, dxfGeometry.entities, stockHeight);
             }
 
             // Create tool representation (endmill)
