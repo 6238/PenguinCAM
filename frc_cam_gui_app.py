@@ -1505,9 +1505,14 @@ def onshape_import():
 
         # Get machine-specific config dict
         team_config_dict = team_config.to_dict(current_machine_id)
+        drive_enabled = team_config_dict.get('google_drive_enabled', False)
         machine_x_max = team_config_dict.get('machine_x_max', 48.0)
         machine_y_max = team_config_dict.get('machine_y_max', 96.0)
         default_tool_diameter = team_config_dict.get('default_tool_diameter', 0.157)
+
+        # Get user/team info
+        user_name = session.get('user_name')
+        team_name = session.get('team_name')
 
         # Get available materials for current machine
         available_materials = team_config.get_available_materials(current_machine_id)
@@ -1530,6 +1535,9 @@ def onshape_import():
                              document_id=document_id,
                              face_id=face_id,
                              suggested_filename=suggested_filename or '',
+                             user_name=user_name,
+                             team_name=team_name,
+                             drive_enabled=drive_enabled,
                              machine_x_max=machine_x_max,
                              machine_y_max=machine_y_max,
                              default_tool_diameter=default_tool_diameter,
