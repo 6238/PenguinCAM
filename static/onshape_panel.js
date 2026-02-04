@@ -43,7 +43,7 @@
             documentId: context.documentId,
             workspaceId: context.workspaceId,
             elementId: context.elementId,
-            entityTypeSpecifier: 'FACE' // We're looking for face selections (try as string, not array)
+            entityTypeSpecifier: ['FACE'] // Array of entity types we're looking for
         };
         window.parent.postMessage(selectionMessage, '*');
         console.log('Requested current selection:', selectionMessage);
