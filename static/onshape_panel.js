@@ -37,8 +37,14 @@
         // Request current selection state (in case face is already selected)
         // Onshape will respond with a SELECTION message
         // Do this AFTER listener is set up so we can receive the response
-        window.parent.postMessage({ messageName: 'requestSelection' }, '*');
-        console.log('Requested current selection');
+        const selectionMessage = {
+            messageName: 'requestSelection',
+            documentId: context.documentId,
+            workspaceId: context.workspaceId,
+            elementId: context.elementId
+        };
+        window.parent.postMessage(selectionMessage, '*');
+        console.log('Requested current selection:', selectionMessage);
 
         // Set up button handlers
         sendBtn.addEventListener('click', handleSendToPenguinCAM);
