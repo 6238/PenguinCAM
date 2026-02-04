@@ -42,7 +42,8 @@
             messageId: 'penguincam-init-' + Date.now(), // Unique ID for this request
             documentId: context.documentId,
             workspaceId: context.workspaceId,
-            elementId: context.elementId
+            elementId: context.elementId,
+            entityTypeSpecifier: ['FACE'] // We're looking for face selections
         };
         window.parent.postMessage(selectionMessage, '*');
         console.log('Requested current selection:', selectionMessage);
