@@ -1957,9 +1957,11 @@ document.addEventListener('DOMContentLoaded', () => {
             scene.add(sacrificeOutline);
 
             // Add stock material as semi-transparent solid
-            const stockWidth = maxX - minX;
-            const stockDepth = maxY - minY;
             const stockHeight = stockHeightValue; // Use tube height for tubes, thickness for plates
+
+            // Calculate stock dimensions
+            let stockWidth, stockDepth;
+            let stockCenterX, stockCenterZ; // Center position for stock box
 
             // Calculate and display stock size
             const toolDiameter = parseFloat(document.getElementById('toolDiameter').value) || 0.157;
@@ -1967,8 +1969,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const stockSizeValue = document.getElementById('stockSizeValue');
 
             if (isAluminumTube) {
-                // For tube: show profile dimensions × length (no margin)
-                // Tube height from form input, tube width from DXF short dimension
+                // For tube: use DXF pattern dimensions for stock box (actual tube size)
+                // Account for rotation
+                let dxfWidth = dxfBounds ? dxfBounds.width : (maxX - minX);
+                let dxfHeight = dxfBounds ? dxfBounds.height : (maxY - minY);
+                if (rotationAngle === 90 || rotationAngle === 270) {
+                    [dxfWidth, dxfHeight] = [dxfHeight, dxfWidth];
+                }
+
+                stockWidth = dxfWidth;
+                stockDepth = dxfHeight;
+                stockCenterX = (minX + maxX) / 2;
+                stockCenterZ = -(minY + maxY) / 2;
+
+                // Display tube size
                 const tubeHeightInput = parseFloat(document.getElementById('tubeHeight').value) || 1.0;
                 const dxfShort = dxfBounds ? Math.min(dxfBounds.width, dxfBounds.height) : Math.min(stockWidth, stockDepth);
                 const tubeLength = dxfBounds ? Math.max(dxfBounds.width, dxfBounds.height) : Math.max(stockWidth, stockDepth);
@@ -1979,7 +1993,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     stockSizeDisplay.style.display = 'flex';
                 }
             } else {
-                // For plates: DXF bounding box + tool margin only if cutting perimeter
+                // For plates: use toolpath extents (show where the tool moves)
+                stockWidth = maxX - minX;
+                stockDepth = maxY - minY;
+                stockCenterX = (minX + maxX) / 2;
+                stockCenterZ = -(minY + maxY) / 2;
+
+                // Display stock size: DXF bounding box + tool margin only if cutting perimeter
                 // Account for rotation - swap DXF dimensions if rotated 90 or 270 degrees
                 let dxfWidth = dxfBounds ? dxfBounds.width : stockWidth;
                 let dxfHeight = dxfBounds ? dxfBounds.height : stockDepth;
@@ -2016,13 +2036,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 side: THREE.DoubleSide,
                 depthWrite: false // Critical! Allows lines to render through transparent material
             });
-            
+
             const stockMesh = new THREE.Mesh(stockGeometry, stockMaterial);
             // Position at center of stock, halfway up from sacrifice board
             stockMesh.position.set(
-                (minX + maxX) / 2,
+                stockCenterX,
                 stockHeight / 2,
-                -(minY + maxY) / 2
+                stockCenterZ
             );
             stockMesh.renderOrder = -1; // Render stock before toolpaths
             scene.add(stockMesh);
