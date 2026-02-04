@@ -75,27 +75,9 @@
         );
 
         if (faceSelection) {
-            // Check if this is a face from a solid body (not a sketch)
-            // Solid body faces have a partId, sketch faces don't
-            if (!faceSelection.partId) {
-                // This is a sketch face, not a solid body face
-                console.log('✗ Sketch face detected (no partId):', faceSelection);
-
-                selectedFaceId = null;
-                selectedPartId = null;
-                buttonGroup.style.display = 'none';
-                sendBtn.disabled = true;
-
-                instruction.innerHTML = '⚠️ You selected a <strong>sketch face</strong>.<br>Please select a face from a <strong>solid body</strong> instead.<br><br>💡 Tip: If you see sketch lines, you\'re selecting from the sketch.<br>Close the sketch and select the actual 3D part face.';
-                instruction.style.color = '#FBB515';
-                instruction.style.display = 'block';
-
-                return;
-            }
-
-            // Valid solid body face selected
+            // Valid face selected
             selectedFaceId = faceSelection.selectionId;
-            selectedPartId = faceSelection.partId;
+            selectedPartId = faceSelection.partId || null;
 
             // Update UI - hide instruction, show button
             instruction.style.display = 'none';
@@ -104,7 +86,7 @@
             // Enable button
             sendBtn.disabled = false;
 
-            console.log('✓ Valid solid body face selected:', selectedFaceId, 'Part:', selectedPartId);
+            console.log('✓ Face selected:', selectedFaceId, 'Part:', selectedPartId, 'Full selection:', faceSelection);
         } else {
             // No valid face - reset state
             selectedFaceId = null;
