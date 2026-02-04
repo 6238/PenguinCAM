@@ -277,9 +277,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // DOM elements
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
+        const fileLoadedCard = document.getElementById('fileLoadedCard');
         const fileInfo = document.getElementById('fileInfo');
         const fileName = document.getElementById('fileName');
         const fileSize = document.getElementById('fileSize');
+        const uploadDifferentLink = document.getElementById('uploadDifferentLink');
         const generateBtn = document.getElementById('generateBtn');
         const downloadBtn = document.getElementById('downloadBtn');
         const driveBtn = document.getElementById('driveBtn');
@@ -456,7 +458,11 @@ document.addEventListener('DOMContentLoaded', () => {
             appState.uploadedFile = file;
             fileName.textContent = file.name;
             fileSize.textContent = formatFileSize(file.size);
-            fileInfo.style.display = 'flex';
+
+            // Show file loaded card, hide drop zone
+            dropZone.style.display = 'none';
+            fileLoadedCard.style.display = 'block';
+
             generateBtn.disabled = false;
             generateBtn.textContent = '🚀 Generate Program';
             hideError();
@@ -468,6 +474,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 parseDxfForSetup(e.target.result);
             };
             reader.readAsText(file);
+        }
+
+        // Handle "Upload a different file" link
+        if (uploadDifferentLink) {
+            uploadDifferentLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                fileInput.click();
+            });
         }
 
         function formatFileSize(bytes) {
@@ -2296,12 +2310,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Update UI elements
                         const fileNameEl = document.getElementById('fileName');
                         const fileSizeEl = document.getElementById('fileSize');
-                        const fileInfoEl = document.getElementById('fileInfo');
+                        const fileLoadedCardEl = document.getElementById('fileLoadedCard');
+                        const dropZoneEl = document.getElementById('dropZone');
                         const generateBtnEl = document.getElementById('generateBtn');
 
                         if (fileNameEl) fileNameEl.textContent = filename;
                         if (fileSizeEl) fileSizeEl.textContent = formatFileSize(dxfContent.length);
-                        if (fileInfoEl) fileInfoEl.style.display = 'flex';
+
+                        // Show file loaded card, hide drop zone
+                        if (dropZoneEl) dropZoneEl.style.display = 'none';
+                        if (fileLoadedCardEl) fileLoadedCardEl.style.display = 'block';
+
                         if (generateBtnEl) {
                             generateBtnEl.disabled = false;
                             generateBtnEl.textContent = '🚀 Generate Program';
@@ -2315,7 +2334,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (statusDiv) {
                             statusDiv.textContent = '✅ Imported from Onshape! Orient your part and click Generate G-code.';
                             statusDiv.style.display = 'block';
-                            statusDiv.className = 'success';
                         }
                     })
                     .catch(error => {

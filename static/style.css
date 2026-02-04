@@ -269,7 +269,6 @@
             display: flex;
             align-items: center;
             gap: 1rem;
-            margin-top: 1rem;
         }
 
         .file-info-icon {
@@ -288,6 +287,35 @@
         .file-info-size {
             color: var(--text-dim);
             font-size: 0.85rem;
+        }
+
+        #fileLoadedCard #statusMessage {
+            margin-top: 0.75rem;
+            padding: 0.75rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #10b981;
+        }
+
+        .upload-different {
+            margin-top: 1rem;
+            text-align: center;
+            padding: 0.5rem;
+        }
+
+        .upload-different a {
+            color: var(--primary);
+            text-decoration: none;
+            font-size: 0.9rem;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+
+        .upload-different a:hover {
+            opacity: 1;
+            text-decoration: underline;
         }
 
         /* Status messages */
