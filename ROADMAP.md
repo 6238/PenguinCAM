@@ -61,6 +61,22 @@ PenguinCAM is ready for real-world use:
 **Priority:** Low
 **Effort:** Medium
 
+### #4: Support G41/G42 tool compensation
+
+**Priority:** Low
+**Effort:** Medium
+
+#### Would allow for more precise finished products (especially bearing holes) which are a pain point for many teams, as 1.125 ends up too small to use in many cases
+
+### #5: Support 2.5D designs
+
+**Priority:** Medium
+**Effort:** High
+
+#### Many teams prefer to have partial-depth pockets for weight savings or for recessing of bolt heads.
+#### Our DXF intermediate format supports the concept of layers which would be used for this
+#### But Onshape can not generate a multi-layer DXF file at this time, so we'd need to do it for them via part analysis
+
 ---
 
 ## 💡 Ideas for Consideration
@@ -73,7 +89,6 @@ PenguinCAM is ready for real-world use:
 - Export simulation as video/animated GIF
 - Integration with other CAD platforms (Fusion 360, Inventor)
 - Library of CNC machines
-- Support for 2.5D patterns
 
 ---
 
