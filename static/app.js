@@ -838,6 +838,88 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
+        /**
+         * Parse Z depth from layer name (e.g., "Z_-0p250" -> -0.25, "Z_0p000" -> 0)
+         * Returns null if layer name doesn't match the expected format
+         */
+        function parseLayerDepth(layerName) {
+            const match = layerName.match(/^Z_(-?\d+)p(\d+)$/);
+            if (!match) return null;
+
+            const isNegative = match[1].startsWith('-');
+            const intPart = parseInt(match[1]);
+            const fracPart = parseInt(match[2]);
+            const fracValue = fracPart / Math.pow(10, match[2].length);
+
+            // Handle negative values correctly (e.g., Z_-0p250 should be -0.25, not 0.25)
+            if (isNegative) {
+                return intPart - fracValue;
+            } else {
+                return intPart + fracValue;
+            }
+        }
+
+        /**
+         * Organize DXF entities by layer and assign colors
+         * Returns: { layers: Map<layerName, {depth, color, entities}>, layerOrder: [layerName] }
+         */
+        function organizeDxfLayers(entities) {
+            const layersMap = new Map();
+
+            // Color palette for up to 10 layers (visible on black background)
+            const layerColors = [
+                0xFFFFFF, // White (base/top layer)
+                0xFFFF00, // Yellow
+                0x00FFFF, // Cyan
+                0xFF00FF, // Magenta
+                0x00FF00, // Lime Green
+                0xFF8800, // Orange
+                0xFF66FF, // Pink
+                0x66CCFF, // Light Blue
+                0x66FF66, // Light Green
+                0xFF6666  // Light Coral
+            ];
+
+            // Group entities by layer
+            entities.forEach(entity => {
+                const layerName = entity.layer || '0';
+                if (!layersMap.has(layerName)) {
+                    layersMap.set(layerName, {
+                        name: layerName,
+                        depth: parseLayerDepth(layerName),
+                        entities: []
+                    });
+                }
+                layersMap.get(layerName).entities.push(entity);
+            });
+
+            // Sort layers by depth (shallowest first)
+            const sortedLayers = Array.from(layersMap.values()).sort((a, b) => {
+                // Layers without depth info go first (assume they're the base)
+                if (a.depth === null && b.depth === null) return 0;
+                if (a.depth === null) return -1;
+                if (b.depth === null) return 1;
+                return b.depth - a.depth; // Higher Z (less negative) first
+            });
+
+            // Assign colors
+            sortedLayers.forEach((layer, index) => {
+                layer.color = layerColors[Math.min(index, layerColors.length - 1)];
+            });
+
+            // Log layer information
+            console.log('DXF Layers:');
+            sortedLayers.forEach(layer => {
+                const depthStr = layer.depth !== null ? `${layer.depth.toFixed(3)}"` : 'N/A';
+                console.log(`  ${layer.name}: depth=${depthStr}, color=${layer.color.toString(16)}, entities=${layer.entities.length}`);
+            });
+
+            return {
+                layers: layersMap,
+                layerOrder: sortedLayers.map(l => l.name)
+            };
+        }
+
         // Parse DXF geometry from file using dxf-parser library
         function parseDxfForSetup(dxfContent) {
             try {
@@ -920,11 +1002,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 console.log(`DXF bounds: X=[${minX.toFixed(3)}, ${maxX.toFixed(3)}], Y=[${minY.toFixed(3)}, ${maxY.toFixed(3)}]`);
                 console.log(`Entity count: ${dxf.entities ? dxf.entities.length : 0}`);
-                
+
+                // Organize entities by layer and parse Z depths
+                const layerData = organizeDxfLayers(dxf.entities || []);
+
                 // Store parsed DXF data
-                dxfGeometry = { 
+                dxfGeometry = {
                     minX, maxX, minY, maxY,
-                    entities: dxf.entities || []
+                    entities: dxf.entities || [],
+                    layers: layerData.layers,
+                    layerOrder: layerData.layerOrder
                 };
                 dxfBounds = {
                     width: maxX - minX,
@@ -1273,13 +1360,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
             }
             
-            // Draw all entities (rotated)
-            ctx.strokeStyle = '#6B7280';
+            // Draw all entities (rotated) with layer-specific colors
             ctx.lineWidth = 1.5;
-            
-            if (dxfGeometry.entities) {
+
+            // Check if we have layer information (multi-layer DXF)
+            const hasLayers = dxfGeometry.layers && dxfGeometry.layerOrder;
+
+            // Group entities by layer if we have layer info
+            let layerGroups;
+            if (hasLayers) {
+                layerGroups = new Map();
                 dxfGeometry.entities.forEach(entity => {
-                    ctx.beginPath();
+                    const layerName = entity.layer || '0';
+                    if (!layerGroups.has(layerName)) {
+                        layerGroups.set(layerName, []);
+                    }
+                    layerGroups.get(layerName).push(entity);
+                });
+            } else {
+                // Single layer - use gray
+                layerGroups = new Map([['default', dxfGeometry.entities || []]]);
+            }
+
+            // Draw each layer group with its assigned color
+            if (dxfGeometry.entities) {
+                layerGroups.forEach((layerEntities, layerName) => {
+                    // Get color for this layer
+                    let layerColor = '#6B7280'; // Default gray for single-layer or unknown layers
+                    if (hasLayers && dxfGeometry.layers.has(layerName)) {
+                        const colorHex = dxfGeometry.layers.get(layerName).color;
+                        layerColor = '#' + colorHex.toString(16).padStart(6, '0');
+                    }
+
+                    ctx.strokeStyle = layerColor;
+
+                    layerEntities.forEach(entity => {
+                        ctx.beginPath();
                     
                     switch(entity.type) {
                         case 'CIRCLE':
@@ -1352,9 +1468,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             ctx.stroke();
                             break;
                     }
+                    });
                 });
             }
-            
+
             // Calculate bounding box corners in SCREEN coordinates (NOT rotated)
             const boxLeft = centerX - (displayWidth * scale) / 2;
             const boxRight = centerX + (displayWidth * scale) / 2;
@@ -1598,18 +1715,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         /**
-         * Render DXF geometry entities as white lines on the stock top surface
+         * Render DXF geometry entities with layer-specific colors on the stock top surface
          * This shows the "cutting geometry" - the original design shapes
+         * Multi-layer DXFs render each layer at different depths with different colors
          */
         function renderDxfGeometry(scene, entities, zHeight) {
             if (!dxfBounds) return;
 
-            const dxfMaterial = new THREE.LineBasicMaterial({
-                color: 0xFFFFFF, // White for visibility
-                linewidth: 2,
-                opacity: 0.8,
-                transparent: true
-            });
+            // Check if we have layer information (multi-layer DXF)
+            const hasLayers = dxfGeometry.layers && dxfGeometry.layerOrder;
+
+            // Group entities by layer if we have layer info
+            let layerGroups;
+            if (hasLayers) {
+                layerGroups = new Map();
+                entities.forEach(entity => {
+                    const layerName = entity.layer || '0';
+                    if (!layerGroups.has(layerName)) {
+                        layerGroups.set(layerName, []);
+                    }
+                    layerGroups.get(layerName).push(entity);
+                });
+            } else {
+                // Single layer - use white
+                layerGroups = new Map([['default', entities]]);
+            }
 
             // Calculate rotated bounding box to determine offset
             // We need to rotate all points, find their bounds, then offset so min is at (0,0)
@@ -1691,76 +1821,94 @@ document.addEventListener('DOMContentLoaded', () => {
                 return new THREE.Vector3(tx, zHeight, -ty);
             }
 
-            entities.forEach(entity => {
-                let points = [];
-
-                switch(entity.type) {
-                    case 'LINE':
-                        // Straight line from start to end
-                        points = [
-                            transformPoint(entity.vertices[0].x, entity.vertices[0].y),
-                            transformPoint(entity.vertices[1].x, entity.vertices[1].y)
-                        ];
-                        break;
-
-                    case 'CIRCLE':
-                        // Full circle - tessellate into line segments
-                        {
-                            const numPoints = 50;
-                            for (let i = 0; i <= numPoints; i++) {
-                                const angle = (i / numPoints) * 2 * Math.PI;
-                                const x = entity.center.x + entity.radius * Math.cos(angle);
-                                const y = entity.center.y + entity.radius * Math.sin(angle);
-                                points.push(transformPoint(x, y));
-                            }
-                        }
-                        break;
-
-                    case 'ARC':
-                        // Partial arc - tessellate into line segments
-                        {
-                            const startAngle = (entity.startAngle || 0) * Math.PI / 180;
-                            const endAngle = (entity.endAngle || 360) * Math.PI / 180;
-                            const numPoints = 50;
-
-                            for (let i = 0; i <= numPoints; i++) {
-                                const t = i / numPoints;
-                                const angle = startAngle + (endAngle - startAngle) * t;
-                                const x = entity.center.x + entity.radius * Math.cos(angle);
-                                const y = entity.center.y + entity.radius * Math.sin(angle);
-                                points.push(transformPoint(x, y));
-                            }
-                        }
-                        break;
-
-                    case 'LWPOLYLINE':
-                    case 'POLYLINE':
-                        // Connected line segments through vertices
-                        points = entity.vertices.map(v => transformPoint(v.x, v.y));
-                        // Close the polyline if it's marked as closed
-                        if (entity.closed && points.length > 0) {
-                            points.push(points[0].clone());
-                        }
-                        break;
-
-                    case 'SPLINE':
-                        // Approximate spline with control points
-                        if (entity.controlPoints && entity.controlPoints.length > 1) {
-                            points = entity.controlPoints.map(p => transformPoint(p.x, p.y));
-                        }
-                        break;
-
-                    default:
-                        // Skip unsupported entity types
-                        return;
+            // Render each layer group with its assigned color
+            layerGroups.forEach((layerEntities, layerName) => {
+                // Get color for this layer
+                let layerColor = 0xFFFFFF; // Default to white
+                if (hasLayers && dxfGeometry.layers.has(layerName)) {
+                    layerColor = dxfGeometry.layers.get(layerName).color;
                 }
 
-                // Create and add the line to the scene
-                if (points.length >= 2) {
-                    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-                    const line = new THREE.Line(geometry, dxfMaterial);
-                    scene.add(line);
-                }
+                // Create material for this layer
+                const layerMaterial = new THREE.LineBasicMaterial({
+                    color: layerColor,
+                    linewidth: 2,
+                    opacity: 0.8,
+                    transparent: true
+                });
+
+                // Render all entities in this layer
+                layerEntities.forEach(entity => {
+                    let points = [];
+
+                    switch(entity.type) {
+                        case 'LINE':
+                            // Straight line from start to end
+                            points = [
+                                transformPoint(entity.vertices[0].x, entity.vertices[0].y),
+                                transformPoint(entity.vertices[1].x, entity.vertices[1].y)
+                            ];
+                            break;
+
+                        case 'CIRCLE':
+                            // Full circle - tessellate into line segments
+                            {
+                                const numPoints = 50;
+                                for (let i = 0; i <= numPoints; i++) {
+                                    const angle = (i / numPoints) * 2 * Math.PI;
+                                    const x = entity.center.x + entity.radius * Math.cos(angle);
+                                    const y = entity.center.y + entity.radius * Math.sin(angle);
+                                    points.push(transformPoint(x, y));
+                                }
+                            }
+                            break;
+
+                        case 'ARC':
+                            // Partial arc - tessellate into line segments
+                            {
+                                const startAngle = (entity.startAngle || 0) * Math.PI / 180;
+                                const endAngle = (entity.endAngle || 360) * Math.PI / 180;
+                                const numPoints = 50;
+
+                                for (let i = 0; i <= numPoints; i++) {
+                                    const t = i / numPoints;
+                                    const angle = startAngle + (endAngle - startAngle) * t;
+                                    const x = entity.center.x + entity.radius * Math.cos(angle);
+                                    const y = entity.center.y + entity.radius * Math.sin(angle);
+                                    points.push(transformPoint(x, y));
+                                }
+                            }
+                            break;
+
+                        case 'LWPOLYLINE':
+                        case 'POLYLINE':
+                            // Connected line segments through vertices
+                            points = entity.vertices.map(v => transformPoint(v.x, v.y));
+                            // Close the polyline if it's marked as closed
+                            if (entity.closed && points.length > 0) {
+                                points.push(points[0].clone());
+                            }
+                            break;
+
+                        case 'SPLINE':
+                            // Approximate spline with control points
+                            if (entity.controlPoints && entity.controlPoints.length > 1) {
+                                points = entity.controlPoints.map(p => transformPoint(p.x, p.y));
+                            }
+                            break;
+
+                        default:
+                            // Skip unsupported entity types
+                            return;
+                    }
+
+                    // Create and add the line to the scene
+                    if (points.length >= 2) {
+                        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                        const line = new THREE.Line(geometry, layerMaterial);
+                        scene.add(line);
+                    }
+                });
             });
         }
 
