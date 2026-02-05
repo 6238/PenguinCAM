@@ -316,11 +316,49 @@ class FRCPostProcessor:
         gcode.append('')
         return gcode
 
+    def _parse_layer_depth(self, layer_name: str) -> Optional[float]:
+        """
+        Parse Z depth from layer name (e.g., "Z_-0p250" -> -0.25, "Z_0p000" -> 0)
+        Returns None if layer name doesn't match the expected format
+        """
+        import re
+        match = re.match(r'^Z_(-?\d+)p(\d+)$', layer_name)
+        if not match:
+            return None
+
+        is_negative = match.group(1).startswith('-')
+        int_part = int(match.group(1))
+        frac_part = int(match.group(2))
+        frac_value = frac_part / (10 ** len(match.group(2)))
+
+        if is_negative:
+            return int_part - frac_value
+        else:
+            return int_part + frac_value
+
     def load_dxf(self, filename: str):
-        """Load DXF file and extract geometry"""
+        """Load DXF file and extract geometry, organized by layer if multi-layer DXF"""
         print(f"Loading {filename}...")
         doc = ezdxf.readfile(filename)
         msp = doc.modelspace()
+
+        # Check for multi-layer structure
+        layers_with_depths = {}
+        for layer in doc.layers:
+            depth = self._parse_layer_depth(layer.dxf.name)
+            if depth is not None:
+                layers_with_depths[layer.dxf.name] = depth
+
+        if layers_with_depths:
+            print(f"Detected multi-layer DXF with {len(layers_with_depths)} depth layers")
+            self._load_multilayer_dxf(doc, msp, layers_with_depths)
+        else:
+            print("Processing as single-layer DXF")
+            self._load_singlelayer_dxf(msp)
+
+    def _load_singlelayer_dxf(self, msp):
+        """Load geometry from single-layer DXF (existing logic)"""
+        self.layer_data = None  # Mark as single-layer
 
         # Extract circles (holes)
         self.circles = []
@@ -368,7 +406,74 @@ class FRCPostProcessor:
             self.polylines.extend(closed_paths)
         
         print(f"Found {len(self.circles)} circles and {len(self.polylines)} closed paths")
-    
+
+    def _load_multilayer_dxf(self, doc, msp, layers_with_depths):
+        """Load geometry from multi-layer DXF, organized by depth"""
+        # Initialize geometry lists for transform_coordinates compatibility
+        self.lines = []
+        self.arcs = []
+        self.splines = []
+
+        # Store layer information for multi-pass processing
+        self.layer_data = {}
+
+        # Sort layers by depth (shallowest first, but we'll process deepest first except perimeter)
+        sorted_layers = sorted(layers_with_depths.items(), key=lambda x: x[1], reverse=True)
+
+        for layer_name, depth in sorted_layers:
+            print(f"  Processing layer {layer_name} (Z={depth:.4f}\")")
+
+            # Extract entities for this layer
+            layer_circles = []
+            layer_polylines = []
+
+            # Extract circles from this layer
+            for entity in msp.query('CIRCLE'):
+                if entity.dxf.layer == layer_name:
+                    center = (entity.dxf.center.x, entity.dxf.center.y)
+                    radius = entity.dxf.radius
+                    layer_circles.append({'center': center, 'radius': radius, 'diameter': radius * 2})
+
+            # Extract polylines from this layer (same logic as single-layer)
+            for entity in msp.query('LWPOLYLINE'):
+                if entity.dxf.layer == layer_name:
+                    points = [(p[0], p[1]) for p in entity.get_points('xy')]
+                    if entity.closed and len(points) > 2:
+                        layer_polylines.append(points)
+
+            for entity in msp.query('POLYLINE'):
+                if entity.is_2d_polyline and entity.dxf.layer == layer_name:
+                    points = [(v.dxf.location.x, v.dxf.location.y) for v in entity.vertices]
+                    if entity.is_closed and len(points) > 2:
+                        layer_polylines.append(points)
+
+            # Collect individual entities for path stitching
+            lines = [e for e in msp.query('LINE') if e.dxf.layer == layer_name]
+            arcs = [e for e in msp.query('ARC') if e.dxf.layer == layer_name]
+            splines = [e for e in msp.query('SPLINE') if e.dxf.layer == layer_name]
+            unclosed_lwpolylines = [e for e in msp.query('LWPOLYLINE')
+                                   if e.dxf.layer == layer_name and not e.closed
+                                   and len(list(e.get_points('xy'))) > 1]
+
+            if lines or arcs or splines or unclosed_lwpolylines:
+                closed_paths = self._chain_entities_to_paths(lines, arcs, splines, unclosed_lwpolylines)
+                layer_polylines.extend(closed_paths)
+
+            self.layer_data[layer_name] = {
+                'depth': depth,
+                'circles': layer_circles,
+                'polylines': layer_polylines
+            }
+
+            print(f"    Found {len(layer_circles)} circles and {len(layer_polylines)} closed paths at this depth")
+
+        # For compatibility, set top-level circles/polylines to the shallowest layer
+        # (This allows classify_loops to work as-is for single-layer operations)
+        if self.layer_data:
+            top_layer = sorted_layers[0][0]  # Shallowest layer
+            self.circles = self.layer_data[top_layer]['circles']
+            self.polylines = self.layer_data[top_layer]['polylines']
+
     def _chain_entities_to_paths(self, lines, arcs, splines, unclosed_polylines=None):
         """
         Chain individual LINE, ARC, SPLINE, and unclosed LWPOLYLINE entities into closed paths.
@@ -1019,7 +1124,7 @@ class FRCPostProcessor:
     
     def generate_gcode(self, suggested_filename: str = None, timestamp: str = None) -> PostProcessorResult:
         """
-        Generate complete G-code for standard plate operations
+        Generate complete G-code for standard plate operations (single or multi-layer)
 
         Args:
             suggested_filename: Optional filename (without timestamp, will be added)
@@ -1036,6 +1141,10 @@ class FRCPostProcessor:
                 success=False,
                 errors=self.errors.copy()
             )
+
+        # Multi-layer processing
+        if self.layer_data:
+            return self._generate_multilayer_gcode(suggested_filename, timestamp)
 
         gcode = []
         warnings = []
@@ -1247,7 +1356,183 @@ class FRCPostProcessor:
                 'dwell_time': self._format_time(time_estimate['dwell'])
             }
         )
-    
+
+    def _generate_multilayer_gcode(self, suggested_filename: str = None, timestamp: str = None) -> PostProcessorResult:
+        """Generate G-code for multi-layer DXF (2.5D machining)"""
+        print("\n" + "="*70)
+        print("MULTI-LAYER PROCESSING")
+        print("="*70)
+
+        # Sort layers: deepest first, but save top/perimeter layer for last
+        sorted_layers = sorted(self.layer_data.items(), key=lambda x: x[1]['depth'])
+
+        # Find the top layer (closest to 0, typically the perimeter)
+        top_layer = max(self.layer_data.items(), key=lambda x: x[1]['depth'])
+        top_layer_name = top_layer[0]
+
+        # Separate layers: non-perimeter layers (deepest first) + perimeter layer last
+        depth_layers = [item for item in sorted_layers if item[0] != top_layer_name]
+
+        print(f"\nProcessing order:")
+        for i, (layer_name, layer_info) in enumerate(depth_layers, 1):
+            print(f"  {i}. {layer_name} (Z={layer_info['depth']:.4f}\")")
+        print(f"  {len(depth_layers) + 1}. {top_layer_name} (Z={top_layer[1]['depth']:.4f}\") - PERIMETER (last)")
+
+        # Generate header (reuse existing logic)
+        if not timestamp:
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp_display = timestamp[:16]
+
+        gcode = []
+        warnings = []
+
+        # Load machine config
+        config_path = os.path.join(os.path.dirname(__file__), 'machine_config.json')
+        try:
+            with open(config_path, 'r') as f:
+                machine_config = json.load(f)
+        except:
+            machine_config = {
+                'machine': {'name': 'CNC Router', 'controller': 'Generic', 'coolant': 'Air'},
+                'team': {'number': 0, 'name': 'FRC Team'}
+            }
+
+        # Generate comprehensive header
+        team = machine_config.get('team', {})
+        machine = machine_config.get('machine', {})
+
+        gcode.append(f"({team.get('name', 'FRC Team').upper()} - Team {team.get('number', '0000')})")
+        gcode.append("(PenguinCAM CNC Post-Processor - MULTI-LAYER)")
+        if hasattr(self, 'user_name'):
+            gcode.append(f"(Generated by: {self.user_name} on {timestamp_display})")
+        else:
+            gcode.append(f"(Generated on: {timestamp_display})")
+        gcode.append("")
+
+        machine_name = machine.get('name', 'CNC Router').replace('(', '[').replace(')', ']')
+        controller = machine.get('controller', 'Generic').replace('(', '[').replace(')', ']')
+
+        gcode.append(f"(Machine: {machine_name})")
+        gcode.append(f"(Controller: {controller})")
+        gcode.append(f"(Units: {'Inches' if self.units == 'inch' else 'Millimeters'})")
+        gcode.append("")
+        gcode.append(f"(Material: {self.material_thickness}\" thick)")
+        gcode.append(f"(Tool: {self.tool_diameter}\" diam Flat End Mill)")
+        gcode.append(f"(Spindle: {self.spindle_speed} RPM)")
+        gcode.append(f"(Layers: {len(self.layer_data)} depths)")
+        gcode.append("")
+
+        # Modal G-code setup
+        gcode.append("G90 G94 G91.1 G40 G49 G17")
+        if self.units == "inch":
+            gcode.append("G20  ; Inches")
+        else:
+            gcode.append("G21  ; Millimeters")
+
+        gcode.append("G0 G28 G91 Z0.  ; Home Z axis")
+        gcode.append("G90  ; Back to absolute mode")
+        gcode.append("")
+        gcode.append(f"S{self.spindle_speed} M3  ; Spindle on")
+        gcode.append("M7  ; Air blast on")
+        gcode.append("G4 P2  ; Wait for spindle")
+        gcode.append("")
+        gcode.append("G54  ; Work coordinate system")
+        gcode.append("G53 G0 Z0.  ; Machine Z0")
+        gcode.append("G0 X0 Y0  ; Origin")
+        gcode.append("")
+
+        # Process each depth layer (deepest to shallowest, excluding top/perimeter)
+        for layer_name, layer_info in depth_layers:
+            depth = layer_info['depth']
+            print(f"\nGenerating toolpaths for {layer_name} at Z={depth:.4f}\"")
+
+            gcode.append(f"(===== LAYER: {layer_name} | DEPTH: Z={depth:.4f}\" =====)")
+
+            # Temporarily set geometry for this layer
+            self.circles = layer_info['circles']
+            self.polylines = layer_info['polylines']
+
+            # Classify geometry (holes, pockets) - reuses existing methods
+            self.classify_holes()
+
+            # For depth layers: treat ALL polylines as pockets (no perimeter)
+            self.perimeter = None
+            self.pockets = self.polylines.copy() if self.polylines else []
+
+            # Adjust cut depth for this layer
+            saved_cut_depth = self.cut_depth
+            self.cut_depth = depth - self.sacrifice_board_depth
+
+            # Generate toolpaths at this depth
+            if self.holes:
+                gcode.append(f"(Layer {layer_name}: {len(self.holes)} holes)")
+                for i, hole in enumerate(self.holes, 1):
+                    center = hole['center']
+                    diameter = hole['diameter']
+                    gcode.extend(self._generate_hole_gcode(center[0], center[1], diameter))
+
+            if self.pockets:
+                gcode.append(f"(Layer {layer_name}: {len(self.pockets)} pockets)")
+                for i, pocket in enumerate(self.pockets, 1):
+                    gcode.extend(self._generate_pocket_gcode(pocket))
+
+            # Restore original cut depth
+            self.cut_depth = saved_cut_depth
+            gcode.append("")
+
+        # Process top/perimeter layer last
+        layer_name, layer_info = top_layer
+        depth = layer_info['depth']
+        print(f"\nGenerating toolpaths for {layer_name} (PERIMETER) at Z={depth:.4f}\"")
+
+        gcode.append(f"(===== LAYER: {layer_name} | PERIMETER =====)")
+
+        self.circles = layer_info['circles']
+        self.polylines = layer_info['polylines']
+        self.classify_holes()
+        self.identify_perimeter_and_pockets()
+
+        # Perimeter cut at full depth
+        if self.perimeter:
+            if self.pause_before_perimeter:
+                gcode.extend(self._generate_pause_and_park_gcode(
+                    'PAUSE FOR FIXTURING',
+                    ['Internal features complete', 'Install fixturing', 'Secure part before perimeter']
+                ))
+
+            if self.tabs_enabled:
+                gcode.append("(Perimeter with tabs)")
+            else:
+                gcode.append("(Perimeter - no tabs)")
+
+            gcode.extend(self._generate_perimeter_gcode(self.perimeter))
+
+        gcode.append("")
+
+        # Footer
+        gcode.append("(===== FINISH =====)")
+        gcode.append(f"G0 Z{self.safe_height:.4f}")
+        gcode.append("G53 G0 Z0.")
+        gcode.append("M9  ; Air blast off")
+        gcode.append("M5  ; Spindle off")
+        gcode.append("M30  ; Program end")
+
+        # Generate filename
+        base_name = suggested_filename if suggested_filename else "output"
+        timestamp_for_file = timestamp.replace('-', '').replace(' ', '_').replace(':', '')
+        filename = f"{base_name}_{timestamp_for_file}.nc"
+
+        return PostProcessorResult(
+            success=True,
+            gcode='\n'.join(gcode),
+            filename=filename,
+            warnings=warnings,
+            stats={
+                'num_layers': len(self.layer_data),
+                'total_lines': len(gcode)
+            }
+        )
+
     def _calculate_helical_passes(self, toolpath_radius: float, target_angle_deg: float = None, ramp_start_height: float = None) -> Tuple[int, float]:
         """
         Calculate number of helical passes needed for a safe plunge angle.
