@@ -943,23 +943,20 @@ class OnshapeClient:
             log("No faces found")
             return {}
 
-        # NOTE: Onshape bodydetails API returns coordinates in METERS
-        # Convert to inches: 1 meter = 39.3701 inches
-        METERS_TO_INCHES = 39.3701
-
         # Reference normal vector (unitless, no conversion needed)
         ref_nx = reference_normal.get('x', 0)
         ref_ny = reference_normal.get('y', 0)
         ref_nz = reference_normal.get('z', 1)
         ref_mag = (ref_nx**2 + ref_ny**2 + ref_nz**2)**0.5
 
-        # Reference origin point (convert from meters to inches)
-        ref_ox = reference_origin.get('x', 0) * METERS_TO_INCHES
-        ref_oy = reference_origin.get('y', 0) * METERS_TO_INCHES
-        ref_oz = reference_origin.get('z', 0) * METERS_TO_INCHES
+        # Reference origin point
+        # NOTE: Units depend on document units - treat as-is for now
+        ref_ox = reference_origin.get('x', 0)
+        ref_oy = reference_origin.get('y', 0)
+        ref_oz = reference_origin.get('z', 0)
 
         log(f"Reference normal: ({ref_nx:.3f}, {ref_ny:.3f}, {ref_nz:.3f})")
-        log(f"Reference origin: ({ref_ox:.3f}, {ref_oy:.3f}, {ref_oz:.3f}) inches")
+        log(f"Reference origin: ({ref_ox:.3f}, {ref_oy:.3f}, {ref_oz:.3f})")
 
         # Collect all parallel faces with their depths
         parallel_faces = []
@@ -986,13 +983,9 @@ class OnshapeClient:
                     if abs(abs(dot_product) - 1.0) < angle_tolerance:
                         # Calculate signed distance from reference plane
                         # Distance = (point - ref_origin) · ref_normal / |ref_normal|
-                        # NOTE: Onshape bodydetails API returns coordinates in METERS
-                        # Convert to inches: 1 meter = 39.3701 inches
-                        METERS_TO_INCHES = 39.3701
-
-                        ox = origin.get('x', 0) * METERS_TO_INCHES
-                        oy = origin.get('y', 0) * METERS_TO_INCHES
-                        oz = origin.get('z', 0) * METERS_TO_INCHES
+                        ox = origin.get('x', 0)
+                        oy = origin.get('y', 0)
+                        oz = origin.get('z', 0)
 
                         dx = ox - ref_ox
                         dy = oy - ref_oy
@@ -1000,20 +993,17 @@ class OnshapeClient:
 
                         signed_distance = (dx * ref_nx + dy * ref_ny + dz * ref_nz) / ref_mag
 
-                        # Convert area from m² to in² (1 m² = 1550.003 in²)
-                        area_in2 = face['area'] * (METERS_TO_INCHES ** 2)
-
                         parallel_faces.append({
                             'face_id': face['id'],
                             'body_id': bid,
                             'part_name': body_data['name'],
-                            'area': area_in2,
+                            'area': face['area'],
                             'depth': signed_distance,
                             'normal': normal,
                             'origin': origin
                         })
 
-                        log(f"  Found parallel face {face['id'][:8]}... at depth {signed_distance:.4f}\" (area={area_in2:.4f} in²)")
+                        log(f"  Found parallel face {face['id'][:8]}... at depth {signed_distance:.4f}\" (area={face['area']:.4f})")
 
         log(f"\nTotal parallel faces found: {len(parallel_faces)}")
 
@@ -1043,12 +1033,13 @@ class OnshapeClient:
 
         return sorted_bins
 
-    def merge_dxfs_with_layers(self, dxf_contents_by_depth):
+    def merge_dxfs_with_layers(self, dxf_contents_by_depth, depth_metadata=None):
         """
         Merge multiple DXF contents into one with depth-encoded layer names
 
         Args:
             dxf_contents_by_depth: Dict {depth: dxf_bytes}
+            depth_metadata: Dict {depth: {'offset_x': float, 'offset_y': float}} for coordinate alignment
 
         Returns:
             Merged DXF content as bytes
@@ -1090,17 +1081,31 @@ class OnshapeClient:
 
                 log(f"  Source has {len(source_msp)} entities in modelspace")
 
+                # Get translation offset for this layer
+                offset_x = 0
+                offset_y = 0
+                if depth_metadata and depth in depth_metadata:
+                    offset_x = depth_metadata[depth].get('offset_x', 0)
+                    offset_y = depth_metadata[depth].get('offset_y', 0)
+                    if offset_x != 0 or offset_y != 0:
+                        log(f"  Applying translation: ({offset_x:.4f}, {offset_y:.4f})")
+
                 # Create layer in merged doc if it doesn't exist
                 if layer_name not in merged_doc.layers:
                     merged_doc.layers.add(layer_name)
 
-                # Copy all entities to merged doc with new layer
+                # Copy all entities to merged doc with new layer and translation
                 entity_count = 0
                 for entity in source_msp:
                     # Clone entity and change its layer
                     try:
                         new_entity = entity.copy()
                         new_entity.dxf.layer = layer_name
+
+                        # Apply translation offset to align coordinate systems
+                        if offset_x != 0 or offset_y != 0:
+                            new_entity.translate(offset_x, offset_y, 0)
+
                         merged_msp.add_entity(new_entity)
                         entity_count += 1
                     except Exception as e:
@@ -1149,10 +1154,12 @@ class OnshapeClient:
         log(f"{'='*70}")
 
         # Find all parallel faces grouped by depth
+        # Use tight tolerance (1 mil) to avoid grouping distinct layers
         depth_bins = self.find_parallel_faces_by_depth(
             document_id, workspace_id, element_id,
             reference_normal, reference_origin,
-            body_id, cached_faces_data
+            body_id, cached_faces_data,
+            depth_tolerance=0.001  # 0.001" = 1 mil tolerance
         )
 
         if not depth_bins:
@@ -1201,8 +1208,29 @@ class OnshapeClient:
             log("No DXF content exported")
             return None
 
-        # Merge DXFs with layer names
-        merged_dxf = self.merge_dxfs_with_layers(dxf_contents)
+        # Calculate XY offsets for each depth layer to align them
+        # Onshape exports each face group centered at the group's centroid
+        # We know the face origins from bodydetails API, so we can calculate where to position each layer
+        depth_metadata = {}
+
+        log(f"\nCalculating layer positions from face origins:")
+
+        for depth, faces in depth_bins.items():
+            # Calculate the centroid of this depth group's faces
+            # Onshape will export this group centered at (0,0), but it represents this centroid position
+            centroid_x = sum(f['origin'].get('x', 0) for f in faces) / len(faces)
+            centroid_y = sum(f['origin'].get('y', 0) for f in faces) / len(faces)
+
+            # The DXF will be centered at (0,0), so we translate by the centroid to position it correctly
+            depth_metadata[depth] = {
+                'offset_x': centroid_x,
+                'offset_y': centroid_y
+            }
+
+            log(f"  Depth {depth:.4f}\": {len(faces)} faces, centroid at ({centroid_x:.4f}, {centroid_y:.4f})")
+
+        # Merge DXFs with layer names and coordinate alignment
+        merged_dxf = self.merge_dxfs_with_layers(dxf_contents, depth_metadata)
 
         return merged_dxf
 
