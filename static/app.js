@@ -1832,8 +1832,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Translate so lower-left (minX, minY) is at origin
                 const tx = rotated.x - minX;
                 const ty = rotated.y - minY;
-                // Map to Three.js coordinates: X -> X, Y at layer depth, Z -> -Y
-                return new THREE.Vector3(tx, layerDepth, -ty);
+                // Map to Three.js coordinates: X -> X, Y at machine depth, Z -> -Y
+                return new THREE.Vector3(tx, machineDepth, -ty);
             }
 
             // Render each layer group with its assigned color
