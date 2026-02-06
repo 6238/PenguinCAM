@@ -1596,6 +1596,10 @@ class FRCPostProcessor:
         # Track already-cut geometry to avoid redundant cuts
         cut_geometry = None
 
+        # Track total features across all layers
+        total_holes = 0
+        total_pockets = 0
+
         # Process each depth layer (deepest to shallowest, excluding top/perimeter)
         for layer_name, layer_info in depth_layers:
             depth = layer_info['depth']
@@ -1641,6 +1645,7 @@ class FRCPostProcessor:
             # Generate toolpaths at this depth
             if self.holes:
                 gcode.append(f"(Layer {layer_name}: {len(self.holes)} holes)")
+                total_holes += len(self.holes)
                 for i, hole in enumerate(self.holes, 1):
                     center = hole['center']
                     diameter = hole['diameter']
@@ -1648,6 +1653,7 @@ class FRCPostProcessor:
 
             if self.pockets:
                 gcode.append(f"(Layer {layer_name}: {len(self.pockets)} pockets)")
+                total_pockets += len(self.pockets)
                 for i, pocket in enumerate(self.pockets, 1):
                     gcode.extend(self._generate_pocket_gcode(pocket))
 
@@ -1681,6 +1687,7 @@ class FRCPostProcessor:
 
             if self.holes:
                 gcode.append("(===== HOLES =====)")
+                total_holes += len(self.holes)
                 for i, hole in enumerate(self.holes, 1):
                     center = hole['center']
                     diameter = hole['diameter']
@@ -1690,6 +1697,7 @@ class FRCPostProcessor:
 
             if self.pockets:
                 gcode.append("(===== POCKETS =====)")
+                total_pockets += len(self.pockets)
                 for i, pocket in enumerate(self.pockets, 1):
                     gcode.append(f"(Pocket {i})")
                     gcode.extend(self._generate_pocket_gcode(pocket))
@@ -1717,6 +1725,24 @@ class FRCPostProcessor:
         # Footer
         gcode.extend(self._generate_gcode_footer())
 
+        # Calculate estimated cycle time
+        time_estimate = self._estimate_cycle_time(gcode)
+
+        # Add cycle time to header (insert after the operations section)
+        for i, line in enumerate(gcode):
+            if line.startswith("(Operations:"):
+                # Find where to insert (after "No straight plunges")
+                insert_idx = i + 3  # After Operations, Helical angle, No straight plunges
+                time_lines = [
+                    "",
+                    f"(Estimated cycle time: {self._format_time(time_estimate['total'])})",
+                    f"(  Cutting: {self._format_time(time_estimate['cutting'])}, Rapids: {self._format_time(time_estimate['rapid'])}, Spindle: {self._format_time(time_estimate['dwell'])})",
+                    "(  Note: Estimate does not include acceleration/deceleration)"
+                ]
+                for j, time_line in enumerate(time_lines):
+                    gcode.insert(insert_idx + j, time_line)
+                break
+
         # Generate filename
         base_name = suggested_filename if suggested_filename else "output"
         timestamp_for_file = timestamp.replace('-', '').replace(' ', '_').replace(':', '')
@@ -1728,8 +1754,16 @@ class FRCPostProcessor:
             filename=filename,
             warnings=warnings,
             stats={
+                'num_holes': total_holes,
+                'num_pockets': total_pockets,
+                'has_perimeter': bool(self.perimeter) if hasattr(self, 'perimeter') else False,
                 'num_layers': len(self.layer_data),
-                'total_lines': len(gcode)
+                'total_lines': len(gcode),
+                'cycle_time_seconds': time_estimate['total'],
+                'cycle_time_display': self._format_time(time_estimate['total']),
+                'cutting_time': self._format_time(time_estimate['cutting']),
+                'rapid_time': self._format_time(time_estimate['rapid']),
+                'dwell_time': self._format_time(time_estimate['dwell'])
             }
         )
 
