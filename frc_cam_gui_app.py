@@ -1421,14 +1421,73 @@ def onshape_import():
                 client, document_id, workspace_id, element_id, face_id, body_id
             )
 
+        # Check if multi-layer export is requested
+        multilayer = raw_params.get('multilayer', '').lower() in ('true', '1', 'yes')
+
         # Fetch DXF from Onshape
         # Use body_id from URL parameter if provided, otherwise use the one from auto-selection
         export_body_id = body_id if body_id else auto_selected_body_id
         log(f"Exporting with body_id: {export_body_id} (from {'URL param' if body_id else 'auto-selection'})")
 
-        dxf_content = client.export_face_to_dxf(
-            document_id, workspace_id, element_id, face_id, export_body_id, face_normal
-        )
+        if multilayer:
+            log("🔷 Multi-layer export requested")
+
+            # For multi-layer export, we need the reference face normal and origin
+            if not face_normal:
+                log("⚠️  No face normal available, fetching...")
+                faces_data = client.list_faces(document_id, workspace_id, element_id)
+
+                # Find the reference face
+                reference_face = None
+                for body in faces_data.get('bodies', []):
+                    if export_body_id and body.get('id') != export_body_id:
+                        continue
+                    for face in body.get('faces', []):
+                        if face.get('id') == face_id:
+                            reference_face = face
+                            break
+                    if reference_face:
+                        break
+
+                if reference_face:
+                    surface = reference_face.get('surface', {})
+                    face_normal = surface.get('normal', {'x': 0, 'y': 0, 'z': 1})
+                else:
+                    log("❌ Could not find reference face for multi-layer export")
+                    return jsonify({'error': 'Could not find reference face for multi-layer export'}), 500
+
+            # Get reference origin from face
+            faces_data = client.list_faces(document_id, workspace_id, element_id)
+            reference_origin = None
+            for body in faces_data.get('bodies', []):
+                if export_body_id and body.get('id') != export_body_id:
+                    continue
+                for face in body.get('faces', []):
+                    if face.get('id') == face_id:
+                        surface = face.get('surface', {})
+                        reference_origin = surface.get('origin', {'x': 0, 'y': 0, 'z': 0})
+                        break
+                if reference_origin:
+                    break
+
+            if not reference_origin:
+                log("⚠️  Could not find reference origin, using default")
+                reference_origin = {'x': 0, 'y': 0, 'z': 0}
+
+            log(f"Reference normal: {face_normal}")
+            log(f"Reference origin: {reference_origin}")
+
+            # Export multi-layer DXF
+            dxf_content = client.export_multilayer_dxf(
+                document_id, workspace_id, element_id,
+                face_id, export_body_id, face_normal, reference_origin,
+                body_id=export_body_id, cached_faces_data=faces_data
+            )
+        else:
+            log("📄 Single-layer export")
+            dxf_content = client.export_face_to_dxf(
+                document_id, workspace_id, element_id, face_id, export_body_id, face_normal
+            )
 
         if not dxf_content:
             error_msg = f"Failed to export DXF from Onshape. "
