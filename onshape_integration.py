@@ -975,12 +975,15 @@ class OnshapeClient:
                 nz = normal.get('z', 1)
                 n_mag = (nx**2 + ny**2 + nz**2)**0.5
 
-                # Check if normals are parallel (dot product ≈ ±1)
+                # Check if normals are parallel AND pointing in the same direction
+                # (not opposite direction like bottom face)
                 if n_mag > 0 and ref_mag > 0:
                     dot_product = (nx * ref_nx + ny * ref_ny + nz * ref_nz) / (n_mag * ref_mag)
 
-                    # Parallel if dot product is close to 1 or -1
-                    if abs(abs(dot_product) - 1.0) < angle_tolerance:
+                    # Only accept faces with normals in SAME direction (dot product ≈ +1)
+                    # Reject faces with normals pointing opposite direction (dot product ≈ -1)
+                    # like the bottom face of the part
+                    if dot_product > (1.0 - angle_tolerance):
                         # Calculate signed distance from reference plane
                         # Distance = (point - ref_origin) · ref_normal / |ref_normal|
                         ox = origin.get('x', 0)
@@ -991,19 +994,27 @@ class OnshapeClient:
                         dy = oy - ref_oy
                         dz = oz - ref_oz
 
-                        signed_distance = (dx * ref_nx + dy * ref_ny + dz * ref_nz) / ref_mag
+                        # Calculate signed distance in meters
+                        signed_distance_m = (dx * ref_nx + dy * ref_ny + dz * ref_nz) / ref_mag
+
+                        # Convert from meters to inches
+                        METERS_TO_INCHES = 39.3701
+                        signed_distance = signed_distance_m * METERS_TO_INCHES
+
+                        # Convert area from square meters to square inches
+                        area_sq_in = face['area'] * (METERS_TO_INCHES ** 2)
 
                         parallel_faces.append({
                             'face_id': face['id'],
                             'body_id': bid,
                             'part_name': body_data['name'],
-                            'area': face['area'],
+                            'area': area_sq_in,
                             'depth': signed_distance,
                             'normal': normal,
                             'origin': origin
                         })
 
-                        log(f"  Found parallel face {face['id'][:8]}... at depth {signed_distance:.4f}\" (area={face['area']:.4f})")
+                        log(f"  Found parallel face {face['id'][:8]}... at depth {signed_distance:.4f}\" (area={area_sq_in:.4f} sq in)")
 
         log(f"\nTotal parallel faces found: {len(parallel_faces)}")
 
@@ -1208,26 +1219,23 @@ class OnshapeClient:
             log("No DXF content exported")
             return None
 
-        # Calculate XY offsets for each depth layer to align them
-        # Onshape exports each face group centered at the group's centroid
-        # We know the face origins from bodydetails API, so we can calculate where to position each layer
+        # No coordinate translation needed
+        # Onshape exports each depth group with faces at their correct relative positions
+        # The face 'origin' field is a plane equation reference point, not a geometric centroid
+        # So we can't use it for positioning. Fortunately, Onshape preserves the relative
+        # geometry within each exported DXF, so we just use zero offsets for all layers.
         depth_metadata = {}
 
-        log(f"\nCalculating layer positions from face origins:")
+        log(f"\nUsing zero offsets for all layers (geometry already correctly positioned in each DXF):")
 
         for depth, faces in depth_bins.items():
-            # Calculate the centroid of this depth group's faces
-            # Onshape will export this group centered at (0,0), but it represents this centroid position
-            centroid_x = sum(f['origin'].get('x', 0) for f in faces) / len(faces)
-            centroid_y = sum(f['origin'].get('y', 0) for f in faces) / len(faces)
-
-            # The DXF will be centered at (0,0), so we translate by the centroid to position it correctly
+            # Use zero offset - the DXF geometry is already correctly positioned
             depth_metadata[depth] = {
-                'offset_x': centroid_x,
-                'offset_y': centroid_y
+                'offset_x': 0.0,
+                'offset_y': 0.0
             }
 
-            log(f"  Depth {depth:.4f}\": {len(faces)} faces, centroid at ({centroid_x:.4f}, {centroid_y:.4f})")
+            log(f"  Depth {depth:.4f}\": {len(faces)} faces, offset (0.0000, 0.0000)")
 
         # Merge DXFs with layer names and coordinate alignment
         merged_dxf = self.merge_dxfs_with_layers(dxf_contents, depth_metadata)
