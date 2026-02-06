@@ -1581,6 +1581,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // G-code visualization
         let toolpathMoves = []; // Array of moves for scrubber
+        let toolpathOffsetX = 0; // X offset to align toolpath lower-left with origin
+        let toolpathOffsetY = 0; // Y offset to align toolpath lower-left with origin
         let toolMesh = null; // 3D representation of cutting tool
         let completedLine = null; // Line showing completed moves
         let upcomingLine = null; // Line showing upcoming moves
@@ -2085,6 +2087,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (toolpathMoves.length === 0) return;
 
+            // Store offset to align toolpath lower-left with origin (to match DXF render)
+            toolpathOffsetX = minX;
+            toolpathOffsetY = minY;
+
             // Clear old visualization
             const toRemove = [];
             scene.children.forEach(child => {
@@ -2126,13 +2132,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 materialThickness;
 
             // Material boundaries (at material top surface)
+            // Translate so lower-left is at origin (to match DXF render)
             const materialOutline = new THREE.Line(
                 new THREE.BufferGeometry().setFromPoints([
-                    new THREE.Vector3(minX, materialThickness, -minY),
-                    new THREE.Vector3(maxX, materialThickness, -minY),
-                    new THREE.Vector3(maxX, materialThickness, -maxY),
-                    new THREE.Vector3(minX, materialThickness, -maxY),
-                    new THREE.Vector3(minX, materialThickness, -minY)
+                    new THREE.Vector3(0, materialThickness, 0),
+                    new THREE.Vector3(maxX - minX, materialThickness, 0),
+                    new THREE.Vector3(maxX - minX, materialThickness, -(maxY - minY)),
+                    new THREE.Vector3(0, materialThickness, -(maxY - minY)),
+                    new THREE.Vector3(0, materialThickness, 0)
                 ]),
                 new THREE.LineBasicMaterial({ color: 0x8B949E, linewidth: 1, opacity: 0.5, transparent: true })
             );
@@ -2140,11 +2147,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const sacrificeOutline = new THREE.Line(
                 new THREE.BufferGeometry().setFromPoints([
-                    new THREE.Vector3(minX, 0, -minY),
-                    new THREE.Vector3(maxX, 0, -minY),
-                    new THREE.Vector3(maxX, 0, -maxY),
-                    new THREE.Vector3(minX, 0, -maxY),
-                    new THREE.Vector3(minX, 0, -minY)
+                    new THREE.Vector3(0, 0, 0),
+                    new THREE.Vector3(maxX - minX, 0, 0),
+                    new THREE.Vector3(maxX - minX, 0, -(maxY - minY)),
+                    new THREE.Vector3(0, 0, -(maxY - minY)),
+                    new THREE.Vector3(0, 0, 0)
                 ]),
                 new THREE.LineBasicMaterial({ color: 0x8B949E, linewidth: 1, opacity: 0.3, transparent: true })
             );
@@ -2173,8 +2180,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 stockWidth = dxfWidth;
                 stockDepth = dxfHeight;
-                stockCenterX = (minX + maxX) / 2;
-                stockCenterZ = -(minY + maxY) / 2;
+                // Position stock with lower-left at origin (to match DXF render)
+                stockCenterX = stockWidth / 2;
+                stockCenterZ = -stockDepth / 2;
 
                 // Display tube size
                 const tubeHeightInput = parseFloat(document.getElementById('tubeHeight').value) || 1.0;
@@ -2190,8 +2198,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 // For plates: use toolpath extents (show where the tool moves)
                 stockWidth = maxX - minX;
                 stockDepth = maxY - minY;
-                stockCenterX = (minX + maxX) / 2;
-                stockCenterZ = -(minY + maxY) / 2;
+                // Position stock with lower-left at origin (to match DXF render)
+                stockCenterX = stockWidth / 2;
+                stockCenterZ = -stockDepth / 2;
 
                 // Display stock size: DXF bounding box + tool margin only if cutting perimeter
                 // Account for rotation - swap DXF dimensions if rotated 90 or 270 degrees
@@ -2384,10 +2393,13 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update tool position
             if (toolMesh) {
                 const pos = currentMove.to;
+                // Apply offset to align with DXF (lower-left at origin)
+                const x = pos.x - toolpathOffsetX;
+                const y = pos.y - toolpathOffsetY;
                 // Position tool so BOTTOM is at Z coordinate, not center
                 // Cylinder center needs to be offset up by half its length
                 const toolLength = toolMesh.userData.toolLength;
-                toolMesh.position.set(pos.x, pos.z + toolLength / 2, -pos.y);
+                toolMesh.position.set(x, pos.z + toolLength / 2, -y);
             }
 
             // Remove old toolpath lines
@@ -2400,18 +2412,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 for (let i = moveIndex; i < toolpathMoves.length; i++) {
                     const move = toolpathMoves[i];
                     if (i === moveIndex) {
-                        upcomingPoints.push(new THREE.Vector3(move.from.x, move.from.z, -move.from.y));
+                        const fromX = move.from.x - toolpathOffsetX;
+                        const fromY = move.from.y - toolpathOffsetY;
+                        upcomingPoints.push(new THREE.Vector3(fromX, move.from.z, -fromY));
                     }
-                    upcomingPoints.push(new THREE.Vector3(move.to.x, move.to.z, -move.to.y));
+                    const toX = move.to.x - toolpathOffsetX;
+                    const toY = move.to.y - toolpathOffsetY;
+                    upcomingPoints.push(new THREE.Vector3(toX, move.to.z, -toY));
                 }
                 const upcomingGeometry = new THREE.BufferGeometry().setFromPoints(upcomingPoints);
                 upcomingLine = new THREE.Line(
                     upcomingGeometry,
-                    new THREE.LineBasicMaterial({ 
-                        color: 0xFDB515, 
+                    new THREE.LineBasicMaterial({
+                        color: 0xFDB515,
                         linewidth: 3,
-                        opacity: 0.8, 
-                        transparent: true 
+                        opacity: 0.8,
+                        transparent: true
                     })
                 );
                 scene.add(upcomingLine);
@@ -2423,9 +2439,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 for (let i = 0; i <= moveIndex; i++) {
                     const move = toolpathMoves[i];
                     if (i === 0) {
-                        completedPoints.push(new THREE.Vector3(move.from.x, move.from.z, -move.from.y));
+                        const fromX = move.from.x - toolpathOffsetX;
+                        const fromY = move.from.y - toolpathOffsetY;
+                        completedPoints.push(new THREE.Vector3(fromX, move.from.z, -fromY));
                     }
-                    completedPoints.push(new THREE.Vector3(move.to.x, move.to.z, -move.to.y));
+                    const toX = move.to.x - toolpathOffsetX;
+                    const toY = move.to.y - toolpathOffsetY;
+                    completedPoints.push(new THREE.Vector3(toX, move.to.z, -toY));
                 }
                 const completedGeometry = new THREE.BufferGeometry().setFromPoints(completedPoints);
                 completedLine = new THREE.Line(
