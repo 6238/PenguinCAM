@@ -1000,14 +1000,6 @@ class OnshapeClient:
                         # Convert from meters to inches
                         METERS_TO_INCHES = 39.3701
                         signed_distance = signed_distance_m * METERS_TO_INCHES
-                        ref_oz_inches = ref_oz * METERS_TO_INCHES
-
-                        # Filter out bottom face of the part
-                        # The bottom face is at depth ≈ -ref_oz (negative of part thickness)
-                        # We only want to machine pockets/grooves, not cut through the entire part
-                        if abs(signed_distance + ref_oz_inches) < 0.01:  # Within 0.01" tolerance
-                            log(f"  Skipping bottom face {face['id'][:8]}... at depth {signed_distance:.4f}\" (bottom of part)")
-                            continue
 
                         # Convert area from square meters to square inches
                         area_sq_in = face['area'] * (METERS_TO_INCHES ** 2)

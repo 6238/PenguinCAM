@@ -1521,20 +1521,20 @@ class FRCPostProcessor:
         print("MULTI-LAYER PROCESSING")
         print("="*70)
 
-        # Sort layers: deepest first, but save top/perimeter layer for last
+        # Sort layers: deepest first
         sorted_layers = sorted(self.layer_data.items(), key=lambda x: x[1]['depth'])
 
-        # Find the top layer (closest to 0, typically the perimeter)
-        top_layer = max(self.layer_data.items(), key=lambda x: x[1]['depth'])
-        top_layer_name = top_layer[0]
+        # Find the bottom layer (deepest, most negative) - this is the part perimeter
+        bottom_layer = min(self.layer_data.items(), key=lambda x: x[1]['depth'])
+        bottom_layer_name = bottom_layer[0]
 
-        # Separate layers: non-perimeter layers (deepest first) + perimeter layer last
-        depth_layers = [item for item in sorted_layers if item[0] != top_layer_name]
+        # Separate layers: pocket layers (excluding bottom) + perimeter layer last
+        depth_layers = [item for item in sorted_layers if item[0] != bottom_layer_name]
 
         print(f"\nProcessing order:")
         for i, (layer_name, layer_info) in enumerate(depth_layers, 1):
             print(f"  {i}. {layer_name} (Z={layer_info['depth']:.4f}\")")
-        print(f"  {len(depth_layers) + 1}. {top_layer_name} (Z={top_layer[1]['depth']:.4f}\") - PERIMETER (last)")
+        print(f"  {len(depth_layers) + 1}. {bottom_layer_name} (Z={bottom_layer[1]['depth']:.4f}\") - PERIMETER from bottom face (last)")
 
         # Generate timestamp if not provided
         if not timestamp:
@@ -1604,16 +1604,21 @@ class FRCPostProcessor:
             self.cut_depth = saved_cut_depth
             gcode.append("")
 
-        # Process top/perimeter layer last
-        layer_name, layer_info = top_layer
+        # Process bottom face as perimeter (cut at material surface, not at bottom depth)
+        layer_name, layer_info = bottom_layer
         depth = layer_info['depth']
-        print(f"\nGenerating toolpaths for {layer_name} (PERIMETER) at Z={depth:.4f}\"")
+        print(f"\nGenerating perimeter from {layer_name} (bottom face outline)")
+        print(f"  Bottom face is at Z={depth:.4f}\" but cutting perimeter at Z=0.0 (through material)")
 
         gcode.append(f"(===== LAYER: {layer_name} | PERIMETER =====)")
+        gcode.append(f"(Bottom face outline used for perimeter - NOT cutting to Z={depth:.4f}\")")
 
+        # Use bottom face geometry as perimeter outline
         self.circles = layer_info['circles']
         self.polylines = layer_info['polylines']
         self.classify_holes()
+
+        # Identify perimeter from bottom face (should be the largest polyline)
         self.identify_perimeter_and_pockets()
 
         # Perimeter cut at full depth
