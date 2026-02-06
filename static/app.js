@@ -1810,19 +1810,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
 
+            // Helper to parse Z depth from layer name (e.g., "Z_-0p243" -> -0.243)
+            function parseLayerDepth(layerName) {
+                const match = layerName.match(/Z_([-]?\d+)p(\d+)/);
+                if (match) {
+                    const intPart = parseInt(match[1]);
+                    const fracPart = parseInt(match[2]);
+                    const sign = intPart < 0 ? -1 : 1;
+                    return intPart + sign * (fracPart / 1000);
+                }
+                return zHeight; // Default to top surface for non-standard layer names
+            }
+
             // Helper to transform a point: rotate around center, then translate so lower-left is at (0,0)
-            function transformPoint(x, y) {
+            function transformPoint(x, y, layerDepth) {
                 // Rotate
                 const rotated = rotatePoint(x, y);
                 // Translate so lower-left (minX, minY) is at origin
                 const tx = rotated.x - minX;
                 const ty = rotated.y - minY;
-                // Map to Three.js coordinates: X -> X, Y -> -Z
-                return new THREE.Vector3(tx, zHeight, -ty);
+                // Map to Three.js coordinates: X -> X, Y at layer depth, Z -> -Y
+                return new THREE.Vector3(tx, layerDepth, -ty);
             }
 
             // Render each layer group with its assigned color
             layerGroups.forEach((layerEntities, layerName) => {
+                // Get Z depth for this layer
+                const layerDepth = parseLayerDepth(layerName);
                 // Get color for this layer
                 let layerColor = 0xFFFFFF; // Default to white
                 if (hasLayers && dxfGeometry.layers.has(layerName)) {
@@ -1845,8 +1859,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         case 'LINE':
                             // Straight line from start to end
                             points = [
-                                transformPoint(entity.vertices[0].x, entity.vertices[0].y),
-                                transformPoint(entity.vertices[1].x, entity.vertices[1].y)
+                                transformPoint(entity.vertices[0].x, entity.vertices[0].y, layerDepth),
+                                transformPoint(entity.vertices[1].x, entity.vertices[1].y, layerDepth)
                             ];
                             break;
 
@@ -1858,7 +1872,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     const angle = (i / numPoints) * 2 * Math.PI;
                                     const x = entity.center.x + entity.radius * Math.cos(angle);
                                     const y = entity.center.y + entity.radius * Math.sin(angle);
-                                    points.push(transformPoint(x, y));
+                                    points.push(transformPoint(x, y, layerDepth));
                                 }
                             }
                             break;
@@ -1875,7 +1889,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     const angle = startAngle + (endAngle - startAngle) * t;
                                     const x = entity.center.x + entity.radius * Math.cos(angle);
                                     const y = entity.center.y + entity.radius * Math.sin(angle);
-                                    points.push(transformPoint(x, y));
+                                    points.push(transformPoint(x, y, layerDepth));
                                 }
                             }
                             break;
@@ -1883,7 +1897,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         case 'LWPOLYLINE':
                         case 'POLYLINE':
                             // Connected line segments through vertices
-                            points = entity.vertices.map(v => transformPoint(v.x, v.y));
+                            points = entity.vertices.map(v => transformPoint(v.x, v.y, layerDepth));
                             // Close the polyline if it's marked as closed
                             if (entity.closed && points.length > 0) {
                                 points.push(points[0].clone());
@@ -1893,7 +1907,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         case 'SPLINE':
                             // Approximate spline with control points
                             if (entity.controlPoints && entity.controlPoints.length > 1) {
-                                points = entity.controlPoints.map(p => transformPoint(p.x, p.y));
+                                points = entity.controlPoints.map(p => transformPoint(p.x, p.y, layerDepth));
                             }
                             break;
 
