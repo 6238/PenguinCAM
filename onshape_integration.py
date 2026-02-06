@@ -943,19 +943,23 @@ class OnshapeClient:
             log("No faces found")
             return {}
 
-        # Reference normal vector
+        # NOTE: Onshape bodydetails API returns coordinates in METERS
+        # Convert to inches: 1 meter = 39.3701 inches
+        METERS_TO_INCHES = 39.3701
+
+        # Reference normal vector (unitless, no conversion needed)
         ref_nx = reference_normal.get('x', 0)
         ref_ny = reference_normal.get('y', 0)
         ref_nz = reference_normal.get('z', 1)
         ref_mag = (ref_nx**2 + ref_ny**2 + ref_nz**2)**0.5
 
-        # Reference origin point
-        ref_ox = reference_origin.get('x', 0)
-        ref_oy = reference_origin.get('y', 0)
-        ref_oz = reference_origin.get('z', 0)
+        # Reference origin point (convert from meters to inches)
+        ref_ox = reference_origin.get('x', 0) * METERS_TO_INCHES
+        ref_oy = reference_origin.get('y', 0) * METERS_TO_INCHES
+        ref_oz = reference_origin.get('z', 0) * METERS_TO_INCHES
 
         log(f"Reference normal: ({ref_nx:.3f}, {ref_ny:.3f}, {ref_nz:.3f})")
-        log(f"Reference origin: ({ref_ox:.3f}, {ref_oy:.3f}, {ref_oz:.3f})")
+        log(f"Reference origin: ({ref_ox:.3f}, {ref_oy:.3f}, {ref_oz:.3f}) inches")
 
         # Collect all parallel faces with their depths
         parallel_faces = []
@@ -982,9 +986,13 @@ class OnshapeClient:
                     if abs(abs(dot_product) - 1.0) < angle_tolerance:
                         # Calculate signed distance from reference plane
                         # Distance = (point - ref_origin) · ref_normal / |ref_normal|
-                        ox = origin.get('x', 0)
-                        oy = origin.get('y', 0)
-                        oz = origin.get('z', 0)
+                        # NOTE: Onshape bodydetails API returns coordinates in METERS
+                        # Convert to inches: 1 meter = 39.3701 inches
+                        METERS_TO_INCHES = 39.3701
+
+                        ox = origin.get('x', 0) * METERS_TO_INCHES
+                        oy = origin.get('y', 0) * METERS_TO_INCHES
+                        oz = origin.get('z', 0) * METERS_TO_INCHES
 
                         dx = ox - ref_ox
                         dy = oy - ref_oy
@@ -992,17 +1000,20 @@ class OnshapeClient:
 
                         signed_distance = (dx * ref_nx + dy * ref_ny + dz * ref_nz) / ref_mag
 
+                        # Convert area from m² to in² (1 m² = 1550.003 in²)
+                        area_in2 = face['area'] * (METERS_TO_INCHES ** 2)
+
                         parallel_faces.append({
                             'face_id': face['id'],
                             'body_id': bid,
                             'part_name': body_data['name'],
-                            'area': face['area'],
+                            'area': area_in2,
                             'depth': signed_distance,
                             'normal': normal,
                             'origin': origin
                         })
 
-                        log(f"  Found parallel face {face['id'][:8]}... at depth {signed_distance:.4f}\" (area={face['area']:.4f})")
+                        log(f"  Found parallel face {face['id'][:8]}... at depth {signed_distance:.4f}\" (area={area_in2:.4f} in²)")
 
         log(f"\nTotal parallel faces found: {len(parallel_faces)}")
 
