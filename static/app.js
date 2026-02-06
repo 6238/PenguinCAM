@@ -1586,7 +1586,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let toolMesh = null; // 3D representation of cutting tool
         let completedLine = null; // Line showing completed moves
         let upcomingLine = null; // Line showing upcoming moves
-        let controls = null; // OrbitControls for camera manipulation
+        // controls is already declared in global scope (line 273)
 
         function initVisualization() {
             const container = document.getElementById('canvas-container');
