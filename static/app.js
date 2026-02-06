@@ -1073,6 +1073,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
 
+                // Parse layer name (group code 8)
+                if (line === '8' && i + 1 < lines.length) {
+                    const layerName = lines[i + 1].trim();
+                    entityData.layer = layerName;
+                }
+
                 // Parse coordinates (store in entity data, don't update bounds yet)
                 if (line === '10' && i + 1 < lines.length) {
                     const val = parseFloat(lines[i + 1]);
@@ -1243,17 +1249,22 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log(`Manual parse: ${entities.length} entities`);
             console.log(`Bounds: X=[${minX.toFixed(3)}, ${maxX.toFixed(3)}], Y=[${minY.toFixed(3)}, ${maxY.toFixed(3)}]`);
 
+            // Organize entities by layer and parse Z depths (reuse existing function)
+            const layerData = organizeDxfLayers(entities);
+
             dxfGeometry = {
                 minX, maxX, minY, maxY,
-                entities: entities  // Use all entities for rendering
+                entities: entities,
+                layers: layerData.layers,
+                layerOrder: layerData.layerOrder
             };
-            dxfBounds = { 
-                width: maxX - minX, 
+            dxfBounds = {
+                width: maxX - minX,
                 height: maxY - minY,
                 centerX: (minX + maxX) / 2,
                 centerY: (minY + maxY) / 2
             };
-            
+
             document.getElementById('modeToggle').style.display = 'flex';
             switchMode('setup');
         }
@@ -1263,7 +1274,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 return {
                     type: 'CIRCLE',
                     center: { x: data.centerX, y: data.centerY },
-                    radius: data.radius
+                    radius: data.radius,
+                    layer: data.layer || '0'
                 };
             } else if (type === 'ARC') {
                 return {
@@ -1271,7 +1283,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     center: { x: data.centerX, y: data.centerY },
                     radius: data.radius,
                     startAngle: data.startAngle || 0,
-                    endAngle: data.endAngle || 360
+                    endAngle: data.endAngle || 360,
+                    layer: data.layer || '0'
                 };
             } else if (type === 'LINE') {
                 return {
@@ -1279,19 +1292,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     vertices: [
                         { x: data.x1, y: data.y1 },
                         { x: data.x2, y: data.y2 }
-                    ]
+                    ],
+                    layer: data.layer || '0'
                 };
             } else if (type === 'LWPOLYLINE') {
                 return {
                     type: 'LWPOLYLINE',
                     vertices: data.vertices || [],
                     closed: data.closed || false,  // Used to filter construction geometry
-                    shape: data.closed || false  // Used by renderer to close path
+                    shape: data.closed || false,  // Used by renderer to close path
+                    layer: data.layer || '0'
                 };
             } else if (type === 'SPLINE') {
                 return {
                     type: 'SPLINE',
-                    controlPoints: data.controlPoints || []
+                    controlPoints: data.controlPoints || [],
+                    layer: data.layer || '0'
                 };
             }
             return null;
