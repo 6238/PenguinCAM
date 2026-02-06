@@ -1524,29 +1524,66 @@ class FRCPostProcessor:
         # Sort layers: deepest first
         sorted_layers = sorted(self.layer_data.items(), key=lambda x: x[1]['depth'])
 
-        # Find the bottom layer (deepest, most negative) - this is the part perimeter
-        bottom_layer = min(self.layer_data.items(), key=lambda x: x[1]['depth'])
-        bottom_layer_name = bottom_layer[0]
+        # Find the bottom face layer (should be at Z = -material_thickness)
+        # If no layer exists at that depth, treat all layers as depth layers
+        expected_bottom_depth = -self.material_thickness
+        tolerance = 0.01  # 0.01" tolerance for matching bottom face
 
-        # Separate layers: pocket layers (excluding bottom and top surface)
-        # - Bottom layer: used for perimeter only
+        bottom_layer = None
+        bottom_layer_name = None
+
+        # Look for a layer at the expected bottom depth
+        for layer_name, layer_info in self.layer_data.items():
+            if abs(layer_info['depth'] - expected_bottom_depth) < tolerance:
+                bottom_layer = (layer_name, layer_info)
+                bottom_layer_name = layer_name
+                print(f"✓ Found bottom face layer: {layer_name} at Z={layer_info['depth']:.4f}\" (expected {expected_bottom_depth:.4f}\")")
+                break
+
+        if not bottom_layer:
+            # No bottom face found - use deepest layer for perimeter extraction only
+            # ALL layers (including deepest) are treated as depth layers for pockets/holes
+            deepest_layer = min(self.layer_data.items(), key=lambda x: x[1]['depth'])
+            bottom_layer = deepest_layer
+            bottom_layer_name = deepest_layer[0]
+            print(f"⚠️  No bottom face at Z={expected_bottom_depth:.4f}\" found in DXF")
+            print(f"   Using deepest layer {bottom_layer_name} at Z={deepest_layer[1]['depth']:.4f}\" for perimeter outline")
+            print(f"   All layers (including deepest) will be processed as depth layers")
+
+        # Separate layers: pocket layers (excluding bottom face and top surface)
+        # - Bottom face layer (at -material_thickness): used for perimeter + through-holes/pockets
         # - Top surface layer (Z ≈ 0): reference geometry, not machined
-        # - Middle layers (negative Z): actual pockets/grooves to machine
-        depth_layers = [
-            item for item in sorted_layers
-            if item[0] != bottom_layer_name and item[1]['depth'] < -0.01  # Skip Z ≈ 0
-        ]
+        # - Middle layers (negative Z): actual pockets/grooves to machine at specified depth
+        # - If no true bottom face exists, ALL layers become depth layers
+        has_true_bottom = abs(bottom_layer[1]['depth'] - expected_bottom_depth) < tolerance
+
+        if has_true_bottom:
+            # Exclude bottom face from depth layers
+            depth_layers = [
+                item for item in sorted_layers
+                if item[0] != bottom_layer_name and item[1]['depth'] < -0.01  # Skip Z ≈ 0
+            ]
+        else:
+            # Include all layers (including "bottom") as depth layers
+            depth_layers = [
+                item for item in sorted_layers
+                if item[1]['depth'] < -0.01  # Skip Z ≈ 0 only
+            ]
 
         print(f"\nProcessing order:")
         for i, (layer_name, layer_info) in enumerate(depth_layers, 1):
-            print(f"  {i}. {layer_name} (Z={layer_info['depth']:.4f}\") - pocket/groove")
+            if has_true_bottom or layer_name != bottom_layer_name:
+                print(f"  {i}. {layer_name} (Z={layer_info['depth']:.4f}\") - pocket/groove at specified depth")
 
         # Report skipped layers
         for layer_name, layer_info in sorted_layers:
             if layer_name != bottom_layer_name and layer_info['depth'] >= -0.01:
                 print(f"  → Skipping {layer_name} (Z={layer_info['depth']:.4f}\") - top surface reference geometry")
 
-        print(f"  {len(depth_layers) + 1}. {bottom_layer_name} (Z={bottom_layer[1]['depth']:.4f}\") - PERIMETER from bottom face (last)")
+        if has_true_bottom:
+            print(f"  {len(depth_layers) + 1}. {bottom_layer_name} (Z={bottom_layer[1]['depth']:.4f}\") - PERIMETER + through-holes/pockets (last)")
+        else:
+            print(f"  {len(depth_layers) + 1}. {bottom_layer_name} - PERIMETER OUTLINE ONLY (already processed pockets at specified depth)")
 
         # Generate timestamp if not provided
         if not timestamp:
@@ -1618,14 +1655,16 @@ class FRCPostProcessor:
             self.cut_depth = saved_cut_depth
             gcode.append("")
 
-        # Process bottom face for perimeter AND any through-holes/pockets
+        # Process bottom face for perimeter
         layer_name, layer_info = bottom_layer
         depth = layer_info['depth']
-        print(f"\nGenerating perimeter from {layer_name} (bottom face outline)")
-        print(f"  Bottom face is at Z={depth:.4f}\" but cutting perimeter at Z=0.0 (through material)")
+        print(f"\nGenerating perimeter from {layer_name}")
+        if has_true_bottom:
+            print(f"  Bottom face is at Z={depth:.4f}\" - cutting perimeter through material")
+        else:
+            print(f"  Using deepest layer Z={depth:.4f}\" for perimeter outline only")
 
         gcode.append(f"(===== LAYER: {layer_name} | PERIMETER =====)")
-        gcode.append(f"(Bottom face outline used for perimeter - NOT cutting to Z={depth:.4f}\")")
 
         # Use bottom face geometry
         self.circles = layer_info['circles']
@@ -1635,22 +1674,28 @@ class FRCPostProcessor:
         # Identify perimeter from bottom face (should be the largest polyline)
         self.identify_perimeter_and_pockets()
 
-        # Generate holes and pockets from bottom layer (through-holes and through-pockets)
-        if self.holes:
-            gcode.append("(===== HOLES =====)")
-            for i, hole in enumerate(self.holes, 1):
-                center = hole['center']
-                diameter = hole['diameter']
-                gcode.append(f"(Hole {i} - {diameter:.3f}\" diameter)")
-                gcode.extend(self._generate_hole_gcode(center[0], center[1], diameter))
-                gcode.append("")
+        # Generate holes and pockets ONLY if this is a true bottom face (through-cuts)
+        # Otherwise they were already processed as depth layers
+        if has_true_bottom:
+            gcode.append(f"(Bottom face at Z={depth:.4f}\" - through-holes and through-pockets)")
 
-        if self.pockets:
-            gcode.append("(===== POCKETS =====)")
-            for i, pocket in enumerate(self.pockets, 1):
-                gcode.append(f"(Pocket {i})")
-                gcode.extend(self._generate_pocket_gcode(pocket))
-                gcode.append("")
+            if self.holes:
+                gcode.append("(===== HOLES =====)")
+                for i, hole in enumerate(self.holes, 1):
+                    center = hole['center']
+                    diameter = hole['diameter']
+                    gcode.append(f"(Hole {i} - {diameter:.3f}\" diameter)")
+                    gcode.extend(self._generate_hole_gcode(center[0], center[1], diameter))
+                    gcode.append("")
+
+            if self.pockets:
+                gcode.append("(===== POCKETS =====)")
+                for i, pocket in enumerate(self.pockets, 1):
+                    gcode.append(f"(Pocket {i})")
+                    gcode.extend(self._generate_pocket_gcode(pocket))
+                    gcode.append("")
+        else:
+            gcode.append(f"(Perimeter outline from deepest layer - holes/pockets already cut at depth)")
 
         # Perimeter cut at full depth
         if self.perimeter:

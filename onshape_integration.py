@@ -975,15 +975,15 @@ class OnshapeClient:
                 nz = normal.get('z', 1)
                 n_mag = (nx**2 + ny**2 + nz**2)**0.5
 
-                # Check if normals are parallel AND pointing in the same direction
-                # (not opposite direction like bottom face)
+                # Check if normals are parallel (same or opposite direction)
+                # Accept both upward-facing (grooves/pockets) and downward-facing (bottom face)
                 if n_mag > 0 and ref_mag > 0:
                     dot_product = (nx * ref_nx + ny * ref_ny + nz * ref_nz) / (n_mag * ref_mag)
 
-                    # Only accept faces with normals in SAME direction (dot product ≈ +1)
-                    # Reject faces with normals pointing opposite direction (dot product ≈ -1)
-                    # like the bottom face of the part
-                    if dot_product > (1.0 - angle_tolerance):
+                    # Accept faces with normals parallel in EITHER direction
+                    # dot product ≈ +1: same direction (grooves/pockets at partial depth)
+                    # dot product ≈ -1: opposite direction (bottom face of part)
+                    if abs(dot_product) > (1.0 - angle_tolerance):
                         # Calculate signed distance from reference plane
                         # Distance = (point - ref_origin) · ref_normal / |ref_normal|
                         ox = origin.get('x', 0)
