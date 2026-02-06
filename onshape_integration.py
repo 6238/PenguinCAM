@@ -913,7 +913,316 @@ class OnshapeClient:
         log(f"{'='*70}\n")
 
         return selected_face['face_id'], selected_face['body_id'], selected_face['part_name'], selected_face['normal']
-    
+
+    def find_parallel_faces_by_depth(self, document_id, workspace_id, element_id,
+                                      reference_normal, reference_origin,
+                                      body_id=None, cached_faces_data=None,
+                                      angle_tolerance=0.1, depth_tolerance=0.01):
+        """
+        Find all planar faces parallel to a reference plane, binned by depth
+
+        Args:
+            reference_normal: Dict with x, y, z of reference plane normal
+            reference_origin: Dict with x, y, z of reference plane origin
+            body_id: Optional body ID to limit search
+            cached_faces_data: Optional pre-fetched faces data
+            angle_tolerance: Tolerance for checking if normals are parallel (0.1 = ~5.7 degrees)
+            depth_tolerance: Tolerance for binning faces at similar depths (inches)
+
+        Returns:
+            Dict mapping depth values to lists of face_ids and metadata
+            e.g., {0.0: [{'face_id': 'ABC', 'area': 10.5, ...}], -0.25: [...]}
+        """
+        log(f"\n{'='*70}")
+        log(f"FINDING PARALLEL FACES BY DEPTH")
+        log(f"{'='*70}")
+
+        # Get all faces
+        faces_by_body = self.get_body_faces(document_id, workspace_id, element_id, body_id, cached_faces_data)
+        if not faces_by_body:
+            log("No faces found")
+            return {}
+
+        # Reference normal vector
+        ref_nx = reference_normal.get('x', 0)
+        ref_ny = reference_normal.get('y', 0)
+        ref_nz = reference_normal.get('z', 1)
+        ref_mag = (ref_nx**2 + ref_ny**2 + ref_nz**2)**0.5
+
+        # Reference origin point
+        ref_ox = reference_origin.get('x', 0)
+        ref_oy = reference_origin.get('y', 0)
+        ref_oz = reference_origin.get('z', 0)
+
+        log(f"Reference normal: ({ref_nx:.3f}, {ref_ny:.3f}, {ref_nz:.3f})")
+        log(f"Reference origin: ({ref_ox:.3f}, {ref_oy:.3f}, {ref_oz:.3f})")
+
+        # Collect all parallel faces with their depths
+        parallel_faces = []
+
+        for bid, body_data in faces_by_body.items():
+            for face in body_data['faces']:
+                # Only consider planar faces
+                if face.get('surfaceType') != 'PLANE':
+                    continue
+
+                normal = face.get('normal', {})
+                origin = face.get('origin', {})
+
+                nx = normal.get('x', 0)
+                ny = normal.get('y', 0)
+                nz = normal.get('z', 1)
+                n_mag = (nx**2 + ny**2 + nz**2)**0.5
+
+                # Check if normals are parallel (dot product ≈ ±1)
+                if n_mag > 0 and ref_mag > 0:
+                    dot_product = (nx * ref_nx + ny * ref_ny + nz * ref_nz) / (n_mag * ref_mag)
+
+                    # Parallel if dot product is close to 1 or -1
+                    if abs(abs(dot_product) - 1.0) < angle_tolerance:
+                        # Calculate signed distance from reference plane
+                        # Distance = (point - ref_origin) · ref_normal / |ref_normal|
+                        ox = origin.get('x', 0)
+                        oy = origin.get('y', 0)
+                        oz = origin.get('z', 0)
+
+                        dx = ox - ref_ox
+                        dy = oy - ref_oy
+                        dz = oz - ref_oz
+
+                        signed_distance = (dx * ref_nx + dy * ref_ny + dz * ref_nz) / ref_mag
+
+                        parallel_faces.append({
+                            'face_id': face['id'],
+                            'body_id': bid,
+                            'part_name': body_data['name'],
+                            'area': face['area'],
+                            'depth': signed_distance,
+                            'normal': normal,
+                            'origin': origin
+                        })
+
+                        log(f"  Found parallel face {face['id'][:8]}... at depth {signed_distance:.4f}\" (area={face['area']:.4f})")
+
+        log(f"\nTotal parallel faces found: {len(parallel_faces)}")
+
+        # Bin faces by depth
+        depth_bins = {}
+        for face in parallel_faces:
+            depth = face['depth']
+
+            # Find existing bin within tolerance
+            matched_bin = None
+            for existing_depth in depth_bins.keys():
+                if abs(depth - existing_depth) < depth_tolerance:
+                    matched_bin = existing_depth
+                    break
+
+            if matched_bin is not None:
+                depth_bins[matched_bin].append(face)
+            else:
+                depth_bins[depth] = [face]
+
+        # Sort bins by depth (shallowest first)
+        sorted_bins = dict(sorted(depth_bins.items(), key=lambda x: x[0], reverse=True))
+
+        log(f"\nDepth bins (shallowest to deepest):")
+        for depth, faces in sorted_bins.items():
+            log(f"  Z={depth:+.4f}\": {len(faces)} faces")
+
+        return sorted_bins
+
+    def merge_dxfs_with_layers(self, dxf_contents_by_depth):
+        """
+        Merge multiple DXF contents into one with depth-encoded layer names
+
+        Args:
+            dxf_contents_by_depth: Dict {depth: dxf_bytes}
+
+        Returns:
+            Merged DXF content as bytes
+        """
+        import ezdxf
+        from io import BytesIO
+
+        log(f"\n{'='*70}")
+        log(f"MERGING DXFs WITH LAYER NAMES")
+        log(f"{'='*70}")
+
+        # Create new DXF document
+        merged_doc = ezdxf.new('R2010', setup=True)
+        merged_msp = merged_doc.modelspace()
+
+        for depth, dxf_content in dxf_contents_by_depth.items():
+            # Generate layer name: Z_0p000, Z_-0p250, etc.
+            # Format: Z_{integer}p{fractional_digits}
+            abs_depth = abs(depth)
+            int_part = int(abs_depth)
+            frac_part = int(round((abs_depth - int_part) * 1000))  # 3 decimal places
+
+            if depth >= 0:
+                layer_name = f"Z_{int_part}p{frac_part:03d}"
+            else:
+                layer_name = f"Z_-{int_part}p{frac_part:03d}"
+
+            log(f"Processing depth {depth:.4f}\" -> layer {layer_name}")
+
+            # Load source DXF
+            source_doc = ezdxf.read(BytesIO(dxf_content))
+            source_msp = source_doc.modelspace()
+
+            # Create layer in merged doc if it doesn't exist
+            if layer_name not in merged_doc.layers:
+                merged_doc.layers.add(layer_name)
+
+            # Copy all entities to merged doc with new layer
+            entity_count = 0
+            for entity in source_msp:
+                # Clone entity and change its layer
+                try:
+                    new_entity = entity.copy()
+                    new_entity.dxf.layer = layer_name
+                    merged_msp.add_entity(new_entity)
+                    entity_count += 1
+                except Exception as e:
+                    log(f"  Warning: Could not copy entity {entity.dxftype()}: {e}")
+
+            log(f"  Copied {entity_count} entities to layer {layer_name}")
+
+        # Write to bytes
+        output = BytesIO()
+        merged_doc.write(output, fmt='asc')  # ASCII format for compatibility
+
+        merged_bytes = output.getvalue()
+        log(f"\nMerged DXF size: {len(merged_bytes)} bytes")
+
+        return merged_bytes
+
+    def export_multilayer_dxf(self, document_id, workspace_id, element_id,
+                             reference_face_id, reference_body_id, reference_normal, reference_origin,
+                             body_id=None, cached_faces_data=None):
+        """
+        Export multiple parallel faces as a single multi-layer DXF for 2.5D machining
+
+        Args:
+            reference_face_id: Face ID of the reference plane (typically the top face)
+            reference_body_id: Body ID of the reference face
+            reference_normal: Dict with reference plane normal
+            reference_origin: Dict with reference plane origin
+            body_id: Optional body ID to limit search
+            cached_faces_data: Optional pre-fetched faces data
+
+        Returns:
+            Multi-layer DXF content as bytes, or None if failed
+        """
+        log(f"\n{'='*70}")
+        log(f"MULTI-LAYER DXF EXPORT")
+        log(f"{'='*70}")
+
+        # Find all parallel faces grouped by depth
+        depth_bins = self.find_parallel_faces_by_depth(
+            document_id, workspace_id, element_id,
+            reference_normal, reference_origin,
+            body_id, cached_faces_data
+        )
+
+        if not depth_bins:
+            log("No parallel faces found")
+            return None
+
+        # Export each depth group
+        dxf_contents = {}
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        def export_depth_group(depth, faces):
+            """Export a single depth group"""
+            face_ids = [f['face_id'] for f in faces]
+            face_ids_str = ','.join(face_ids)
+
+            log(f"\nExporting depth {depth:.4f}\" ({len(faces)} faces): {face_ids_str}")
+
+            # Use the existing export method with comma-separated face IDs
+            # We'll modify export_face_to_dxf to accept multiple IDs
+            return depth, self._export_faces_group_to_dxf(
+                document_id, workspace_id, element_id,
+                face_ids_str, reference_normal
+            )
+
+        # Export depth groups in parallel
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {
+                executor.submit(export_depth_group, depth, faces): depth
+                for depth, faces in depth_bins.items()
+            }
+
+            for future in as_completed(futures):
+                depth = futures[future]
+                try:
+                    result_depth, dxf_content = future.result()
+                    if dxf_content:
+                        dxf_contents[result_depth] = dxf_content
+                        log(f"✓ Depth {result_depth:.4f}\" exported ({len(dxf_content)} bytes)")
+                    else:
+                        log(f"✗ Depth {result_depth:.4f}\" export failed")
+                except Exception as e:
+                    log(f"✗ Depth {depth:.4f}\" export error: {e}")
+
+        if not dxf_contents:
+            log("No DXF content exported")
+            return None
+
+        # Merge DXFs with layer names
+        merged_dxf = self.merge_dxfs_with_layers(dxf_contents)
+
+        return merged_dxf
+
+    def _export_faces_group_to_dxf(self, document_id, workspace_id, element_id, face_ids_str, face_normal=None):
+        """
+        Export multiple faces as a single DXF (helper for multi-layer export)
+
+        Args:
+            face_ids_str: Comma-separated face IDs (e.g., "JHD,JHE,JHF")
+            face_normal: Optional dict with face normal vector
+
+        Returns:
+            DXF file content as bytes, or None if failed
+        """
+        endpoint = f"/documents/d/{document_id}/w/{workspace_id}/e/{element_id}/exportinternal"
+
+        try:
+            # Calculate view matrix based on face normal
+            if face_normal:
+                view_matrix = self._calculate_view_matrix(face_normal)
+            else:
+                view_matrix = "1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1"
+
+            body = {
+                "format": "DXF",
+                "view": view_matrix,
+                "version": "2013",
+                "units": "inch",
+                "flatten": "true",
+                "includeBendCenterlines": "true",
+                "includeSketches": "true",
+                "splinesAsPolylines": "true",
+                "triggerAutoDownload": "true",
+                "storeInDocument": "false",
+                "partIds": face_ids_str  # Comma-separated string
+            }
+
+            response = self._make_api_request('POST', endpoint, json=body)
+
+            if response.status_code == 200:
+                return response.content
+            else:
+                log(f"Export failed: {response.status_code} - {response.text}")
+                return None
+
+        except Exception as e:
+            log(f"Error exporting faces: {e}")
+            return None
+
     def get_document_info(self, document_id):
         """Get information about a document"""
         try:
