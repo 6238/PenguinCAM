@@ -1595,9 +1595,11 @@ class FRCPostProcessor:
             self.perimeter = None
             self.pockets = self.polylines.copy() if self.polylines else []
 
-            # Adjust cut depth for this layer
+            # Convert DXF layer depth (CAD Z, where 0=top) to machine Z (where 0=sacrifice board)
+            # Machine Z = material_thickness + CAD_Z - sacrifice_depth
+            # Example: 0.5" thick, groove at CAD Z=-0.243" → machine Z = 0.5 + (-0.243) - 0.008 = 0.249"
             saved_cut_depth = self.cut_depth
-            self.cut_depth = depth - self.sacrifice_board_depth
+            self.cut_depth = self.material_thickness + depth - self.sacrifice_board_depth
 
             # Generate toolpaths at this depth
             if self.holes:
