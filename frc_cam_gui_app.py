@@ -1421,8 +1421,8 @@ def onshape_import():
                 client, document_id, workspace_id, element_id, face_id, body_id
             )
 
-        # Check if multi-layer export is requested
-        multilayer = raw_params.get('multilayer', '').lower() in ('true', '1', 'yes')
+        # Check if multi-layer export is requested (default: true)
+        multilayer = raw_params.get('multilayer', 'true').lower() in ('true', '1', 'yes')
 
         # Fetch DXF from Onshape
         # Use body_id from URL parameter if provided, otherwise use the one from auto-selection
