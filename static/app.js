@@ -1586,6 +1586,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let toolMesh = null; // 3D representation of cutting tool
         let completedLine = null; // Line showing completed moves
         let upcomingLine = null; // Line showing upcoming moves
+        let controls = null; // OrbitControls for camera manipulation
 
         function initVisualization() {
             const container = document.getElementById('canvas-container');
@@ -1616,8 +1617,24 @@ document.addEventListener('DOMContentLoaded', () => {
             // Grid, axes, and origin marker will be added when G-code is loaded
             // (sized appropriately for the part)
 
-            // Mouse controls
-            addMouseControls();
+            // Initialize OrbitControls (Onshape-style)
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.target.set(0, 0, 0); // Set rotation center to origin
+            controls.enableDamping = true; // Smooth camera movements
+            controls.dampingFactor = 0.1;
+            controls.screenSpacePanning = false; // Pan in the plane perpendicular to camera
+            controls.minDistance = 1;
+            controls.maxDistance = 500;
+            controls.maxPolarAngle = Math.PI; // Allow viewing from below
+
+            // Mouse button mapping (Onshape-style):
+            // Left: Rotate, Middle: Pan, Right: Zoom (disabled, use scroll instead)
+            controls.mouseButtons = {
+                LEFT: THREE.MOUSE.ROTATE,
+                MIDDLE: THREE.MOUSE.PAN,
+                RIGHT: null // Disable right-click zoom, use scroll wheel instead
+            };
+            controls.update(); // Apply initial settings
 
             // Animate
             animate();
@@ -1627,108 +1644,27 @@ document.addEventListener('DOMContentLoaded', () => {
             // Not needed - origin marker added in visualizeGcode with proper sizing
         }
 
-        function addMouseControls() {
-            const canvas = document.getElementById('gcodeCanvas');
-            let isDragging = false;
-            let isPanning = false;
-            let previousMousePosition = { x: 0, y: 0 };
+        // Reset view button handler
+        document.getElementById('resetView').addEventListener('click', () => {
+            if (!controls) return;
 
-            canvas.addEventListener('mousedown', (e) => {
-                // Middle mouse button (button 1) or Shift + left button for panning
-                if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
-                    e.preventDefault(); // Prevent default middle-click behavior
-                    isPanning = true;
-                    isDragging = false;
-                } else if (e.button === 0) {
-                    // Left button for rotation
-                    isDragging = true;
-                    isPanning = false;
-                }
-                previousMousePosition = { x: e.clientX, y: e.clientY };
-            });
-
-            // Prevent context menu on canvas (for middle mouse button)
-            canvas.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-            });
-
-            canvas.addEventListener('mousemove', (e) => {
-                if (!isDragging && !isPanning) return;
-
-                const deltaX = e.clientX - previousMousePosition.x;
-                const deltaY = e.clientY - previousMousePosition.y;
-
-                if (isPanning) {
-                    // Pan camera (Onshape-style: middle mouse or Shift+left)
-                    const panSpeed = 0.01;
-
-                    // Get camera right and up vectors for proper panning
-                    const cameraDirection = new THREE.Vector3();
-                    camera.getWorldDirection(cameraDirection);
-
-                    const cameraRight = new THREE.Vector3();
-                    cameraRight.crossVectors(camera.up, cameraDirection).normalize();
-
-                    const cameraUp = new THREE.Vector3();
-                    cameraUp.crossVectors(cameraDirection, cameraRight).normalize();
-
-                    // Calculate pan offset
-                    const distance = camera.position.length();
-                    const panX = cameraRight.multiplyScalar(-deltaX * panSpeed * distance * 0.01);
-                    const panY = cameraUp.multiplyScalar(deltaY * panSpeed * distance * 0.01);
-
-                    // Apply pan to both camera and look-at target
-                    camera.position.add(panX).add(panY);
-
-                    // Update look-at position
-                    optimalLookAtPosition.x += panX.x + panY.x;
-                    optimalLookAtPosition.y += panX.y + panY.y;
-                    optimalLookAtPosition.z += panX.z + panY.z;
-
-                    camera.lookAt(optimalLookAtPosition.x, optimalLookAtPosition.y, optimalLookAtPosition.z);
-                } else if (isDragging) {
-                    // Rotate camera (Onshape-style: left mouse)
-                    const rotationSpeed = 0.005;
-                    camera.position.x = camera.position.x * Math.cos(deltaX * rotationSpeed) - camera.position.z * Math.sin(deltaX * rotationSpeed);
-                    camera.position.z = camera.position.x * Math.sin(deltaX * rotationSpeed) + camera.position.z * Math.cos(deltaX * rotationSpeed);
-                    camera.position.y += deltaY * rotationSpeed * 5;
-
-                    camera.lookAt(optimalLookAtPosition.x, optimalLookAtPosition.y, optimalLookAtPosition.z);
-                }
-
-                previousMousePosition = { x: e.clientX, y: e.clientY };
-            });
-
-            canvas.addEventListener('mouseup', () => {
-                isDragging = false;
-                isPanning = false;
-            });
-
-            canvas.addEventListener('wheel', (e) => {
-                e.preventDefault();
-                const zoomSpeed = 0.1;
-                const distance = camera.position.length();
-                const newDistance = distance * (1 + e.deltaY * zoomSpeed * 0.01);
-                camera.position.multiplyScalar(newDistance / distance);
-            });
-
-            // Reset view button
-            document.getElementById('resetView').addEventListener('click', () => {
-                camera.position.set(
-                    optimalCameraPosition.x,
-                    optimalCameraPosition.y,
-                    optimalCameraPosition.z
-                );
-                camera.lookAt(
-                    optimalLookAtPosition.x,
-                    optimalLookAtPosition.y,
-                    optimalLookAtPosition.z
-                );
-            });
-        }
+            // Reset camera position and target
+            camera.position.set(
+                optimalCameraPosition.x,
+                optimalCameraPosition.y,
+                optimalCameraPosition.z
+            );
+            controls.target.set(
+                optimalLookAtPosition.x,
+                optimalLookAtPosition.y,
+                optimalLookAtPosition.z
+            );
+            controls.update();
+        });
 
         function animate() {
             requestAnimationFrame(animate);
+            if (controls) controls.update(); // Update controls for damping
             renderer.render(scene, camera);
         }
 
@@ -2370,10 +2306,17 @@ document.addEventListener('DOMContentLoaded', () => {
             // Camera positioning
             const viewDist = Math.max(maxX, maxY, maxZ) * 2;
             camera.position.set(viewDist * 0.7, viewDist * 0.7, viewDist * 0.7);
-            camera.lookAt(maxX / 3, maxZ / 3, -maxY / 3);
 
             optimalCameraPosition = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
             optimalLookAtPosition = { x: maxX / 3, y: maxZ / 3, z: -maxY / 3 };
+
+            // Set OrbitControls target (rotation center)
+            if (controls) {
+                controls.target.set(optimalLookAtPosition.x, optimalLookAtPosition.y, optimalLookAtPosition.z);
+                controls.update();
+            } else {
+                camera.lookAt(optimalLookAtPosition.x, optimalLookAtPosition.y, optimalLookAtPosition.z);
+            }
 
             document.querySelector('.empty-state').style.display = 'none';
         }
