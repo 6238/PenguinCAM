@@ -1618,7 +1618,7 @@ class FRCPostProcessor:
             self.cut_depth = saved_cut_depth
             gcode.append("")
 
-        # Process bottom face as perimeter (cut at material surface, not at bottom depth)
+        # Process bottom face for perimeter AND any through-holes/pockets
         layer_name, layer_info = bottom_layer
         depth = layer_info['depth']
         print(f"\nGenerating perimeter from {layer_name} (bottom face outline)")
@@ -1627,13 +1627,30 @@ class FRCPostProcessor:
         gcode.append(f"(===== LAYER: {layer_name} | PERIMETER =====)")
         gcode.append(f"(Bottom face outline used for perimeter - NOT cutting to Z={depth:.4f}\")")
 
-        # Use bottom face geometry as perimeter outline
+        # Use bottom face geometry
         self.circles = layer_info['circles']
         self.polylines = layer_info['polylines']
         self.classify_holes()
 
         # Identify perimeter from bottom face (should be the largest polyline)
         self.identify_perimeter_and_pockets()
+
+        # Generate holes and pockets from bottom layer (through-holes and through-pockets)
+        if self.holes:
+            gcode.append("(===== HOLES =====)")
+            for i, hole in enumerate(self.holes, 1):
+                center = hole['center']
+                diameter = hole['diameter']
+                gcode.append(f"(Hole {i} - {diameter:.3f}\" diameter)")
+                gcode.extend(self._generate_hole_gcode(center[0], center[1], diameter))
+                gcode.append("")
+
+        if self.pockets:
+            gcode.append("(===== POCKETS =====)")
+            for i, pocket in enumerate(self.pockets, 1):
+                gcode.append(f"(Pocket {i})")
+                gcode.extend(self._generate_pocket_gcode(pocket))
+                gcode.append("")
 
         # Perimeter cut at full depth
         if self.perimeter:
