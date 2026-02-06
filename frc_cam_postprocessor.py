@@ -1528,12 +1528,24 @@ class FRCPostProcessor:
         bottom_layer = min(self.layer_data.items(), key=lambda x: x[1]['depth'])
         bottom_layer_name = bottom_layer[0]
 
-        # Separate layers: pocket layers (excluding bottom) + perimeter layer last
-        depth_layers = [item for item in sorted_layers if item[0] != bottom_layer_name]
+        # Separate layers: pocket layers (excluding bottom and top surface)
+        # - Bottom layer: used for perimeter only
+        # - Top surface layer (Z ≈ 0): reference geometry, not machined
+        # - Middle layers (negative Z): actual pockets/grooves to machine
+        depth_layers = [
+            item for item in sorted_layers
+            if item[0] != bottom_layer_name and item[1]['depth'] < -0.01  # Skip Z ≈ 0
+        ]
 
         print(f"\nProcessing order:")
         for i, (layer_name, layer_info) in enumerate(depth_layers, 1):
-            print(f"  {i}. {layer_name} (Z={layer_info['depth']:.4f}\")")
+            print(f"  {i}. {layer_name} (Z={layer_info['depth']:.4f}\") - pocket/groove")
+
+        # Report skipped layers
+        for layer_name, layer_info in sorted_layers:
+            if layer_name != bottom_layer_name and layer_info['depth'] >= -0.01:
+                print(f"  → Skipping {layer_name} (Z={layer_info['depth']:.4f}\") - top surface reference geometry")
+
         print(f"  {len(depth_layers) + 1}. {bottom_layer_name} (Z={bottom_layer[1]['depth']:.4f}\") - PERIMETER from bottom face (last)")
 
         # Generate timestamp if not provided
