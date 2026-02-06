@@ -1141,6 +1141,12 @@ class OnshapeClient:
 
         log(f"\nMerged DXF size: {len(merged_bytes)} bytes")
 
+        # DEBUG: Save merged DXF for inspection
+        debug_path = "/tmp/debug_merged.dxf"
+        with open(debug_path, "wb") as f:
+            f.write(merged_bytes)
+        log(f"DEBUG: Saved merged DXF to {debug_path}")
+
         return merged_bytes
 
     def export_multilayer_dxf(self, document_id, workspace_id, element_id,
