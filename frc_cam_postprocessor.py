@@ -129,6 +129,9 @@ class FRCPostProcessor:
         # Holes smaller than this are skipped
         self.min_millable_hole = tool_diameter * config.min_millable_hole_multiplier
 
+        # Multi-layer support
+        self.layer_data = None  # Set by load_dxf for multi-layer DXFs
+
         # Z-axis reference: Z=0 is at BOTTOM (sacrifice board surface)
         # This allows zeroing to the sacrifice board instead of material top
         self.sacrifice_board_depth = config.sacrifice_board_depth  # How far to cut into sacrifice board (inches)
@@ -1393,6 +1396,125 @@ class FRCPostProcessor:
         gcode.append("")
         return gcode
 
+    def _geometries_to_shapely(self, circles, polylines):
+        """Convert circles and polylines to shapely geometries"""
+        from shapely.geometry import Polygon, Point
+        from shapely.ops import unary_union
+
+        geoms = []
+
+        # Convert circles to polygons (buffered points)
+        for circle in circles:
+            center = circle['center']
+            radius = circle['radius']
+            geoms.append(Point(center).buffer(radius))
+
+        # Convert polylines to polygons
+        for polyline in polylines:
+            if len(polyline) >= 3:
+                try:
+                    poly = Polygon(polyline)
+                    if poly.is_valid:
+                        geoms.append(poly)
+                except:
+                    pass
+
+        if geoms:
+            return unary_union(geoms)
+        return None
+
+    def _subtract_geometry(self, circles, polylines, cut_geometry):
+        """
+        Subtract already-cut geometry from circles and polylines.
+        Returns new lists with subtracted geometry.
+        """
+        if cut_geometry is None or cut_geometry.is_empty:
+            return circles, polylines
+
+        from shapely.geometry import Polygon, Point, MultiPolygon
+
+        new_circles = []
+        new_polylines = []
+
+        print(f"  Subtracting already-cut geometry from deeper layers...")
+
+        # Process circles
+        for circle in circles:
+            center = circle['center']
+            radius = circle['radius']
+            circle_geom = Point(center).buffer(radius)
+
+            # Subtract already cut areas
+            result = circle_geom.difference(cut_geometry)
+
+            # If circle is completely cut, skip it
+            if result.is_empty or result.area < 0.0001:
+                print(f"    Circle at {center} already cut - skipping")
+                continue
+
+            # If circle remains mostly intact (>90% area), keep it as-is
+            if result.area / circle_geom.area > 0.9:
+                new_circles.append(circle)
+            else:
+                # Circle partially overlaps - convert remainder to polyline(s)
+                print(f"    Circle at {center} partially overlaps - converting to polyline")
+                if isinstance(result, Polygon):
+                    coords = list(result.exterior.coords)[:-1]
+                    if len(coords) >= 3:
+                        new_polylines.append(coords)
+                elif isinstance(result, MultiPolygon):
+                    for poly in result.geoms:
+                        coords = list(poly.exterior.coords)[:-1]
+                        if len(coords) >= 3:
+                            new_polylines.append(coords)
+
+        # Process polylines
+        for polyline in polylines:
+            if len(polyline) < 3:
+                continue
+
+            try:
+                poly = Polygon(polyline)
+                if not poly.is_valid:
+                    continue
+
+                # Subtract already cut areas
+                result = poly.difference(cut_geometry)
+
+                # If completely cut, skip
+                if result.is_empty or result.area < 0.0001:
+                    print(f"    Polyline already cut - skipping")
+                    continue
+
+                # Extract remaining geometry
+                if isinstance(result, Polygon):
+                    coords = list(result.exterior.coords)[:-1]
+                    if len(coords) >= 3:
+                        new_polylines.append(coords)
+                    # Also add holes as separate polylines
+                    for interior in result.interiors:
+                        coords = list(interior.coords)[:-1]
+                        if len(coords) >= 3:
+                            new_polylines.append(coords)
+                elif isinstance(result, MultiPolygon):
+                    for poly in result.geoms:
+                        coords = list(poly.exterior.coords)[:-1]
+                        if len(coords) >= 3:
+                            new_polylines.append(coords)
+                        for interior in poly.interiors:
+                            coords = list(interior.coords)[:-1]
+                            if len(coords) >= 3:
+                                new_polylines.append(coords)
+            except Exception as e:
+                # If subtraction fails, keep original polyline
+                print(f"    Warning: Could not subtract from polyline: {e}")
+                new_polylines.append(polyline)
+
+        print(f"    Before: {len(circles)} circles, {len(polylines)} polylines")
+        print(f"    After:  {len(new_circles)} circles, {len(new_polylines)} polylines")
+
+        return new_circles, new_polylines
+
     def _generate_multilayer_gcode(self, suggested_filename: str = None, timestamp: str = None) -> PostProcessorResult:
         """Generate G-code for multi-layer DXF (2.5D machining)"""
         print("\n" + "="*70)
@@ -1422,6 +1544,9 @@ class FRCPostProcessor:
         gcode = self._generate_gcode_header(timestamp, is_multilayer=True)
         warnings = []
 
+        # Track already-cut geometry to avoid redundant cuts
+        cut_geometry = None
+
         # Process each depth layer (deepest to shallowest, excluding top/perimeter)
         for layer_name, layer_info in depth_layers:
             depth = layer_info['depth']
@@ -1429,9 +1554,27 @@ class FRCPostProcessor:
 
             gcode.append(f"(===== LAYER: {layer_name} | DEPTH: Z={depth:.4f}\" =====)")
 
-            # Temporarily set geometry for this layer
-            self.circles = layer_info['circles']
-            self.polylines = layer_info['polylines']
+            # Get raw geometry for this layer
+            raw_circles = layer_info['circles'].copy()
+            raw_polylines = layer_info['polylines'].copy()
+
+            # Subtract already-cut geometry from deeper layers
+            if cut_geometry is not None:
+                self.circles, self.polylines = self._subtract_geometry(
+                    raw_circles, raw_polylines, cut_geometry
+                )
+            else:
+                self.circles = raw_circles
+                self.polylines = raw_polylines
+
+            # Track this layer's geometry for future subtraction
+            layer_geom = self._geometries_to_shapely(self.circles, self.polylines)
+            if layer_geom is not None:
+                if cut_geometry is None:
+                    cut_geometry = layer_geom
+                else:
+                    from shapely.ops import unary_union
+                    cut_geometry = unary_union([cut_geometry, layer_geom])
 
             # Classify geometry (holes, pockets) - reuses existing methods
             self.classify_holes()

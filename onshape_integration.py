@@ -1043,7 +1043,8 @@ class OnshapeClient:
             Merged DXF content as bytes
         """
         import ezdxf
-        from io import BytesIO
+        import tempfile
+        import os
 
         log(f"\n{'='*70}")
         log(f"MERGING DXFs WITH LAYER NAMES")
@@ -1067,33 +1068,50 @@ class OnshapeClient:
 
             log(f"Processing depth {depth:.4f}\" -> layer {layer_name}")
 
-            # Load source DXF
-            source_doc = ezdxf.read(BytesIO(dxf_content))
-            source_msp = source_doc.modelspace()
+            # Write DXF to temp file and read it back (ezdxf.read() from StringIO doesn't work properly)
+            with tempfile.NamedTemporaryFile(mode='wb', suffix='.dxf', delete=False) as tmp_file:
+                tmp_file.write(dxf_content)
+                tmp_filename = tmp_file.name
 
-            # Create layer in merged doc if it doesn't exist
-            if layer_name not in merged_doc.layers:
-                merged_doc.layers.add(layer_name)
+            try:
+                source_doc = ezdxf.readfile(tmp_filename)
+                source_msp = source_doc.modelspace()
 
-            # Copy all entities to merged doc with new layer
-            entity_count = 0
-            for entity in source_msp:
-                # Clone entity and change its layer
-                try:
-                    new_entity = entity.copy()
-                    new_entity.dxf.layer = layer_name
-                    merged_msp.add_entity(new_entity)
-                    entity_count += 1
-                except Exception as e:
-                    log(f"  Warning: Could not copy entity {entity.dxftype()}: {e}")
+                log(f"  Source has {len(source_msp)} entities in modelspace")
 
-            log(f"  Copied {entity_count} entities to layer {layer_name}")
+                # Create layer in merged doc if it doesn't exist
+                if layer_name not in merged_doc.layers:
+                    merged_doc.layers.add(layer_name)
 
-        # Write to bytes
-        output = BytesIO()
-        merged_doc.write(output, fmt='asc')  # ASCII format for compatibility
+                # Copy all entities to merged doc with new layer
+                entity_count = 0
+                for entity in source_msp:
+                    # Clone entity and change its layer
+                    try:
+                        new_entity = entity.copy()
+                        new_entity.dxf.layer = layer_name
+                        merged_msp.add_entity(new_entity)
+                        entity_count += 1
+                    except Exception as e:
+                        log(f"  Warning: Could not copy entity {entity.dxftype()}: {e}")
 
-        merged_bytes = output.getvalue()
+                log(f"  Copied {entity_count} entities to layer {layer_name}")
+
+            finally:
+                # Clean up temp file
+                os.unlink(tmp_filename)
+
+        # Write merged document to bytes
+        with tempfile.NamedTemporaryFile(mode='wb', suffix='.dxf', delete=False) as tmp_file:
+            tmp_filename = tmp_file.name
+
+        try:
+            merged_doc.saveas(tmp_filename)
+            with open(tmp_filename, 'rb') as f:
+                merged_bytes = f.read()
+        finally:
+            os.unlink(tmp_filename)
+
         log(f"\nMerged DXF size: {len(merged_bytes)} bytes")
 
         return merged_bytes
