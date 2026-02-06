@@ -1843,8 +1843,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Convert from CAD Z to machine Z
                 // Machine Z = material_thickness + CAD_Z
-                // stockHeight is the material thickness passed in
-                const machineDepth = stockHeight + cadDepth;
+                // zHeight is the material thickness passed in
+                const machineDepth = zHeight + cadDepth;
 
                 console.log(`[DXF Render] Layer: ${layerName}, CAD depth: ${cadDepth.toFixed(3)}, Machine depth: ${machineDepth.toFixed(3)}, Entities: ${layerEntities.length}`);
                 // Get color for this layer
