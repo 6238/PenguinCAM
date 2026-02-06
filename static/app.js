@@ -1826,18 +1826,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
 
-            // Helper to parse Z depth from layer name (e.g., "Z_-0p243" -> -0.243)
-            function parseLayerDepth(layerName) {
-                const match = layerName.match(/Z_([-]?\d+)p(\d+)/);
-                if (match) {
-                    const intPart = parseInt(match[1]);
-                    const fracPart = parseInt(match[2]);
-                    const sign = intPart < 0 ? -1 : 1;
-                    return intPart + sign * (fracPart / 1000);
-                }
-                return zHeight; // Default to top surface for non-standard layer names
-            }
-
             console.log(`[DXF Bounds] After rotation: minX=${minX.toFixed(3)}, maxX=${maxX.toFixed(3)}, minY=${minY.toFixed(3)}, maxY=${maxY.toFixed(3)}`);
             console.log(`[DXF Bounds] Width=${(maxX-minX).toFixed(3)}, Height=${(maxY-minY).toFixed(3)}`);
 
@@ -1854,8 +1842,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Render each layer group with its assigned color
             layerGroups.forEach((layerEntities, layerName) => {
-                // Get Z depth for this layer (in CAD coordinates where Z=0 is top)
-                const cadDepth = parseLayerDepth(layerName);
+                // Get Z depth for this layer from the layers Map (already parsed correctly by organizeDxfLayers)
+                let cadDepth = 0; // Default to top surface
+                if (hasLayers && dxfGeometry.layers.has(layerName)) {
+                    const layerInfo = dxfGeometry.layers.get(layerName);
+                    cadDepth = layerInfo.depth !== null ? layerInfo.depth : 0;
+                }
 
                 // Convert from CAD Z to machine Z
                 // Machine Z = material_thickness + CAD_Z
