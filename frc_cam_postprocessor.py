@@ -2132,18 +2132,33 @@ class FRCPostProcessor:
             test_poly = pocket_poly.buffer(test_offset)
             if test_poly.is_empty or test_poly.area < 0.001:
                 break
-            if not hasattr(test_poly, 'exterior'):
-                break
+            # For complex shapes, buffer can create MultiPolygon - handle both cases
             contours.append(test_poly)
 
         gcode.append(f"(Contour-parallel clearing: {len(contours)} offset passes)")
 
         # Cut contours from outside-in (perimeter to center)
-        for idx, contour_poly in enumerate(reversed(contours)):
-            if hasattr(contour_poly, 'exterior'):
-                contour_points = list(contour_poly.exterior.coords)[:-1]
+        pass_number = 0
+        for contour_geom in reversed(contours):
+            # Handle both Polygon and MultiPolygon (complex shapes can split into multiple regions)
+            polygons_to_cut = []
+            if hasattr(contour_geom, 'exterior'):
+                # Single Polygon
+                polygons_to_cut.append(contour_geom)
+            elif hasattr(contour_geom, 'geoms'):
+                # MultiPolygon - cut all separate regions
+                polygons_to_cut.extend(contour_geom.geoms)
 
-                gcode.append(f"(Contour pass {idx + 1}/{len(contours)})")
+            for poly in polygons_to_cut:
+                if not hasattr(poly, 'exterior'):
+                    continue
+
+                contour_points = list(poly.exterior.coords)[:-1]
+                if len(contour_points) < 3:
+                    continue
+
+                pass_number += 1
+                gcode.append(f"(Contour pass {pass_number})")
 
                 # Move to start of contour
                 gcode.append(f"G1 X{contour_points[0][0]:.4f} Y{contour_points[0][1]:.4f} F{self.feed_rate}")
