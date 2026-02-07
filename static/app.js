@@ -1594,14 +1594,22 @@ document.addEventListener('DOMContentLoaded', () => {
                         break;
                     case 'ARC':
                         // Sample arc perimeter
-                        const startAngle = (entity.startAngle || 0) * Math.PI / 180;
-                        const endAngle = (entity.endAngle || 360) * Math.PI / 180;
-                        for (let i = 0; i <= 8; i++) {
-                            const t = i / 8;
-                            const angle = startAngle + (endAngle - startAngle) * t;
-                            const x = entity.center.x + entity.radius * Math.cos(angle);
-                            const y = entity.center.y + entity.radius * Math.sin(angle);
-                            updateBounds(x, y);
+                        {
+                            const startAngle = (entity.startAngle || 0) * Math.PI / 180;
+                            let endAngle = (entity.endAngle || 360) * Math.PI / 180;
+
+                            // Handle angle wrapping
+                            if (endAngle < startAngle) {
+                                endAngle += 2 * Math.PI;
+                            }
+
+                            for (let i = 0; i <= 8; i++) {
+                                const t = i / 8;
+                                const angle = startAngle + (endAngle - startAngle) * t;
+                                const x = entity.center.x + entity.radius * Math.cos(angle);
+                                const y = entity.center.y + entity.radius * Math.sin(angle);
+                                updateBounds(x, y);
+                            }
                         }
                         break;
                     case 'LWPOLYLINE':
@@ -1656,7 +1664,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Partial arc - tessellate into line segments
                         {
                             const startAngle = (entity.startAngle || 0) * Math.PI / 180;
-                            const endAngle = (entity.endAngle || 360) * Math.PI / 180;
+                            let endAngle = (entity.endAngle || 360) * Math.PI / 180;
+
+                            // Handle angle wrapping: if end < start, arc wraps through 0° (CCW)
+                            // Add 2π to end angle to get correct interpolation
+                            if (endAngle < startAngle) {
+                                endAngle += 2 * Math.PI;
+                            }
+
                             const numPoints = 50;
 
                             for (let i = 0; i <= numPoints; i++) {
