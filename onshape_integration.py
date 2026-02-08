@@ -1458,6 +1458,13 @@ class OnshapeClient:
         try:
             log("\n🔍 Searching for PenguinCAM-config.yaml...")
 
+            # Get user's companies to filter search results
+            user_companies = self.get_companies()
+            user_company_ids = set()
+            if user_companies:
+                user_company_ids = {c.get('id') for c in user_companies if c.get('id')}
+                log(f"   User belongs to {len(user_company_ids)} company/companies")
+
             # Search for documents with the config filename (v13 API)
             search_body = {
                 'rawQuery': 'PenguinCAM-config.yaml'
@@ -1472,18 +1479,55 @@ class OnshapeClient:
             search_results = response.json()
             items = search_results.get('items', [])
 
-            log(f"   Found {len(items)} matching document(s)")
+            log(f"   Found {len(items)} matching document(s) (may include shared from other teams)")
 
             if not items:
                 log("   ℹ️  No PenguinCAM-config.yaml found in documents")
                 return None
 
-            # Use the first matching document
-            config_doc = items[0]
+            # Filter to only documents owned by user's companies (not publicly shared from other teams)
+            user_configs = []
+            for item in items:
+                doc_name = item.get('name', 'unknown')
+                doc_id = item.get('id', '')
+
+                # Get document info to check owner
+                doc_info = self.get_document_info(doc_id)
+                if not doc_info:
+                    continue
+
+                owner_info = doc_info.get('owner', {})
+                owner_type = owner_info.get('type')
+                owner_id = owner_info.get('id')
+                owner_name = owner_info.get('name', 'Unknown')
+
+                log(f"   - Found: {doc_name} (ID: {doc_id[:8]}..., owner: {owner_name})")
+
+                # Check if owner is one of user's companies, or the user themselves
+                # owner_type: 0 = user, 1 = company, 2 = team
+                if owner_type in [1, 2] and owner_id in user_company_ids:
+                    # Owned by user's company/team
+                    log(f"     ✓ Owned by your company: {owner_name}")
+                    user_configs.append(item)
+                elif owner_type == 0:
+                    # Owned by a user (possibly this user, or someone in their company)
+                    # We'll accept this as it's not a public share from another team
+                    log(f"     ✓ Owned by user: {owner_name}")
+                    user_configs.append(item)
+                else:
+                    log(f"     ✗ Owned by external company/team (ignoring)")
+
+            if not user_configs:
+                log("   ℹ️  No PenguinCAM-config.yaml found in your company/workspace")
+                log("   💡 Found configs from other teams - create your own to customize settings")
+                return None
+
+            # Use the first config from user's company
+            config_doc = user_configs[0]
             doc_id = config_doc.get('id')
             doc_name = config_doc.get('name', 'unknown')
 
-            log(f"   ✅ Found config document: {doc_name} (ID: {doc_id[:8]}...)")
+            log(f"   ✅ Using config from your workspace: {doc_name} (ID: {doc_id[:8]}...)")
 
             # Get workspace ID from search results (v13 includes defaultWorkspace)
             workspace_id = config_doc.get('defaultWorkspace', {}).get('id')
