@@ -39,16 +39,18 @@
         // Request current selection state (in case face is already selected)
         // Onshape will respond with a SELECTION message
         // Do this AFTER listener is set up so we can receive the response
+        /* DISABLED: this doesn't do what we'd hoped it would do
         const selectionMessage = {
-            messageName: 'requestSelectionHighlight',
+            messageName: 'requestSelection',
             messageId: 'penguincam-init-' + Date.now(), // Unique ID for this request
             documentId: context.documentId,
             workspaceId: context.workspaceId,
             elementId: context.elementId,
             entityTypeSpecifier: ['FACE'] // Array of entity types we're looking for
         };
-        window.parent.postMessage(selectionMessage, '*');
-        console.log('Requested current selection:', selectionMessage);
+        // window.parent.postMessage(selectionMessage, '*');
+        // console.log('Requested current selection:', selectionMessage);
+        */
 
         // Set up button handlers
         sendBtn.addEventListener('click', handleSendToPenguinCAM);
