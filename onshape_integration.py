@@ -1243,10 +1243,25 @@ class OnshapeClient:
 
             log(f"  Depth {depth:.4f}\": {len(faces)} faces, offset (0.0000, 0.0000)")
 
+        # Calculate part thickness from depth bins
+        # Depths are signed distances from reference (top) face
+        # Top face ≈ 0, bottom face ≈ -thickness
+        depths = list(depth_bins.keys())
+        if depths:
+            max_depth = max(depths)  # Shallowest (closest to reference, typically ~0)
+            min_depth = min(depths)  # Deepest (bottom face, typically negative)
+            detected_thickness = max_depth - min_depth
+            log(f"\n📏 Detected part thickness: {detected_thickness:.4f}\" (from Z={max_depth:+.4f}\" to Z={min_depth:+.4f}\")")
+        else:
+            detected_thickness = None
+            log("\n⚠️  Could not detect part thickness (no depth bins)")
+
         # Merge DXFs with layer names and coordinate alignment
         merged_dxf = self.merge_dxfs_with_layers(dxf_contents, depth_metadata)
 
-        return merged_dxf
+        # Store thickness as metadata in the DXF object (we'll pass it back separately)
+        # For now, just return both values
+        return merged_dxf, detected_thickness
 
     def _export_faces_group_to_dxf(self, document_id, workspace_id, element_id, face_ids_str, face_normal=None):
         """

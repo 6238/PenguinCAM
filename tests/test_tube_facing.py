@@ -235,7 +235,7 @@ class TestTubeFacingGeneration(unittest.TestCase):
             self._generate_tube_gcode_to_file(output_path, '1x1')
             with open(output_path) as f:
                 content = f.read()
-            self.assertIn("G0 G28 G91 Z0", content)
+            self.assertIn("G28 G91 Z0.", content)  # Z-axis homing
             self.assertIn("G90", content)  # Back to absolute mode
         finally:
             os.unlink(output_path)

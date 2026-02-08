@@ -161,9 +161,14 @@
                         <div class="param-group">
                             <label>
                                 Material Thickness (inches)
-                                <span class="label-hint">1/4" = 0.25</span>
+                                <span class="label-hint">{% if detected_thickness %}Auto-detected from CAD{% else %}1/4" = 0.25{% endif %}</span>
                             </label>
-                            <input type="number" id="thickness" step="0.001" value="0.25" min="0.01" required>
+                            <input type="number" id="thickness" step="0.001" value="{% if detected_thickness %}{{ '%.3f' | format(detected_thickness) }}{% else %}0.25{% endif %}" min="0.01" required>
+                            {% if detected_thickness %}
+                            <div class="info-message" style="margin-top: 0.5rem; padding: 0.75rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; font-size: 0.875rem; line-height: 1.4;">
+                                ℹ️ This thickness was auto-detected from your CAD part. For multi-layer parts, changing this value may cause incorrect cut depths.
+                            </div>
+                            {% endif %}
                         </div>
 
                         <div class="param-group">
@@ -359,7 +364,8 @@
             dxfFile: '{{ dxf_file if dxf_file else "" }}',
             fromOnshape: {{ 'true' if from_onshape else 'false' }},
             suggestedFilename: '{{ suggested_filename if suggested_filename else "" }}',
-            usingDefaultConfig: {{ 'true' if using_default_config else 'false' }}
+            usingDefaultConfig: {{ 'true' if using_default_config else 'false' }},
+            detectedThickness: {{ detected_thickness if detected_thickness else 'null' }}
         };
 
         // Machine configuration for bounds checking

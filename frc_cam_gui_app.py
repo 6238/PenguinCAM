@@ -461,7 +461,8 @@ def index():
                          machines=machines,
                          current_machine_id=current_machine_id,
                          materials=available_materials,
-                         incomplete_materials=incomplete_materials)
+                         incomplete_materials=incomplete_materials,
+                         detected_thickness=None)
 
 @app.route('/process', methods=['POST'])
 @limiter.limit("10 per minute")  # Strict limit - CPU intensive operation
@@ -1287,7 +1288,8 @@ def onshape_import():
                                      'received_params': str(raw_params),
                                      'workaround': 'Export DXF manually from Onshape and upload it here'
                                  },
-                                 using_default_config=session.get('using_default_config', False)), 400
+                                 using_default_config=session.get('using_default_config', False),
+                                 detected_thickness=None), 400
 
         if not all([document_id, workspace_id, element_id]):
             return jsonify({
@@ -1389,7 +1391,8 @@ def onshape_import():
                                              'element_id': element_id
                                          },
                                          from_onshape=True,
-                                         using_default_config=session.get('using_default_config', False))
+                                         using_default_config=session.get('using_default_config', False),
+                                         detected_thickness=None)
 
                 # This now returns (face_id, body_id, part_name, normal)
                 # Pass body_id if user selected a specific part in Onshape, and cached data to avoid duplicate API call
@@ -1413,7 +1416,8 @@ def onshape_import():
                                              'elementId': element_id,
                                              'bodies_found': face_count if faces_data else 0
                                          },
-                                         using_default_config=session.get('using_default_config', False)), 400
+                                         using_default_config=session.get('using_default_config', False),
+                                         detected_thickness=None), 400
 
                 log(f"Auto-selected face: {face_id} from part: {part_name_from_body}")
 
@@ -1510,16 +1514,24 @@ def onshape_import():
             log(f"Reference origin: {reference_origin}")
 
             # Export multi-layer DXF
-            dxf_content = client.export_multilayer_dxf(
+            result = client.export_multilayer_dxf(
                 document_id, workspace_id, element_id,
                 face_id, export_body_id, face_normal, reference_origin,
                 body_id=export_body_id, cached_faces_data=faces_data
             )
+            # Unpack tuple: (dxf_content, detected_thickness)
+            if isinstance(result, tuple):
+                dxf_content, detected_thickness = result
+            else:
+                # Backwards compatibility if export function doesn't return thickness
+                dxf_content = result
+                detected_thickness = None
         else:
             log("📄 Single-layer export")
             dxf_content = client.export_face_to_dxf(
                 document_id, workspace_id, element_id, face_id, export_body_id, face_normal
             )
+            detected_thickness = None  # Not applicable for single-layer
 
         if not dxf_content:
             error_msg = f"Failed to export DXF from Onshape. "
@@ -1626,6 +1638,7 @@ def onshape_import():
                              document_id=document_id,
                              face_id=face_id,
                              suggested_filename=suggested_filename or '',
+                             detected_thickness=detected_thickness,  # Auto-detected part thickness (multilayer only)
                              user_name=user_name,
                              team_name=team_name,
                              drive_enabled=drive_enabled,
