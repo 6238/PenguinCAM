@@ -47,7 +47,7 @@
             elementId: context.elementId,
             entityTypeSpecifier: ['FACE'] // Array of entity types we're looking for
         };
-        // window.parent.postMessage(selectionMessage, '*');
+        window.parent.postMessage(selectionMessage, '*');
         console.log('Requested current selection:', selectionMessage);
 
         // Set up button handlers
