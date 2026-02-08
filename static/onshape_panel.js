@@ -9,6 +9,8 @@
     const instruction = document.getElementById('instruction');
     const buttonGroup = document.getElementById('buttonGroup');
     const sendBtn = document.getElementById('sendToPenguinCAM');
+    const multilayerCheckbox = document.getElementById('multilayerMode');
+    const modeHint = document.getElementById('modeHint');
 
     // Onshape context from template
     const context = window.ONSHAPE_CONTEXT;
@@ -50,6 +52,37 @@
 
         // Set up button handlers
         sendBtn.addEventListener('click', handleSendToPenguinCAM);
+
+        // Set up mode checkbox handler
+        multilayerCheckbox.addEventListener('change', updateModeInstructions);
+
+        // Initialize mode instructions
+        updateModeInstructions();
+    }
+
+    /**
+     * Update instruction text based on multilayer mode
+     */
+    function updateModeInstructions() {
+        const isMultilayer = multilayerCheckbox.checked;
+
+        if (isMultilayer) {
+            // 2.5D mode - stock must match CAD
+            modeHint.textContent = 'Stock thickness must match CAD part thickness';
+            // Update instruction if no face selected
+            if (!selectedFaceId && instruction.style.display !== 'none') {
+                instruction.innerHTML = 'Select a face at the <strong>top-most layer</strong> of your part';
+                instruction.style.color = '';
+            }
+        } else {
+            // 2D mode - any stock works
+            modeHint.textContent = 'Any stock thickness works - cutting a flat pattern only';
+            // Update instruction if no face selected
+            if (!selectedFaceId && instruction.style.display !== 'none') {
+                instruction.innerHTML = 'Select the <strong>top face</strong> of your part';
+                instruction.style.color = '';
+            }
+        }
     }
 
     /**
@@ -165,6 +198,10 @@
         if (selectedPartId) {
             params.append('partId', selectedPartId);
         }
+
+        // Add multilayer mode
+        const isMultilayer = multilayerCheckbox.checked;
+        params.append('multilayer', isMultilayer ? 'true' : 'false');
 
         return `${context.baseUrl}${endpoint}?${params.toString()}`;
     }
