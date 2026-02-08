@@ -323,6 +323,14 @@ def fetch_face_normal_and_body(client, document_id, workspace_id, element_id, fa
         faces_data = client.list_faces(document_id, workspace_id, element_id)
 
         if faces_data and 'bodies' in faces_data:
+            # Debug: Log all face IDs to find mismatch
+            all_face_ids = []
+            for body in faces_data['bodies']:
+                for face in body.get('faces', []):
+                    all_face_ids.append(face.get('id'))
+            log(f"🔍 All face IDs in response ({len(all_face_ids)} total): {all_face_ids[:20]}{'...' if len(all_face_ids) > 20 else ''}")
+            log(f"🔍 Looking for face_id: {face_id}")
+
             # Search through all bodies and faces to find the matching face_id
             for body in faces_data['bodies']:
                 bid = body.get('id')
@@ -1439,22 +1447,46 @@ def onshape_import():
 
                 # Find the reference face
                 reference_face = None
-                for body in faces_data.get('bodies', []):
-                    if export_body_id and body.get('id') != export_body_id:
-                        continue
-                    for face in body.get('faces', []):
-                        if face.get('id') == face_id:
-                            reference_face = face
+
+                # If face_id is provided, find that specific face
+                if face_id:
+                    for body in faces_data.get('bodies', []):
+                        if export_body_id and body.get('id') != export_body_id:
+                            continue
+                        for face in body.get('faces', []):
+                            if face.get('id') == face_id:
+                                reference_face = face
+                                break
+                        if reference_face:
                             break
+                else:
+                    # No face_id provided (one-click flow): auto-select largest upward-facing plane
+                    log("⚠️  No face_id provided, auto-selecting reference face...")
+                    largest_area = 0
+                    for body in faces_data.get('bodies', []):
+                        if export_body_id and body.get('id') != export_body_id:
+                            continue
+                        for face in body.get('faces', []):
+                            surface = face.get('surface', {})
+                            if surface.get('type') == 'PLANE':
+                                normal = surface.get('normal', {})
+                                # Check if pointing up (z > 0.9)
+                                if normal.get('z', 0) > 0.9:
+                                    area = face.get('area', 0)
+                                    if area > largest_area:
+                                        largest_area = area
+                                        reference_face = face
+                                        face_id = face.get('id')  # Update face_id for later use
+
                     if reference_face:
-                        break
+                        log(f"✅ Auto-selected reference face: {face_id} (area: {largest_area:.6f} m²)")
 
                 if reference_face:
                     surface = reference_face.get('surface', {})
                     face_normal = surface.get('normal', {'x': 0, 'y': 0, 'z': 1})
                 else:
                     log("❌ Could not find reference face for multi-layer export")
-                    return jsonify({'error': 'Could not find reference face for multi-layer export'}), 500
+                    return jsonify({'error': 'Could not find reference face for multi-layer export. Please select a flat top face.'}), 500
 
             # Get reference origin from face
             faces_data = client.list_faces(document_id, workspace_id, element_id)
