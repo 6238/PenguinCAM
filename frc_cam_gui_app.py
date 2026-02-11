@@ -718,6 +718,10 @@ def process_file():
             response_data['cycle_time'] = result.stats['cycle_time_display']
             response_data['cycle_time_seconds'] = result.stats['cycle_time_seconds']
 
+        # Add chipload diagnostics if available (V3 config only)
+        if 'chipload_diagnostics' in result.stats and result.stats['chipload_diagnostics'] is not None:
+            response_data['chipload_diagnostics'] = result.stats['chipload_diagnostics']
+
         # Log metrics
         team_number = session.get('team_number')
         user_email = session.get('user_email')

@@ -11,120 +11,195 @@ from typing import Optional, Dict, Any
 
 
 # =============================================================================
-# TEAM 6238 DEFAULTS
+# TEAM 6238 DEFAULTS (V3 - Chipload-based)
 # These are used as fallbacks when config values are missing
 # =============================================================================
 
 TEAM_6238_DEFAULTS = {
+    'version': 3,
     'team': {
         'number': 6238,
         'name': 'Popcorn Penguins'
     },
-    'machine': {
-        'name': 'Generic CNC Router',
-        'manufacturer': 'Generic',
-        'controller': 'Generic',
-        'dimensions': {'x_max': 24.0, 'y_max': 24.0, 'z_max': 8.0},
-        'park_position': {'x': 0.5, 'y': 0.5, 'z': -0.5},
-        'standard_work_offset': 'G54',
-        'tube_jig_work_offset': 'G55',
-        'coolant': 'Air'
-    },
-    'machining': {
-        'z_reference': {
-            'sacrifice_board_depth': 0.008,
-            'clearance_height': 0.5
-        },
-        'tabs': {
-            'enabled': True,
-            'width': 0.25,
-            'height': 0.1,
-            'spacing': 6.0,
-            'remove_tabs': True
-        },
-        'fixturing': {
-            'pause_before_perimeter': False
-        },
-        'holes': {
-            'detection_tolerance': 0.02,
-            'min_millable_multiplier': 1.2
-        },
-        'default_tool': {
-            'diameter': 0.157  # 4mm end mill
-        }
-    },
-    'tube_facing': {
-        'depth_margin': 0.005,
-        'max_roughing_depth': 0.3,
-        'max_finishing_depth': 0.51,
-        'phase_1': {
-            'roughing_tool_edge': 0.05,
-            'finishing_tool_edge': 0.0625
-        },
-        'phase_2': {
-            'roughing_tool_edge': -0.0125,
-            'finishing_tool_edge': 0.0
-        },
-        'arc_advance': 0.04,
-        'arc_radius': 0.05
-    },
-    'materials': {
-        'plywood': {
-            'name': 'Plywood',
-            'spindle_speed': 18000,
-            'feed_rate': 75.0,
-            'ramp_feed_rate': 50.0,
-            'plunge_rate': 35.0,
-            'traverse_rate': 200.0,
-            'approach_rate': 50.0,
-            'ramp_angle': 20.0,
-            'ramp_start_clearance': 0.150,
-            'stepover_percentage': 0.65,
-            'helix_radius_multiplier': 0.75,
-            'max_slotting_depth': 0.4,
-            'peck_drill_depth': 0.05,
-            'tab_width': 0.25,
-            'tab_height': 0.15
-        },
-        'aluminum': {
-            'name': 'Aluminum',
-            'spindle_speed': 18000,
-            'feed_rate': 55.0,
-            'ramp_feed_rate': 35.0,
-            'plunge_rate': 15.0,
-            'traverse_rate': 200.0,
-            'approach_rate': 35.0,
-            'ramp_angle': 4.0,
-            'ramp_start_clearance': 0.050,
-            'stepover_percentage': 0.25,
-            'helix_radius_multiplier': 0.5,
-            'max_slotting_depth': 0.2,
-            'peck_drill_depth': 0.05,
-            'tab_width': 0.25,
-            'tab_height': 0.15
-        },
-        'polycarbonate': {
-            'name': 'Polycarbonate',
-            'spindle_speed': 18000,
-            'feed_rate': 75.0,
-            'ramp_feed_rate': 50.0,
-            'plunge_rate': 20.0,
-            'traverse_rate': 200.0,
-            'approach_rate': 50.0,
-            'ramp_angle': 20.0,
-            'ramp_start_clearance': 0.100,
-            'stepover_percentage': 0.55,
-            'helix_radius_multiplier': 0.75,
-            'max_slotting_depth': 0.25,
-            'peck_drill_depth': 0.05,
-            'tab_width': 0.25,
-            'tab_height': 0.15
-        }
-    },
-    'integrations': {
-        'google_drive': {
-            'enabled': False,
-            'folder_id': None
+    'default_machine': 'generic',
+    'machines': {
+        'generic': {
+            'name': 'Generic CNC Router',
+            'machine': {
+                'manufacturer': 'Generic',
+                'controller': 'Generic',
+                'dimensions': {'x_max': 24.0, 'y_max': 24.0, 'z_max': 8.0},
+                'park_position': {'x': 0.5, 'y': 0.5, 'z': -0.5},
+                'standard_work_offset': 'G54',
+                'tube_jig_work_offset': 'G55',
+                'coolant': 'Air',
+                'spindle_limits': {
+                    'rpm_min': 6000,
+                    'rpm_max': 24000
+                },
+                'motion_limits': {
+                    'feed_xy_max': 157.0,
+                    'feed_z_max': 60.0,
+                    'traverse_xy': 200.0,
+                    'approach_z': 50.0
+                },
+                'machine_characteristics': {
+                    'rigidity_class': 'medium',
+                    'runout_class': 'typical',
+                    'rigidity_chipload_multipliers': {
+                        'light': 0.70,
+                        'medium': 1.00,
+                        'heavy': 1.15
+                    },
+                    'runout_estimate_in': {
+                        'excellent': 0.0004,
+                        'good': 0.0008,
+                        'typical': 0.0020,
+                        'poor': 0.0040
+                    }
+                }
+            },
+            'default_tool': {
+                'diameter': 0.157,  # 4mm end mill
+                'flutes': 1,
+                'is_reference_tool': True
+            },
+            'machining': {
+                'z_reference': {
+                    'sacrifice_board_depth': 0.008,
+                    'clearance_height': 0.5
+                },
+                'tabs': {
+                    'enabled': True,
+                    'width': 0.25,
+                    'height': 0.15,
+                    'spacing': 6.0,
+                    'remove_tabs': True
+                },
+                'holes': {
+                    'detection_tolerance': 0.0001,
+                    'min_millable_multiplier': 1.2
+                },
+                'fixturing': {
+                    'pause_before_perimeter': False
+                },
+                'feed_speed_policy': {
+                    'chipload_diameter_exponent': 0.70,
+                    'allow_reduce_rpm_to_recover_chipload': True,
+                    'runout_k_multiplier': 3.0,
+                    'limit_ramp_by_z_component': {
+                        'enabled': True,
+                        'z_cut_max': 35.0
+                    }
+                }
+            },
+            'tube_facing': {
+                'depth_margin': 0.005,
+                'max_roughing_depth': 0.3,
+                'max_finishing_depth': 0.51,
+                'phase_1': {
+                    'roughing_tool_edge': 0.05,
+                    'finishing_tool_edge': 0.0625
+                },
+                'phase_2': {
+                    'roughing_tool_edge': -0.0125,
+                    'finishing_tool_edge': 0.0
+                },
+                'arc_advance': 0.04,
+                'arc_radius': 0.05
+            },
+            'materials': {
+                'plywood': {
+                    'name': 'Plywood',
+                    'cutting_model': {
+                        'preferred_rpm': 18000,
+                        'chipload_ref': 0.004167,  # Produces exactly 75 IPM at 18K RPM, 1 flute
+                        'chipload_min': 0.0020,
+                        'chipload_max': 0.0080,
+                        'slotting_chipload_multiplier': 0.80
+                    },
+                    'strategy': {
+                        'stepover_ratio': 0.65,
+                        'slot_stepdown_ratio': 1.00,
+                        'clear_stepdown_ratio': 1.50,
+                        'ramp': {
+                            'type': 'linear_or_helix',
+                            'angle_deg': 20.0,
+                            'start_clearance': 0.150,
+                            'feed_multiplier': 0.65,
+                            'helix_radius_multiplier': 0.75
+                        },
+                        'peck_drill': {
+                            'depth_ratio': 0.25,
+                            'depth_min': 0.030,
+                            'depth_max': 0.080,
+                            'feed_multiplier': 0.15
+                        }
+                    }
+                },
+                'aluminum': {
+                    'name': 'Aluminum',
+                    'cutting_model': {
+                        'preferred_rpm': 18000,
+                        'chipload_ref': 0.003056,  # Produces exactly 55 IPM at 18K RPM, 1 flute
+                        'chipload_min': 0.0015,
+                        'chipload_max': 0.0035,
+                        'slotting_chipload_multiplier': 0.70
+                    },
+                    'strategy': {
+                        'stepover_ratio': 0.25,
+                        'slot_stepdown_ratio': 0.25,
+                        'clear_stepdown_ratio': 0.50,
+                        'ramp': {
+                            'type': 'linear_or_helix',
+                            'angle_deg': 4.0,
+                            'start_clearance': 0.050,
+                            'feed_multiplier': 0.60,
+                            'helix_radius_multiplier': 0.50
+                        },
+                        'peck_drill': {
+                            'depth_ratio': 0.20,
+                            'depth_min': 0.020,
+                            'depth_max': 0.060,
+                            'feed_multiplier': 0.10
+                        }
+                    }
+                },
+                'polycarbonate': {
+                    'name': 'Polycarbonate',
+                    'cutting_model': {
+                        'preferred_rpm': 18000,
+                        'chipload_ref': 0.004167,  # Produces exactly 75 IPM at 18K RPM, 1 flute
+                        'chipload_min': 0.0025,
+                        'chipload_max': 0.0070,
+                        'slotting_chipload_multiplier': 0.85
+                    },
+                    'strategy': {
+                        'stepover_ratio': 0.55,
+                        'slot_stepdown_ratio': 0.75,
+                        'clear_stepdown_ratio': 1.25,
+                        'ramp': {
+                            'type': 'linear_or_helix',
+                            'angle_deg': 20.0,
+                            'start_clearance': 0.100,
+                            'feed_multiplier': 0.65,
+                            'helix_radius_multiplier': 0.75
+                        },
+                        'peck_drill': {
+                            'depth_ratio': 0.25,
+                            'depth_min': 0.030,
+                            'depth_max': 0.080,
+                            'feed_multiplier': 0.12
+                        }
+                    }
+                }
+            },
+            'integrations': {
+                'google_drive': {
+                    'enabled': False,
+                    'folder_id': None
+                }
+            }
         }
     }
 }
@@ -149,21 +224,23 @@ class TeamConfig:
         if config_data is None:
             config_data = {}
 
-        # Normalize to v2 structure internally for consistent API
-        self._data = self._normalize_to_v2(config_data)
+        # Normalize config structure for consistent API
+        self._data = self._normalize_config(config_data)
+        self._original_version = config_data.get('version', 1) if config_data else 3
 
-    def _normalize_to_v2(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _normalize_config(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Convert any config version to v2 structure internally.
+        Convert any config version to normalized structure internally.
 
         v1: Top-level machine/materials/integrations
         v2: machines -> machine_id -> machine/materials/integrations
+        v3: machines with chipload-based cutting_model (structure compatible with v2)
 
         Args:
             data: Raw config data
 
         Returns:
-            Normalized v2 structure
+            Normalized structure with machines dict
         """
         version = data.get('version', 1)
 
@@ -180,7 +257,7 @@ class TeamConfig:
                 machine_config['name'] = 'Default Machine'
 
             return {
-                'version': 2,
+                'version': 2,  # Normalize v1 -> v2
                 'default_machine': 'default',
                 'machines': {
                     'default': machine_config
@@ -191,8 +268,35 @@ class TeamConfig:
             # Already v2, use as-is
             return data
 
+        elif version == 3:
+            # V3 already has machines structure, use as-is
+            # V3 is structurally compatible with v2 but uses chipload calculations
+            return data
+
         else:
             raise ValueError(f"Unsupported config version: {version}")
+
+    def is_v3_config(self) -> bool:
+        """
+        Check if this config uses V3 chipload-based calculations.
+
+        Detects V3 by checking if materials have the 'cutting_model' structure
+        instead of flat feed/speed parameters. This works regardless of explicit
+        version number.
+
+        Returns:
+            True if config is V3 format
+        """
+        # Explicit version check
+        if self._data.get('version') == 3:
+            return True
+
+        # Structural check: V3 materials have 'cutting_model', V1/V2 have 'spindle_speed'
+        # Check a material from the config (or fallback to defaults)
+        material_preset = self.get_material_preset('plywood')
+
+        # V3 has 'cutting_model' dict, V1/V2 have flat 'spindle_speed'
+        return 'cutting_model' in material_preset
 
     def _get(self, *keys, default=None):
         """
@@ -207,8 +311,9 @@ class TeamConfig:
         Returns:
             Value from config, or from TEAM_6238_DEFAULTS, or provided default
         """
-        # Special case: 'team' is at root level in v2 configs, not in machine config
+        # Special case: 'team' is at root level, not in machine config
         if keys and keys[0] == 'team':
+            # Try self._data first
             value = self._data
             for key in keys:
                 if isinstance(value, dict):
@@ -221,6 +326,19 @@ class TeamConfig:
 
             if value is not None:
                 return value
+
+            # Fall back to TEAM_6238_DEFAULTS root level (not machine config)
+            default_value = TEAM_6238_DEFAULTS
+            for key in keys:
+                if isinstance(default_value, dict):
+                    default_value = default_value.get(key)
+                    if default_value is None:
+                        break
+                else:
+                    default_value = None
+                    break
+
+            return default_value if default_value is not None else default
 
         # Get the default machine config (handles both v1 wrapped and v2 native)
         machine_config = self.get_machine_config(None)
@@ -241,7 +359,16 @@ class TeamConfig:
             return value
 
         # Fall back to Team 6238 defaults
-        default_value = TEAM_6238_DEFAULTS
+        # V3 defaults have nested machines structure, V1/V2 have flat structure
+        if 'machines' in TEAM_6238_DEFAULTS:
+            # V3 format - look in default machine
+            default_machine_id = TEAM_6238_DEFAULTS.get('default_machine', 'generic')
+            default_value = TEAM_6238_DEFAULTS['machines'].get(default_machine_id, {})
+        else:
+            # V1/V2 format - flat structure
+            default_value = TEAM_6238_DEFAULTS
+
+        # Navigate to the requested keys
         for key in keys:
             if isinstance(default_value, dict):
                 default_value = default_value.get(key)
@@ -306,55 +433,79 @@ class TeamConfig:
     # Machine Configuration
     # ========================================================================
 
+    def _get_machine_property(self, *keys, default=None):
+        """
+        Get machine property with V1/V2 vs V3 compatibility.
+
+        V1/V2: properties at machine level (e.g., 'manufacturer', 'dimensions')
+        V3: properties nested under 'machine' key (e.g., 'machine.manufacturer', 'machine.dimensions')
+
+        Args:
+            *keys: Path to property (without 'machine' prefix)
+            default: Default value if not found
+
+        Returns:
+            Property value from appropriate location
+        """
+        # Try V3 path first (nested under 'machine')
+        value = self._get('machine', *keys)
+        if value is not None:
+            return value
+
+        # Try V1/V2 path (at machine config level)
+        value = self._get(*keys)
+        return value if value is not None else default
+
     @property
     def machine_name(self) -> str:
         """Machine model name"""
-        return self._get('machine', 'name')
+        # 'name' is at the same level in both V1/V2 and V3
+        return self._get('name')
 
     @property
     def machine_manufacturer(self) -> str:
         """Machine manufacturer"""
-        return self._get('machine', 'manufacturer')
+        return self._get_machine_property('manufacturer')
 
     @property
     def machine_controller(self) -> str:
         """Machine controller type (Mach3, Mach4, LinuxCNC, etc.)"""
-        return self._get('machine', 'controller')
+        return self._get_machine_property('controller')
 
     @property
     def machine_park_x(self) -> float:
         """Machine park X position (machine coordinates)"""
-        return self._get('machine', 'park_position', 'x')
+        return self._get_machine_property('park_position', 'x')
 
     @property
     def machine_park_y(self) -> float:
         """Machine park Y position (machine coordinates)"""
-        return self._get('machine', 'park_position', 'y')
+        return self._get_machine_property('park_position', 'y')
 
     @property
     def machine_park_z(self) -> float:
         """Machine park Z position (machine coordinates, safe clearance)"""
-        return self._get('machine', 'park_position', 'z')
+        return self._get_machine_property('park_position', 'z')
 
     @property
     def machine_coolant(self) -> str:
         """Machine coolant type (Air, Flood, Mist, None)"""
-        return self._get('machine', 'coolant')
+        return self._get_machine_property('coolant')
 
     @property
     def machine_x_max(self) -> float:
         """Machine maximum X travel (inches)"""
-        return self._get('machine', 'dimensions', 'x_max')
+        return self._get_machine_property('dimensions', 'x_max')
 
     @property
     def machine_y_max(self) -> float:
         """Machine maximum Y travel (inches)"""
-        return self._get('machine', 'dimensions', 'y_max')
+        return self._get_machine_property('dimensions', 'y_max')
 
     @property
     def machine_z_max(self) -> float:
         """Machine maximum Z travel (inches)"""
-        return self._get('machine', 'dimensions', 'z_max')
+        return self._get_machine_property('dimensions', 'z_max')
 
     # ========================================================================
     # General Machining Preferences
@@ -413,7 +564,89 @@ class TeamConfig:
     @property
     def default_tool_diameter(self) -> float:
         """Default tool diameter (inches) - used as UI default"""
-        return self._get('machining', 'default_tool', 'diameter')
+        # V3: default_tool at machine level, V1/V2: under machining
+        diameter = self._get('default_tool', 'diameter')
+        if diameter is None:
+            diameter = self._get('machining', 'default_tool', 'diameter')
+        return diameter
+
+    @property
+    def default_tool_flutes(self) -> int:
+        """Default tool flute count - used for V3 chipload calculations"""
+        # V3: default_tool at machine level, V1/V2: under machining (or not present)
+        flutes = self._get('default_tool', 'flutes')
+        if flutes is None:
+            flutes = self._get('machining', 'default_tool', 'flutes', default=1)
+        return flutes if flutes is not None else 1
+
+    # ========================================================================
+    # V3 Chipload Calculation Parameters
+    # ========================================================================
+
+    def get_spindle_limits(self) -> Dict[str, int]:
+        """
+        Get machine spindle limits for V3 configs.
+
+        Returns:
+            Dict with rpm_min and rpm_max
+        """
+        return {
+            'rpm_min': self._get('machine', 'spindle_limits', 'rpm_min', default=6000),
+            'rpm_max': self._get('machine', 'spindle_limits', 'rpm_max', default=24000)
+        }
+
+    def get_motion_limits(self) -> Dict[str, float]:
+        """
+        Get machine motion limits for V3 configs.
+
+        Returns:
+            Dict with feed_xy_max, feed_z_max, traverse_xy, approach_z
+        """
+        return {
+            'feed_xy_max': self._get('machine', 'motion_limits', 'feed_xy_max', default=157.0),
+            'feed_z_max': self._get('machine', 'motion_limits', 'feed_z_max', default=60.0),
+            'traverse_xy': self._get('machine', 'motion_limits', 'traverse_xy', default=200.0),
+            'approach_z': self._get('machine', 'motion_limits', 'approach_z', default=50.0)
+        }
+
+    def get_feed_speed_policy(self) -> Dict[str, Any]:
+        """
+        Get feed/speed calculation policy for V3 configs.
+
+        Returns:
+            Dict with chipload_diameter_exponent, allow_reduce_rpm_to_recover_chipload, etc.
+        """
+        return {
+            'chipload_diameter_exponent': self._get(
+                'machining', 'feed_speed_policy', 'chipload_diameter_exponent', default=0.70
+            ),
+            'allow_reduce_rpm_to_recover_chipload': self._get(
+                'machining', 'feed_speed_policy', 'allow_reduce_rpm_to_recover_chipload', default=True
+            ),
+            'runout_k_multiplier': self._get(
+                'machining', 'feed_speed_policy', 'runout_k_multiplier', default=3.0
+            )
+        }
+
+    def get_machine_characteristics(self) -> Dict[str, Any]:
+        """
+        Get machine physical characteristics for V3 configs.
+
+        Returns:
+            Dict with rigidity_class, runout_class, and related data
+        """
+        return {
+            'rigidity_class': self._get('machine', 'machine_characteristics', 'rigidity_class', default='medium'),
+            'runout_class': self._get('machine', 'machine_characteristics', 'runout_class', default='typical'),
+            'rigidity_multipliers': self._get(
+                'machine', 'machine_characteristics', 'rigidity_chipload_multipliers',
+                default={'light': 0.70, 'medium': 1.00, 'heavy': 1.15}
+            ),
+            'runout_estimates': self._get(
+                'machine', 'machine_characteristics', 'runout_estimate_in',
+                default={'excellent': 0.0004, 'good': 0.0008, 'typical': 0.0020, 'poor': 0.0040}
+            )
+        }
 
     # ========================================================================
     # Tube Facing Parameters
@@ -450,7 +683,12 @@ class TeamConfig:
         machine_config = self.get_machine_config(machine_id)
 
         # Start with Team 6238 defaults
-        materials = dict(TEAM_6238_DEFAULTS['materials'])
+        # V3 defaults have materials nested in machines
+        if 'machines' in TEAM_6238_DEFAULTS:
+            default_machine_id = TEAM_6238_DEFAULTS.get('default_machine', 'generic')
+            materials = dict(TEAM_6238_DEFAULTS['machines'][default_machine_id].get('materials', {}))
+        else:
+            materials = dict(TEAM_6238_DEFAULTS.get('materials', {}))
 
         # Add/override with machine-specific materials
         machine_materials = machine_config.get('materials', {})
@@ -480,7 +718,14 @@ class TeamConfig:
         }
 
         # Check if material exists in defaults
-        if material in TEAM_6238_DEFAULTS['materials']:
+        # V3 defaults have materials nested in machines
+        if 'machines' in TEAM_6238_DEFAULTS:
+            default_machine_id = TEAM_6238_DEFAULTS.get('default_machine', 'generic')
+            default_materials = TEAM_6238_DEFAULTS['machines'][default_machine_id].get('materials', {})
+        else:
+            default_materials = TEAM_6238_DEFAULTS.get('materials', {})
+
+        if material in default_materials:
             return True
 
         # Check if machine config has all required parameters
@@ -505,11 +750,21 @@ class TeamConfig:
         machine_material = machine_config.get('materials', {}).get(material, {})
 
         # Get Team 6238 default for this material
-        default_preset = TEAM_6238_DEFAULTS['materials'].get(material, {})
+        # V3 defaults have materials nested in machines
+        if 'machines' in TEAM_6238_DEFAULTS:
+            default_machine_id = TEAM_6238_DEFAULTS.get('default_machine', 'generic')
+            default_preset = TEAM_6238_DEFAULTS['machines'][default_machine_id].get('materials', {}).get(material, {})
+        else:
+            # V1/V2 defaults have materials at top level
+            default_preset = TEAM_6238_DEFAULTS.get('materials', {}).get(material, {})
 
         # If no default found, use plywood as universal fallback
         if not default_preset:
-            default_preset = TEAM_6238_DEFAULTS['materials']['plywood'].copy()
+            if 'machines' in TEAM_6238_DEFAULTS:
+                default_machine_id = TEAM_6238_DEFAULTS.get('default_machine', 'generic')
+                default_preset = TEAM_6238_DEFAULTS['machines'][default_machine_id]['materials']['plywood'].copy()
+            else:
+                default_preset = TEAM_6238_DEFAULTS['materials']['plywood'].copy()
             # Use custom name if provided, otherwise capitalize the material ID
             if 'name' not in machine_material:
                 machine_material = {**machine_material, 'name': material.replace('_', ' ').title()}

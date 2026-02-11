@@ -25,6 +25,10 @@ import ezdxf
 from shapely.geometry import Point, Polygon, LineString, MultiPolygon
 from shapely.ops import unary_union, linemerge
 from team_config import TeamConfig
+from chipload_calculator import (
+    ChiploadCalculator, ChiploadParams, MachineLimits, OperationResult
+)
+from chipload_diagnostics import ChiploadDiagnostics
 
 
 @dataclass
@@ -101,7 +105,7 @@ MATERIAL_PRESETS = {
 
 class FRCPostProcessor:
     def __init__(self, material_thickness: float, tool_diameter: float, units: str = "inch",
-                 config: Optional[TeamConfig] = None):
+                 config: Optional[TeamConfig] = None, tool_flutes: Optional[int] = None):
         """
         Initialize the post-processor
 
@@ -111,6 +115,8 @@ class FRCPostProcessor:
             units: "inch" or "mm"
             config: Optional TeamConfig instance for team-specific settings.
                    If not provided, uses Team 6238 defaults.
+            tool_flutes: Number of flutes on tool (for V3 chipload calculations).
+                        If not provided, uses config default.
         """
         # Use provided config or create default (Team 6238 defaults)
         if config is None:
@@ -121,6 +127,18 @@ class FRCPostProcessor:
         self.tool_diameter = tool_diameter
         self.tool_radius = tool_diameter / 2
         self.units = units
+
+        # Tool flutes (for V3 chipload calculations)
+        if tool_flutes is None:
+            tool_flutes = config.default_tool_flutes
+        self.tool_flutes = tool_flutes
+
+        # Chipload diagnostics (for V3 configs)
+        self.diagnostics = ChiploadDiagnostics()
+
+        # Spindle speed tracking (for variable RPM per operation)
+        self.current_spindle_rpm = None  # What's currently spinning
+        self.target_spindle_rpm = None   # What we want for next operation
 
         # Hole detection tolerance from config
         self.tolerance = config.hole_detection_tolerance
@@ -187,13 +205,18 @@ class FRCPostProcessor:
         # Error tracking
         self.errors = []  # Collect validation errors during processing
 
-    def apply_material_preset(self, material: str, machine_id: Optional[str] = None):
+    def apply_material_preset(self, material: str, machine_id: Optional[str] = None,
+                              operation_type: str = 'clearing'):
         """
         Apply a material preset to set feeds, speeds, and ramp angles.
+
+        For V3 configs, uses chipload-based calculation. For V1/V2, uses direct values.
 
         Args:
             material: Material name ('plywood', 'aluminum', 'polycarbonate', or custom)
             machine_id: Optional machine ID for machine-specific settings
+            operation_type: Type of operation ('slotting', 'clearing', 'ramp', 'peck_drill')
+                          Used by V3 configs to apply operation-specific multipliers
         """
         # Get material preset from config (merges user config with Team 6238 defaults)
         preset = self.config.get_material_preset(material, machine_id)
@@ -205,6 +228,23 @@ class FRCPostProcessor:
 
         self.material_name = preset.get('name', material.capitalize())  # Store material name for header
 
+        # Check if this is a V3 chipload-based config
+        if self.config.is_v3_config():
+            self._apply_v3_preset(preset, operation_type, machine_id)
+        else:
+            self._apply_v1_v2_preset(preset)
+
+        print(f"\nApplied material preset: {preset.get('name', material.capitalize())}")
+        if 'description' in preset:
+            print(f"  {preset['description']}")
+
+    def _apply_v1_v2_preset(self, preset: Dict[str, Any]):
+        """
+        Apply V1/V2 material preset with direct feed/speed values.
+
+        Args:
+            preset: Material preset dictionary with direct values
+        """
         # Preset values are defined in IPM - convert to mm/min if needed
         if self.units == 'mm':
             self.feed_rate = preset['feed_rate'] * 25.4
@@ -218,6 +258,7 @@ class FRCPostProcessor:
             self.ramp_start_clearance = preset['ramp_start_clearance']
 
         self.spindle_speed = preset['spindle_speed']
+        self.target_spindle_rpm = self.spindle_speed  # For consistency with V3
         self.ramp_angle = preset['ramp_angle']
         self.stepover_percentage = preset['stepover_percentage']
 
@@ -244,9 +285,140 @@ class FRCPostProcessor:
         else:
             self.peck_drill_depth = preset['peck_drill_depth']
 
-        print(f"\nApplied material preset: {preset.get('name', material.capitalize())}")
-        if 'description' in preset:
-            print(f"  {preset['description']}")
+    def _apply_v3_preset(self, preset: Dict[str, Any], operation_type: str, machine_id: Optional[str]):
+        """
+        Apply V3 material preset using chipload-based calculation.
+
+        Args:
+            preset: Material preset dictionary with cutting_model and strategy
+            operation_type: Type of operation (slotting, clearing, ramp, peck_drill)
+            machine_id: Machine ID for machine-specific limits
+        """
+        # Extract V3 parameters
+        cutting_model = preset['cutting_model']
+        strategy = preset['strategy']
+
+        # Build ChiploadParams from material
+        chipload_params = ChiploadParams(
+            preferred_rpm=cutting_model['preferred_rpm'],
+            chipload_ref=cutting_model['chipload_ref'],
+            chipload_min=cutting_model['chipload_min'],
+            chipload_max=cutting_model['chipload_max'],
+            slotting_multiplier=cutting_model.get('slotting_chipload_multiplier', 1.0)
+        )
+
+        # Build MachineLimits from config
+        limits_dict = self.config.get_motion_limits()
+        spindle_limits = self.config.get_spindle_limits()
+        machine_limits = MachineLimits(
+            rpm_min=spindle_limits['rpm_min'],
+            rpm_max=spindle_limits['rpm_max'],
+            feed_xy_max=limits_dict['feed_xy_max'],
+            feed_z_max=limits_dict['feed_z_max']
+        )
+
+        # Get feed/speed policy
+        policy = self.config.get_feed_speed_policy()
+
+        # Get multipliers for ramp and peck operations
+        ramp_multiplier = strategy['ramp'].get('feed_multiplier', 0.65)
+        peck_multiplier = strategy['peck_drill'].get('feed_multiplier', 0.15)
+
+        # Calculate feeds and speeds for this operation
+        result = ChiploadCalculator.calculate_operation(
+            operation_type=operation_type,
+            tool_diameter=self.tool_diameter,
+            tool_flutes=self.tool_flutes,
+            diameter_ref=self.config.default_tool_diameter,
+            chipload_params=chipload_params,
+            machine_limits=machine_limits,
+            chipload_exponent=policy['chipload_diameter_exponent'],
+            allow_rpm_reduction=policy['allow_reduce_rpm_to_recover_chipload'],
+            ramp_feed_multiplier=ramp_multiplier,
+            peck_feed_multiplier=peck_multiplier
+        )
+
+        # Record result in diagnostics
+        self.diagnostics.record_operation(result, self.tool_flutes)
+
+        # Apply calculated values to postprocessor
+        # Target RPM will be synced when G-code is generated
+        self.target_spindle_rpm = result.rpm
+
+        # Convert to mm if needed
+        if self.units == 'mm':
+            self.feed_rate = result.feed_xy * 25.4
+            # Ramp feed is already calculated with multiplier
+            self.ramp_feed_rate = result.feed_xy * ramp_multiplier * 25.4
+        else:
+            self.feed_rate = result.feed_xy
+            self.ramp_feed_rate = result.feed_xy * ramp_multiplier
+
+        # Plunge rate is ONLY used for peck drilling and tab removal
+        # Calculate it separately with peck_drill operation parameters
+        peck_result = ChiploadCalculator.calculate_operation(
+            operation_type='peck_drill',
+            tool_diameter=self.tool_diameter,
+            tool_flutes=self.tool_flutes,
+            diameter_ref=self.config.default_tool_diameter,
+            chipload_params=chipload_params,
+            machine_limits=machine_limits,
+            chipload_exponent=policy['chipload_diameter_exponent'],
+            allow_rpm_reduction=policy['allow_reduce_rpm_to_recover_chipload'],
+            ramp_feed_multiplier=ramp_multiplier,
+            peck_feed_multiplier=peck_multiplier
+        )
+
+        # Use peck drill feed for plunge operations
+        if self.units == 'mm':
+            self.plunge_rate = peck_result.feed_z * 25.4
+        else:
+            self.plunge_rate = peck_result.feed_z
+
+        # Apply strategy parameters
+        self.ramp_angle = strategy['ramp']['angle_deg']
+        self.ramp_start_clearance = strategy['ramp']['start_clearance']
+        self.stepover_percentage = strategy['stepover_ratio']
+        self.helix_radius_multiplier = strategy['ramp']['helix_radius_multiplier']
+
+        # Max slotting depth from ratio
+        slot_stepdown_ratio = strategy['slot_stepdown_ratio']
+        self.max_slotting_depth = self.tool_diameter * slot_stepdown_ratio
+
+        # Peck drill depth from ratio
+        peck_depth_ratio = strategy['peck_drill']['depth_ratio']
+        peck_depth = self.tool_diameter * peck_depth_ratio
+        peck_min = strategy['peck_drill']['depth_min']
+        peck_max = strategy['peck_drill']['depth_max']
+        self.peck_drill_depth = max(peck_min, min(peck_depth, peck_max))
+
+        # Tab sizes come from config (not material-specific in V3)
+        self.tab_width = self.config.tab_width
+        self.tab_height = self.config.tab_height
+
+        # Convert to mm if needed
+        if self.units == 'mm':
+            self.ramp_start_clearance *= 25.4
+            self.max_slotting_depth *= 25.4
+            self.peck_drill_depth *= 25.4
+            self.tab_width *= 25.4
+            self.tab_height *= 25.4
+
+    def _sync_spindle(self) -> List[str]:
+        """
+        Emit spindle speed command if RPM changed.
+
+        Returns:
+            List of G-code lines (empty if no change needed)
+        """
+        if self.target_spindle_rpm is None:
+            return []
+
+        if self.target_spindle_rpm != self.current_spindle_rpm:
+            self.current_spindle_rpm = self.target_spindle_rpm
+            return [f"S{self.current_spindle_rpm}  ; RPM change for operation"]
+
+        return []
         if self.units == 'mm':
             print(f"  Feed rate: {preset['feed_rate']} IPM ({self.feed_rate:.0f} mm/min)")
             print(f"  Ramp feed rate: {preset['ramp_feed_rate']} IPM ({self.ramp_feed_rate:.0f} mm/min)")
@@ -327,7 +499,9 @@ class FRCPostProcessor:
         gcode.append('')
         gcode.append('( === RESTART AFTER PAUSE === )')
         gcode.append('G90  ; Ensure absolute positioning mode')
-        gcode.append(f'S{self.spindle_speed} M3  ; Spindle on')
+        # Use current RPM (whatever was set before pause)
+        rpm = self.current_spindle_rpm if self.current_spindle_rpm else self.spindle_speed
+        gcode.append(f'S{rpm} M3  ; Spindle on')
         gcode.append('M7  ; Air blast on')
         gcode.append('G4 P3.0  ; 3 second spindle spin-up')
         gcode.append('')
@@ -1264,7 +1438,8 @@ class FRCPostProcessor:
                 'cycle_time_display': self._format_time(time_estimate['total']),
                 'cutting_time': self._format_time(time_estimate['cutting']),
                 'rapid_time': self._format_time(time_estimate['rapid']),
-                'dwell_time': self._format_time(time_estimate['dwell'])
+                'dwell_time': self._format_time(time_estimate['dwell']),
+                'chipload_diagnostics': self.diagnostics.to_dict() if self.config.is_v3_config() else None
             }
         )
 
@@ -1376,7 +1551,10 @@ class FRCPostProcessor:
         gcode.append("")
 
         # Spindle on
-        gcode.append(f"S{self.spindle_speed} M3  ; Spindle on" + ("" if is_multilayer else f" at {self.spindle_speed} RPM"))
+        # For V3 configs, use target RPM from chipload calculation; for V1/V2, use spindle_speed
+        rpm = self.target_spindle_rpm if self.target_spindle_rpm is not None else self.spindle_speed
+        self.current_spindle_rpm = rpm  # Track current spindle state
+        gcode.append(f"S{rpm} M3  ; Spindle on" + ("" if is_multilayer else f" at {rpm} RPM"))
         gcode.append("M7  ; Air blast on")
         gcode.append("G4 P2  ; Wait" + (" for spindle" if is_multilayer else " 2 seconds for spindle to reach speed"))
         gcode.append("")
@@ -3907,7 +4085,7 @@ def main():
             parser.error("output_gcode is required for tube-facing mode")
 
         pp = FRCPostProcessor(args.thickness, args.tool_diameter)
-        pp.apply_material_preset('aluminum')  # Tube facing is always aluminum
+        pp.apply_material_preset('aluminum', operation_type='slotting')  # Tube facing is always aluminum
 
         # Call API to generate G-code
         base_name = os.path.splitext(os.path.basename(args.output_gcode))[0]
@@ -3953,11 +4131,12 @@ def main():
         pp.tube_height = args.tube_height
 
         # Apply material preset and user parameters (shared logic)
-        pp.apply_material_preset(args.material)
+        pp.apply_material_preset(args.material, operation_type='slotting')
         if args.user:
             pp.user_name = args.user
         if args.spindle_speed != 18000:
             pp.spindle_speed = args.spindle_speed
+            pp.target_spindle_rpm = args.spindle_speed  # Override chipload RPM if user specifies
         if args.feed_rate is not None:
             pp.feed_rate = args.feed_rate
         if args.plunge_rate is not None:
@@ -4021,11 +4200,12 @@ def main():
                               units=args.units)
 
         # Apply material preset and user parameters (shared logic)
-        pp.apply_material_preset(args.material)
+        pp.apply_material_preset(args.material, operation_type='slotting')
         if args.user:
             pp.user_name = args.user
         if args.spindle_speed != 18000:
             pp.spindle_speed = args.spindle_speed
+            pp.target_spindle_rpm = args.spindle_speed  # Override chipload RPM if user specifies
         if args.feed_rate is not None:
             pp.feed_rate = args.feed_rate
         if args.plunge_rate is not None:

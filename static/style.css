@@ -542,6 +542,74 @@
             margin-top: 1rem;
         }
 
+        /* Chipload Health Display */
+        .chipload-health {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            background: var(--bg);
+            border-radius: 4px;
+            border-left: 3px solid var(--primary);
+        }
+
+        .health-summary {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+
+        .health-details {
+            margin-top: 0.75rem;
+        }
+
+        .health-details summary {
+            color: var(--text-dim);
+            font-size: 0.9rem;
+            padding: 0.5rem 0;
+        }
+
+        .operations-list {
+            margin-top: 0.75rem;
+        }
+
+        .operation-item {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 0.75rem;
+            border-radius: 4px;
+            margin-bottom: 0.75rem;
+            border-left: 2px solid var(--border);
+        }
+
+        .operation-header {
+            font-size: 0.95rem;
+            margin-bottom: 0.5rem;
+            color: var(--text);
+        }
+
+        .operation-detail {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-bottom: 0.25rem;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+
+        .operation-warning {
+            font-size: 0.85rem;
+            color: #FF9500;
+            margin-top: 0.5rem;
+            padding: 0.5rem;
+            background: rgba(255, 149, 0, 0.1);
+            border-radius: 4px;
+        }
+
+        .operation-recommendation {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-top: 0.5rem;
+            padding: 0.5rem;
+            background: rgba(10, 132, 255, 0.1);
+            border-radius: 4px;
+        }
+
         /* Loading */
         .loading {
             display: none;

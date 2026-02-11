@@ -758,6 +758,59 @@ document.addEventListener('DOMContentLoaded', () => {
 
             stats.innerHTML = statsHtml.join('');
 
+            // Display chipload diagnostics if available
+            const chiploadHealth = document.getElementById('chiploadHealth');
+            const healthSummary = document.getElementById('healthSummary');
+            const healthOperations = document.getElementById('healthOperations');
+
+            if (data.chipload_diagnostics) {
+                const diag = data.chipload_diagnostics;
+
+                // Set summary with status indicator
+                const statusIcons = {
+                    'ok': '✅',
+                    'warning': '⚠️',
+                    'info': 'ℹ️'
+                };
+                const statusColors = {
+                    'ok': '#00D26A',
+                    'warning': '#FF9500',
+                    'info': '#0A84FF'
+                };
+                const icon = statusIcons[diag.overall_status] || '❓';
+                const color = statusColors[diag.overall_status] || 'var(--text)';
+
+                healthSummary.innerHTML = `<span style="color: ${color}">${icon} ${diag.summary_message}</span>`;
+
+                // Build operations details
+                let operationsHtml = '<div class="operations-list">';
+                for (const op of diag.operations) {
+                    operationsHtml += `
+                        <div class="operation-item">
+                            <div class="operation-header">${op.icon} <strong>${op.display_name}</strong></div>
+                            <div class="operation-detail">Chipload: ${op.chipload.toFixed(4)} in/tooth @ ${op.rpm} RPM</div>
+                            <div class="operation-detail">Feed rate: ${op.feed_xy.toFixed(1)} IPM</div>`;
+
+                    // Show warnings
+                    for (const warning of op.warnings) {
+                        operationsHtml += `<div class="operation-warning">⚠️ ${warning}</div>`;
+                    }
+
+                    // Show recommendations
+                    for (const rec of op.recommendations) {
+                        operationsHtml += `<div class="operation-recommendation">${rec}</div>`;
+                    }
+
+                    operationsHtml += '</div>';
+                }
+                operationsHtml += '</div>';
+
+                healthOperations.innerHTML = operationsHtml;
+                chiploadHealth.style.display = 'block';
+            } else {
+                chiploadHealth.style.display = 'none';
+            }
+
             // Show debug DXF link if this is an Onshape import
             const debugDxfLinkSuccess = document.getElementById('debugDxfLinkSuccess');
             if (debugDxfLinkSuccess && window.ONSHAPE_DATA && window.ONSHAPE_DATA.fromOnshape) {

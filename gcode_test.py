@@ -78,6 +78,7 @@ def verify_feedrates(onshape_lines, fusion_lines, debug=False):
     # Note: traverse_rate (200 IPM = 5080 mm/min) is for non-cutting moves above material
     # so we exclude it when determining the cutting feedrate
     TRAVERSE_RATE_MM = 5080  # 200 IPM in mm/min
+    FEEDRATE_TOLERANCE_MM = 1.0  # Allow 1 mm/min difference (~0.04 IPM) for floating point precision
     onshape_cutting_rates = [f for f in onshape_feedrates if f != TRAVERSE_RATE_MM]
 
     onshape_plunge = min(onshape_feedrates) if onshape_feedrates else None
@@ -86,15 +87,17 @@ def verify_feedrates(onshape_lines, fusion_lines, debug=False):
     fusion_plunge = min(fusion_feedrates) if fusion_feedrates else None
     fusion_cutting = max(fusion_feedrates) if fusion_feedrates else None
 
-    # Verify plunge feedrate is reasonable (we use 35 IPM for plywood, not Fusion's 20 IPM)
-    EXPECTED_PLUNGE_MM = 889  # 35 IPM in mm/min for plywood
+    # Verify plunge feedrate matches V3 chipload calculation
+    # V3 calculates plunge rate from peck drill operation: feed_xy * peck_multiplier (0.15)
+    # For plywood: 75 IPM * 0.15 = 11.25 IPM = 285.75 mm/min
+    EXPECTED_PLUNGE_MM = 285.75  # 11.25 IPM in mm/min (V3 chipload-based)
 
     if onshape_plunge is None:
         print(f"\tPlunge Feedrate Match ---- {FAIL}")
         print(f"\t\tError: No feedrates found in generated G-code")
         all_passed = False
     else:
-        plunge_match = onshape_plunge == EXPECTED_PLUNGE_MM
+        plunge_match = abs(onshape_plunge - EXPECTED_PLUNGE_MM) <= FEEDRATE_TOLERANCE_MM
         print(f"\tPlunge Feedrate Match ---- {PASS if plunge_match else FAIL}")
         if not plunge_match:
             print(f"\t\tOnshape plunge: {onshape_plunge/25.4:.2f}")
@@ -103,13 +106,13 @@ def verify_feedrates(onshape_lines, fusion_lines, debug=False):
         else:
             print(f"\t\tPlunge feedrate: {onshape_plunge/25.4:.2f}")
     
-    # Compare cutting feedrates
+    # Compare cutting feedrates (with tolerance for floating point precision)
     if onshape_cutting is None or fusion_cutting is None:
         print(f"\tCutting Feedrate Match ---- {FAIL}")
         print(f"\t\tError: Missing cutting feedrate data")
         all_passed = False
     else:
-        cutting_match = onshape_cutting == fusion_cutting
+        cutting_match = abs(onshape_cutting - fusion_cutting) <= FEEDRATE_TOLERANCE_MM
         print(f"\tCutting Feedrate Match ---- {PASS if cutting_match else FAIL}")
         if not cutting_match:
             print(f"\t\tOnshape cutting: {onshape_cutting/25.4:.2f}")
@@ -294,9 +297,11 @@ if __name__ == "__main__":
     FUSION_REFERENCE = "./fusion_output.gcode"
 
     # CAM parameters
+    # NOTE: material_thickness and tool_diameter are ALWAYS in inches,
+    # regardless of units parameter (which only affects G-code output format)
     MATERIAL = 'plywood'
-    MATERIAL_THICKNESS = 6.35
-    TOOL_DIAMETER = 4
+    MATERIAL_THICKNESS = 0.25  # inches (6.35mm)
+    TOOL_DIAMETER = 0.157  # inches (4mm)
     SACRIFICE_DEPTH = 0.5
     UNITS = 'mm'
     TAB_SPACING = 150.0  # 6 inches = 152.4mm, use 150mm for round number

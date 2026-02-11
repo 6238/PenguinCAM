@@ -33,37 +33,38 @@ class TestMaterialPresets(unittest.TestCase):
     def test_plywood_preset_applies_correctly(self):
         pp = FRCPostProcessor(0.25, 0.157)
         pp.apply_material_preset('plywood')
-        self.assertEqual(pp.feed_rate, 75.0)
+        self.assertAlmostEqual(pp.feed_rate, 75.0, places=1)
         self.assertEqual(pp.spindle_speed, 18000)
         self.assertEqual(pp.ramp_angle, 20.0)
-        self.assertEqual(pp.stepover_percentage, 0.65)
+        self.assertAlmostEqual(pp.stepover_percentage, 0.65, places=2)
 
     def test_aluminum_preset_applies_correctly(self):
         pp = FRCPostProcessor(0.25, 0.157)
         pp.apply_material_preset('aluminum')
-        self.assertEqual(pp.feed_rate, 55.0)
+        self.assertAlmostEqual(pp.feed_rate, 55.0, places=1)
         self.assertEqual(pp.spindle_speed, 18000)
         self.assertEqual(pp.ramp_angle, 4.0)
-        self.assertEqual(pp.stepover_percentage, 0.25)
+        self.assertAlmostEqual(pp.stepover_percentage, 0.25, places=2)
 
     def test_polycarbonate_preset_applies_correctly(self):
         pp = FRCPostProcessor(0.25, 0.157)
         pp.apply_material_preset('polycarbonate')
-        self.assertEqual(pp.feed_rate, 75.0)
-        self.assertEqual(pp.stepover_percentage, 0.55)
+        self.assertAlmostEqual(pp.feed_rate, 75.0, places=1)
+        self.assertAlmostEqual(pp.stepover_percentage, 0.55, places=2)
 
     def test_invalid_material_falls_back_to_plywood(self):
         pp = FRCPostProcessor(0.25, 0.157)
         pp.apply_material_preset('unobtainium')
         # Should fall back to plywood defaults
-        self.assertEqual(pp.feed_rate, 75.0)
+        self.assertAlmostEqual(pp.feed_rate, 75.0, places=1)
         self.assertEqual(pp.ramp_angle, 20.0)
 
     def test_mm_units_converts_feed_rates(self):
-        pp = FRCPostProcessor(6.35, 4.0, units='mm')  # 0.25" = 6.35mm
+        # Parameters are always in inches, units='mm' only affects G-code output
+        pp = FRCPostProcessor(0.25, 0.157, units='mm')  # 0.25" thickness, 4mm (0.157") tool
         pp.apply_material_preset('plywood')
         # 75 IPM * 25.4 = 1905 mm/min
-        self.assertEqual(pp.feed_rate, 75.0 * 25.4)
+        self.assertAlmostEqual(pp.feed_rate, 75.0 * 25.4, places=0)
 
 
 class TestHelicalPassCalculation(unittest.TestCase):
