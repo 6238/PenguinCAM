@@ -1,19 +1,21 @@
-# PenguinCAM Team Configuration (Version 2)
-# This file defines machine-specific settings and machining preferences
+# PenguinCAM Team Configuration (Version 3) — Ground-Truth Feeds/Speeds Model
+# This file defines machine-specific settings and machining preferences.
 #
-# VERSION 2 FEATURES:
-# - Support for multiple machines with different settings
-# - Each machine can have its own materials with custom feeds/speeds
-# - Machine-specific dimensions, tooling, and preferences
+# VERSION 3 (GROUND-TRUTH) FEATURES:
+# - Materials specify *targets* (preferred RPM + chipload), not derived feeds.
+# - Feeds (XY), ramp feeds, and peck feeds are computed from:
+#     RPM, tool diameter, flute count, chipload scaling, machine limits, and engagement.
+# - Stepdown limits are expressed as ratios of tool diameter (ap/D), not absolute inches.
 #
-# All values are optional - any missing values will use Team 6238 defaults.
+# Units:
+# - Most geometry remains inches (as before).
+# - Chipload values below are in INCHES PER TOOTH (in/tooth).
+#   (Internally you can convert to mm/tooth if desired; the math is identical.)
 
 # =============================================================================
 # CONFIG VERSION AND DEFAULT MACHINE
 # =============================================================================
-version: 2
-
-# Which machine to use by default (if not specified in UI)
+version: 3
 default_machine: omio_x8
 
 # =============================================================================
@@ -26,12 +28,6 @@ team:
 # =============================================================================
 # MACHINES
 # =============================================================================
-# Define each machine your team uses. Each can have different:
-# - Work envelope dimensions
-# - Feeds/speeds for each material (based on machine rigidity)
-# - Default tooling
-# - Controller settings
-
 machines:
   # -------------------------------------------------------------------------
   # MACHINE 1: Omio X8-2200 (most common FRC machine)
@@ -52,164 +48,53 @@ machines:
 
       # Park position (machine coordinates for safe part access)
       park_position:
-        x: 0.5      # X position when parking (machine coords)
-        y: 0.5      # Y position when parking (machine coords)
-        z: -0.5     # Z position for safe clearance (machine coords, negative = below home)
+        x: 0.5
+        y: 0.5
+        z: -0.5     # negative = below home, as before
 
       # Coordinate systems
-      standard_work_offset: "G54"       # Work offset for standard operations
-      tube_jig_work_offset: "G55"       # Work offset for tube jig operations
+      standard_work_offset: "G54"
+      tube_jig_work_offset: "G55"
 
-      coolant: "Air"                    # Air, Flood, Mist, None
+      coolant: "Air" # Air, Flood, Mist, None
+
+      # Spindle capability limits (used for clamping computed RPM)
+      spindle_limits:
+        rpm_min: 6000
+        rpm_max: 24000
+
+      # Motion capability limits (used for clamping computed feeds)
+      motion_limits:
+        feed_xy_max: 157.0     # IPM (Omio-ish typical ceiling)
+        feed_z_max: 60.0       # IPM (conservative Z ceiling)
+        traverse_xy: 200.0     # IPM (rapids above material)
+        approach_z: 50.0       # IPM (safe Z approach above stock)
+
+      # Optional: coarse realism knobs (used as multipliers and/or warnings)
+      machine_characteristics:
+        rigidity_class: "medium"      # light | medium | heavy
+        runout_class: "typical"       # excellent | good | typical | poor
+
+        rigidity_chipload_multipliers:
+          light: 0.70
+          medium: 1.00
+          heavy: 1.15
+
+        # For warnings like: achieved_chipload < k * runout_estimate
+        runout_estimate_in:
+          excellent: 0.0004
+          good:      0.0008
+          typical:   0.0020
+          poor:      0.0040
 
     # Default tooling for this machine
     default_tool:
       diameter: 0.157                   # 4mm end mill (inches)
+      flutes: 1                         # new: make flute count explicit
+      # Reference tool used by material chipload_ref below
+      is_reference_tool: true
 
     # General machining preferences
-    machining:
-      # Z-axis reference system
-      z_reference:
-        sacrifice_board_depth: 0.008    # How far to cut into sacrifice board (inches)
-        clearance_height: 0.5           # Clearance above material for rapid moves (inches)
-
-      # Tab parameters (for perimeter operations)
-      tabs:
-        enabled: true                   # Whether to use tabs at all
-        width: 0.25                     # Default tab width (inches)
-        height: 0.15                    # Default tab height (inches)
-        remove_tabs: true               # Automatically remove tabs at end of job
-
-      # Hole detection
-      holes:
-        detection_tolerance: 0.0001     # Tolerance for detecting circular holes (inches)
-        min_millable_multiplier: 1.2    # Minimum hole diameter as multiple of tool diameter
-
-      # Fixturing options
-      fixturing:
-        pause_before_perimeter: false   # M0 pause before perimeter for screw fixturing
-
-    # Tube facing parameters (for aluminum tube operations)
-    tube_facing:
-      depth_margin: 0.005               # Extra depth beyond half tube height (inches)
-      max_roughing_depth: 0.3           # Maximum depth per roughing pass (inches)
-      max_finishing_depth: 0.51         # Maximum depth per finishing pass (inches)
-
-      phase_1:
-        roughing_tool_edge: 0.05        # Phase 1 roughing position (inches)
-        finishing_tool_edge: 0.0625     # Phase 1 finishing position (inches)
-
-      phase_2:
-        roughing_tool_edge: -0.0125     # Phase 2 roughing position (inches)
-        finishing_tool_edge: 0.0        # Phase 2 finishing position (inches)
-
-      arc_advance: 0.04                 # Arc advance distance in X (inches)
-      arc_radius: 0.05                  # Arc radius for clearing moves (inches)
-
-    # Material-specific settings for THIS MACHINE
-    # Desktop mill with good rigidity - moderate speeds
-    materials:
-      plywood:
-        name: "Plywood"
-        description: "Standard plywood settings - 18K RPM, 70 IPM cutting"
-
-        spindle_speed: 18000            # RPM
-        feed_rate: 70.0                 # Cutting feed rate (IPM)
-        ramp_feed_rate: 45.0            # Ramp feed rate (IPM)
-        plunge_rate: 32.0               # Plunge feed rate for tab Z moves (IPM)
-        traverse_rate: 200.0            # Lateral moves above material (IPM)
-        approach_rate: 50.0             # Z approach to ramp start (IPM)
-
-        ramp_angle: 20.0                # Ramp angle in degrees
-        ramp_start_clearance: 0.150     # Clearance above material to start ramping (inches)
-        stepover_percentage: 0.65       # Radial stepover as fraction of tool diameter
-        helix_radius_multiplier: 0.75   # Helix entry radius as fraction of tool radius
-        max_slotting_depth: 0.4         # Maximum depth per pass for perimeter slotting (inches)
-        peck_drill_depth: 0.05          # Peck depth for G83 drilling small holes (inches)
-
-        tab_width: 0.25
-        tab_height: 0.15
-
-      aluminum:
-        name: "Aluminum"
-        description: "Aluminum - 18K RPM, 50 IPM cutting, 4° ramp"
-
-        spindle_speed: 18000
-        feed_rate: 50.0
-        ramp_feed_rate: 32.0
-        plunge_rate: 14.0
-        traverse_rate: 200.0
-        approach_rate: 35.0
-
-        ramp_angle: 4.0
-        ramp_start_clearance: 0.050
-        stepover_percentage: 0.25
-        helix_radius_multiplier: 0.5
-        max_slotting_depth: 0.2
-        peck_drill_depth: 0.05          # Peck depth for G83 drilling small holes (inches)
-
-        tab_width: 0.25
-        tab_height: 0.15
-
-      polycarbonate:
-        name: "Polycarbonate"
-        description: "Polycarbonate - similar to plywood settings"
-
-        spindle_speed: 18000
-        feed_rate: 70.0
-        ramp_feed_rate: 45.0
-        plunge_rate: 18.0
-        traverse_rate: 200.0
-        approach_rate: 50.0
-
-        ramp_angle: 20.0
-        ramp_start_clearance: 0.100
-        stepover_percentage: 0.55
-        helix_radius_multiplier: 0.75
-        max_slotting_depth: 0.25
-        peck_drill_depth: 0.05          # Peck depth for G83 drilling small holes (inches)
-
-        tab_width: 0.25
-        tab_height: 0.15
-
-    # Integrations (Google Drive, etc.)
-    integrations:
-      google_drive:
-        enabled: false
-        # folder_id: "your_folder_id_here"  # Get from Drive folder URL
-
-  # -------------------------------------------------------------------------
-  # MACHINE 2: Avid CNC Pro2424 (Team 6238's machine)
-  # -------------------------------------------------------------------------
-  avid_pro2424:
-    name: "Avid CNC Pro2424"
-
-    # Machine specifications
-    machine:
-      manufacturer: "Avid CNC"
-      controller: "Mach4"
-
-      # Work envelope
-      dimensions:
-        x_max: 24.0
-        y_max: 24.0
-        z_max: 8.0
-
-      park_position:
-        x: 0.5
-        y: 23.5
-        z: -0.5     # Z position for safe clearance (machine coords, negative = below home)
-
-      standard_work_offset: "G54"
-      tube_jig_work_offset: "G55"
-
-      coolant: "Air"
-
-    # Default tooling
-    default_tool:
-      diameter: 0.157
-
-    # General machining preferences (same as shop_router)
     machining:
       z_reference:
         sacrifice_board_depth: 0.008
@@ -228,7 +113,25 @@ machines:
       fixturing:
         pause_before_perimeter: false
 
-    # Tube facing (same as shop_router)
+      # Global feed/speed calculation policy (applies across materials unless overridden)
+      feed_speed_policy:
+        # Chipload scaling vs tool diameter:
+        # chipload(D) = chipload_ref * (D / D_ref)^exponent
+        chipload_diameter_exponent: 0.70
+
+        # If computed XY feed is clamped by machine feed_xy_max, optionally reduce RPM
+        # to recover chipload above chipload_min (helps plastics avoid rubbing/melting).
+        allow_reduce_rpm_to_recover_chipload: true
+
+        # Runout warning threshold multiplier
+        runout_k_multiplier: 3.0
+
+        # Ramp Z-component limiter (useful for steep ramps)
+        limit_ramp_by_z_component:
+          enabled: true
+          z_cut_max: 35.0  # IPM max Z component during ramp cutting
+
+    # Tube facing parameters (unchanged)
     tube_facing:
       depth_margin: 0.005
       max_roughing_depth: 0.3
@@ -245,82 +148,384 @@ machines:
       arc_advance: 0.04
       arc_radius: 0.05
 
-    # Material-specific settings for THIS MACHINE
-    # Large, industrial-grade machine can handle full speeds
+    # -------------------------------------------------------------------------
+    # MATERIALS (GROUND TRUTH) — Omio X8
+    # -------------------------------------------------------------------------
     materials:
       plywood:
         name: "Plywood"
-        description: "Full-speed plywood for industrial router"
+        description: "Ground-truth plywood targets (derived feeds computed by PenguinCAM)"
 
-        spindle_speed: 18000
-        feed_rate: 75.0               # Full speed - very rigid machine
-        ramp_feed_rate: 50.0
-        plunge_rate: 35.0
-        traverse_rate: 200.0
-        approach_rate: 50.0
+        cutting_model:
+          preferred_rpm: 18000
 
-        ramp_angle: 20.0
-        ramp_start_clearance: 0.150
-        stepover_percentage: 0.65
-        helix_radius_multiplier: 0.75
-        max_slotting_depth: 0.4
+          # Chipload reference is for the machine's REFERENCE TOOL (default 4mm, 1F).
+          chipload_ref: 0.0039           # in/tooth @ 4mm 1F (≈70 IPM @ 18k)
+          chipload_min: 0.0020           # avoid rubbing
+          chipload_max: 0.0080           # conservative student ceiling
 
-        tab_width: 0.25
-        tab_height: 0.15
+          # When operation is effectively slotting (ae≈100%), derate chipload.
+          slotting_chipload_multiplier: 0.80
+
+        strategy:
+          # Radial engagement defaults
+          stepover_ratio: 0.65           # ae / D
+
+          # Axial stepdown limits as ratios of tool diameter (ap / D)
+          slot_stepdown_ratio: 1.00      # profiling/slotting
+          clear_stepdown_ratio: 1.50     # if you ever do non-slot clearing
+
+          ramp:
+            type: "linear_or_helix"
+            angle_deg: 20.0
+            start_clearance: 0.150       # inches above material
+            feed_multiplier: 0.65        # ramp feed = XY feed * this
+            helix_radius_multiplier: 0.75
+
+          peck_drill:
+            # Peck depth derived from tool diameter
+            depth_ratio: 0.25            # peck = 0.25*D
+            depth_min: 0.030             # inches
+            depth_max: 0.080             # inches
+            feed_multiplier: 0.15        # peck feed = XY feed * this (then clamp by feed_z_max)
 
       aluminum:
         name: "Aluminum"
-        description: "Full-speed aluminum for industrial router"
+        description: "Ground-truth router aluminum targets (Omio-class assumptions)"
 
-        spindle_speed: 18000
-        feed_rate: 55.0               # Full speed - rigid machine
-        ramp_feed_rate: 35.0
-        plunge_rate: 15.0
-        traverse_rate: 200.0
-        approach_rate: 35.0
+        cutting_model:
+          preferred_rpm: 18000
 
-        ramp_angle: 4.0
-        ramp_start_clearance: 0.050
-        stepover_percentage: 0.25
-        helix_radius_multiplier: 0.5
-        max_slotting_depth: 0.2
+          chipload_ref: 0.0028           # in/tooth @ 4mm 1F (≈50 IPM @ 18k)
+          chipload_min: 0.0015
+          chipload_max: 0.0035
 
-        tab_width: 0.25
-        tab_height: 0.15
+          slotting_chipload_multiplier: 0.70
+
+        strategy:
+          stepover_ratio: 0.25
+
+          # Aluminum slotting needs shallow ap/D on routers
+          slot_stepdown_ratio: 0.25      # ap ≈ 1.0mm per pass for 4mm tool
+          clear_stepdown_ratio: 0.50     # only if radial engagement is small and chips clear
+
+          ramp:
+            type: "linear_or_helix"
+            angle_deg: 4.0
+            start_clearance: 0.050
+            feed_multiplier: 0.60
+            helix_radius_multiplier: 0.50
+
+          peck_drill:
+            depth_ratio: 0.20
+            depth_min: 0.020
+            depth_max: 0.060
+            feed_multiplier: 0.10
 
       polycarbonate:
         name: "Polycarbonate"
-        description: "Full-speed polycarbonate for industrial router"
+        description: "Ground-truth polycarbonate targets (avoid rubbing/heat)"
 
-        spindle_speed: 18000
-        feed_rate: 75.0
-        ramp_feed_rate: 50.0
-        plunge_rate: 20.0
-        traverse_rate: 200.0
-        approach_rate: 50.0
+        cutting_model:
+          preferred_rpm: 18000
 
-        ramp_angle: 20.0
-        ramp_start_clearance: 0.100
-        stepover_percentage: 0.55
-        helix_radius_multiplier: 0.75
-        max_slotting_depth: 0.25
+          chipload_ref: 0.0039           # keep chips moving; avoid rub
+          chipload_min: 0.0025
+          chipload_max: 0.0070
 
-        tab_width: 0.25
-        tab_height: 0.15
+          slotting_chipload_multiplier: 0.85
 
-    # Integrations
+        strategy:
+          stepover_ratio: 0.55
+
+          slot_stepdown_ratio: 0.75
+          clear_stepdown_ratio: 1.25
+
+          ramp:
+            type: "linear_or_helix"
+            angle_deg: 20.0
+            start_clearance: 0.100
+            feed_multiplier: 0.65
+            helix_radius_multiplier: 0.75
+
+          peck_drill:
+            depth_ratio: 0.25
+            depth_min: 0.030
+            depth_max: 0.080
+            feed_multiplier: 0.12
+
+      # Optional additional materials (starting points)
+      hdpe:
+        name: "HDPE"
+        description: "Starter HDPE targets (bigger chips are okay; avoid rubbing)"
+
+        cutting_model:
+          preferred_rpm: 18000
+          chipload_ref: 0.0045
+          chipload_min: 0.0030
+          chipload_max: 0.0120
+          slotting_chipload_multiplier: 0.85
+
+        strategy:
+          stepover_ratio: 0.50
+          slot_stepdown_ratio: 1.00
+          clear_stepdown_ratio: 1.50
+
+          ramp:
+            type: "linear_or_helix"
+            angle_deg: 15.0
+            start_clearance: 0.120
+            feed_multiplier: 0.70
+            helix_radius_multiplier: 0.75
+
+          peck_drill:
+            depth_ratio: 0.30
+            depth_min: 0.030
+            depth_max: 0.100
+            feed_multiplier: 0.15
+
+      srpp:
+        name: "SRPP (Self-Reinforced Polypropylene)"
+        description: "Starter SRPP/MAXComposite-like targets (laminate caution + PP heat behavior)"
+
+        cutting_model:
+          preferred_rpm: 18000
+          chipload_ref: 0.0039
+          chipload_min: 0.0025
+          chipload_max: 0.0070
+          slotting_chipload_multiplier: 0.80
+
+        strategy:
+          stepover_ratio: 0.40
+          slot_stepdown_ratio: 0.65
+          clear_stepdown_ratio: 1.00
+
+          ramp:
+            type: "linear_or_helix"
+            angle_deg: 10.0
+            start_clearance: 0.080
+            feed_multiplier: 0.65
+            helix_radius_multiplier: 0.75
+
+          peck_drill:
+            depth_ratio: 0.25
+            depth_min: 0.030
+            depth_max: 0.080
+            feed_multiplier: 0.12
+
+    # -------------------------------------------------------------------------
+    # INTEGRATIONS (Google Drive, etc.)
+    # -------------------------------------------------------------------------
+    # To enable automatic upload to Google Drive:
+    # 1. Set enabled: true
+    # 2. Get the folder_id from your Drive folder URL:
+    #    - Open the folder in Google Drive
+    #    - Copy the URL: https://drive.google.com/drive/folders/FOLDER_ID_HERE
+    #    - Use the FOLDER_ID_HERE part as the folder_id value
+    # 3. Make sure the folder is shared with your team and the PenguinCAM app
     integrations:
       google_drive:
         enabled: false
+        # folder_id: "your_folder_id_here"  # Example: "1AbC2DeF3GhI4JkL5MnO6PqR7StU8VwX"
+
+  # -------------------------------------------------------------------------
+  # MACHINE 2: Avid CNC Pro2424 (Team 6238's machine)
+  # -------------------------------------------------------------------------
+  avid_pro2424:
+    name: "Avid CNC Pro2424"
+
+    machine:
+      manufacturer: "Avid CNC"
+      controller: "Mach4"
+
+      dimensions:
+        x_max: 24.0
+        y_max: 24.0
+        z_max: 8.0
+
+      park_position:
+        x: 0.5
+        y: 23.5
+        z: -0.5
+
+      standard_work_offset: "G54"
+      tube_jig_work_offset: "G55"
+      coolant: "Air"
+
+      spindle_limits:
+        rpm_min: 6000
+        rpm_max: 24000
+
+      # Assume higher feed capability on the larger machine
+      motion_limits:
+        feed_xy_max: 300.0
+        feed_z_max: 120.0
+        traverse_xy: 300.0
+        approach_z: 80.0
+
+      machine_characteristics:
+        rigidity_class: "heavy"
+        runout_class: "good"
+
+        rigidity_chipload_multipliers:
+          light: 0.70
+          medium: 1.00
+          heavy: 1.15
+
+        runout_estimate_in:
+          excellent: 0.0004
+          good:      0.0008
+          typical:   0.0020
+          poor:      0.0040
+
+    default_tool:
+      diameter: 0.157
+      flutes: 1
+      is_reference_tool: true
+
+    machining:
+      z_reference:
+        sacrifice_board_depth: 0.008
+        clearance_height: 0.5
+
+      tabs:
+        enabled: true
+        width: 0.25
+        height: 0.15
+        remove_tabs: true
+
+      holes:
+        detection_tolerance: 0.0001
+        min_millable_multiplier: 1.2
+
+      fixturing:
+        pause_before_perimeter: false
+
+      feed_speed_policy:
+        chipload_diameter_exponent: 0.70
+        allow_reduce_rpm_to_recover_chipload: true
+
+        runout_k_multiplier: 3.0
+        limit_ramp_by_z_component:
+          enabled: true
+          z_cut_max: 60.0  # higher Z comfort on the bigger machine
+
+    tube_facing:
+      depth_margin: 0.005
+      max_roughing_depth: 0.3
+      max_finishing_depth: 0.51
+
+      phase_1:
+        roughing_tool_edge: 0.05
+        finishing_tool_edge: 0.0625
+
+      phase_2:
+        roughing_tool_edge: -0.0125
+        finishing_tool_edge: 0.0
+
+      arc_advance: 0.04
+      arc_radius: 0.05
+
+    # On the Avid, you can either:
+    # - keep the same material truth and let the machine feed caps differ, OR
+    # - slightly increase chipload_max or slotting multipliers.
+    #
+    # Here, we keep the same material truth values for simplicity.
+    materials:
+      plywood:
+        name: "Plywood"
+        description: "Same ground-truth as Omio; higher machine caps allow faster derived feeds"
+        cutting_model:
+          preferred_rpm: 18000
+          chipload_ref: 0.0039
+          chipload_min: 0.0020
+          chipload_max: 0.0100
+          slotting_chipload_multiplier: 0.85
+        strategy:
+          stepover_ratio: 0.65
+          slot_stepdown_ratio: 1.25
+          clear_stepdown_ratio: 1.75
+          ramp:
+            type: "linear_or_helix"
+            angle_deg: 20.0
+            start_clearance: 0.150
+            feed_multiplier: 0.70
+            helix_radius_multiplier: 0.75
+          peck_drill:
+            depth_ratio: 0.25
+            depth_min: 0.030
+            depth_max: 0.100
+            feed_multiplier: 0.15
+
+      aluminum:
+        name: "Aluminum"
+        description: "Same ground-truth; more rigidity allows slightly higher ceilings"
+        cutting_model:
+          preferred_rpm: 18000
+          chipload_ref: 0.0028
+          chipload_min: 0.0015
+          chipload_max: 0.0040
+          slotting_chipload_multiplier: 0.75
+        strategy:
+          stepover_ratio: 0.25
+          slot_stepdown_ratio: 0.30
+          clear_stepdown_ratio: 0.60
+          ramp:
+            type: "linear_or_helix"
+            angle_deg: 4.0
+            start_clearance: 0.050
+            feed_multiplier: 0.65
+            helix_radius_multiplier: 0.50
+          peck_drill:
+            depth_ratio: 0.20
+            depth_min: 0.020
+            depth_max: 0.070
+            feed_multiplier: 0.10
+
+      polycarbonate:
+        name: "Polycarbonate"
+        description: "Same ground-truth; higher caps may allow higher derived feeds"
+        cutting_model:
+          preferred_rpm: 18000
+          chipload_ref: 0.0039
+          chipload_min: 0.0025
+          chipload_max: 0.0080
+          slotting_chipload_multiplier: 0.90
+        strategy:
+          stepover_ratio: 0.55
+          slot_stepdown_ratio: 1.00
+          clear_stepdown_ratio: 1.50
+          ramp:
+            type: "linear_or_helix"
+            angle_deg: 20.0
+            start_clearance: 0.100
+            feed_multiplier: 0.70
+            helix_radius_multiplier: 0.75
+          peck_drill:
+            depth_ratio: 0.25
+            depth_min: 0.030
+            depth_max: 0.100
+            feed_multiplier: 0.12
+
+    # Google Drive integration setup (same instructions as above)
+    integrations:
+      google_drive:
+        enabled: false
+        # folder_id: "your_folder_id_here"  # Get from Drive folder URL
 
 # =============================================================================
 # NOTES
 # =============================================================================
 # - To use this config, upload it to the root of your Onshape document tree
-# - as "PenguinCAM-config.yaml" and make sure it is shared with your classroom
-# - AND with the PenguinCAM app.
+#   as "PenguinCAM-config.yaml" and make sure it is shared with your classroom
+#   AND with the PenguinCAM app.
 #
-# - The machine selector will appear in the UI if you have multiple machines
-# - Each machine can have completely different feeds/speeds based on rigidity
-# - You can add custom materials to any machine
-# - V1 configs (without "version: 2") still work and are treated as single machine
+# - All "materials.*.cutting_model" fields are now ground-truth inputs.
+# - Derived values (XY feed, ramp feed, peck feed, etc.) are computed at runtime
+#   from: tool diameter/flutes + preferred_rpm + chipload scaling + machine caps.
+# - Slotting derates chipload (or feed) to reduce load for perimeter-style cuts.
+# - Stepdown limits are expressed as ratios of tool diameter (ap/D) so tool changes remain safe.
+# - The machine selector will appear in the UI if you have multiple machines.
+# - Each machine can have completely different feeds/speeds based on rigidity.
+# - You can add custom materials to any machine.
+# - V1 and V2 configs (without version: 3) still work for backward compatibility.
