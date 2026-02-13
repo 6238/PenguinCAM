@@ -1912,7 +1912,7 @@ class FRCPostProcessor:
 
             # Generate toolpaths at this depth
             # Apply same contouring logic as 2D mode
-            contour_threshold = self.config._get('machining', 'pockets', 'contour_threshold', default=50)
+            contour_threshold = self.config._get('machining', 'pockets', 'contour_threshold', default=510)
             threshold_area = (contour_threshold * self.tool_diameter**2 * self.stepover_percentage) if contour_threshold > 0 else float('inf')
 
             # Check if this layer is a through-cut (at or below Z=0)

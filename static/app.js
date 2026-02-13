@@ -305,6 +305,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Handle material type selection - show/hide tube parameters
         materialSelect.addEventListener('change', (e) => {
             const isAluminumTube = e.target.value === 'aluminum_tube';
+            const isMultiDepth = isMultiDepthMode();
 
             // Show/hide warning for incomplete materials
             const materialWarning = document.getElementById('materialWarning');
@@ -315,6 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Update thickness label and default value for aluminum tube
+            // BUT: Do NOT change thickness value in 2.5D mode (it comes from Onshape)
             const thicknessGroup = document.getElementById('thickness')?.closest('.param-group');
             const thicknessLabel = thicknessGroup?.querySelector('label');
             const thicknessInput = document.getElementById('thickness');
@@ -326,14 +328,20 @@ document.addEventListener('DOMContentLoaded', () => {
                         Tube Wall Thickness (inches)
                         <span class="label-hint">1/8" = 0.125"</span>
                     `;
-                    thicknessInput.value = '0.125';
+                    // Only change value in 2D mode, not in 2.5D mode
+                    if (!isMultiDepth) {
+                        thicknessInput.value = '0.125';
+                    }
                 } else {
                     // Standard label and default
                     thicknessLabel.innerHTML = `
                         Material Thickness (inches)
                         <span class="label-hint">1/4" = 0.25</span>
                     `;
-                    thicknessInput.value = '0.25';
+                    // Only change value in 2D mode, not in 2.5D mode
+                    if (!isMultiDepth) {
+                        thicknessInput.value = '0.25';
+                    }
                 }
             }
 
@@ -907,6 +915,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const materialSelect = document.getElementById('material');
             const tubeParams = document.getElementById('tubeParams');
             const tabsGroup = document.getElementById('tabSpacing')?.closest('.param-group');
+            const thicknessInput = document.getElementById('thickness');
             const isAluminumTube = materialSelect.value === 'aluminum_tube';
             const isMultiDepth = isMultiDepthMode();
 
@@ -922,6 +931,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 } else {
                     tubeOption.style.display = '';
+                }
+            }
+
+            // In 2.5D mode: make thickness field readonly (it comes from Onshape)
+            if (thicknessInput) {
+                if (isMultiDepth) {
+                    thicknessInput.setAttribute('readonly', 'readonly');
+                    thicknessInput.style.backgroundColor = '#f0f0f0';
+                    thicknessInput.style.cursor = 'not-allowed';
+                    thicknessInput.title = 'Thickness is determined by layer depths in the DXF file';
+                } else {
+                    thicknessInput.removeAttribute('readonly');
+                    thicknessInput.style.backgroundColor = '';
+                    thicknessInput.style.cursor = '';
+                    thicknessInput.title = '';
                 }
             }
 
