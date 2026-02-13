@@ -80,6 +80,14 @@
             font-size: 18px;
             font-weight: 700;
             color: var(--text);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .logo img {
+            height: 24px;
+            width: auto;
         }
         .logo .accent {
             color: var(--primary);
@@ -158,7 +166,8 @@
 <body>
     <div class="panel-content">
         <div class="logo">
-            <span class="accent">Penguin</span>CAM
+            <img src="/static/popcornlogo.png" alt="Popcorn Penguins">
+            <span><span class="accent">Penguin</span>CAM</span>
         </div>
 
         <div class="mode-selector">
