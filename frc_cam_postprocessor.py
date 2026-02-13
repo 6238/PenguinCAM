@@ -1315,25 +1315,146 @@ class FRCPostProcessor:
         gcode = self._generate_gcode_header(timestamp, is_multilayer=False)
         warnings = []
 
-        # Holes (all circular features - helical entry + spiral clearing)
+        # Holes (all circular features - helical entry + spiral clearing, or contouring for large holes)
         if self.holes:
             gcode.append("(===== HOLES =====)")
+
+            # Get pocket contouring threshold from config (applies to circular holes too)
+            contour_threshold = self.config.get('machining', 'pockets', 'contour_threshold', default=50)
+
+            # Check if this is a through-cut (to sacrifice board)
+            # Only contour through-cuts; partial-depth features must be fully cleared
+            is_through_cut = self.cut_depth <= 0  # At or below Z=0 means cutting into sacrifice board
+
+            # Separate holes into contoured and cleared based on size
+            contoured_holes = []
+            cleared_holes = []
+
             for i, hole in enumerate(self.holes, 1):
                 center = hole['center']
                 diameter = hole['diameter']
                 needs_peck = hole.get('needs_peck_drill', False)
-                strategy = "peck + spiral" if needs_peck else "helical + spiral"
-                gcode.append(f"(Hole {i} - {diameter:.3f}\" diameter - {strategy})")
-                gcode.extend(self._generate_hole_gcode(center[0], center[1], diameter, needs_peck_drill=needs_peck))
+
+                # Calculate hole area: π × r²
+                hole_area = math.pi * (diameter / 2) ** 2
+
+                # Calculate threshold area (same formula as pockets)
+                threshold_area = (contour_threshold * self.tool_diameter**2 / self.stepover_percentage) if contour_threshold > 0 else float('inf')
+
+                # Only contour if it's a through-cut AND exceeds size threshold
+                if is_through_cut and hole_area > threshold_area:
+                    contoured_holes.append((i, hole, hole_area))
+                    gcode.append(f"(Hole {i} - {diameter:.3f}\" dia, {hole_area:.3f} sq in > {threshold_area:.3f} sq in threshold - will contour through-cut)")
+                else:
+                    cleared_holes.append((i, hole, needs_peck))
+                    strategy = "peck + spiral" if needs_peck else "helical + spiral"
+                    reason = "(partial depth)" if not is_through_cut else ""
+                    gcode.append(f"(Hole {i} - {diameter:.3f}\" dia, {hole_area:.3f} sq in - {strategy} {reason})")
+
+            # Process cleared holes first
+            if cleared_holes:
                 gcode.append("")
+                gcode.append("(--- Cleared holes ---)")
+                for i, hole, needs_peck in cleared_holes:
+                    center = hole['center']
+                    diameter = hole['diameter']
+                    gcode.extend(self._generate_hole_gcode(center[0], center[1], diameter, needs_peck_drill=needs_peck))
+                    gcode.append("")
+
+            # Process contoured holes (with optional pause for fixturing)
+            if contoured_holes:
+                # Optional pause before contoured holes for teams using screw fixturing
+                # Same logic as perimeter/pockets - any operation with tabs needs secure fixturing
+                if self.pause_before_perimeter:
+                    gcode.extend(self._generate_pause_and_park_gcode(
+                        'PAUSE FOR FIXTURING',
+                        [
+                            'Cleared holes complete',
+                            'Install screws through holes into sacrifice board',
+                            'Fixture part securely before contouring large holes'
+                        ]
+                    ))
+
+                gcode.append("")
+                gcode.append("(--- Contoured holes (manual removal required) ---)")
+                for i, hole, area in contoured_holes:
+                    center = hole['center']
+                    diameter = hole['diameter']
+
+                    # Generate circular points for contouring
+                    num_points = 50  # Tessellate circle into 50 segments
+                    circle_points = []
+                    for j in range(num_points):
+                        angle = (j / num_points) * 2 * math.pi
+                        x = center[0] + (diameter / 2) * math.cos(angle)
+                        y = center[1] + (diameter / 2) * math.sin(angle)
+                        circle_points.append((x, y))
+
+                    gcode.append(f"(Hole {i} - {diameter:.3f}\" dia, {area:.3f} sq in - CONTOUR ONLY)")
+                    gcode.extend(self._generate_pocket_contour_gcode(circle_points))
+                    gcode.append("")
         
         # Pockets
         if self.pockets:
             gcode.append("(===== POCKETS =====)")
+
+            # Get pocket contouring threshold from config
+            contour_threshold = self.config.get('machining', 'pockets', 'contour_threshold', default=50)
+
+            # Check if this is a through-cut (to sacrifice board)
+            # Only contour through-cuts; partial-depth features must be fully cleared
+            is_through_cut = self.cut_depth <= 0  # At or below Z=0 means cutting into sacrifice board
+
+            # Separate pockets into contoured and fully cleared based on size
+            contoured_pockets = []
+            cleared_pockets = []
+
             for i, pocket in enumerate(self.pockets, 1):
-                gcode.append(f"(Pocket {i})")
-                gcode.extend(self._generate_pocket_gcode(pocket))
+                pocket_poly = Polygon(pocket)
+                pocket_area = pocket_poly.area
+
+                # Calculate threshold area: contour_threshold × tool_diameter² / stepover
+                # Set contour_threshold to 0 to disable contouring entirely
+                threshold_area = (contour_threshold * self.tool_diameter**2 / self.stepover_percentage) if contour_threshold > 0 else float('inf')
+
+                # Only contour if it's a through-cut AND exceeds size threshold
+                if is_through_cut and pocket_area > threshold_area:
+                    contoured_pockets.append((i, pocket, pocket_area))
+                    gcode.append(f"(Pocket {i}: {pocket_area:.3f} sq in > {threshold_area:.3f} sq in threshold - will contour through-cut)")
+                else:
+                    cleared_pockets.append((i, pocket, pocket_area))
+                    reason = "(partial depth)" if not is_through_cut else "(below threshold)"
+                    gcode.append(f"(Pocket {i}: {pocket_area:.3f} sq in - will fully clear {reason})")
+
+            # Process fully cleared pockets first
+            if cleared_pockets:
                 gcode.append("")
+                gcode.append("(--- Fully cleared pockets ---)")
+                for i, pocket, area in cleared_pockets:
+                    gcode.append(f"(Pocket {i} - {area:.3f} sq in)")
+                    gcode.extend(self._generate_pocket_gcode(pocket))
+                    gcode.append("")
+
+            # Process contoured pockets (with optional pause for fixturing)
+            if contoured_pockets:
+                # Optional pause before pocket contours for teams using screw fixturing
+                # Same logic as perimeter - any operation with tabs needs secure fixturing
+                if self.pause_before_perimeter:
+                    gcode.extend(self._generate_pause_and_park_gcode(
+                        'PAUSE FOR FIXTURING',
+                        [
+                            'Cleared pockets complete',
+                            'Install screws through holes into sacrifice board',
+                            'Fixture part securely before contouring large pockets'
+                        ]
+                    ))
+
+                gcode.append("")
+                gcode.append("(--- Contoured pockets (manual removal required) ---)")
+                for i, pocket, area in contoured_pockets:
+                    gcode.append(f"(Pocket {i} - {area:.3f} sq in - CONTOUR ONLY)")
+                    gcode.extend(self._generate_pocket_contour_gcode(pocket))
+                    gcode.append("")
         
         # Perimeter (with optional pause for screw fixturing)
         if self.perimeter:
@@ -1790,20 +1911,74 @@ class FRCPostProcessor:
             self.cut_depth = depth
 
             # Generate toolpaths at this depth
+            # Apply same contouring logic as 2D mode
+            contour_threshold = self.config.get('machining', 'pockets', 'contour_threshold', default=50)
+            threshold_area = (contour_threshold * self.tool_diameter**2 / self.stepover_percentage) if contour_threshold > 0 else float('inf')
+
+            # Check if this layer is a through-cut (at or below Z=0)
+            # Only contour through-cuts; partial-depth layers must be fully cleared
+            is_through_cut = self.cut_depth <= 0
+
             if self.holes:
                 gcode.append(f"(Layer {layer_name}: {len(self.holes)} holes)")
                 total_holes += len(self.holes)
-                for i, hole in enumerate(self.holes, 1):
+
+                # Separate holes by size (only contour through-cuts)
+                contoured_holes = []
+                cleared_holes = []
+                for hole in self.holes:
+                    hole_area = math.pi * (hole['diameter'] / 2) ** 2
+                    if is_through_cut and hole_area > threshold_area:
+                        contoured_holes.append(hole)
+                    else:
+                        cleared_holes.append(hole)
+
+                # Process cleared holes
+                for hole in cleared_holes:
                     center = hole['center']
                     diameter = hole['diameter']
                     needs_peck = hole.get('needs_peck_drill', False)
                     gcode.extend(self._generate_hole_gcode(center[0], center[1], diameter, needs_peck_drill=needs_peck))
 
+                # Process contoured holes
+                for hole in contoured_holes:
+                    center = hole['center']
+                    diameter = hole['diameter']
+                    # Generate circular points for contouring
+                    num_points = 50
+                    circle_points = []
+                    for j in range(num_points):
+                        angle = (j / num_points) * 2 * math.pi
+                        x = center[0] + (diameter / 2) * math.cos(angle)
+                        y = center[1] + (diameter / 2) * math.sin(angle)
+                        circle_points.append((x, y))
+                    gcode.append(f"(Large hole {diameter:.3f}\" dia - CONTOUR ONLY)")
+                    gcode.extend(self._generate_pocket_contour_gcode(circle_points))
+
             if self.pockets:
                 gcode.append(f"(Layer {layer_name}: {len(self.pockets)} pockets)")
                 total_pockets += len(self.pockets)
-                for i, pocket in enumerate(self.pockets, 1):
+
+                # Separate pockets by size (only contour through-cuts)
+                contoured_pockets = []
+                cleared_pockets = []
+                for pocket in self.pockets:
+                    pocket_poly = Polygon(pocket)
+                    pocket_area = pocket_poly.area
+                    if is_through_cut and pocket_area > threshold_area:
+                        contoured_pockets.append(pocket)
+                    else:
+                        cleared_pockets.append(pocket)
+
+                # Process cleared pockets
+                for pocket in cleared_pockets:
                     gcode.extend(self._generate_pocket_gcode(pocket))
+
+                # Process contoured pockets
+                for pocket in contoured_pockets:
+                    pocket_poly = Polygon(pocket)
+                    gcode.append(f"(Large pocket {pocket_poly.area:.3f} sq in - CONTOUR ONLY)")
+                    gcode.extend(self._generate_pocket_contour_gcode(pocket))
 
             # Restore original cut depth
             self.cut_depth = saved_cut_depth
@@ -2411,11 +2586,24 @@ class FRCPostProcessor:
 
         return gcode
     
-    def _generate_perimeter_gcode(self, perimeter_points: List[Tuple[float, float]]) -> List[str]:
-        """Generate G-code for perimeter with tabs and tool compensation (offset outward)
+    def _generate_contour_gcode(self,
+                               contour_points: List[Tuple[float, float]],
+                               contour_type: str,
+                               offset_direction: int,
+                               clockwise: bool,
+                               remove_tabs_at_end: bool) -> List[str]:
+        """Generate G-code for contour cutting (perimeter or pocket contour) with tabs
 
+        Shared logic for both perimeter and pocket contour operations.
         Supports multi-pass cutting for thick materials based on max_slotting_depth.
         Tabs are only cut on the final pass.
+
+        Args:
+            contour_points: List of (x, y) coordinates defining the contour
+            contour_type: "perimeter" or "pocket" (for comments)
+            offset_direction: +1 for outward offset (perimeter), -1 for inward (pocket)
+            clockwise: True for CW (perimeter), False for CCW (pocket interior)
+            remove_tabs_at_end: Whether to generate tab removal pass (False for pockets)
         """
         gcode = []
 
@@ -2426,31 +2614,34 @@ class FRCPostProcessor:
 
         if num_passes > 1:
             actual_depth_per_pass = total_cut_depth / num_passes
-            gcode.append(f"(Multi-pass perimeter: {num_passes} passes @ {actual_depth_per_pass:.3f}\" each, max {self.max_slotting_depth:.3f}\" per pass)")
+            gcode.append(f"(Multi-pass {contour_type}: {num_passes} passes @ {actual_depth_per_pass:.3f}\" each, max {self.max_slotting_depth:.3f}\" per pass)")
 
-        # Create offset path (outward by tool radius)
-        perimeter_poly = Polygon(perimeter_points)
+        # Create offset path
+        contour_poly = Polygon(contour_points)
 
-        # Buffer outward (positive buffer)
-        offset_poly = perimeter_poly.buffer(self.tool_radius)
+        # Buffer by tool radius (positive for outward/perimeter, negative for inward/pocket)
+        offset_distance = offset_direction * self.tool_radius
+        offset_poly = contour_poly.buffer(offset_distance)
 
         if offset_poly.is_empty:
-            center_x, center_y = self._get_polygon_center(perimeter_poly)
-            error_msg = f"Perimeter at approximately ({center_x:.3f}, {center_y:.3f}) failed offset operation - may have internal corners with radius smaller than {self.tool_diameter:.4f}\" tool can mill"
+            center_x, center_y = self._get_polygon_center(contour_poly)
+            error_msg = f"{contour_type.capitalize()} at approximately ({center_x:.3f}, {center_y:.3f}) failed offset operation - may have internal corners with radius smaller than {self.tool_diameter:.4f}\" tool can mill"
             self._add_error(error_msg)
             return gcode
 
         # Get the boundary of the offset polygon
         if hasattr(offset_poly, 'exterior'):
             offset_points = list(offset_poly.exterior.coords)[:-1]  # Remove duplicate last point
-            # Reverse points for clockwise direction (climb milling on outside features)
-            offset_points = offset_points[::-1]
+            # Set direction based on clockwise parameter
+            # Default order from Shapely is CCW, so reverse for CW
+            if clockwise:
+                offset_points = offset_points[::-1]
         else:
-            center_x, center_y = self._get_polygon_center(perimeter_poly)
-            error_msg = f"Perimeter at approximately ({center_x:.3f}, {center_y:.3f}) resulted in invalid geometry after tool compensation - may have internal corners too sharp for {self.tool_diameter:.4f}\" tool"
+            center_x, center_y = self._get_polygon_center(contour_poly)
+            error_msg = f"{contour_type.capitalize()} at approximately ({center_x:.3f}, {center_y:.3f}) resulted in invalid geometry after tool compensation - may have internal corners too sharp for {self.tool_diameter:.4f}\" tool"
             self._add_error(error_msg)
             return gcode
-        
+
         # Calculate segment lengths
         segment_lengths = []
         for i in range(len(offset_points)):
@@ -2459,8 +2650,8 @@ class FRCPostProcessor:
             length = self._distance_2d(p1, p2)
             segment_lengths.append(length)
 
-        # Calculate total perimeter length
-        perimeter_length = sum(segment_lengths)
+        # Calculate total contour length
+        contour_length = sum(segment_lengths)
 
         # Will store tab positions for final removal pass (only populated on final pass)
         all_tab_positions = []
@@ -2495,8 +2686,8 @@ class FRCPostProcessor:
             # Calculate tab zones ONLY on final pass (if tabs are enabled)
             tab_zones = []  # List of (start_dist, end_dist) tuples
             if is_final_pass and self.tabs_enabled:
-                # We cut from ramp_distance to perimeter_length, so tabs should only be in that range
-                cutting_length = perimeter_length - ramp_distance
+                # We cut from ramp_distance to contour_length, so tabs should only be in that range
+                cutting_length = contour_length - ramp_distance
 
                 # Calculate number of tabs based on desired spacing, with minimum of 3
                 num_tabs = max(3, int(math.ceil(cutting_length / self.tab_spacing)))
@@ -2725,7 +2916,8 @@ class FRCPostProcessor:
 
         # ===== TAB REMOVAL PASS =====
         # Remove tabs in star pattern to gradually release the part (only if tabs were created and removal is enabled)
-        if all_tab_positions and self.config.remove_tabs:
+        # Note: Pocket contours NEVER remove tabs (center material remains for manual removal)
+        if all_tab_positions and remove_tabs_at_end:
             gcode.append("")
             gcode.append("(===== TAB REMOVAL PASS =====)")
             gcode.append(f"(Removing {len(all_tab_positions)} tabs in star pattern)")
@@ -2771,6 +2963,45 @@ class FRCPostProcessor:
                 # Retract after each tab
                 gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
                 gcode.append("")
+
+        return gcode
+
+    def _generate_perimeter_gcode(self, perimeter_points: List[Tuple[float, float]]) -> List[str]:
+        """Generate G-code for perimeter with tabs and tool compensation (offset outward)
+
+        Wrapper function that calls _generate_contour_gcode with perimeter-specific parameters.
+        Supports multi-pass cutting for thick materials based on max_slotting_depth.
+        Tabs are only cut on the final pass.
+        """
+        return self._generate_contour_gcode(
+            contour_points=perimeter_points,
+            contour_type="perimeter",
+            offset_direction=+1,  # Outward offset
+            clockwise=True,       # CW for climb milling on outside features
+            remove_tabs_at_end=self.config.remove_tabs  # Config-based tab removal
+        )
+
+    def _generate_pocket_contour_gcode(self, pocket_points: List[Tuple[float, float]]) -> List[str]:
+        """Generate G-code for pocket contour (outline only) with tabs
+
+        Contours large pockets instead of fully clearing them to save machining time.
+        The center material remains attached by tabs and must be manually removed.
+
+        Args:
+            pocket_points: List of (x, y) coordinates defining the pocket boundary
+
+        Returns:
+            List of G-code lines for pocket contouring operation
+        """
+        gcode = ["(WARNING: Interior pocket contour - center material requires manual removal)"]
+
+        gcode.extend(self._generate_contour_gcode(
+            contour_points=pocket_points,
+            contour_type="pocket",
+            offset_direction=-1,  # Inward offset
+            clockwise=False,      # CCW for climb milling on inside features
+            remove_tabs_at_end=False  # NEVER remove tabs on pockets - material stays in place
+        ))
 
         return gcode
 

@@ -89,6 +89,18 @@ machines:
       fixturing:
         pause_before_perimeter: false   # M0 pause before perimeter for screw fixturing
 
+      # Pocket/hole contouring (for large internal through-cuts)
+      pockets:
+        # Contour threshold: feature area in multiples of tool cross-section (at 100% stepover)
+        # Actual threshold scales inversely with stepover (tighter stepover = lower area threshold)
+        # Applies to both irregular pockets AND large circular holes
+        # IMPORTANT: Only applies to through-cuts (features cutting to sacrifice board at Z=0)
+        #            Partial-depth features are ALWAYS fully cleared (need flat bottoms)
+        # Large through-cut features are contoured instead of fully cleared to save machining time
+        # Note: Contoured features require manual post-processing to remove the tab-held center
+        # Set to 0 to disable contouring entirely (always fully clear all pockets/holes)
+        contour_threshold: 50           # Default: 50 (conservative - ~125 tool areas at 40% stepover)
+
     # Tube facing parameters (for aluminum tube operations)
     tube_facing:
       depth_margin: 0.005               # Extra depth beyond half tube height (inches)
@@ -227,6 +239,9 @@ machines:
 
       fixturing:
         pause_before_perimeter: false
+
+      pockets:
+        contour_threshold: 50
 
     # Tube facing (same as shop_router)
     tube_facing:
