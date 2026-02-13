@@ -938,14 +938,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (thicknessInput) {
                 if (isMultiDepth) {
                     thicknessInput.setAttribute('readonly', 'readonly');
-                    thicknessInput.style.backgroundColor = '#f0f0f0';
-                    thicknessInput.style.cursor = 'not-allowed';
-                    thicknessInput.title = 'Thickness is determined by layer depths in the DXF file';
                 } else {
                     thicknessInput.removeAttribute('readonly');
-                    thicknessInput.style.backgroundColor = '';
-                    thicknessInput.style.cursor = '';
-                    thicknessInput.title = '';
                 }
             }
 

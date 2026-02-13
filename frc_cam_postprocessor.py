@@ -2010,10 +2010,29 @@ class FRCPostProcessor:
         if has_true_bottom:
             gcode.append(f"(Bottom face at Z={depth:.4f}\" - through-holes and through-pockets)")
 
+            # Apply contouring logic to bottom face (same as depth layers)
+            contour_threshold = self.config._get('machining', 'pockets', 'contour_threshold', default=510)
+            threshold_area = (contour_threshold * self.tool_diameter**2 * self.stepover_percentage) if contour_threshold > 0 else float('inf')
+
+            # Bottom face is always through-cut (Z=0)
+            is_through_cut = True
+
             if self.holes:
                 gcode.append("(===== HOLES =====)")
                 total_holes += len(self.holes)
-                for i, hole in enumerate(self.holes, 1):
+
+                # Separate holes by size (only contour through-cuts)
+                contoured_holes = []
+                cleared_holes = []
+                for hole in self.holes:
+                    hole_area = math.pi * (hole['diameter'] / 2) ** 2
+                    if is_through_cut and hole_area > threshold_area:
+                        contoured_holes.append(hole)
+                    else:
+                        cleared_holes.append(hole)
+
+                # Process cleared holes
+                for i, hole in enumerate(cleared_holes, 1):
                     center = hole['center']
                     diameter = hole['diameter']
                     needs_peck = hole.get('needs_peck_drill', False)
@@ -2021,12 +2040,48 @@ class FRCPostProcessor:
                     gcode.extend(self._generate_hole_gcode(center[0], center[1], diameter, needs_peck_drill=needs_peck))
                     gcode.append("")
 
+                # Process contoured holes
+                for i, hole in enumerate(contoured_holes, 1):
+                    center = hole['center']
+                    diameter = hole['diameter']
+                    # Generate circular points for contouring
+                    num_points = 50
+                    circle_points = []
+                    for j in range(num_points):
+                        angle = (j / num_points) * 2 * math.pi
+                        x = center[0] + (diameter / 2) * math.cos(angle)
+                        y = center[1] + (diameter / 2) * math.sin(angle)
+                        circle_points.append((x, y))
+                    gcode.append(f"(Hole {len(cleared_holes) + i} - {diameter:.3f}\" diameter - CONTOUR ONLY)")
+                    gcode.extend(self._generate_pocket_contour_gcode(circle_points))
+                    gcode.append("")
+
             if self.pockets:
                 gcode.append("(===== POCKETS =====)")
                 total_pockets += len(self.pockets)
-                for i, pocket in enumerate(self.pockets, 1):
+
+                # Separate pockets by size (only contour through-cuts)
+                contoured_pockets = []
+                cleared_pockets = []
+                for pocket in self.pockets:
+                    pocket_poly = Polygon(pocket)
+                    pocket_area = pocket_poly.area
+                    if is_through_cut and pocket_area > threshold_area:
+                        contoured_pockets.append(pocket)
+                    else:
+                        cleared_pockets.append(pocket)
+
+                # Process cleared pockets
+                for i, pocket in enumerate(cleared_pockets, 1):
                     gcode.append(f"(Pocket {i})")
                     gcode.extend(self._generate_pocket_gcode(pocket))
+                    gcode.append("")
+
+                # Process contoured pockets
+                for i, pocket in enumerate(contoured_pockets, 1):
+                    pocket_poly = Polygon(pocket)
+                    gcode.append(f"(Pocket {len(cleared_pockets) + i} - {pocket_poly.area:.3f} sq in - CONTOUR ONLY)")
+                    gcode.extend(self._generate_pocket_contour_gcode(pocket))
                     gcode.append("")
         else:
             gcode.append(f"(Perimeter outline from deepest layer - holes/pockets already cut at depth)")
