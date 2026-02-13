@@ -1689,7 +1689,8 @@ class FRCPostProcessor:
 
     def _subtract_geometry(self, circles, polylines, cut_geometry):
         """
-        Subtract already-cut geometry from circles and polylines.
+        Subtract geometry from circles and polylines.
+        Used to remove areas that will be (or have been) cut by other operations.
         Returns new lists with subtracted geometry.
         """
         if cut_geometry is None or cut_geometry.is_empty:
@@ -1700,8 +1701,6 @@ class FRCPostProcessor:
         new_circles = []
         new_polylines = []
 
-        print(f"  Subtracting already-cut geometry from deeper layers...")
-
         # Process circles
         for circle in circles:
             center = circle['center']
@@ -1711,9 +1710,9 @@ class FRCPostProcessor:
             # Subtract already cut areas
             result = circle_geom.difference(cut_geometry)
 
-            # If circle is completely cut, skip it
+            # If circle is completely covered by cut geometry, skip it
             if result.is_empty or result.area < 0.0001:
-                print(f"    Circle at {center} already cut - skipping")
+                print(f"    Circle at {center} fully removed by subtraction - skipping")
                 continue
 
             # If circle remains mostly intact (>90% area), keep it as-is
@@ -1745,9 +1744,9 @@ class FRCPostProcessor:
                 # Subtract already cut areas
                 result = poly.difference(cut_geometry)
 
-                # If completely cut, skip
+                # If completely covered by cut geometry, skip
                 if result.is_empty or result.area < 0.0001:
-                    print(f"    Polyline already cut - skipping")
+                    print(f"    Polyline fully removed by subtraction - skipping")
                     continue
 
                 # Extract remaining geometry
@@ -1861,9 +1860,6 @@ class FRCPostProcessor:
         gcode = self._generate_gcode_header(timestamp, is_multilayer=True)
         warnings = []
 
-        # Track already-cut geometry to avoid redundant cuts
-        cut_geometry = None
-
         # Track total features across all layers
         total_holes = 0
         total_pockets = 0
@@ -1879,23 +1875,55 @@ class FRCPostProcessor:
             raw_circles = layer_info['circles'].copy()
             raw_polylines = layer_info['polylines'].copy()
 
-            # Subtract already-cut geometry from deeper layers
-            if cut_geometry is not None:
+            # Build union of all HOLES/POCKETS at DEEPER depths (will be cut through)
+            # IMPORTANT: Only subtract holes/pockets, NOT perimeters (the perimeter square at Z=0
+            # defines the part boundary, not a hole to subtract from upper layers)
+            deeper_geometry = None
+
+            # Check all layers for deeper cuts
+            for check_layer_name, check_layer_info in self.layer_data.items():
+                check_depth = check_layer_info['depth']
+
+                # Include if:
+                # 1. It's deeper than current layer (depth < current depth), OR
+                # 2. It's the bottom face (will be cut through)
+                is_deeper = check_depth < depth - 0.001  # Small tolerance
+                is_bottom = has_true_bottom and check_layer_name == bottom_layer_name
+
+                if is_deeper or is_bottom:
+                    # For bottom face: Only include circles (holes), NOT polylines (perimeter)
+                    # For depth layers: Include all geometry (they have no perimeter)
+                    if is_bottom and check_layer_name == bottom_layer_name:
+                        # Bottom face: only subtract holes, not the perimeter polyline
+                        check_geom = self._geometries_to_shapely(
+                            check_layer_info['circles'],
+                            []  # Exclude polylines (perimeter)
+                        )
+                    else:
+                        # Depth layer: include all geometry (no perimeter distinction)
+                        check_geom = self._geometries_to_shapely(
+                            check_layer_info['circles'],
+                            check_layer_info['polylines']
+                        )
+
+                    if check_geom is not None:
+                        if deeper_geometry is None:
+                            deeper_geometry = check_geom
+                        else:
+                            from shapely.ops import unary_union
+                            deeper_geometry = unary_union([deeper_geometry, check_geom])
+                        print(f"  Subtracting {check_layer_name} (Z={check_depth:.4f}\") - will be cut deeper")
+
+            # Subtract deeper geometry from current layer
+            if deeper_geometry is not None:
                 self.circles, self.polylines = self._subtract_geometry(
-                    raw_circles, raw_polylines, cut_geometry
+                    raw_circles, raw_polylines, deeper_geometry
                 )
+                print(f"  After subtraction: {len(self.circles)} circles, {len(self.polylines)} polylines")
             else:
                 self.circles = raw_circles
                 self.polylines = raw_polylines
-
-            # Track this layer's geometry for future subtraction
-            layer_geom = self._geometries_to_shapely(self.circles, self.polylines)
-            if layer_geom is not None:
-                if cut_geometry is None:
-                    cut_geometry = layer_geom
-                else:
-                    from shapely.ops import unary_union
-                    cut_geometry = unary_union([cut_geometry, layer_geom])
+                print(f"  No deeper geometry to subtract")
 
             # Classify geometry (holes, pockets) - reuses existing methods
             self.classify_holes()

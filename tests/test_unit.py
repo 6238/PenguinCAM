@@ -1135,5 +1135,241 @@ class TestPerimeterWithArcs(unittest.TestCase):
                               msg="Perimeter should start at Y=2 (rectangle was 0-2, offset by +2)")
 
 
+class TestMultilayerGeometrySubtraction(unittest.TestCase):
+    """Test 2.5D multilayer geometry subtraction logic"""
+
+    def _create_multilayer_dxf(self, filename, layers_data):
+        """
+        Helper to create a multilayer DXF file for testing.
+
+        Args:
+            filename: Output DXF file path
+            layers_data: Dict mapping layer name to list of shapes
+                        e.g., {'Z_0p000': [('circle', (3, 3), 2.0)], ...}
+        """
+        import ezdxf
+
+        doc = ezdxf.new('R2010')
+        msp = doc.modelspace()
+
+        for layer_name, shapes in layers_data.items():
+            # Create layer if it doesn't exist
+            if layer_name not in doc.layers:
+                doc.layers.new(name=layer_name)
+
+            for shape in shapes:
+                if shape[0] == 'circle':
+                    _, center, radius = shape
+                    msp.add_circle(center, radius, dxfattribs={'layer': layer_name})
+                elif shape[0] == 'rectangle':
+                    _, x, y, width, height = shape
+                    points = [(x, y), (x + width, y), (x + width, y + height), (x, y + height)]
+                    msp.add_lwpolyline(points, close=True, dxfattribs={'layer': layer_name})
+
+        doc.saveas(filename)
+
+    def test_nested_circles_concentric(self):
+        """
+        Test nested concentric circles at different depths.
+
+        Setup: Outer circle (5" dia) at Z=0.25", inner circle (4" dia) at Z=0.0"
+        Expected: Only the ring between circles is machined at Z=0.25"
+        """
+        import tempfile
+
+        # Create test DXF
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.dxf', delete=False) as f:
+            dxf_path = f.name
+
+        try:
+            # Outer circle at Z=0.25, inner circle at Z=0.0
+            self._create_multilayer_dxf(dxf_path, {
+                'Z_0p500': [('rectangle', -3, -3, 6, 6)],  # Top surface (perimeter)
+                'Z_0p250': [('circle', (0, 0), 2.5)],      # Outer circle 5" dia
+                'Z_0p000': [
+                    ('circle', (0, 0), 2.0),                # Inner circle 4" dia
+                    ('rectangle', -3, -3, 6, 6)             # Bottom perimeter
+                ]
+            })
+
+            # Process with aluminum (threshold = 3.14 sq in, ~2" dia)
+            config = TeamConfig()
+            pp = FRCPostProcessor(material_thickness=0.5, tool_diameter=0.157, config=config)
+            pp.apply_material_preset('aluminum')
+            pp.load_dxf(dxf_path)
+            pp.transform_coordinates('bottom-left', 0)
+            result = pp.generate_gcode()
+
+            self.assertTrue(result.success, "G-code generation should succeed")
+
+            # Analyze the G-code
+            lines = result.gcode.split('\n')
+
+            # Find Z_0p250 section
+            z0p250_start = None
+            z0p250_end = None
+            for i, line in enumerate(lines):
+                if 'LAYER: Z_0p250' in line:
+                    z0p250_start = i
+                elif z0p250_start and 'LAYER: Z_0p000' in line:
+                    z0p250_end = i
+                    break
+
+            self.assertIsNotNone(z0p250_start, "Should have Z_0p250 layer")
+            z0p250_section = lines[z0p250_start:z0p250_end] if z0p250_end else []
+
+            # Should have pocket (the ring) but no holes
+            has_pocket = any('pocket' in line.lower() for line in z0p250_section)
+            has_hole = any('hole' in line.lower() and 'Layer Z_0p250: 0 holes' not in line for line in z0p250_section)
+
+            self.assertTrue(has_pocket, "Z_0p250 should have a pocket (ring between circles)")
+            self.assertFalse(has_hole, "Z_0p250 should NOT have holes (inner circle subtracted)")
+
+            # Check Z_0p000 section has the inner circle as a contoured hole
+            z0p000_section = lines[z0p250_end:z0p250_end+200] if z0p250_end else []
+            has_contour = any('CONTOUR ONLY' in line for line in z0p000_section)
+
+            self.assertTrue(has_contour, "Z_0p000 should contour the inner circle (4\" > 2\" threshold)")
+
+        finally:
+            # Clean up
+            if os.path.exists(dxf_path):
+                os.remove(dxf_path)
+
+    def test_overlapping_circles_partial(self):
+        """
+        Test partially overlapping circles at different depths.
+
+        Setup: Two 3" circles offset horizontally, one at Z=0.25", one at Z=0.0"
+        Expected: Only non-overlapping crescent is machined at Z=0.25"
+        """
+        import tempfile
+
+        # Create test DXF
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.dxf', delete=False) as f:
+            dxf_path = f.name
+
+        try:
+            # Two overlapping circles (3" diameter, 1.5" radius)
+            # Centers at (0, 0) and (2, 0) - they overlap by ~1"
+            self._create_multilayer_dxf(dxf_path, {
+                'Z_0p500': [('rectangle', -3, -3, 8, 6)],  # Top surface
+                'Z_0p250': [('circle', (0, 0), 1.5)],      # Left circle at Z=0.25"
+                'Z_0p000': [
+                    ('circle', (2, 0), 1.5),                # Right circle at Z=0.0" (overlaps)
+                    ('rectangle', -3, -3, 8, 6)             # Bottom perimeter
+                ]
+            })
+
+            # Process
+            config = TeamConfig()
+            pp = FRCPostProcessor(material_thickness=0.5, tool_diameter=0.157, config=config)
+            pp.apply_material_preset('aluminum')
+            pp.load_dxf(dxf_path)
+            pp.transform_coordinates('bottom-left', 0)
+            result = pp.generate_gcode()
+
+            self.assertTrue(result.success, "G-code generation should succeed")
+
+            # Analyze
+            lines = result.gcode.split('\n')
+
+            # Find Z_0p250 section
+            z0p250_start = None
+            z0p250_end = None
+            for i, line in enumerate(lines):
+                if 'LAYER: Z_0p250' in line:
+                    z0p250_start = i
+                elif z0p250_start and 'LAYER: Z_0p000' in line:
+                    z0p250_end = i
+                    break
+
+            self.assertIsNotNone(z0p250_start, "Should have Z_0p250 layer")
+            z0p250_section = lines[z0p250_start:z0p250_end] if z0p250_end else []
+
+            # After subtraction, the left circle should be partially cut away
+            # It should become a pocket (crescent shape)
+            has_pocket = any('pocket' in line.lower() for line in z0p250_section)
+
+            # Check that we're not machining the full original circle area
+            # The "partially overlaps - converting to polyline" message indicates subtraction happened
+            self.assertTrue(has_pocket, "Z_0p250 should have pocket (crescent after subtraction)")
+
+            # Verify Z_0p000 has the right circle
+            z0p000_section = lines[z0p250_end:z0p250_end+100] if z0p250_end else []
+            has_hole = any('hole' in line.lower() and '3.0' in line for line in z0p000_section)
+
+            self.assertTrue(has_hole, "Z_0p000 should have the 3\" circle")
+
+        finally:
+            # Clean up
+            if os.path.exists(dxf_path):
+                os.remove(dxf_path)
+
+    def test_rectangular_pockets_nested(self):
+        """
+        Test nested rectangular pockets at different depths.
+
+        Setup: Large 4"x4" pocket at Z=0.25", small 2"x2" pocket at Z=0.0" (centered)
+        Expected: Only the frame between rectangles is machined at Z=0.25"
+        """
+        import tempfile
+
+        # Create test DXF
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.dxf', delete=False) as f:
+            dxf_path = f.name
+
+        try:
+            # Outer pocket 4"x4" at Z=0.25, inner pocket 2"x2" at Z=0.0
+            self._create_multilayer_dxf(dxf_path, {
+                'Z_0p500': [('rectangle', -3, -3, 12, 12)],  # Top surface
+                'Z_0p250': [('rectangle', 0, 0, 4, 4)],      # Outer pocket
+                'Z_0p000': [
+                    ('rectangle', 1, 1, 2, 2),                # Inner pocket (centered)
+                    ('rectangle', -3, -3, 12, 12)             # Bottom perimeter
+                ]
+            })
+
+            # Process
+            config = TeamConfig()
+            pp = FRCPostProcessor(material_thickness=0.5, tool_diameter=0.157, config=config)
+            pp.apply_material_preset('aluminum')
+            pp.load_dxf(dxf_path)
+            pp.transform_coordinates('bottom-left', 0)
+            result = pp.generate_gcode()
+
+            self.assertTrue(result.success, "G-code generation should succeed")
+
+            # Analyze
+            lines = result.gcode.split('\n')
+
+            # Find Z_0p250 section
+            z0p250_start = None
+            z0p250_end = None
+            for i, line in enumerate(lines):
+                if 'LAYER: Z_0p250' in line:
+                    z0p250_start = i
+                elif z0p250_start and 'LAYER: Z_0p000' in line:
+                    z0p250_end = i
+                    break
+
+            self.assertIsNotNone(z0p250_start, "Should have Z_0p250 layer")
+            z0p250_section = lines[z0p250_start:z0p250_end] if z0p250_end else []
+
+            # Should have a pocket (the frame)
+            has_pocket = any('pocket' in line.lower() for line in z0p250_section)
+
+            self.assertTrue(has_pocket, "Z_0p250 should have pocket (frame between rectangles)")
+
+            # The frame should be smaller than the original 4x4=16 sq in
+            # After subtracting the 2x2=4 sq in, we should have ~12 sq in
+            # This will be fully cleared since it's partial depth
+
+        finally:
+            # Clean up
+            if os.path.exists(dxf_path):
+                os.remove(dxf_path)
+
+
 if __name__ == '__main__':
     unittest.main()
