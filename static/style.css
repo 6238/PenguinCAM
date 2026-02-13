@@ -75,11 +75,19 @@
             margin-top: 0.25rem;
         }
 
+        .config-info {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 2rem;
+        }
+
         .config-status {
             color: var(--success);
             font-size: 0.85rem;
-            margin-top: 0.5rem;
             font-weight: 500;
+            white-space: nowrap;
         }
 
         .config-status-default {
