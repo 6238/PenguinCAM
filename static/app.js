@@ -1666,6 +1666,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let toolpathMoves = []; // Array of moves for scrubber
         let toolpathOffsetX = 0; // X offset to align toolpath lower-left with origin
         let toolpathOffsetY = 0; // Y offset to align toolpath lower-left with origin
+        let toolpathStockHeight = 0; // Material thickness for starting position
         let toolMesh = null; // 3D representation of cutting tool
         let completedLine = null; // Line showing completed moves
         let upcomingLine = null; // Line showing upcoming moves
@@ -2186,6 +2187,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const isAluminumTube = (material === 'aluminum_tube');
             const materialThickness = parseFloat(document.getElementById('thickness').value);
 
+            // Store for toolpath starting position
+            toolpathStockHeight = materialThickness;
+
             // For tube mode, use tube height as stock height instead of wall thickness
             const stockHeightValue = isAluminumTube ?
                 parseFloat(document.getElementById('tubeHeight').value) :
@@ -2483,7 +2487,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const fromY = move.from.y - toolpathOffsetY;
                         // For the very first move, use a starting Z position above the stock
                         const fromZ = (i === 0 && (!move.from.z || move.from.z === 0))
-                            ? materialThickness + 0.5
+                            ? toolpathStockHeight + 0.5
                             : move.from.z;
                         upcomingPoints.push(new THREE.Vector3(fromX, fromZ, -fromY));
                     }
@@ -2514,7 +2518,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const fromY = move.from.y - toolpathOffsetY;
                         // For the very first move, use a starting Z position above the stock
                         const fromZ = (!move.from.z || move.from.z === 0)
-                            ? materialThickness + 0.5
+                            ? toolpathStockHeight + 0.5
                             : move.from.z;
                         completedPoints.push(new THREE.Vector3(fromX, fromZ, -fromY));
                     }
