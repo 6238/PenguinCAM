@@ -44,6 +44,11 @@
         <div class="header-content">
             <h1><span class="accent">Penguin</span>CAM</h1>
             <p class="subtitle">FRC Team 6238 • Generate G-code from Onshape for CNC machining</p>
+            {% if session.get('team_config') and session.get('team_config').get('team_number') %}
+            <p class="config-status">Team configuration: {{ session.get('team_config').get('team_number') }} ({{ session.get('team_config').get('team_name', 'Unknown') }})</p>
+            {% else %}
+            <p class="config-status config-status-default">Using default configuration</p>
+            {% endif %}
         </div>
 
         <!-- Help button (always visible) -->

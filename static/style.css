@@ -75,6 +75,18 @@
             margin-top: 0.25rem;
         }
 
+        .config-status {
+            color: var(--success);
+            font-size: 0.85rem;
+            margin-top: 0.5rem;
+            font-weight: 500;
+        }
+
+        .config-status-default {
+            color: var(--text-dim);
+            font-style: italic;
+        }
+
         .user-info {
             display: flex;
             align-items: center;
