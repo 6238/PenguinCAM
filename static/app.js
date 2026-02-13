@@ -2463,14 +2463,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Update tool position
             if (toolMesh) {
-                const pos = currentMove.to;
-                // Apply offset to align with DXF (lower-left at origin)
-                const x = pos.x - toolpathOffsetX;
-                const y = pos.y - toolpathOffsetY;
+                // At move 0, show tool at starting position (above stock)
+                // Otherwise show tool at the destination of the current move
+                let x, y, z;
+                if (moveIndex === 0) {
+                    // Starting position - use from coordinates with Z above stock
+                    x = currentMove.from.x - toolpathOffsetX;
+                    y = currentMove.from.y - toolpathOffsetY;
+                    z = (!currentMove.from.z || currentMove.from.z === 0)
+                        ? toolpathStockHeight + 0.5
+                        : currentMove.from.z;
+                } else {
+                    // Normal position - at destination of current move
+                    const pos = currentMove.to;
+                    x = pos.x - toolpathOffsetX;
+                    y = pos.y - toolpathOffsetY;
+                    z = pos.z;
+                }
+
                 // Position tool so BOTTOM is at Z coordinate, not center
                 // Cylinder center needs to be offset up by half its length
                 const toolLength = toolMesh.userData.toolLength;
-                toolMesh.position.set(x, pos.z + toolLength / 2, -y);
+                toolMesh.position.set(x, z + toolLength / 2, -y);
             }
 
             // Remove old toolpath lines
