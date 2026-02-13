@@ -2481,7 +2481,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (i === moveIndex) {
                         const fromX = move.from.x - toolpathOffsetX;
                         const fromY = move.from.y - toolpathOffsetY;
-                        upcomingPoints.push(new THREE.Vector3(fromX, move.from.z, -fromY));
+                        // For the very first move, use a starting Z position above the stock
+                        const fromZ = (i === 0 && (!move.from.z || move.from.z === 0))
+                            ? materialThickness + 0.5
+                            : move.from.z;
+                        upcomingPoints.push(new THREE.Vector3(fromX, fromZ, -fromY));
                     }
                     const toX = move.to.x - toolpathOffsetX;
                     const toY = move.to.y - toolpathOffsetY;
@@ -2508,7 +2512,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (i === 0) {
                         const fromX = move.from.x - toolpathOffsetX;
                         const fromY = move.from.y - toolpathOffsetY;
-                        completedPoints.push(new THREE.Vector3(fromX, move.from.z, -fromY));
+                        // For the very first move, use a starting Z position above the stock
+                        const fromZ = (!move.from.z || move.from.z === 0)
+                            ? materialThickness + 0.5
+                            : move.from.z;
+                        completedPoints.push(new THREE.Vector3(fromX, fromZ, -fromY));
                     }
                     const toX = move.to.x - toolpathOffsetX;
                     const toY = move.to.y - toolpathOffsetY;
