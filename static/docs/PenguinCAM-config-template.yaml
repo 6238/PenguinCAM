@@ -92,14 +92,15 @@ machines:
       # Pocket/hole contouring (for large internal through-cuts)
       pockets:
         # Contour threshold: feature area in multiples of tool cross-section (at 100% stepover)
-        # Actual threshold scales inversely with stepover (tighter stepover = lower area threshold)
+        # Actual threshold scales directly with stepover (tighter stepover = lower area threshold)
+        # Formula: threshold_area = contour_threshold × tool_diameter² × stepover_percentage
         # Applies to both irregular pockets AND large circular holes
         # IMPORTANT: Only applies to through-cuts (features cutting to sacrifice board at Z=0)
         #            Partial-depth features are ALWAYS fully cleared (need flat bottoms)
         # Large through-cut features are contoured instead of fully cleared to save machining time
         # Note: Contoured features require manual post-processing to remove the tab-held center
         # Set to 0 to disable contouring entirely (always fully clear all pockets/holes)
-        contour_threshold: 50           # Default: 50 (conservative - ~125 tool areas at 40% stepover)
+        contour_threshold: 510          # Default: 510 (aluminum: ~2.0" dia, plywood: ~3.2" dia, polycarbonate: ~3.0" dia)
 
     # Tube facing parameters (for aluminum tube operations)
     tube_facing:
@@ -241,7 +242,7 @@ machines:
         pause_before_perimeter: false
 
       pockets:
-        contour_threshold: 50
+        contour_threshold: 510
 
     # Tube facing (same as shop_router)
     tube_facing:

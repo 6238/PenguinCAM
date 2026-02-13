@@ -1320,7 +1320,7 @@ class FRCPostProcessor:
             gcode.append("(===== HOLES =====)")
 
             # Get pocket contouring threshold from config (applies to circular holes too)
-            contour_threshold = self.config.get('machining', 'pockets', 'contour_threshold', default=50)
+            contour_threshold = self.config._get('machining', 'pockets', 'contour_threshold', default=50)
 
             # Check if this is a through-cut (to sacrifice board)
             # Only contour through-cuts; partial-depth features must be fully cleared
@@ -1339,17 +1339,17 @@ class FRCPostProcessor:
                 hole_area = math.pi * (diameter / 2) ** 2
 
                 # Calculate threshold area (same formula as pockets)
-                threshold_area = (contour_threshold * self.tool_diameter**2 / self.stepover_percentage) if contour_threshold > 0 else float('inf')
+                threshold_area = (contour_threshold * self.tool_diameter**2 * self.stepover_percentage) if contour_threshold > 0 else float('inf')
 
                 # Only contour if it's a through-cut AND exceeds size threshold
                 if is_through_cut and hole_area > threshold_area:
                     contoured_holes.append((i, hole, hole_area))
-                    gcode.append(f"(Hole {i} - {diameter:.3f}\" dia, {hole_area:.3f} sq in > {threshold_area:.3f} sq in threshold - will contour through-cut)")
+                    gcode.append(f"(Hole {i} - {diameter:.3f}\" diameter, {hole_area:.3f} sq in > {threshold_area:.3f} sq in threshold - will contour through-cut)")
                 else:
                     cleared_holes.append((i, hole, needs_peck))
                     strategy = "peck + spiral" if needs_peck else "helical + spiral"
                     reason = "(partial depth)" if not is_through_cut else ""
-                    gcode.append(f"(Hole {i} - {diameter:.3f}\" dia, {hole_area:.3f} sq in - {strategy} {reason})")
+                    gcode.append(f"(Hole {i} - {diameter:.3f}\" diameter, {hole_area:.3f} sq in - {strategy} {reason})")
 
             # Process cleared holes first
             if cleared_holes:
@@ -1399,7 +1399,7 @@ class FRCPostProcessor:
             gcode.append("(===== POCKETS =====)")
 
             # Get pocket contouring threshold from config
-            contour_threshold = self.config.get('machining', 'pockets', 'contour_threshold', default=50)
+            contour_threshold = self.config._get('machining', 'pockets', 'contour_threshold', default=50)
 
             # Check if this is a through-cut (to sacrifice board)
             # Only contour through-cuts; partial-depth features must be fully cleared
@@ -1415,7 +1415,7 @@ class FRCPostProcessor:
 
                 # Calculate threshold area: contour_threshold × tool_diameter² / stepover
                 # Set contour_threshold to 0 to disable contouring entirely
-                threshold_area = (contour_threshold * self.tool_diameter**2 / self.stepover_percentage) if contour_threshold > 0 else float('inf')
+                threshold_area = (contour_threshold * self.tool_diameter**2 * self.stepover_percentage) if contour_threshold > 0 else float('inf')
 
                 # Only contour if it's a through-cut AND exceeds size threshold
                 if is_through_cut and pocket_area > threshold_area:
@@ -1912,8 +1912,8 @@ class FRCPostProcessor:
 
             # Generate toolpaths at this depth
             # Apply same contouring logic as 2D mode
-            contour_threshold = self.config.get('machining', 'pockets', 'contour_threshold', default=50)
-            threshold_area = (contour_threshold * self.tool_diameter**2 / self.stepover_percentage) if contour_threshold > 0 else float('inf')
+            contour_threshold = self.config._get('machining', 'pockets', 'contour_threshold', default=50)
+            threshold_area = (contour_threshold * self.tool_diameter**2 * self.stepover_percentage) if contour_threshold > 0 else float('inf')
 
             # Check if this layer is a through-cut (at or below Z=0)
             # Only contour through-cuts; partial-depth layers must be fully cleared

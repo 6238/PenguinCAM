@@ -53,10 +53,11 @@ TEAM_6238_DEFAULTS = {
             # Contour threshold: feature area in multiples of tool cross-section (at 100% stepover)
             # Applies to both irregular pockets AND large circular holes (through-cuts only)
             # IMPORTANT: Only applies to through-cuts (Z <= 0); partial-depth features always cleared
-            # Actual threshold scales inversely with stepover (tighter stepover = lower area threshold)
-            # Default: 50 (conservative - requires ~125 tool areas at 40% stepover)
+            # Formula: threshold_area = contour_threshold × tool_diameter² × stepover_percentage
+            # Actual threshold scales directly with stepover (tighter stepover = lower area threshold)
+            # Default: 510 (aluminum: ~2.0" dia, plywood: ~3.2" dia, polycarbonate: ~3.0" dia)
             # Set to 0 to disable (always fully clear all features)
-            'contour_threshold': 50
+            'contour_threshold': 510
         },
         'default_tool': {
             'diameter': 0.157  # 4mm end mill

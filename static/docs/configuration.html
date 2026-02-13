@@ -327,6 +327,36 @@ machines:
   detection_tolerance: 0.0001         # Circularity tolerance
   min_millable_multiplier: 1.2        # Min hole = 1.2× tool diameter</code></pre>
 
+        <h3>Pocket and Hole Contouring</h3>
+        <p>
+            For large through-cut features, PenguinCAM can contour the perimeter instead of fully clearing
+            the interior. This saves significant machining time, with the trade-off that the center material
+            must be removed manually afterward (it's held in place by tabs).
+        </p>
+        <pre><code>pockets:
+  contour_threshold: 510    # Area threshold for contouring</code></pre>
+        <p>
+            The threshold determines when a feature is large enough to benefit from contouring. The formula is:
+        </p>
+        <pre><code>threshold_area = contour_threshold × tool_diameter² × stepover_percentage</code></pre>
+        <p>
+            This means tighter stepover (aluminum) has a lower threshold and will contour smaller features, since
+            those features take many more passes to clear. With the default threshold of 510:
+        </p>
+        <ul>
+            <li><strong>Aluminum (25% stepover):</strong> Contours features larger than ~2.0" diameter</li>
+            <li><strong>Plywood (65% stepover):</strong> Contours features larger than ~3.2" diameter</li>
+            <li><strong>Polycarbonate (55% stepover):</strong> Contours features larger than ~3.0" diameter</li>
+        </ul>
+        <div class="info-box">
+            <div class="info-icon">ℹ️</div>
+            <div>
+                <strong>Important:</strong> Contouring only applies to through-cuts (features that go all the way
+                through the material to Z=0). Partial-depth features are always fully cleared since they need
+                flat bottoms for functionality. Set <code>contour_threshold: 0</code> to disable contouring entirely.
+            </div>
+        </div>
+
         <h3>Tube Facing</h3>
         <p>
             For teams that machine aluminum tube, configure tube-specific parameters:

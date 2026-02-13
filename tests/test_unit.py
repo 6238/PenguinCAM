@@ -695,7 +695,15 @@ class TestCircularPerimeter(unittest.TestCase):
 
     def test_washer_with_rotation_and_translation(self):
         """Test washer-like part: circular perimeter with hole, verify proper rotation and translation."""
-        pp = FRCPostProcessor(0.236, 0.157)
+        # Disable pocket contouring for this test (we want to test normal hole clearing)
+        from team_config import TeamConfig
+        config = TeamConfig()
+        config._data['machines'] = config._data.get('machines', {})
+        config._data['machines']['default'] = config._data['machines'].get('default', {})
+        config._data['machines']['default']['machining'] = config._data['machines']['default'].get('machining', {})
+        config._data['machines']['default']['machining']['pockets'] = {'contour_threshold': 0}
+
+        pp = FRCPostProcessor(0.236, 0.157, config=config)
         pp.apply_material_preset('plywood')  # Sets required material parameters
 
         # Washer centered at origin: outer 4" diameter, inner 2" diameter
@@ -784,6 +792,240 @@ class TestCircularPerimeter(unittest.TestCase):
         # Verify holes are sorted by size
         self.assertGreater(pp.holes[0]['diameter'], pp.holes[1]['diameter'],
                           "Holes should be sorted largest first")
+
+
+class TestPocketContouring(unittest.TestCase):
+    """Test pocket and hole contouring for large features"""
+
+    def test_large_through_cut_hole_is_contoured(self):
+        """Test that a large hole cutting to sacrifice board is contoured instead of cleared"""
+        from team_config import TeamConfig
+        pp = FRCPostProcessor(0.25, 0.157)
+        pp.apply_material_preset('plywood')
+
+        # Outer perimeter (10" × 10" square) and large 4" diameter circular hole (12.56 sq in)
+        # Threshold = 510 × 0.157² × 0.65 ≈ 8.2 sq in
+        # 12.56 > 8.2 → should be contoured
+        pp.circles = [
+            {'center': (5.0, 5.0), 'radius': 2.0, 'diameter': 4.0},  # Inner hole
+        ]
+        pp.polylines = [
+            [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0), (0.0, 0.0)]  # Outer perimeter
+        ]
+        pp.lines = []
+        pp.arcs = []
+        pp.splines = []
+
+        pp.transform_coordinates('bottom-left', 0)
+        pp.identify_perimeter_and_pockets()
+        pp.classify_holes()
+
+        result = pp.generate_gcode()
+        self.assertTrue(result.success, f"G-code generation should succeed: {result.errors}")
+
+        gcode = result.gcode
+        # Should see "contour" and "manual removal" in comments
+        self.assertIn('CONTOUR', gcode, "Large through-cut hole should be contoured")
+        self.assertIn('manual removal', gcode, "Should warn about manual removal")
+        # Should NOT see "helical + spiral" for this hole
+        self.assertNotIn('helical + spiral', gcode, "Large contoured hole should not use helical clearing")
+
+    def test_small_through_cut_hole_is_cleared(self):
+        """Test that a small hole cutting to sacrifice board is fully cleared"""
+        from team_config import TeamConfig
+        pp = FRCPostProcessor(0.25, 0.157)
+        pp.apply_material_preset('plywood')
+
+        # Outer perimeter and small 0.5" diameter hole (0.196 sq in)
+        # Threshold ≈ 8.2 sq in
+        # 0.196 < 8.2 → should be fully cleared
+        pp.circles = [
+            {'center': (5.0, 5.0), 'radius': 0.25, 'diameter': 0.5},
+        ]
+        pp.polylines = [
+            [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0), (0.0, 0.0)]  # Outer perimeter
+        ]
+        pp.lines = []
+        pp.arcs = []
+        pp.splines = []
+
+        pp.transform_coordinates('bottom-left', 0)
+        pp.identify_perimeter_and_pockets()
+        pp.classify_holes()
+
+        result = pp.generate_gcode()
+        self.assertTrue(result.success, f"G-code generation should succeed: {result.errors}")
+
+        gcode = result.gcode
+        # Should see "helical + spiral" for cleared hole
+        self.assertIn('helical', gcode, "Small hole should use helical clearing")
+        # Should NOT see "contour" for this hole
+        self.assertNotIn('CONTOUR', gcode, "Small hole should not be contoured")
+
+    def test_large_partial_depth_hole_is_cleared(self):
+        """Test that a large partial-depth hole is ALWAYS fully cleared (never contoured)"""
+        from team_config import TeamConfig
+        pp = FRCPostProcessor(0.25, 0.157)
+        pp.apply_material_preset('plywood')
+
+        # Outer perimeter and large 4" diameter hole, but only 0.1" deep (partial depth)
+        pp.circles = [
+            {'center': (5.0, 5.0), 'radius': 2.0, 'diameter': 4.0},
+        ]
+        pp.polylines = [
+            [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0), (0.0, 0.0)]  # Outer perimeter
+        ]
+        pp.lines = []
+        pp.arcs = []
+        pp.splines = []
+
+        pp.transform_coordinates('bottom-left', 0)
+        pp.identify_perimeter_and_pockets()
+        pp.classify_holes()
+
+        # Override cut_depth to be partial (above Z=0)
+        pp.cut_depth = 0.15  # Cutting to Z=0.15" (15% into material from top)
+
+        result = pp.generate_gcode()
+        self.assertTrue(result.success, f"G-code generation should succeed: {result.errors}")
+
+        gcode = result.gcode
+        # Should see "(partial depth)" comment
+        self.assertIn('partial depth', gcode, "Should identify as partial depth")
+        # Should see "helical" clearing even though it's large
+        self.assertIn('helical', gcode, "Large partial-depth hole should still be fully cleared")
+        # Should NOT be contoured
+        self.assertNotIn('CONTOUR', gcode, "Partial-depth holes should never be contoured")
+
+    def test_large_through_cut_pocket_is_contoured(self):
+        """Test that a large pocket cutting to sacrifice board is contoured"""
+        from team_config import TeamConfig
+        pp = FRCPostProcessor(0.25, 0.157)
+        pp.apply_material_preset('plywood')
+
+        # Outer perimeter (10" × 10") and large rectangular pocket: 4" × 4" = 16 sq in
+        # Threshold ≈ 8.2 sq in
+        # 16 > 8.2 → should be contoured
+        pp.circles = []
+        pp.polylines = [
+            [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0), (0.0, 0.0)],  # Outer perimeter
+            [(2.0, 2.0), (6.0, 2.0), (6.0, 6.0), (2.0, 6.0), (2.0, 2.0)]  # Inner pocket
+        ]
+        pp.lines = []
+        pp.arcs = []
+        pp.splines = []
+
+        pp.transform_coordinates('bottom-left', 0)
+        pp.identify_perimeter_and_pockets()
+        pp.classify_holes()
+
+        result = pp.generate_gcode()
+        self.assertTrue(result.success, f"G-code generation should succeed: {result.errors}")
+
+        gcode = result.gcode
+        # Should see "CONTOUR ONLY" for large pocket
+        self.assertIn('CONTOUR', gcode, "Large through-cut pocket should be contoured")
+        self.assertIn('manual removal', gcode, "Should warn about manual removal")
+
+    def test_small_through_cut_pocket_is_cleared(self):
+        """Test that a small pocket cutting to sacrifice board is fully cleared"""
+        from team_config import TeamConfig
+        pp = FRCPostProcessor(0.25, 0.157)
+        pp.apply_material_preset('plywood')
+
+        # Outer perimeter and small rectangular pocket: 0.5" × 0.5" = 0.25 sq in
+        # Threshold ≈ 8.2 sq in
+        # 0.25 < 8.2 → should be fully cleared
+        pp.circles = []
+        pp.polylines = [
+            [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0), (0.0, 0.0)],  # Outer perimeter
+            [(2.0, 2.0), (2.5, 2.0), (2.5, 2.5), (2.0, 2.5), (2.0, 2.0)]  # Inner pocket
+        ]
+        pp.lines = []
+        pp.arcs = []
+        pp.splines = []
+
+        pp.transform_coordinates('bottom-left', 0)
+        pp.identify_perimeter_and_pockets()
+        pp.classify_holes()
+
+        result = pp.generate_gcode()
+        self.assertTrue(result.success, f"G-code generation should succeed: {result.errors}")
+
+        gcode = result.gcode
+        # Should see pocket clearing with helical entry
+        self.assertIn('helical', gcode, "Small pocket should use helical entry and clearing")
+        # Should NOT see contouring
+        self.assertNotIn('CONTOUR', gcode, "Small pocket should not be contoured")
+
+    def test_large_partial_depth_pocket_is_cleared(self):
+        """Test that a large partial-depth pocket is ALWAYS fully cleared"""
+        from team_config import TeamConfig
+        pp = FRCPostProcessor(0.25, 0.157)
+        pp.apply_material_preset('plywood')
+
+        # Outer perimeter and large rectangular pocket: 4" × 4" = 16 sq in, but partial depth
+        pp.circles = []
+        pp.polylines = [
+            [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0), (0.0, 0.0)],  # Outer perimeter
+            [(2.0, 2.0), (6.0, 2.0), (6.0, 6.0), (2.0, 6.0), (2.0, 2.0)]  # Inner pocket
+        ]
+        pp.lines = []
+        pp.arcs = []
+        pp.splines = []
+
+        pp.transform_coordinates('bottom-left', 0)
+        pp.identify_perimeter_and_pockets()
+        pp.classify_holes()
+
+        # Override cut_depth to be partial (above Z=0)
+        pp.cut_depth = 0.1  # Cutting to Z=0.1" (partial depth)
+
+        result = pp.generate_gcode()
+        self.assertTrue(result.success, f"G-code generation should succeed: {result.errors}")
+
+        gcode = result.gcode
+        # Should see "(partial depth)" comment
+        self.assertIn('partial depth', gcode, "Should identify pocket as partial depth")
+        # Should see helical clearing even though it's large
+        self.assertIn('helical', gcode, "Large partial-depth pocket should still be fully cleared")
+        # Should NOT be contoured
+        self.assertNotIn('CONTOUR', gcode, "Partial-depth pockets should never be contoured")
+
+    def test_contouring_can_be_disabled(self):
+        """Test that setting contour_threshold to 0 disables all contouring"""
+        from team_config import TeamConfig
+        config = TeamConfig()
+        config._data['machines'] = config._data.get('machines', {})
+        config._data['machines']['default'] = config._data['machines'].get('default', {})
+        config._data['machines']['default']['machining'] = config._data['machines']['default'].get('machining', {})
+        config._data['machines']['default']['machining']['pockets'] = {'contour_threshold': 0}
+
+        pp = FRCPostProcessor(0.25, 0.157, config=config)
+        pp.apply_material_preset('plywood')
+
+        # Outer perimeter and large 4" diameter hole that would normally be contoured
+        pp.circles = [
+            {'center': (5.0, 5.0), 'radius': 2.0, 'diameter': 4.0},
+        ]
+        pp.polylines = [
+            [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0), (0.0, 0.0)]  # Outer perimeter
+        ]
+        pp.lines = []
+        pp.arcs = []
+        pp.splines = []
+
+        pp.transform_coordinates('bottom-left', 0)
+        pp.identify_perimeter_and_pockets()
+        pp.classify_holes()
+
+        result = pp.generate_gcode()
+        self.assertTrue(result.success, f"G-code generation should succeed: {result.errors}")
+
+        gcode = result.gcode
+        # With contouring disabled, should be fully cleared
+        self.assertIn('helical', gcode, "With contouring disabled, large hole should be cleared")
+        self.assertNotIn('CONTOUR', gcode, "With contouring disabled, should not contour")
 
 
 class TestPerimeterWithArcs(unittest.TestCase):
