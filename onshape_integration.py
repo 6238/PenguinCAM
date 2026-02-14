@@ -1050,9 +1050,119 @@ class OnshapeClient:
 
         return sorted_bins
 
+    def _convert_geometry_to_solid_hatch(self, source_msp, target_msp, layer_name):
+        """
+        Convert circles and polylines from source to solid HATCH entities in target.
+
+        This represents each face as a solid filled region (negative space to remove)
+        rather than stroked outlines. This makes slicing logic much simpler.
+
+        Args:
+            source_msp: Source modelspace with circles/lines/polylines
+            target_msp: Target modelspace to add HATCH entities to
+            layer_name: Layer name for the HATCH entities
+
+        Returns:
+            Number of HATCH entities created
+        """
+        import ezdxf
+        from shapely.geometry import Point, Polygon, LineString
+        from shapely.ops import unary_union
+
+        # Extract all geometry
+        circles = []
+        polylines = []
+
+        # Get circles
+        for entity in source_msp.query('CIRCLE'):
+            center = (entity.dxf.center.x, entity.dxf.center.y)
+            radius = entity.dxf.radius
+            circles.append({'center': center, 'radius': radius})
+
+        # Get closed polylines
+        for entity in source_msp.query('LWPOLYLINE'):
+            if entity.closed:
+                points = [(p[0], p[1]) for p in entity.get_points('xy')]
+                if len(points) >= 3:
+                    polylines.append(points)
+
+        for entity in source_msp.query('POLYLINE'):
+            if entity.is_2d_polyline and entity.is_closed:
+                points = [(v.dxf.location.x, v.dxf.location.y) for v in entity.vertices]
+                if len(points) >= 3:
+                    polylines.append(points)
+
+        log(f"    Converting to solid regions: {len(circles)} circles, {len(polylines)} polylines")
+
+        if not circles and not polylines:
+            log(f"    No geometry to convert")
+            return 0
+
+        # Convert to Shapely geometries
+        geoms = []
+
+        # Circles as filled regions
+        for circle in circles:
+            geom = Point(circle['center']).buffer(circle['radius'])
+            geoms.append(geom)
+
+        # Polylines as filled polygons
+        for polyline in polylines:
+            try:
+                poly = Polygon(polyline)
+                if poly.is_valid:
+                    geoms.append(poly)
+            except:
+                pass
+
+        # Union all geometry into solid regions
+        if geoms:
+            union = unary_union(geoms)
+
+            # Convert union back to HATCH entities
+            hatch_count = 0
+
+            if union.geom_type == 'Polygon':
+                hatch_count += self._create_hatch_from_polygon(union, target_msp, layer_name)
+            elif union.geom_type == 'MultiPolygon':
+                for poly in union.geoms:
+                    hatch_count += self._create_hatch_from_polygon(poly, target_msp, layer_name)
+
+            log(f"    Created {hatch_count} solid HATCH entities")
+            return hatch_count
+
+        return 0
+
+    def _create_hatch_from_polygon(self, polygon, msp, layer_name):
+        """
+        Create a HATCH entity from a Shapely polygon.
+        Polygon may have holes (interior rings).
+
+        Returns:
+            Number of HATCHes created (1 if successful, 0 otherwise)
+        """
+        try:
+            # Create HATCH entity
+            hatch = msp.add_hatch(color=7, dxfattribs={'layer': layer_name})
+
+            # Add exterior boundary
+            exterior_coords = list(polygon.exterior.coords)
+            hatch.paths.add_polyline_path(exterior_coords, is_closed=True)
+
+            # Add interior holes as boundary islands
+            for interior in polygon.interiors:
+                interior_coords = list(interior.coords)
+                hatch.paths.add_polyline_path(interior_coords, is_closed=True, flags=1)  # flags=1 = external/island
+
+            return 1
+        except Exception as e:
+            log(f"      Warning: Could not create HATCH: {e}")
+            return 0
+
     def merge_dxfs_with_layers(self, dxf_contents_by_depth, depth_metadata=None):
         """
-        Merge multiple DXF contents into one with depth-encoded layer names
+        Merge multiple DXF contents into one with depth-encoded layer names.
+        Converts geometry to solid HATCH entities representing negative space.
 
         Args:
             dxf_contents_by_depth: Dict {depth: dxf_bytes}
@@ -1066,7 +1176,7 @@ class OnshapeClient:
         import os
 
         log(f"\n{'='*70}")
-        log(f"MERGING DXFs WITH LAYER NAMES")
+        log(f"MERGING DXFs WITH LAYER NAMES (AS SOLID REGIONS)")
         log(f"{'='*70}")
 
         # Create new DXF document
@@ -1111,24 +1221,22 @@ class OnshapeClient:
                 if layer_name not in merged_doc.layers:
                     merged_doc.layers.add(layer_name)
 
-                # Copy all entities to merged doc with new layer and translation
-                entity_count = 0
-                for entity in source_msp:
-                    # Clone entity and change its layer
-                    try:
-                        new_entity = entity.copy()
-                        new_entity.dxf.layer = layer_name
+                # Apply translation to source geometry if needed
+                if offset_x != 0 or offset_y != 0:
+                    log(f"  Translating source geometry by ({offset_x:.4f}, {offset_y:.4f})")
+                    for entity in source_msp:
+                        try:
+                            entity.translate(offset_x, offset_y, 0)
+                        except:
+                            pass
 
-                        # Apply translation offset to align coordinate systems
-                        if offset_x != 0 or offset_y != 0:
-                            new_entity.translate(offset_x, offset_y, 0)
+                # Convert geometry to solid HATCH entities
+                hatch_count = self._convert_geometry_to_solid_hatch(source_msp, merged_msp, layer_name)
 
-                        merged_msp.add_entity(new_entity)
-                        entity_count += 1
-                    except Exception as e:
-                        log(f"  Warning: Could not copy entity {entity.dxftype()}: {e}")
-
-                log(f"  Copied {entity_count} entities to layer {layer_name}")
+                if hatch_count > 0:
+                    log(f"  Added {hatch_count} solid regions to layer {layer_name}")
+                else:
+                    log(f"  Warning: No solid regions created for layer {layer_name}")
 
             finally:
                 # Clean up temp file

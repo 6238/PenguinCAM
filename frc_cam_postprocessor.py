@@ -444,25 +444,47 @@ class FRCPostProcessor:
             layer_circles = []
             layer_polylines = []
 
-            # Extract circles from this layer
-            for entity in msp.query('CIRCLE'):
+            # PRIORITY 1: Extract HATCH entities (solid regions from new format)
+            hatch_count = 0
+            for entity in msp.query('HATCH'):
                 if entity.dxf.layer == layer_name:
-                    center = (entity.dxf.center.x, entity.dxf.center.y)
-                    radius = entity.dxf.radius
-                    layer_circles.append({'center': center, 'radius': radius, 'diameter': radius * 2})
+                    try:
+                        # Each HATCH has multiple boundary paths
+                        for path in entity.paths:
+                            if hasattr(path, 'vertices') and path.vertices:
+                                # Polyline path
+                                coords = [(v[0], v[1]) for v in path.vertices]
+                                if len(coords) >= 3:
+                                    layer_polylines.append(coords)
+                                    hatch_count += 1
+                    except Exception as e:
+                        print(f"      Warning: Could not parse HATCH entity: {e}")
 
-            # Extract polylines from this layer (same logic as single-layer)
-            for entity in msp.query('LWPOLYLINE'):
-                if entity.dxf.layer == layer_name:
-                    points = [(p[0], p[1]) for p in entity.get_points('xy')]
-                    if entity.closed and len(points) > 2:
-                        layer_polylines.append(points)
+            if hatch_count > 0:
+                print(f"    Extracted {hatch_count} regions from HATCH entities (solid format)")
 
-            for entity in msp.query('POLYLINE'):
-                if entity.is_2d_polyline and entity.dxf.layer == layer_name:
-                    points = [(v.dxf.location.x, v.dxf.location.y) for v in entity.vertices]
-                    if entity.is_closed and len(points) > 2:
-                        layer_polylines.append(points)
+            # FALLBACK: Extract circles and polylines (old stroke format)
+            # Only process if no HATCH entities found
+            if hatch_count == 0:
+                # Extract circles from this layer
+                for entity in msp.query('CIRCLE'):
+                    if entity.dxf.layer == layer_name:
+                        center = (entity.dxf.center.x, entity.dxf.center.y)
+                        radius = entity.dxf.radius
+                        layer_circles.append({'center': center, 'radius': radius, 'diameter': radius * 2})
+
+                # Extract polylines from this layer (same logic as single-layer)
+                for entity in msp.query('LWPOLYLINE'):
+                    if entity.dxf.layer == layer_name:
+                        points = [(p[0], p[1]) for p in entity.get_points('xy')]
+                        if entity.closed and len(points) > 2:
+                            layer_polylines.append(points)
+
+                for entity in msp.query('POLYLINE'):
+                    if entity.is_2d_polyline and entity.dxf.layer == layer_name:
+                        points = [(v.dxf.location.x, v.dxf.location.y) for v in entity.vertices]
+                        if entity.is_closed and len(points) > 2:
+                            layer_polylines.append(points)
 
             # Collect individual entities for path stitching
             lines = [e for e in msp.query('LINE') if e.dxf.layer == layer_name]
@@ -476,13 +498,19 @@ class FRCPostProcessor:
                 closed_paths = self._chain_entities_to_paths(lines, arcs, splines, unclosed_lwpolylines)
                 layer_polylines.extend(closed_paths)
 
+            # Convert geometry to Shapely Polygons for unified representation
+            polygons = self._convert_to_shapely_polygons(layer_circles, layer_polylines)
+
             self.layer_data[layer_name] = {
                 'depth': depth,
+                'polygons': polygons,
+                # Keep old format temporarily for compatibility during migration
                 'circles': layer_circles,
                 'polylines': layer_polylines
             }
 
             print(f"    Found {len(layer_circles)} circles and {len(layer_polylines)} closed paths at this depth")
+            print(f"    Converted to {len(polygons)} Shapely Polygon(s)")
 
         # For compatibility, set top-level circles/polylines to COPIES of the shallowest layer
         # (This allows classify_loops to work as-is for single-layer operations)
@@ -868,6 +896,7 @@ class FRCPostProcessor:
 
             # Also transform multi-layer geometry if present
             if self.layer_data:
+                from shapely import affinity
                 for layer_name, layer_info in self.layer_data.items():
                     # Rotate circles
                     for circle in layer_info['circles']:
@@ -876,6 +905,15 @@ class FRCPostProcessor:
                     # Rotate polylines
                     for i, polyline in enumerate(layer_info['polylines']):
                         layer_info['polylines'][i] = [rotate_point(x, y) for x, y in polyline]
+
+                    # Rotate Shapely Polygons
+                    if 'polygons' in layer_info:
+                        rotated_polygons = []
+                        for poly in layer_info['polygons']:
+                            # Rotate around center point
+                            rotated = affinity.rotate(poly, rotation_angle, origin=(centerX, centerY), use_radians=False)
+                            rotated_polygons.append(rotated)
+                        layer_info['polygons'] = rotated_polygons
 
             # Recalculate bounds after rotation
             all_x = []
@@ -946,6 +984,7 @@ class FRCPostProcessor:
 
         # Also transform multi-layer geometry if present
         if self.layer_data:
+            from shapely import affinity
             for layer_name, layer_info in self.layer_data.items():
                 # Translate circles
                 for circle in layer_info['circles']:
@@ -954,6 +993,14 @@ class FRCPostProcessor:
                 # Translate polylines
                 for i, polyline in enumerate(layer_info['polylines']):
                     layer_info['polylines'][i] = [translate_point(x, y) for x, y in polyline]
+
+                # Translate Shapely Polygons
+                if 'polygons' in layer_info:
+                    translated_polygons = []
+                    for poly in layer_info['polygons']:
+                        translated = affinity.translate(poly, xoff=offsetX, yoff=offsetY)
+                        translated_polygons.append(translated)
+                    layer_info['polygons'] = translated_polygons
 
         # Calculate new bounds
         all_x = []
@@ -1660,6 +1707,121 @@ class FRCPostProcessor:
         gcode.append("")
         return gcode
 
+    def _convert_to_shapely_polygons(self, circles, polylines):
+        """
+        Convert circles and polylines to Shapely Polygon objects.
+        Handles HATCH entities (multiple boundaries = polygon with holes).
+        Detects concentric circles and creates ring polygons.
+
+        Args:
+            circles: List of circle dicts with 'center' and 'radius'
+            polylines: List of polyline coordinate lists
+
+        Returns:
+            List of Shapely Polygon objects (may have interior holes)
+        """
+        from shapely.geometry import Point, Polygon
+        from shapely.ops import unary_union
+        import math
+
+        polygons = []
+
+        # Detect concentric circles (same center, different radii)
+        # These should become ring polygons (donut shapes with holes)
+        used_circles = set()
+
+        for i, circle1 in enumerate(circles):
+            if i in used_circles:
+                continue
+
+            center1 = circle1['center']
+            radius1 = circle1['radius']
+
+            # Look for concentric circles
+            concentric_group = [circle1]
+            for j, circle2 in enumerate(circles):
+                if i == j or j in used_circles:
+                    continue
+
+                center2 = circle2['center']
+                radius2 = circle2['radius']
+
+                # Check if centers are the same (within tolerance)
+                dx = abs(center1[0] - center2[0])
+                dy = abs(center1[1] - center2[1])
+                if dx < 0.001 and dy < 0.001:
+                    # Concentric!
+                    concentric_group.append(circle2)
+                    used_circles.add(j)
+
+            used_circles.add(i)
+
+            # Create polygon(s) from this group
+            if len(concentric_group) == 1:
+                # Single circle - simple filled polygon
+                poly = Point(center1).buffer(radius1)
+                polygons.append(poly)
+            else:
+                # Multiple concentric circles - create ring with holes
+                # Sort by radius (largest first)
+                concentric_group.sort(key=lambda c: c['radius'], reverse=True)
+
+                # Outer boundary is the largest circle
+                outer_circle = concentric_group[0]
+                outer_poly = Point(outer_circle['center']).buffer(outer_circle['radius'])
+
+                # Interior holes are the other circles
+                holes = []
+                for inner_circle in concentric_group[1:]:
+                    inner_poly = Point(inner_circle['center']).buffer(inner_circle['radius'])
+                    # Get exterior coords as hole
+                    hole_coords = list(inner_poly.exterior.coords)
+                    holes.append(hole_coords)
+
+                # Create polygon with holes
+                outer_coords = list(outer_poly.exterior.coords)
+                ring_poly = Polygon(outer_coords, holes=holes)
+                if ring_poly.is_valid:
+                    polygons.append(ring_poly)
+                    print(f"      Detected concentric circles: outer r={outer_circle['radius']:.3f}\", {len(holes)} inner hole(s)")
+
+        # Convert polylines to polygons
+        # Special handling: if we have exactly 2 polylines and one is inside the other,
+        # create a polygon with a hole (e.g., from HATCH with island)
+        if len(polylines) == 2:
+            try:
+                poly1 = Polygon(polylines[0])
+                poly2 = Polygon(polylines[1])
+
+                if poly1.is_valid and poly2.is_valid:
+                    # Check if one contains the other
+                    if poly1.contains(poly2):
+                        # poly1 is outer, poly2 is inner hole
+                        poly_with_hole = Polygon(polylines[0], holes=[polylines[1]])
+                        if poly_with_hole.is_valid:
+                            polygons.append(poly_with_hole)
+                            return polygons
+                    elif poly2.contains(poly1):
+                        # poly2 is outer, poly1 is inner hole
+                        poly_with_hole = Polygon(polylines[1], holes=[polylines[0]])
+                        if poly_with_hole.is_valid:
+                            polygons.append(poly_with_hole)
+                            return polygons
+            except:
+                pass
+
+        # Default: treat each polyline as separate polygon
+        for polyline in polylines:
+            if len(polyline) >= 3:
+                try:
+                    poly = Polygon(polyline)
+                    if poly.is_valid:
+                        polygons.append(poly)
+                except:
+                    pass
+
+        return polygons
+
     def _geometries_to_shapely(self, circles, polylines):
         """Convert circles and polylines to shapely geometries"""
         from shapely.geometry import Polygon, Point
@@ -1871,59 +2033,103 @@ class FRCPostProcessor:
 
             gcode.append(f"(===== LAYER: {layer_name} | DEPTH: Z={depth:.4f}\" =====)")
 
-            # Get raw geometry for this layer
-            raw_circles = layer_info['circles'].copy()
-            raw_polylines = layer_info['polylines'].copy()
+            # === NEW SHAPELY POLYGON APPROACH ===
+            # Get Shapely Polygons for this layer
+            from shapely.ops import unary_union
+            from shapely.geometry import Polygon, MultiPolygon
 
-            # Build union of all HOLES/POCKETS at DEEPER depths (will be cut through)
-            # IMPORTANT: Only subtract holes/pockets, NOT perimeters (the perimeter square at Z=0
-            # defines the part boundary, not a hole to subtract from upper layers)
-            deeper_geometry = None
+            current_polygons = layer_info['polygons']
+            print(f"  Current layer: {len(current_polygons)} polygon(s)")
 
-            # Check all layers for deeper cuts
-            for check_layer_name, check_layer_info in self.layer_data.items():
-                check_depth = check_layer_info['depth']
+            # === PROPER 3D SLICING LOGIC ===
+            # Find the next deeper layer
+            next_deeper_layer = None
+            next_deeper_depth = None
+            for check_name, check_info in self.layer_data.items():
+                check_depth = check_info['depth']
+                if check_depth < depth - 0.001:  # Deeper than current
+                    if next_deeper_depth is None or check_depth > next_deeper_depth:
+                        next_deeper_layer = check_name
+                        next_deeper_depth = check_depth
 
-                # Include if:
-                # 1. It's deeper than current layer (depth < current depth), OR
-                # 2. It's the bottom face (will be cut through)
-                is_deeper = check_depth < depth - 0.001  # Small tolerance
-                is_bottom = has_true_bottom and check_layer_name == bottom_layer_name
+            # If no explicit deeper layer, check if bottom face exists and is deeper
+            if has_true_bottom and bottom_layer[1]['depth'] < depth - 0.001:
+                if next_deeper_depth is None or bottom_layer[1]['depth'] > next_deeper_depth:
+                    next_deeper_layer = bottom_layer_name
+                    next_deeper_depth = bottom_layer[1]['depth']
 
-                if is_deeper or is_bottom:
-                    # For bottom face: Only include circles (holes), NOT polylines (perimeter)
-                    # For depth layers: Include all geometry (they have no perimeter)
-                    if is_bottom and check_layer_name == bottom_layer_name:
-                        # Bottom face: only subtract holes, not the perimeter polyline
-                        check_geom = self._geometries_to_shapely(
-                            check_layer_info['circles'],
-                            []  # Exclude polylines (perimeter)
-                        )
+            # Get geometry at next deeper layer and perform slicing
+            if next_deeper_layer:
+                next_layer_info = self.layer_data[next_deeper_layer]
+                deeper_polygons = next_layer_info['polygons']
+                print(f"  Next deeper layer: {next_deeper_layer} at Z={next_deeper_depth:.4f}\"")
+                print(f"    Deeper geometry: {len(deeper_polygons)} polygon(s)")
+
+                # For bottom face: exclude perimeter from subtraction
+                # The perimeter is the outermost boundary (part outline), not cleared material
+                if next_deeper_layer == bottom_layer_name and has_true_bottom:
+                    # Identify which polygon is the perimeter (largest area)
+                    if deeper_polygons:
+                        perimeter_polygon = max(deeper_polygons, key=lambda p: p.area)
+                        # Exclude perimeter, keep only interior features (holes/pockets)
+                        deeper_polygons_for_subtraction = [p for p in deeper_polygons if p != perimeter_polygon]
+                        print(f"    Excluding perimeter from subtraction (area={perimeter_polygon.area:.3f} sq in)")
+                        print(f"    Using {len(deeper_polygons_for_subtraction)} interior feature(s) for subtraction")
                     else:
-                        # Depth layer: include all geometry (no perimeter distinction)
-                        check_geom = self._geometries_to_shapely(
-                            check_layer_info['circles'],
-                            check_layer_info['polylines']
-                        )
+                        deeper_polygons_for_subtraction = []
+                else:
+                    deeper_polygons_for_subtraction = deeper_polygons
 
-                    if check_geom is not None:
-                        if deeper_geometry is None:
-                            deeper_geometry = check_geom
-                        else:
-                            from shapely.ops import unary_union
-                            deeper_geometry = unary_union([deeper_geometry, check_geom])
-                        print(f"  Subtracting {check_layer_name} (Z={check_depth:.4f}\") - will be cut deeper")
+                # SLICING: material_to_machine = current_solid - deeper_solid
+                if not deeper_polygons_for_subtraction:
+                    # No geometry to subtract
+                    result = unary_union(current_polygons) if len(current_polygons) > 1 else (current_polygons[0] if current_polygons else None)
+                else:
+                    current_union = unary_union(current_polygons) if len(current_polygons) > 1 else current_polygons[0]
+                    deeper_union = unary_union(deeper_polygons_for_subtraction) if len(deeper_polygons_for_subtraction) > 1 else deeper_polygons_for_subtraction[0]
+                    result = current_union.difference(deeper_union)
 
-            # Subtract deeper geometry from current layer
-            if deeper_geometry is not None:
-                self.circles, self.polylines = self._subtract_geometry(
-                    raw_circles, raw_polylines, deeper_geometry
-                )
-                print(f"  After subtraction: {len(self.circles)} circles, {len(self.polylines)} polylines")
+                # Convert result back to list of polygons
+                if result.is_empty:
+                    sliced_polygons = []
+                    print(f"  Result: No material to machine (fully covered by deeper layer)")
+                elif isinstance(result, Polygon):
+                    sliced_polygons = [result]
+                    print(f"  Result: 1 polygon to machine")
+                elif isinstance(result, MultiPolygon):
+                    sliced_polygons = list(result.geoms)
+                    print(f"  Result: {len(sliced_polygons)} polygons to machine")
+                else:
+                    # Other geometry types (unlikely but handle gracefully)
+                    sliced_polygons = []
+                    print(f"  Result: Unexpected geometry type {result.geom_type}")
             else:
-                self.circles = raw_circles
-                self.polylines = raw_polylines
-                print(f"  No deeper geometry to subtract")
+                # No deeper layer - use all polygons as-is
+                sliced_polygons = current_polygons
+                print(f"  No deeper geometry to subtract - using all features as-is")
+
+            # Convert Shapely Polygons back to circles/polylines for existing toolpath generation
+            # Store Polygons with islands separately for special handling
+            self.circles = []
+            self.polylines = []
+            self.pocket_polygons = []  # NEW: Store Polygon objects for island-aware machining
+
+            for poly in sliced_polygons:
+                if not poly.is_valid or poly.is_empty:
+                    continue
+
+                # Check if polygon has interior holes (islands)
+                if len(poly.interiors) > 0:
+                    # Store the complete Polygon object for island-aware machining
+                    self.pocket_polygons.append(poly)
+                    print(f"    Polygon with {len(poly.interiors)} interior hole(s) - will be machined as ring/pocket with islands")
+                else:
+                    # Simple polygon - extract as polyline
+                    exterior_coords = list(poly.exterior.coords)[:-1]  # Remove duplicate last point
+                    if len(exterior_coords) >= 3:
+                        self.polylines.append(exterior_coords)
+
+            print(f"  Converted to {len(self.circles)} circles, {len(self.polylines)} polylines, {len(self.pocket_polygons)} island-aware pockets")
 
             # Classify geometry (holes, pockets) - reuses existing methods
             self.classify_holes()
@@ -2007,6 +2213,17 @@ class FRCPostProcessor:
                     pocket_poly = Polygon(pocket)
                     gcode.append(f"(Large pocket {pocket_poly.area:.3f} sq in - CONTOUR ONLY)")
                     gcode.extend(self._generate_pocket_contour_gcode(pocket))
+
+            # Process island-aware pockets (Polygons with interior holes)
+            if hasattr(self, 'pocket_polygons') and self.pocket_polygons:
+                gcode.append(f"(Layer {layer_name}: {len(self.pocket_polygons)} island-aware pocket(s))")
+                total_pockets += len(self.pocket_polygons)
+
+                for pocket_poly in self.pocket_polygons:
+                    # For now, these are always cleared (no contouring for rings/grooves)
+                    # In the future, could add size threshold check here too
+                    gcode.append(f"(Ring/groove pocket with {len(pocket_poly.interiors)} island(s))")
+                    gcode.extend(self._generate_pocket_gcode_from_polygon(pocket_poly))
 
             # Restore original cut depth
             self.cut_depth = saved_cut_depth
@@ -2668,7 +2885,120 @@ class FRCPostProcessor:
         gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
 
         return gcode
-    
+
+    def _generate_pocket_gcode_from_polygon(self, pocket_poly: Polygon) -> List[str]:
+        """Generate G-code for a pocket from a Shapely Polygon (supports interior holes/islands).
+        This is the island-aware version that respects Polygon interiors."""
+        gcode = []
+
+        # Validate input
+        if not pocket_poly.is_valid or pocket_poly.is_empty:
+            return gcode
+
+        # Buffer inward (negative buffer) for tool compensation
+        # Key: Shapely automatically respects interior holes during buffer!
+        offset_poly = pocket_poly.buffer(-self.tool_radius)
+
+        if offset_poly.is_empty or offset_poly.area < 0.001:
+            center_x, center_y = pocket_poly.centroid.x, pocket_poly.centroid.y
+            error_msg = f"Pocket at approximately ({center_x:.3f}, {center_y:.3f}) is too small for {self.tool_diameter:.4f}\" tool - tool cannot fit inside with proper clearance"
+            self._add_error(error_msg)
+            return gcode
+
+        # Find a good entry point within the machining area
+        # CRITICAL: For rings/donuts, centroid is in the center hole (island)!
+        # Use representative_point() which is guaranteed to be inside the solid geometry
+        if hasattr(offset_poly, 'representative_point'):
+            rep_point = offset_poly.representative_point()
+            entry_x = rep_point.x
+            entry_y = rep_point.y
+        elif hasattr(offset_poly, 'geoms'):
+            # MultiPolygon - use representative point of largest piece
+            largest_poly = max(offset_poly.geoms, key=lambda p: p.area)
+            rep_point = largest_poly.representative_point()
+            entry_x = rep_point.x
+            entry_y = rep_point.y
+        else:
+            # Fallback to centroid
+            entry_x = offset_poly.centroid.x
+            entry_y = offset_poly.centroid.y
+
+        # Calculate helical entry parameters
+        helix_radius = self.tool_radius * self.helix_radius_multiplier
+        ramp_start_height = self.material_top + self.ramp_start_clearance
+        num_helical_passes, depth_per_pass = self._calculate_helical_passes(helix_radius, ramp_start_height=ramp_start_height)
+
+        gcode.append(f"(Island-aware pocket with helical entry: {num_helical_passes} passes at {self.ramp_angle} deg)")
+
+        # Position at entry point
+        gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.traverse_rate}  ; Position at entry point")
+        gcode.append(f"G1 Z{ramp_start_height:.4f} F{self.approach_rate}  ; Approach to ramp start height")
+
+        # Helical entry
+        start_x = entry_x + helix_radius
+        start_y = entry_y
+        gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.traverse_rate}  ; Move to helix start")
+
+        for pass_num in range(num_helical_passes):
+            target_z = ramp_start_height - (pass_num + 1) * depth_per_pass
+            gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-helix_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_helical_passes}")
+
+        # Return to entry point after helix
+        gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.feed_rate}  ; Return to entry point")
+
+        # Calculate stepover for pocket clearing
+        stepover = self.tool_diameter * self.stepover_percentage
+
+        gcode.append(f"(Contour-parallel clearing with island avoidance)")
+
+        # Generate inward offsets from perimeter to center
+        # Key: Buffer respects interior holes, so offsets will avoid islands automatically!
+        current_offset_distance = -self.tool_radius
+        contours = []
+
+        # Calculate offset passes
+        test_offset = current_offset_distance
+        while True:
+            test_offset -= stepover
+            test_poly = pocket_poly.buffer(test_offset)
+            if test_poly.is_empty or test_poly.area < 0.001:
+                break
+            contours.append(test_poly)
+
+        gcode.append(f"(Contour-parallel clearing: {len(contours)} offset passes)")
+
+        # Cut contours from outside-in (perimeter to center)
+        pass_number = 0
+        for contour_geom in reversed(contours):
+            # Handle both Polygon and MultiPolygon
+            polygons_to_cut = []
+            if hasattr(contour_geom, 'exterior'):
+                polygons_to_cut.append(contour_geom)
+            elif hasattr(contour_geom, 'geoms'):
+                polygons_to_cut.extend(contour_geom.geoms)
+
+            for poly_to_cut in polygons_to_cut:
+                pass_number += 1
+                contour_coords = list(poly_to_cut.exterior.coords)
+
+                if len(contour_coords) < 3:
+                    continue
+
+                gcode.append(f"(Contour pass {pass_number})")
+
+                # Move to start of contour
+                start_point = contour_coords[0]
+                gcode.append(f"G1 X{start_point[0]:.4f} Y{start_point[1]:.4f} F{self.feed_rate}")
+
+                # Cut the contour (CCW for conventional milling)
+                for point in contour_coords[1:]:
+                    gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
+
+        # Retract
+        gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
+
+        return gcode
+
     def _generate_contour_gcode(self,
                                contour_points: List[Tuple[float, float]],
                                contour_type: str,
