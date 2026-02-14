@@ -20,10 +20,11 @@ from typing import List, Tuple, Optional, Dict, Any
 
 # Third-party
 import ezdxf
-
-# Local modules
+from shapely import affinity
 from shapely.geometry import Point, Polygon, LineString, MultiPolygon
 from shapely.ops import unary_union, linemerge
+
+# Local modules
 from team_config import TeamConfig
 
 
@@ -338,7 +339,6 @@ class FRCPostProcessor:
         Parse Z depth from layer name (e.g., "Z_-0p250" -> -0.25, "Z_0p000" -> 0)
         Returns None if layer name doesn't match the expected format
         """
-        import re
         match = re.match(r'^Z_(-?\d+)p(\d+)$', layer_name)
         if not match:
             return None
@@ -896,7 +896,6 @@ class FRCPostProcessor:
 
             # Also transform multi-layer geometry if present
             if self.layer_data:
-                from shapely import affinity
                 for layer_name, layer_info in self.layer_data.items():
                     # Rotate circles
                     for circle in layer_info['circles']:
@@ -984,7 +983,6 @@ class FRCPostProcessor:
 
         # Also transform multi-layer geometry if present
         if self.layer_data:
-            from shapely import affinity
             for layer_name, layer_info in self.layer_data.items():
                 # Translate circles
                 for circle in layer_info['circles']:
@@ -1720,10 +1718,6 @@ class FRCPostProcessor:
         Returns:
             List of Shapely Polygon objects (may have interior holes)
         """
-        from shapely.geometry import Point, Polygon
-        from shapely.ops import unary_union
-        import math
-
         polygons = []
 
         # Detect concentric circles (same center, different radii)
@@ -1824,9 +1818,6 @@ class FRCPostProcessor:
 
     def _geometries_to_shapely(self, circles, polylines):
         """Convert circles and polylines to shapely geometries"""
-        from shapely.geometry import Polygon, Point
-        from shapely.ops import unary_union
-
         geoms = []
 
         # Convert circles to polygons (buffered points)
@@ -1857,8 +1848,6 @@ class FRCPostProcessor:
         """
         if cut_geometry is None or cut_geometry.is_empty:
             return circles, polylines
-
-        from shapely.geometry import Polygon, Point, MultiPolygon
 
         new_circles = []
         new_polylines = []
@@ -2033,11 +2022,8 @@ class FRCPostProcessor:
 
             gcode.append(f"(===== LAYER: {layer_name} | DEPTH: Z={depth:.4f}\" =====)")
 
-            # === NEW SHAPELY POLYGON APPROACH ===
+            # === SHAPELY POLYGON APPROACH ===
             # Get Shapely Polygons for this layer
-            from shapely.ops import unary_union
-            from shapely.geometry import Polygon, MultiPolygon
-
             current_polygons = layer_info['polygons']
             print(f"  Current layer: {len(current_polygons)} polygon(s)")
 

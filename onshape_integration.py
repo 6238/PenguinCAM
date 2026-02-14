@@ -3,15 +3,25 @@ Onshape Integration for PenguinCAM
 Handles OAuth authentication and DXF export from Onshape
 """
 
+import logging
+import math
 import os
 import sys
 import json
+import tempfile
+import time
+import traceback
+
+import ezdxf
 import requests
 import base64
-from urllib.parse import urlencode, parse_qs
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
+from urllib.parse import urlencode, parse_qs
+
 from flask import session
-import logging
+from shapely.geometry import Point, Polygon, LineString
+from shapely.ops import unary_union, linemerge
 
 # Configure logging for Vercel
 logging.basicConfig(
@@ -247,7 +257,6 @@ class OnshapeClient:
                 return None
         except Exception as e:
             log(f"   ❌ Error getting session info: {e}")
-            import traceback
             log(traceback.format_exc())
             return None
 
@@ -270,7 +279,6 @@ class OnshapeClient:
                 return None
         except Exception as e:
             log(f"   ❌ Error getting companies: {e}")
-            import traceback
             log(traceback.format_exc())
             return None
 
@@ -318,7 +326,6 @@ class OnshapeClient:
 
         except Exception as e:
             log(f"   ❌ Error getting document company: {e}")
-            import traceback
             log(traceback.format_exc())
             return None
     
@@ -332,7 +339,6 @@ class OnshapeClient:
         Returns:
             String representing a 4x4 view matrix in Onshape format
         """
-        import math
 
         nx = normal.get('x', 0)
         ny = normal.get('y', 0)
@@ -471,7 +477,6 @@ class OnshapeClient:
                 
         except Exception as e:
             log(f"Error with exportinternal: {e}")
-            import traceback
             log(traceback.format_exc())
         
         # Fallback: Try async translations API
@@ -563,7 +568,6 @@ class OnshapeClient:
                 
         except Exception as e:
             log(f"Error starting translation: {e}")
-            import traceback
             log(traceback.format_exc())
             return None
     
@@ -628,7 +632,6 @@ class OnshapeClient:
         Returns:
             DXF content as bytes, or None
         """
-        import time
         
         # Start translation
         translation_id = self.start_dxf_translation(document_id, workspace_id, element_id)
@@ -742,7 +745,6 @@ class OnshapeClient:
         except Exception as e:
             log(f"\n❌ Exception during list_faces:")
             log(f"Error: {e}")
-            import traceback
             log(traceback.format_exc())
             log(f"{'='*70}\n")
             return None
@@ -1065,9 +1067,6 @@ class OnshapeClient:
         Returns:
             Number of HATCH entities created
         """
-        import ezdxf
-        from shapely.geometry import Point, Polygon, LineString
-        from shapely.ops import unary_union
 
         # Extract all geometry
         circles = []
@@ -1101,19 +1100,18 @@ class OnshapeClient:
             line_segments.append(LineString([start, end]))
 
         for entity in source_msp.query('ARC'):
-            import math as _math
             center = (entity.dxf.center.x, entity.dxf.center.y)
             radius = entity.dxf.radius
-            start_angle = _math.radians(entity.dxf.start_angle)
-            end_angle = _math.radians(entity.dxf.end_angle)
+            start_angle = math.radians(entity.dxf.start_angle)
+            end_angle = math.radians(entity.dxf.end_angle)
             if end_angle <= start_angle:
-                end_angle += 2 * _math.pi
-            num_points = max(8, int((end_angle - start_angle) / (2 * _math.pi) * 64))
+                end_angle += 2 * math.pi
+            num_points = max(8, int((end_angle - start_angle) / (2 * math.pi) * 64))
             arc_points = []
             for k in range(num_points + 1):
                 angle = start_angle + (end_angle - start_angle) * k / num_points
-                x = center[0] + radius * _math.cos(angle)
-                y = center[1] + radius * _math.sin(angle)
+                x = center[0] + radius * math.cos(angle)
+                y = center[1] + radius * math.sin(angle)
                 arc_points.append((x, y))
             if len(arc_points) >= 2:
                 line_segments.append(LineString(arc_points))
@@ -1126,8 +1124,6 @@ class OnshapeClient:
                     line_segments.append(LineString(points))
 
         if line_segments:
-            from shapely.ops import linemerge
-            from shapely.geometry import Point as ShapelyPoint
             try:
                 merged = linemerge(line_segments)
                 # Check each merged geometry for closed paths
@@ -1271,9 +1267,6 @@ class OnshapeClient:
         Returns:
             Merged DXF content as bytes
         """
-        import ezdxf
-        import tempfile
-        import os
 
         log(f"\n{'='*70}")
         log(f"MERGING DXFs WITH LAYER NAMES (AS SOLID REGIONS)")
@@ -1443,7 +1436,6 @@ class OnshapeClient:
         # Export each depth group
         dxf_contents = {}
 
-        from concurrent.futures import ThreadPoolExecutor, as_completed
 
         def export_depth_group(depth, faces):
             """Export a single depth group"""
@@ -1604,7 +1596,6 @@ class OnshapeClient:
                 return None
         except Exception as e:
             log(f"Error getting document info: {e}")
-            import traceback
             log(traceback.format_exc())
             return None
     
@@ -1631,7 +1622,6 @@ class OnshapeClient:
                 return None
         except Exception as e:
             log(f"Error getting element info: {e}")
-            import traceback
             log(traceback.format_exc())
             return None
 
@@ -1654,7 +1644,6 @@ class OnshapeClient:
                 return None
         except Exception as e:
             log(f"   ❌ Error getting session info: {e}")
-            import traceback
             log(traceback.format_exc())
             return None
 
@@ -1677,7 +1666,6 @@ class OnshapeClient:
                 return None
         except Exception as e:
             log(f"   ❌ Error getting companies: {e}")
-            import traceback
             log(traceback.format_exc())
             return None
 
@@ -1725,7 +1713,6 @@ class OnshapeClient:
 
         except Exception as e:
             log(f"   ❌ Error getting document company: {e}")
-            import traceback
             log(traceback.format_exc())
             return None
 
@@ -1888,7 +1875,6 @@ class OnshapeClient:
 
         except Exception as e:
             log(f"   ❌ EXCEPTION in fetch_config_file: {e}")
-            import traceback
             log(f"   Full traceback:\n{traceback.format_exc()}")
             return None
 

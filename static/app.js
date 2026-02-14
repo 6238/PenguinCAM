@@ -1017,127 +1017,105 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Parse DXF geometry from file using dxf-parser library
         function parseDxfForSetup(dxfContent) {
-            try {
-                // Check if library loaded
-                if (typeof window.DxfParser === 'undefined') {
-                    console.error('DxfParser library not loaded');
-                    // Fall back to simple manual parsing
-                    parseDxfManually(dxfContent);
-                    return;
-                }
-                
-                // Use dxf-parser library to parse DXF
-                const parser = new window.DxfParser();
-                const dxf = parser.parseSync(dxfContent);
-                
-                console.log('Parsed DXF:', dxf);
-                
-                // Extract bounds from all entities
-                let minX = Infinity, maxX = -Infinity;
-                let minY = Infinity, maxY = -Infinity;
-                
-                // Helper to update bounds
-                function updateBounds(x, y) {
-                    minX = Math.min(minX, x);
-                    maxX = Math.max(maxX, x);
-                    minY = Math.min(minY, y);
-                    maxY = Math.max(maxY, y);
-                }
-                
-                // Process entities to get bounds
-                if (dxf.entities) {
-                    dxf.entities.forEach(entity => {
-                        switch(entity.type) {
-                            case 'CIRCLE':
-                                updateBounds(entity.center.x - entity.radius, entity.center.y - entity.radius);
-                                updateBounds(entity.center.x + entity.radius, entity.center.y + entity.radius);
-                                break;
-                            case 'ARC':
-                                // Calculate proper arc bounds (not full circle)
-                                {
-                                    const bounds = calculateArcBounds(
-                                        entity.center.x,
-                                        entity.center.y,
-                                        entity.radius,
-                                        entity.startAngle || 0,
-                                        entity.endAngle || 360
-                                    );
-                                    updateBounds(bounds.minX, bounds.minY);
-                                    updateBounds(bounds.maxX, bounds.maxY);
-                                }
-                                break;
-                            case 'LINE':
-                                updateBounds(entity.vertices[0].x, entity.vertices[0].y);
-                                updateBounds(entity.vertices[1].x, entity.vertices[1].y);
-                                break;
-                            case 'LWPOLYLINE':
-                            case 'POLYLINE':
-                                entity.vertices.forEach(v => updateBounds(v.x, v.y));
-                                break;
-                            case 'SPLINE':
-                                if (entity.controlPoints) {
-                                    entity.controlPoints.forEach(p => updateBounds(p.x, p.y));
-                                }
-                                break;
-                            case 'ELLIPSE':
-                                // Approximate with bounding box
-                                const majorRadius = Math.sqrt(entity.majorAxisEndPoint.x ** 2 + entity.majorAxisEndPoint.y ** 2);
-                                const minorRadius = majorRadius * entity.axisRatio;
-                                updateBounds(entity.center.x - majorRadius, entity.center.y - minorRadius);
-                                updateBounds(entity.center.x + majorRadius, entity.center.y + minorRadius);
-                                break;
-                        }
-                    });
-                }
-                
-                if (minX === Infinity) {
-                    minX = 0; maxX = 10;
-                    minY = 0; maxY = 10;
-                }
-                
-                console.log(`DXF bounds: X=[${minX.toFixed(3)}, ${maxX.toFixed(3)}], Y=[${minY.toFixed(3)}, ${maxY.toFixed(3)}]`);
-                console.log(`Entity count: ${dxf.entities ? dxf.entities.length : 0}`);
-
-                // Organize entities by layer and parse Z depths
-                const layerData = organizeDxfLayers(dxf.entities || []);
-
-                // Store parsed DXF data
-                dxfGeometry = {
-                    minX, maxX, minY, maxY,
-                    entities: dxf.entities || [],
-                    layers: layerData.layers,
-                    layerOrder: layerData.layerOrder
-                };
-                dxfBounds = {
-                    width: maxX - minX,
-                    height: maxY - minY,
-                    centerX: (minX + maxX) / 2,
-                    centerY: (minY + maxY) / 2
-                };
-
-                // Debug: Log bounds calculation
-                console.log('DXF Bounds Debug:');
-                console.log(`  minX: ${minX.toFixed(4)}, maxX: ${maxX.toFixed(4)}`);
-                console.log(`  minY: ${minY.toFixed(4)}, maxY: ${maxY.toFixed(4)}`);
-                console.log(`  Width: ${dxfBounds.width.toFixed(4)}", Height: ${dxfBounds.height.toFixed(4)}"`);
-                console.log(`  Total entities processed: ${dxf.entities ? dxf.entities.length : 0}`);
-
-                // Update form visibility based on detected layers (2D vs 2.5D)
-                updateFormVisibility();
-
-                // Show mode toggle and switch to setup mode
-                document.getElementById('modeToggle').style.display = 'flex';
-                switchMode('setup');
-
-            } catch (error) {
-                console.error('DXF parsing error:', error);
-                // Try manual fallback
-                console.log('Attempting manual DXF parsing...');
-                parseDxfManually(dxfContent);
-            }
+            parseDxfManually(dxfContent);
         }
-        
-        // Fallback manual DXF parser (simple but works for basic shapes)
+
+        // Extract HATCH boundary paths as LWPOLYLINE entities
+        // HATCH entities have a nested structure (paths with variable vertex counts)
+        // that is too complex for the line-by-line parser, so we handle them separately.
+        function extractHatchEntities(dxfContent) {
+            const lines = dxfContent.split('\n');
+            const entities = [];
+            let i = 0;
+
+            while (i < lines.length) {
+                const line = lines[i].trim();
+
+                // Look for HATCH entity start (group code 0, value HATCH)
+                if (line === '0' && i + 1 < lines.length && lines[i + 1].trim() === 'HATCH') {
+                    i += 2;  // Skip past "0" and "HATCH"
+                    let layer = '0';
+                    let numPaths = 0;
+
+                    // Parse HATCH header to get layer and path count
+                    while (i < lines.length) {
+                        const code = lines[i].trim();
+                        if (code === '0') break;  // Next entity
+
+                        if (code === '8' && i + 1 < lines.length) {
+                            layer = lines[i + 1].trim();
+                        } else if (code === '91' && i + 1 < lines.length) {
+                            numPaths = parseInt(lines[i + 1].trim()) || 0;
+                            i += 2;
+                            break;  // Start reading paths
+                        }
+                        i += 2;  // DXF is always code/value pairs
+                    }
+
+                    // Parse each boundary path
+                    for (let p = 0; p < numPaths; p++) {
+                        let pathFlags = 0;
+                        let numVertices = 0;
+                        const vertices = [];
+
+                        // Read path header codes until we hit group code 93 (vertex count)
+                        while (i < lines.length) {
+                            const code = lines[i].trim();
+                            if (code === '0') break;  // Next entity (shouldn't happen mid-path)
+
+                            if (code === '92' && i + 1 < lines.length) {
+                                pathFlags = parseInt(lines[i + 1].trim()) || 0;
+                            } else if (code === '93' && i + 1 < lines.length) {
+                                numVertices = parseInt(lines[i + 1].trim()) || 0;
+                                i += 2;
+                                break;  // Start reading vertices
+                            }
+                            i += 2;
+                        }
+
+                        // Read vertices (pairs of group code 10/20)
+                        let tempX = null;
+                        let verticesRead = 0;
+                        while (i < lines.length && verticesRead < numVertices) {
+                            const code = lines[i].trim();
+                            if (code === '0') break;
+
+                            if (code === '10' && i + 1 < lines.length) {
+                                tempX = parseFloat(lines[i + 1].trim());
+                            } else if (code === '20' && i + 1 < lines.length && tempX !== null) {
+                                const y = parseFloat(lines[i + 1].trim());
+                                vertices.push({ x: tempX, y: y });
+                                tempX = null;
+                                verticesRead++;
+                            }
+                            i += 2;
+                        }
+
+                        // Create LWPOLYLINE entity from this boundary path
+                        if (vertices.length >= 3) {
+                            entities.push({
+                                type: 'LWPOLYLINE',
+                                vertices: vertices,
+                                closed: true,
+                                shape: true,
+                                layer: layer,
+                                isHatchBoundary: true,
+                                isExternalBoundary: (pathFlags & 1) !== 0
+                            });
+                        }
+                    }
+                } else {
+                    i++;
+                }
+            }
+
+            if (entities.length > 0) {
+                console.log(`Extracted ${entities.length} boundary path(s) from HATCH entities`);
+            }
+            return entities;
+        }
+
+        // DXF parser - handles all entity types including HATCH
         function parseDxfManually(dxfContent) {
             const lines = dxfContent.split('\n');
 
@@ -1237,6 +1215,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (currentEntity) {
                 entities.push(createEntity(currentEntity, entityData));
             }
+
+            // Extract HATCH boundary paths (converted to LWPOLYLINE entities)
+            const hatchEntities = extractHatchEntities(dxfContent);
+            entities.push(...hatchEntities);
 
             // Calculate bounds from rendered entities only (not raw DXF coordinates)
             let minX = Infinity, maxX = -Infinity;
