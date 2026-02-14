@@ -1092,6 +1092,58 @@ class OnshapeClient:
                 if len(points) >= 3:
                     polylines.append(points)
 
+        # Stitch LINE and ARC entities into closed paths
+        # Onshape often exports faces as individual LINE segments (e.g., 4 lines for a rectangle)
+        line_segments = []
+        for entity in source_msp.query('LINE'):
+            start = (entity.dxf.start.x, entity.dxf.start.y)
+            end = (entity.dxf.end.x, entity.dxf.end.y)
+            line_segments.append(LineString([start, end]))
+
+        for entity in source_msp.query('ARC'):
+            import math as _math
+            center = (entity.dxf.center.x, entity.dxf.center.y)
+            radius = entity.dxf.radius
+            start_angle = _math.radians(entity.dxf.start_angle)
+            end_angle = _math.radians(entity.dxf.end_angle)
+            if end_angle <= start_angle:
+                end_angle += 2 * _math.pi
+            num_points = max(8, int((end_angle - start_angle) / (2 * _math.pi) * 64))
+            arc_points = []
+            for k in range(num_points + 1):
+                angle = start_angle + (end_angle - start_angle) * k / num_points
+                x = center[0] + radius * _math.cos(angle)
+                y = center[1] + radius * _math.sin(angle)
+                arc_points.append((x, y))
+            if len(arc_points) >= 2:
+                line_segments.append(LineString(arc_points))
+
+        # Also get unclosed polylines as segments
+        for entity in source_msp.query('LWPOLYLINE'):
+            if not entity.closed:
+                points = [(p[0], p[1]) for p in entity.get_points('xy')]
+                if len(points) >= 2:
+                    line_segments.append(LineString(points))
+
+        if line_segments:
+            from shapely.ops import linemerge
+            from shapely.geometry import Point as ShapelyPoint
+            try:
+                merged = linemerge(line_segments)
+                # Check each merged geometry for closed paths
+                geoms_to_check = list(merged.geoms) if hasattr(merged, 'geoms') else [merged]
+                for geom in geoms_to_check:
+                    coords = list(geom.coords)
+                    if len(coords) >= 3:
+                        start = coords[0]
+                        end = coords[-1]
+                        dist = ((start[0]-end[0])**2 + (start[1]-end[1])**2)**0.5
+                        if dist < 0.1:  # Closed within tolerance
+                            polylines.append(coords)
+                            log(f"    Stitched {len(line_segments)} line/arc segments into closed path ({len(coords)} points)")
+            except Exception as e:
+                log(f"    Warning: Could not stitch line segments: {e}")
+
         log(f"    Converting to solid regions: {len(circles)} circles, {len(polylines)} polylines")
 
         if not circles and not polylines:

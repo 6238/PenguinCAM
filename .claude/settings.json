@@ -1,4 +1,7 @@
 {
+  "env": {
+    "CLAUDE_CODE_USE_BEDROCK": "0"
+  },
   "permissions": {
     "allow": [
       "Bash(make test:*)",
