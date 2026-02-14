@@ -1209,9 +1209,32 @@ class OnshapeClient:
             except:
                 pass
 
-        # Union all separate regions
+        # Containment-aware union: if a smaller polygon is fully inside a larger one,
+        # it represents a hole boundary (e.g., a circle inside a rectangle), not a
+        # filled region. Naive unary_union would lose the hole since union(A, B) = A
+        # when B is contained in A.
         if geoms:
-            union = unary_union(geoms)
+            geoms.sort(key=lambda g: g.area, reverse=True)
+
+            result_geoms = []
+            used_as_hole = set()
+
+            for i, outer in enumerate(geoms):
+                if i in used_as_hole:
+                    continue
+
+                current = outer
+                for j in range(i + 1, len(geoms)):
+                    if j in used_as_hole:
+                        continue
+                    if current.contains(geoms[j]):
+                        current = current.difference(geoms[j])
+                        used_as_hole.add(j)
+                        log(f"      Detected hole: subtracted contained geometry (area={geoms[j].area:.4f})")
+
+                result_geoms.append(current)
+
+            union = unary_union(result_geoms)
 
             # Convert union back to HATCH entities
             hatch_count = 0
