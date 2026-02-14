@@ -21,7 +21,7 @@ from typing import List, Tuple, Optional, Dict, Any
 # Third-party
 import ezdxf
 from shapely import affinity
-from shapely.geometry import Point, Polygon, LineString, MultiPolygon
+from shapely.geometry import Point, Polygon, LineString, LinearRing, MultiPolygon
 from shapely.ops import unary_union, linemerge
 
 # Local modules
@@ -2202,13 +2202,13 @@ class FRCPostProcessor:
 
             # Process island-aware pockets (Polygons with interior holes)
             if hasattr(self, 'pocket_polygons') and self.pocket_polygons:
-                gcode.append(f"(Layer {layer_name}: {len(self.pocket_polygons)} island-aware pocket(s))")
+                gcode.append(f"(Layer {layer_name}: {len(self.pocket_polygons)} island-aware pockets)")
                 total_pockets += len(self.pocket_polygons)
 
                 for pocket_poly in self.pocket_polygons:
                     # For now, these are always cleared (no contouring for rings/grooves)
                     # In the future, could add size threshold check here too
-                    gcode.append(f"(Ring/groove pocket with {len(pocket_poly.interiors)} island(s))")
+                    gcode.append(f"(Ring/groove pocket with {len(pocket_poly.interiors)} islands)")
                     gcode.extend(self._generate_pocket_gcode_from_polygon(pocket_poly))
 
             # Restore original cut depth
@@ -2354,6 +2354,13 @@ class FRCPostProcessor:
                 for j, time_line in enumerate(time_lines):
                     gcode.insert(insert_idx + j, time_line)
                 break
+
+        # Check for errors that occurred during generation
+        if self.errors:
+            return PostProcessorResult(
+                success=False,
+                errors=self.errors.copy()
+            )
 
         # Generate filename
         base_name = suggested_filename if suggested_filename else "output"
@@ -2881,6 +2888,24 @@ class FRCPostProcessor:
         if not pocket_poly.is_valid or pocket_poly.is_empty:
             return gcode
 
+        # Check groove width for polygons with interior holes (rings/grooves)
+        if len(pocket_poly.interiors) > 0:
+            min_groove_width = float('inf')
+            for interior in pocket_poly.interiors:
+                interior_ring = LinearRing(interior.coords)
+                width = pocket_poly.exterior.distance(interior_ring)
+                min_groove_width = min(min_groove_width, width)
+
+            if min_groove_width < self.tool_diameter:
+                center_x, center_y = pocket_poly.centroid.x, pocket_poly.centroid.y
+                error_msg = (
+                    f"Groove at approximately ({center_x:.3f}, {center_y:.3f}) "
+                    f"is {min_groove_width:.4f}\" wide, which is too narrow for "
+                    f"{self.tool_diameter:.4f}\" tool"
+                )
+                self._add_error(error_msg)
+                return gcode
+
         # Buffer inward (negative buffer) for tool compensation
         # Key: Shapely automatically respects interior holes during buffer!
         offset_poly = pocket_poly.buffer(-self.tool_radius)
@@ -2911,6 +2936,13 @@ class FRCPostProcessor:
 
         # Calculate helical entry parameters
         helix_radius = self.tool_radius * self.helix_radius_multiplier
+
+        # Adapt helix radius to fit within available space
+        # The max helix radius at the entry point is the distance from entry to nearest boundary
+        max_helix_radius = offset_poly.boundary.distance(Point(entry_x, entry_y))
+        if helix_radius > max_helix_radius * 0.9:  # 90% safety factor
+            helix_radius = max(max_helix_radius * 0.9, self.tool_radius * 0.25)  # Floor at 25% of tool_radius
+
         ramp_start_height = self.material_top + self.ramp_start_clearance
         num_helical_passes, depth_per_pass = self._calculate_helical_passes(helix_radius, ramp_start_height=ramp_start_height)
 
@@ -2937,48 +2969,86 @@ class FRCPostProcessor:
 
         gcode.append(f"(Contour-parallel clearing with island avoidance)")
 
-        # Generate inward offsets from perimeter to center
-        # Key: Buffer respects interior holes, so offsets will avoid islands automatically!
-        current_offset_distance = -self.tool_radius
-        contours = []
+        # For ring polygons (with interior holes), buffer() on the whole ring shrinks
+        # from both sides simultaneously, collapsing the ring in ~2 steps.
+        # Instead, offset from the EXTERIOR ONLY and stop at the interior boundary.
+        solid_exterior = Polygon(pocket_poly.exterior)
 
-        # Calculate offset passes
-        test_offset = current_offset_distance
+        # Build expanded interior (holes + tool_radius) as the no-go zone
+        expanded_interiors = None
+        if len(pocket_poly.interiors) > 0:
+            interior_geoms = []
+            for interior in pocket_poly.interiors:
+                interior_poly = Polygon(interior.coords)
+                interior_geoms.append(interior_poly.buffer(self.tool_radius))
+            expanded_interiors = unary_union(interior_geoms)
+
+        # Generate offset contours from exterior inward
+        contours = []
+        test_offset = -self.tool_radius
         while True:
             test_offset -= stepover
-            test_poly = pocket_poly.buffer(test_offset)
-            if test_poly.is_empty or test_poly.area < 0.001:
+            offset_circle = solid_exterior.buffer(test_offset)
+            if offset_circle.is_empty or offset_circle.area < 0.001:
                 break
-            contours.append(test_poly)
+
+            # Subtract expanded interior to stay in machining area
+            if expanded_interiors is not None:
+                machining_portion = offset_circle.difference(expanded_interiors)
+                if machining_portion.is_empty or machining_portion.area < 0.001:
+                    break
+                contours.append(machining_portion)
+            else:
+                contours.append(offset_circle)
 
         gcode.append(f"(Contour-parallel clearing: {len(contours)} offset passes)")
 
-        # Cut contours from outside-in (perimeter to center)
+        # Cut contours from outside-in
         pass_number = 0
         for contour_geom in reversed(contours):
             # Handle both Polygon and MultiPolygon
             polygons_to_cut = []
-            if hasattr(contour_geom, 'exterior'):
+            if isinstance(contour_geom, Polygon):
                 polygons_to_cut.append(contour_geom)
-            elif hasattr(contour_geom, 'geoms'):
+            elif isinstance(contour_geom, MultiPolygon):
                 polygons_to_cut.extend(contour_geom.geoms)
 
             for poly_to_cut in polygons_to_cut:
-                pass_number += 1
-                contour_coords = list(poly_to_cut.exterior.coords)
+                if not hasattr(poly_to_cut, 'exterior'):
+                    continue
 
+                contour_coords = list(poly_to_cut.exterior.coords)
                 if len(contour_coords) < 3:
                     continue
 
+                pass_number += 1
                 gcode.append(f"(Contour pass {pass_number})")
 
-                # Move to start of contour
-                start_point = contour_coords[0]
-                gcode.append(f"G1 X{start_point[0]:.4f} Y{start_point[1]:.4f} F{self.feed_rate}")
-
-                # Cut the contour (CCW for conventional milling)
+                gcode.append(f"G1 X{contour_coords[0][0]:.4f} Y{contour_coords[0][1]:.4f} F{self.feed_rate}")
                 for point in contour_coords[1:]:
                     gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
+
+        # Final pass - trace tool-compensated boundary (exterior + interiors)
+        exterior_coords = list(offset_poly.exterior.coords)[:-1]
+        if len(exterior_coords) >= 3:
+            pass_number += 1
+            gcode.append(f"(Contour pass {pass_number} - final outer perimeter)")
+            gcode.append(f"G1 X{exterior_coords[0][0]:.4f} Y{exterior_coords[0][1]:.4f} F{self.feed_rate}")
+            for point in exterior_coords[1:]:
+                gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
+            gcode.append(f"G1 X{exterior_coords[0][0]:.4f} Y{exterior_coords[0][1]:.4f} F{self.feed_rate}")
+
+        # Also trace interior boundaries of the tool-compensated ring
+        if hasattr(offset_poly, 'interiors'):
+            for interior in offset_poly.interiors:
+                interior_coords = list(interior.coords)[:-1]
+                if len(interior_coords) >= 3:
+                    pass_number += 1
+                    gcode.append(f"(Contour pass {pass_number} - inner boundary)")
+                    gcode.append(f"G1 X{interior_coords[0][0]:.4f} Y{interior_coords[0][1]:.4f} F{self.feed_rate}")
+                    for point in interior_coords[1:]:
+                        gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
+                    gcode.append(f"G1 X{interior_coords[0][0]:.4f} Y{interior_coords[0][1]:.4f} F{self.feed_rate}")
 
         # Retract
         gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
@@ -3165,7 +3235,7 @@ class FRCPostProcessor:
                         num_loops = max(1, int(math.ceil(remaining_depth / depth_per_loop)))
                         depth_per_loop_actual = remaining_depth / num_loops
 
-                        gcode.append(f"(Perimeter too short - using helical finish: {num_loops} loop(s) at {self.ramp_angle} deg)")
+                        gcode.append(f"(Perimeter too short - using helical finish: {num_loops} loops at {self.ramp_angle} deg)")
 
                         # Move to edge of helix radius
                         start_x = helix_center_x + helix_radius

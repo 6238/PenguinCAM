@@ -1371,5 +1371,365 @@ class TestMultilayerGeometrySubtraction(unittest.TestCase):
                 os.remove(dxf_path)
 
 
+class TestConcentricCircleDepths(unittest.TestCase):
+    """
+    Test 2.5D machining of concentric circles with variable inner-circle Z heights.
+
+    Geometry: 6"x6"x0.5" plate with two concentric circles centered at (3, 3):
+      - Outer circle: r=2.483" (groove at Z=0.25")
+      - Inner circle: r=2.091" (Z varies per test case)
+    The outer circle forms a ring/groove. The inner circle's depth determines
+    whether we get 1 or 2 depth operations and how they're classified.
+    """
+
+    PLATE_SIZE = 6.0
+    PLATE_THICKNESS = 0.5
+    CENTER = (3.0, 3.0)
+    OUTER_RADIUS = 2.483
+    INNER_RADIUS = 2.091
+    TOOL_DIAMETER = 0.157
+
+    def _create_hatch_dxf(self, filename, layers):
+        """
+        Create a multilayer DXF with HATCH entities for solid regions.
+
+        Args:
+            filename: Output DXF file path
+            layers: Dict mapping layer name to list of shape tuples:
+                - ('rectangle', x, y, width, height)
+                - ('disk', center, radius) — solid filled circle
+                - ('ring', center, outer_r, inner_r) — ring/annular shape
+        """
+        import ezdxf
+        from shapely.geometry import Point, Polygon as ShapelyPolygon
+
+        doc = ezdxf.new('R2010')
+        msp = doc.modelspace()
+
+        for layer_name, shapes in layers.items():
+            if layer_name not in doc.layers:
+                doc.layers.new(name=layer_name)
+
+            for shape in shapes:
+                kind = shape[0]
+
+                if kind == 'rectangle':
+                    _, x, y, w, h = shape
+                    coords = [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
+                    hatch = msp.add_hatch(color=7, dxfattribs={'layer': layer_name})
+                    hatch.paths.add_polyline_path(coords + [coords[0]], is_closed=True)
+
+                elif kind == 'disk':
+                    _, center, radius = shape
+                    circle_poly = Point(center).buffer(radius)
+                    exterior_coords = list(circle_poly.exterior.coords)
+                    hatch = msp.add_hatch(color=7, dxfattribs={'layer': layer_name})
+                    hatch.paths.add_polyline_path(exterior_coords, is_closed=True)
+
+                elif kind == 'ring':
+                    _, center, outer_r, inner_r = shape
+                    outer_poly = Point(center).buffer(outer_r)
+                    inner_poly = Point(center).buffer(inner_r)
+                    ring = outer_poly.difference(inner_poly)
+
+                    hatch = msp.add_hatch(color=7, dxfattribs={'layer': layer_name})
+                    exterior_coords = list(ring.exterior.coords)
+                    hatch.paths.add_polyline_path(exterior_coords, is_closed=True)
+                    for interior in ring.interiors:
+                        interior_coords = list(interior.coords)
+                        hatch.paths.add_polyline_path(interior_coords, is_closed=True, flags=0)
+
+        doc.saveas(filename)
+
+    def _make_postprocessor(self):
+        """Create a FRCPostProcessor configured for our 6x6x0.5 plate."""
+        config = TeamConfig()
+        pp = FRCPostProcessor(
+            material_thickness=self.PLATE_THICKNESS,
+            tool_diameter=self.TOOL_DIAMETER,
+            config=config,
+        )
+        pp.apply_material_preset('plywood')
+        return pp
+
+    def _process_dxf(self, dxf_path):
+        """Load DXF, transform, and generate G-code. Returns (result, gcode_text)."""
+        pp = self._make_postprocessor()
+        pp.load_dxf(dxf_path)
+        pp.transform_coordinates('bottom-left', 0)
+        result = pp.generate_gcode()
+        return result, (result.gcode if result.success else '')
+
+    def _count_layer_comments(self, gcode, pattern):
+        """Count lines in G-code matching a pattern."""
+        return sum(1 for line in gcode.split('\n') if pattern in line)
+
+    def _extract_section(self, gcode, start_marker):
+        """Extract a G-code section from start_marker to the next LAYER or PERIMETER marker."""
+        try:
+            start = gcode.index(start_marker)
+        except ValueError:
+            return ''
+        # Find the next section boundary after the start marker
+        end = len(gcode)
+        search_start = start + len(start_marker)
+        for marker in ['===== LAYER:', '===== PERIMETER', 'LAYER: Z_0p']:
+            try:
+                idx = gcode.index(marker, search_start)
+                end = min(end, idx)
+            except ValueError:
+                pass
+        return gcode[start:end]
+
+    # ------------------------------------------------------------------
+    # Case 1: Inner circle at Z=0.5 (same as top surface)
+    # ------------------------------------------------------------------
+    def test_case1_inner_at_top_surface(self):
+        """Inner circle at Z=0.5 (top surface) — only a ring groove at Z=0.25."""
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix='.dxf', delete=False) as f:
+            dxf_path = f.name
+
+        try:
+            self._create_hatch_dxf(dxf_path, {
+                'Z_0p500': [('rectangle', 0, 0, self.PLATE_SIZE, self.PLATE_SIZE)],
+                'Z_0p250': [('ring', self.CENTER, self.OUTER_RADIUS, self.INNER_RADIUS)],
+                'Z_0p000': [('rectangle', 0, 0, self.PLATE_SIZE, self.PLATE_SIZE)],
+            })
+
+            result, gcode = self._process_dxf(dxf_path)
+
+            # G-code generation must succeed
+            self.assertTrue(result.success, f"G-code generation failed: {result.errors}")
+
+            # Should have exactly one depth layer (Z=0.25)
+            depth_layer_count = self._count_layer_comments(gcode, 'LAYER: Z_0p250')
+            self.assertEqual(depth_layer_count, 1, "Should have Z_0p250 depth layer")
+
+            # The ring should be machined as an island-aware pocket (polygon with interior)
+            self.assertIn('island-aware pocket', gcode,
+                          "Ring groove should be machined as island-aware pocket")
+
+            # Perimeter section should exist
+            self.assertIn('PERIMETER', gcode, "Should have perimeter cut")
+
+            # No features at Z_0p300 (sanity)
+            self.assertNotIn('Z_0p300', gcode, "Should not have Z_0p300 layer")
+
+        finally:
+            if os.path.exists(dxf_path):
+                os.remove(dxf_path)
+
+    # ------------------------------------------------------------------
+    # Case 2: Inner circle at Z=0.3 (between top and groove)
+    # ------------------------------------------------------------------
+    def test_case2_inner_above_groove(self):
+        """Inner circle at Z=0.3 — two depth operations: disk at Z=0.30, ring at Z=0.25."""
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix='.dxf', delete=False) as f:
+            dxf_path = f.name
+
+        try:
+            self._create_hatch_dxf(dxf_path, {
+                'Z_0p500': [('rectangle', 0, 0, self.PLATE_SIZE, self.PLATE_SIZE)],
+                'Z_0p300': [('disk', self.CENTER, self.INNER_RADIUS)],
+                'Z_0p250': [('ring', self.CENTER, self.OUTER_RADIUS, self.INNER_RADIUS)],
+                'Z_0p000': [('rectangle', 0, 0, self.PLATE_SIZE, self.PLATE_SIZE)],
+            })
+
+            result, gcode = self._process_dxf(dxf_path)
+
+            self.assertTrue(result.success, f"G-code generation failed: {result.errors}")
+
+            # Should have two depth layers
+            self.assertIn('LAYER: Z_0p300', gcode, "Should have Z_0p300 depth layer")
+            self.assertIn('LAYER: Z_0p250', gcode, "Should have Z_0p250 depth layer")
+
+            # Z_0p300: Inner disk should be a pocket (full disk cleared)
+            z0p300_section = self._extract_section(gcode, 'LAYER: Z_0p300')
+            has_pocket_or_hole = 'pocket' in z0p300_section.lower() or 'hole' in z0p300_section.lower()
+            self.assertTrue(has_pocket_or_hole,
+                            "Z_0p300 should machine the inner circle as pocket or hole")
+
+            # Z_0p250: Should have the ring as an island-aware pocket
+            z0p250_section = self._extract_section(gcode, 'LAYER: Z_0p250')
+            self.assertIn('island-aware pocket', z0p250_section,
+                          "Z_0p250 ring should be machined as island-aware pocket")
+
+            # Perimeter
+            self.assertIn('PERIMETER', gcode, "Should have perimeter cut")
+
+        finally:
+            if os.path.exists(dxf_path):
+                os.remove(dxf_path)
+
+    # ------------------------------------------------------------------
+    # Case 3: Inner circle at Z=0.2 (below groove)
+    # ------------------------------------------------------------------
+    def test_case3_inner_below_groove(self):
+        """Inner circle at Z=0.2 — two depth operations: ring at Z=0.25, disk at Z=0.20."""
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix='.dxf', delete=False) as f:
+            dxf_path = f.name
+
+        try:
+            self._create_hatch_dxf(dxf_path, {
+                'Z_0p500': [('rectangle', 0, 0, self.PLATE_SIZE, self.PLATE_SIZE)],
+                'Z_0p250': [('ring', self.CENTER, self.OUTER_RADIUS, self.INNER_RADIUS)],
+                'Z_0p200': [('disk', self.CENTER, self.INNER_RADIUS)],
+                'Z_0p000': [('rectangle', 0, 0, self.PLATE_SIZE, self.PLATE_SIZE)],
+            })
+
+            result, gcode = self._process_dxf(dxf_path)
+
+            self.assertTrue(result.success, f"G-code generation failed: {result.errors}")
+
+            # Should have two depth layers
+            self.assertIn('LAYER: Z_0p250', gcode, "Should have Z_0p250 depth layer")
+            self.assertIn('LAYER: Z_0p200', gcode, "Should have Z_0p200 depth layer")
+
+            # Z_0p250: Ring should be island-aware pocket
+            z0p250_section = self._extract_section(gcode, 'LAYER: Z_0p250')
+            self.assertIn('island-aware pocket', z0p250_section,
+                          "Z_0p250 ring should be machined as island-aware pocket")
+
+            # Z_0p200: Inner disk should be machined
+            z0p200_section = self._extract_section(gcode, 'LAYER: Z_0p200')
+            has_pocket_or_hole = 'pocket' in z0p200_section.lower() or 'hole' in z0p200_section.lower()
+            self.assertTrue(has_pocket_or_hole,
+                            "Z_0p200 should machine the inner circle as pocket or hole")
+
+            # Perimeter
+            self.assertIn('PERIMETER', gcode, "Should have perimeter cut")
+
+        finally:
+            if os.path.exists(dxf_path):
+                os.remove(dxf_path)
+
+    # ------------------------------------------------------------------
+    # Case 4: Inner circle at Z=0.0 (through-cut)
+    # ------------------------------------------------------------------
+    def test_case4_inner_through_cut(self):
+        """Inner circle at Z=0.0 — ring at Z=0.25, inner circle as through-cut on bottom face."""
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix='.dxf', delete=False) as f:
+            dxf_path = f.name
+
+        try:
+            self._create_hatch_dxf(dxf_path, {
+                'Z_0p500': [('rectangle', 0, 0, self.PLATE_SIZE, self.PLATE_SIZE)],
+                'Z_0p250': [('ring', self.CENTER, self.OUTER_RADIUS, self.INNER_RADIUS)],
+                'Z_0p000': [
+                    ('rectangle', 0, 0, self.PLATE_SIZE, self.PLATE_SIZE),
+                    ('disk', self.CENTER, self.INNER_RADIUS),
+                ],
+            })
+
+            result, gcode = self._process_dxf(dxf_path)
+
+            self.assertTrue(result.success, f"G-code generation failed: {result.errors}")
+
+            # Z_0p250: Ring groove
+            self.assertIn('LAYER: Z_0p250', gcode, "Should have Z_0p250 depth layer")
+            z0p250_section = self._extract_section(gcode, 'LAYER: Z_0p250')
+            self.assertIn('island-aware pocket', z0p250_section,
+                          "Z_0p250 ring should be machined as island-aware pocket")
+
+            # Bottom face: Inner circle is a through-cut
+            # Inner circle area = pi * 2.091^2 ≈ 13.74 sq in
+            # Default contour_threshold=510, threshold_area = 510 * 0.157^2 * 0.65 ≈ 8.17 sq in
+            # 13.74 > 8.17 → should be contoured
+            self.assertIn('CONTOUR ONLY', gcode,
+                          "Large inner circle through-cut should be contoured")
+            self.assertIn('manual removal', gcode,
+                          "Contoured through-cut should warn about manual removal")
+
+            # Perimeter
+            self.assertIn('PERIMETER', gcode, "Should have perimeter cut")
+
+        finally:
+            if os.path.exists(dxf_path):
+                os.remove(dxf_path)
+
+
+    # ------------------------------------------------------------------
+    # Groove width validation tests
+    # ------------------------------------------------------------------
+    def test_groove_too_narrow_for_tool(self):
+        """Groove width (0.05") is less than tool diameter (0.157") -- should fail."""
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix='.dxf', delete=False) as f:
+            dxf_path = f.name
+
+        try:
+            # Ring with outer_r=2.0, inner_r=1.95 -> groove width = 0.05"
+            self._create_hatch_dxf(dxf_path, {
+                'Z_0p500': [('rectangle', 0, 0, self.PLATE_SIZE, self.PLATE_SIZE)],
+                'Z_0p250': [('ring', self.CENTER, 2.0, 1.95)],
+                'Z_0p000': [('rectangle', 0, 0, self.PLATE_SIZE, self.PLATE_SIZE)],
+            })
+            result, gcode = self._process_dxf(dxf_path)
+
+            self.assertFalse(result.success, "Should fail for groove narrower than tool")
+            self.assertTrue(
+                any("too narrow" in e for e in result.errors),
+                f"Error should mention 'too narrow', got: {result.errors}"
+            )
+        finally:
+            if os.path.exists(dxf_path):
+                os.remove(dxf_path)
+
+    def test_groove_minimum_viable_width(self):
+        """Groove width (~0.20") is slightly wider than tool (0.157") -- should succeed with adapted helix."""
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix='.dxf', delete=False) as f:
+            dxf_path = f.name
+
+        try:
+            # Ring with outer_r=2.0, inner_r=1.8 -> groove width = 0.20"
+            self._create_hatch_dxf(dxf_path, {
+                'Z_0p500': [('rectangle', 0, 0, self.PLATE_SIZE, self.PLATE_SIZE)],
+                'Z_0p250': [('ring', self.CENTER, 2.0, 1.8)],
+                'Z_0p000': [('rectangle', 0, 0, self.PLATE_SIZE, self.PLATE_SIZE)],
+            })
+            result, gcode = self._process_dxf(dxf_path)
+
+            self.assertTrue(result.success, f"Should succeed for viable groove, errors: {result.errors}")
+            self.assertIn('Island-aware pocket', gcode,
+                          "Should use island-aware pocket for ring")
+        finally:
+            if os.path.exists(dxf_path):
+                os.remove(dxf_path)
+
+    def test_wide_groove_uses_default_helix(self):
+        """Wide groove (1.0") has plenty of room -- should succeed with normal parameters."""
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix='.dxf', delete=False) as f:
+            dxf_path = f.name
+
+        try:
+            # Ring with outer_r=2.0, inner_r=1.0 -> groove width = 1.0"
+            self._create_hatch_dxf(dxf_path, {
+                'Z_0p500': [('rectangle', 0, 0, self.PLATE_SIZE, self.PLATE_SIZE)],
+                'Z_0p250': [('ring', self.CENTER, 2.0, 1.0)],
+                'Z_0p000': [('rectangle', 0, 0, self.PLATE_SIZE, self.PLATE_SIZE)],
+            })
+            result, gcode = self._process_dxf(dxf_path)
+
+            self.assertTrue(result.success, f"Should succeed for wide groove, errors: {result.errors}")
+            self.assertIn('Island-aware pocket', gcode,
+                          "Should use island-aware pocket for ring")
+        finally:
+            if os.path.exists(dxf_path):
+                os.remove(dxf_path)
+
+
 if __name__ == '__main__':
     unittest.main()
