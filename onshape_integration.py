@@ -1098,15 +1098,61 @@ class OnshapeClient:
             log(f"    No geometry to convert")
             return 0
 
-        # Convert to Shapely geometries
+        # Detect concentric circles and convert to rings BEFORE unioning
+        # This is critical for circular grooves/rings
         geoms = []
+        used_circles = set()
 
-        # Circles as filled regions
-        for circle in circles:
-            geom = Point(circle['center']).buffer(circle['radius'])
-            geoms.append(geom)
+        for i, circle1 in enumerate(circles):
+            if i in used_circles:
+                continue
 
-        # Polylines as filled polygons
+            center1 = circle1['center']
+            radius1 = circle1['radius']
+
+            # Look for concentric circles (same center, different radius)
+            concentric_group = [circle1]
+            for j, circle2 in enumerate(circles):
+                if i == j or j in used_circles:
+                    continue
+
+                center2 = circle2['center']
+                radius2 = circle2['radius']
+
+                # Check if centers are the same (within tolerance)
+                dx = abs(center1[0] - center2[0])
+                dy = abs(center1[1] - center2[1])
+                if dx < 0.001 and dy < 0.001 and abs(radius1 - radius2) > 0.001:
+                    # Concentric!
+                    concentric_group.append(circle2)
+                    used_circles.add(j)
+
+            used_circles.add(i)
+
+            # Create geometry from this group
+            if len(concentric_group) == 1:
+                # Single circle - filled disk
+                geom = Point(center1).buffer(radius1)
+                geoms.append(geom)
+            else:
+                # Multiple concentric circles - create ring(s)
+                # Sort by radius (largest first)
+                concentric_group.sort(key=lambda c: c['radius'], reverse=True)
+
+                # Outer boundary is the largest circle
+                outer_geom = Point(concentric_group[0]['center']).buffer(concentric_group[0]['radius'])
+
+                # Subtract all inner circles
+                for inner_circle in concentric_group[1:]:
+                    inner_geom = Point(inner_circle['center']).buffer(inner_circle['radius'])
+                    outer_geom = outer_geom.difference(inner_geom)
+
+                if not outer_geom.is_empty:
+                    geoms.append(outer_geom)
+                    log(f"      Detected concentric circles: outer r={concentric_group[0]['radius']:.3f}\", "
+                        f"{len(concentric_group)-1} inner hole(s) - created ring")
+
+        # Add polylines as filled polygons
         for polyline in polylines:
             try:
                 poly = Polygon(polyline)
@@ -1115,7 +1161,7 @@ class OnshapeClient:
             except:
                 pass
 
-        # Union all geometry into solid regions
+        # Union all separate regions
         if geoms:
             union = unary_union(geoms)
 
