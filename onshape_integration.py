@@ -1191,14 +1191,16 @@ class OnshapeClient:
             # Create HATCH entity
             hatch = msp.add_hatch(color=7, dxfattribs={'layer': layer_name})
 
-            # Add exterior boundary
+            # Add exterior boundary (EXTERNAL flag set by default)
             exterior_coords = list(polygon.exterior.coords)
             hatch.paths.add_polyline_path(exterior_coords, is_closed=True)
 
-            # Add interior holes as boundary islands
+            # Add interior holes (NO EXTERNAL flag - marks them as holes, not outer boundaries)
+            # DXF path_type_flags: bit 0 (1) = EXTERNAL, bit 1 (2) = POLYLINE
+            # For holes: flags=0 (no EXTERNAL bit)
             for interior in polygon.interiors:
                 interior_coords = list(interior.coords)
-                hatch.paths.add_polyline_path(interior_coords, is_closed=True, flags=1)  # flags=1 = external/island
+                hatch.paths.add_polyline_path(interior_coords, is_closed=True, flags=0)
 
             return 1
         except Exception as e:
