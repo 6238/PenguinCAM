@@ -669,14 +669,14 @@ class FRCPostProcessor:
         
         # Find which segments connect to which
         graph = defaultdict(list)  # endpoint -> list of (segment_idx, is_start)
-        
+
         for idx, seg in enumerate(segments):
             # Add connections for start point
-            start_key = self._round_point(seg['start'], 3)
+            start_key = self._round_point(seg['start'], 2)
             graph[start_key].append((idx, True))
-            
+
             # Add connections for end point
-            end_key = self._round_point(seg['end'], 3)
+            end_key = self._round_point(seg['end'], 2)
             graph[end_key].append((idx, False))
         
         # Find closed cycles
@@ -702,7 +702,7 @@ class FRCPostProcessor:
             max_iterations = len(segments)
             for _ in range(max_iterations):
                 # Look for a segment that starts where we ended
-                end_key = self._round_point(current_end, 3)
+                end_key = self._round_point(current_end, 2)
                 
                 next_found = False
                 for next_idx, is_start in graph[end_key]:
