@@ -1701,8 +1701,9 @@ class TestConcentricCircleDepths(unittest.TestCase):
             result, gcode = self._process_dxf(dxf_path)
 
             self.assertTrue(result.success, f"Should succeed for viable groove, errors: {result.errors}")
-            self.assertIn('Island-aware pocket', gcode,
-                          "Should use island-aware pocket for ring")
+            self.assertTrue(
+                'Island-aware pocket' in gcode or 'Circular ring spiral clearing' in gcode,
+                "Should use island-aware pocket or circular ring spiral clearing for ring")
         finally:
             if os.path.exists(dxf_path):
                 os.remove(dxf_path)
@@ -1724,8 +1725,9 @@ class TestConcentricCircleDepths(unittest.TestCase):
             result, gcode = self._process_dxf(dxf_path)
 
             self.assertTrue(result.success, f"Should succeed for wide groove, errors: {result.errors}")
-            self.assertIn('Island-aware pocket', gcode,
-                          "Should use island-aware pocket for ring")
+            self.assertTrue(
+                'Island-aware pocket' in gcode or 'Circular ring spiral clearing' in gcode,
+                "Should use island-aware pocket or circular ring spiral clearing for ring")
         finally:
             if os.path.exists(dxf_path):
                 os.remove(dxf_path)

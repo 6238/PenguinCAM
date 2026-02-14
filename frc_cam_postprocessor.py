@@ -2879,6 +2879,175 @@ class FRCPostProcessor:
 
         return gcode
 
+    def _detect_circular_ring(self, polygon: Polygon) -> Optional[Tuple[float, float, float, float]]:
+        """Check if a polygon with interiors is approximately a circular ring.
+
+        Uses the isoperimetric quotient (4*pi*area/perimeter^2) to test circularity
+        of both the exterior and each interior boundary, and verifies they share
+        a common center.
+
+        Args:
+            polygon: Shapely Polygon, potentially with interior holes
+
+        Returns:
+            (center_x, center_y, outer_radius, inner_radius) if circular ring,
+            or None if not a circular ring
+        """
+        if len(polygon.interiors) != 1:
+            return None
+
+        circularity_threshold = 0.95
+        center_tolerance = 0.01  # inches
+
+        # Check exterior circularity
+        ext_area = Polygon(polygon.exterior).area
+        ext_perimeter = polygon.exterior.length
+        ext_circularity = (4 * math.pi * ext_area) / (ext_perimeter ** 2)
+        if ext_circularity < circularity_threshold:
+            return None
+
+        # Check interior circularity
+        interior = polygon.interiors[0]
+        int_area = Polygon(interior.coords).area
+        int_perimeter = interior.length
+        int_circularity = (4 * math.pi * int_area) / (int_perimeter ** 2)
+        if int_circularity < circularity_threshold:
+            return None
+
+        # Check shared center
+        ext_centroid = Polygon(polygon.exterior).centroid
+        int_centroid = Polygon(interior.coords).centroid
+        if ext_centroid.distance(int_centroid) > center_tolerance:
+            return None
+
+        # Calculate radii from area (more accurate than perimeter for discretized circles)
+        cx = ext_centroid.x
+        cy = ext_centroid.y
+        outer_radius = math.sqrt(ext_area / math.pi)
+        inner_radius = math.sqrt(int_area / math.pi)
+
+        return (cx, cy, outer_radius, inner_radius)
+
+    def _generate_circular_ring_gcode(self, pocket_poly: Polygon, offset_poly: Polygon,
+                                      cx: float, cy: float,
+                                      outer_radius: float, inner_radius: float) -> List[str]:
+        """Generate G-code for a circular ring/groove pocket using spiral clearing.
+
+        Instead of contour-parallel passes (which cause full-width slotting on the
+        first pass), this uses a ring-centered helical ramp at the entry radius,
+        then Archimedean spirals outward and inward to clear the full ring width.
+        Every pass only engages stepover-width of material.
+
+        Args:
+            pocket_poly: Original pocket polygon (before tool compensation)
+            offset_poly: Tool-compensated polygon (buffered inward by tool_radius)
+            cx, cy: Ring center coordinates
+            outer_radius, inner_radius: Radii of the tool-compensated ring
+        """
+        gcode = []
+
+        stepover = self.tool_diameter * self.stepover_percentage
+
+        # Entry point: use representative_point which lands in the solid ring
+        rep_point = offset_poly.representative_point()
+        entry_x = rep_point.x
+        entry_y = rep_point.y
+
+        # Entry radius = distance from ring center to entry point
+        entry_radius = math.sqrt((entry_x - cx) ** 2 + (entry_y - cy) ** 2)
+
+        # Clamp entry radius to stay within the ring
+        entry_radius = max(inner_radius, min(outer_radius, entry_radius))
+
+        # Recalculate entry point on the ring center axis at entry_radius
+        # Place at 0 degrees (positive X from center) for clean arc commands
+        entry_x = cx + entry_radius
+        entry_y = cy
+
+        ramp_start_height = self.material_top + self.ramp_start_clearance
+        num_helical_passes, depth_per_pass = self._calculate_helical_passes(
+            entry_radius, ramp_start_height=ramp_start_height)
+
+        gcode.append(f"(Circular ring spiral clearing: center ({cx:.4f}, {cy:.4f}), "
+                     f"outer r={outer_radius:.4f}, inner r={inner_radius:.4f})")
+
+        # Position at entry point on ring circumference
+        gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.traverse_rate}  ; Position at ring entry")
+        gcode.append(f"G1 Z{ramp_start_height:.4f} F{self.approach_rate}  ; Approach to ramp start height")
+
+        # Ring-centered helical ramp: helix around ring center at entry_radius
+        # I,J are offsets from current position to arc center
+        i_offset = cx - entry_x  # = -entry_radius (since entry_x = cx + entry_radius)
+        j_offset = cy - entry_y  # = 0 (since entry_y = cy)
+
+        gcode.append(f"(Helical ramp: {num_helical_passes} passes at entry radius {entry_radius:.4f})")
+        for pass_num in range(num_helical_passes):
+            target_z = ramp_start_height - (pass_num + 1) * depth_per_pass
+            gcode.append(f"G3 X{entry_x:.4f} Y{entry_y:.4f} I{i_offset:.4f} J{j_offset:.4f} "
+                         f"Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_helical_passes}")
+
+        # Cleanup circle at entry radius to ensure full ring at this radius is cleared
+        gcode.append(f"G3 X{entry_x:.4f} Y{entry_y:.4f} I{i_offset:.4f} J{j_offset:.4f} "
+                     f"F{self.feed_rate}  ; Cleanup pass at entry radius")
+
+        # Archimedean spiral outward from entry_radius to outer_radius
+        radius_delta_out = outer_radius - entry_radius
+        if radius_delta_out > 0.001:
+            spiral_constant = stepover / (2 * math.pi)
+            total_angle = radius_delta_out / spiral_constant if spiral_constant > 0 else 0
+            angle_increment = math.radians(10)
+            num_points = int(math.ceil(total_angle / angle_increment))
+
+            gcode.append(f"(Spiral outward: {num_points} points from r={entry_radius:.4f} to r={outer_radius:.4f})")
+            for i in range(num_points):
+                current_angle = i * angle_increment
+                current_radius = entry_radius + spiral_constant * current_angle
+                current_radius = min(current_radius, outer_radius)
+                x = cx + current_radius * math.cos(current_angle)
+                y = cy + current_radius * math.sin(current_angle)
+                gcode.append(f"G1 X{x:.4f} Y{y:.4f} F{self.feed_rate}")
+
+        # Cleanup circle at outer radius - G3/CCW for climb milling on inner groove wall
+        outer_x = cx + outer_radius
+        outer_y = cy
+        gcode.append(f"G1 X{outer_x:.4f} Y{outer_y:.4f} F{self.feed_rate}  ; Move to outer radius")
+        gcode.append(f"G3 X{outer_x:.4f} Y{outer_y:.4f} I{-outer_radius:.4f} J0 "
+                     f"F{self.feed_rate}  ; Outer cleanup circle, CCW climb milling")
+
+        # Return to entry radius for inward spiral
+        entry_on_ring_x = cx + entry_radius
+        entry_on_ring_y = cy
+        gcode.append(f"G1 X{entry_on_ring_x:.4f} Y{entry_on_ring_y:.4f} F{self.feed_rate}  ; Return to entry radius")
+
+        # Archimedean spiral inward from entry_radius to inner_radius
+        radius_delta_in = entry_radius - inner_radius
+        if radius_delta_in > 0.001:
+            spiral_constant = stepover / (2 * math.pi)
+            total_angle = radius_delta_in / spiral_constant if spiral_constant > 0 else 0
+            angle_increment = math.radians(10)
+            num_points = int(math.ceil(total_angle / angle_increment))
+
+            gcode.append(f"(Spiral inward: {num_points} points from r={entry_radius:.4f} to r={inner_radius:.4f})")
+            for i in range(num_points):
+                current_angle = i * angle_increment
+                current_radius = entry_radius - spiral_constant * current_angle
+                current_radius = max(current_radius, inner_radius)
+                x = cx + current_radius * math.cos(current_angle)
+                y = cy + current_radius * math.sin(current_angle)
+                gcode.append(f"G1 X{x:.4f} Y{y:.4f} F{self.feed_rate}")
+
+        # Cleanup circle at inner radius - G2/CW for climb milling on outer island wall
+        inner_x = cx + inner_radius
+        inner_y = cy
+        gcode.append(f"G1 X{inner_x:.4f} Y{inner_y:.4f} F{self.feed_rate}  ; Move to inner radius")
+        gcode.append(f"G2 X{inner_x:.4f} Y{inner_y:.4f} I{-inner_radius:.4f} J0 "
+                     f"F{self.feed_rate}  ; Inner cleanup circle, CW climb milling")
+
+        # Retract
+        gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
+
+        return gcode
+
     def _generate_pocket_gcode_from_polygon(self, pocket_poly: Polygon) -> List[str]:
         """Generate G-code for a pocket from a Shapely Polygon (supports interior holes/islands).
         This is the island-aware version that respects Polygon interiors."""
@@ -2915,6 +3084,14 @@ class FRCPostProcessor:
             error_msg = f"Pocket at approximately ({center_x:.3f}, {center_y:.3f}) is too small for {self.tool_diameter:.4f}\" tool - tool cannot fit inside with proper clearance"
             self._add_error(error_msg)
             return gcode
+
+        # Check for circular ring - use spiral clearing instead of contour-parallel
+        if isinstance(offset_poly, Polygon) and len(offset_poly.interiors) > 0:
+            ring_params = self._detect_circular_ring(offset_poly)
+            if ring_params is not None:
+                cx, cy, outer_r, inner_r = ring_params
+                return self._generate_circular_ring_gcode(
+                    pocket_poly, offset_poly, cx, cy, outer_r, inner_r)
 
         # Find a good entry point within the machining area
         # CRITICAL: For rings/donuts, centroid is in the center hole (island)!
