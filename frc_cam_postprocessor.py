@@ -1468,7 +1468,7 @@ class FRCPostProcessor:
                     gcode.append(f"(Pocket {i}: {pocket_area:.3f} sq in > {threshold_area:.3f} sq in threshold - will contour through-cut)")
                 else:
                     cleared_pockets.append((i, pocket, pocket_area))
-                    reason = "(partial depth)" if not is_through_cut else "(below threshold)"
+                    reason = "- partial depth" if not is_through_cut else "- below threshold"
                     gcode.append(f"(Pocket {i}: {pocket_area:.3f} sq in - will fully clear {reason})")
 
             # Process fully cleared pockets first
