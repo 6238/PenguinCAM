@@ -324,6 +324,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Change label and default for tube mode
                     thicknessLabel.innerHTML = `
                         Tube Wall Thickness (inches)
+                        <select class="unitChooser" id="thicknessUnit">
+                                    <option value="mm">mm</option>
+                                    <option value="in">inches</option>
+                                </select>
                         <span class="label-hint">1/8" = 0.125"</span>
                     `;
                     thicknessInput.value = '0.125';
@@ -331,6 +335,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Standard label and default
                     thicknessLabel.innerHTML = `
                         Material Thickness (inches)
+                        <select class="unitChooser" id="thicknessUnit">
+                                    <option value="mm">mm</option>
+                                    <option value="in">inches</option>
+                                </select>
                         <span class="label-hint">1/4" = 0.25</span>
                     `;
                     thicknessInput.value = '0.25';
@@ -1679,11 +1687,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const machineXMax = window.MACHINE_CONFIG?.xMax || 48.0;
             const machineYMax = window.MACHINE_CONFIG?.yMax || 96.0;
             const fitsInMachine = displayWidth <= machineXMax && displayHeight <= machineYMax;
-
+            
             if (fitsInMachine) {
+                let unit = document.getElementById('dxfunit').value
+                let dimensonsText = "";
+                if(unit == "mm"){
+                    dimensonsText = `${(displayWidth*25.4).toFixed(2)}mm × ${(displayHeight*25.4).toFixed(2)}mm (${rotationAngle}°)`
+                }
+                else{
+                    dimensonsText = `${displayWidth.toFixed(2)}" × ${displayHeight.toFixed(2)}" (${rotationAngle}°)`
+                }
                 ctx.fillStyle = '#8B949E';
                 ctx.fillText(
-                    `${displayWidth.toFixed(2)}" × ${displayHeight.toFixed(2)}" (${rotationAngle}°)`,
+                    dimensonsText,
                     width / 2,
                     20
                 );
@@ -2051,6 +2067,7 @@ document.addEventListener('DOMContentLoaded', () => {
         function visualizeGcode(gcode) {
             // Parse G-code into moves
             const lines = gcode.split('\n');
+            const unit = document.getElementById('dxfunit').value;
             toolpathMoves = [];
             let currentX = 0, currentY = 0, currentZ = 0;
             let minX = Infinity, maxX = -Infinity;
@@ -2227,11 +2244,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // Get actual material thickness for visualization
             const material = document.getElementById('material').value;
             const isAluminumTube = (material === 'aluminum_tube');
-            const materialThickness = parseFloat(numberToInch);
+            const materialThickness = parseFloat(document.getElementById('thickness').value,numberToInch);
 
             // For tube mode, use tube height as stock height instead of wall thickness
             const stockHeightValue = isAluminumTube ?
-                parseFloat(document.getElementById('tubeHeight').value) :
+                parseFloat(numberToInch(document.getElementById('tubeHeight').value,unit)) :
                 materialThickness;
 
             // Material boundaries (at material top surface)
@@ -2261,7 +2278,7 @@ document.addEventListener('DOMContentLoaded', () => {
             scene.add(sacrificeOutline);
 
             // Add stock material as semi-transparent solid
-            const stockHeight = stockHeightValue; // Use tube height for tubes, thickness for plates
+            const stockHeight = numberToInch(stockHeightValue,unit); // Use tube height for tubes, thickness for plates
 
             // Calculate stock dimensions
             let stockWidth, stockDepth;
@@ -2294,7 +2311,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (stockSizeDisplay && stockSizeValue) {
                     // Display as: width × height × length
-                    stockSizeValue.textContent = `${dxfShort.toFixed(0)}" × ${tubeHeightInput.toFixed(0)}" × ${tubeLength.toFixed(3)}"`;
+                    const unit = document.getElementById('dxfunit').value;
+                    let stocksizeValueText = `${dxfShort.toFixed(0)}" × ${tubeHeightInput.toFixed(0)}" × ${tubeLength.toFixed(3)}"`
+                    if(unit == "mm"){
+                        stocksizeValueText = `${(dxfShort * 25.4).toFixed(0)}mm × ${(tubeHeightInput * 25.4).toFixed(0)}mm × ${(tubeLength * 25.4).toFixed(3)}mm`
+                    }
+                    stockSizeValue.textContent = stocksizeValueText;
                     stockSizeDisplay.style.display = 'flex';
                 }
             } else {
@@ -2327,7 +2349,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const fullStockDepth = dxfHeight + (cutsOutsideY ? 2 * toolDiameter : 0);
 
                 if (stockSizeDisplay && stockSizeValue) {
-                    stockSizeValue.textContent = `${fullStockWidth.toFixed(3)}" × ${fullStockDepth.toFixed(3)}"`;
+                    const unit = document.getElementById('dxfunit').value;
+                    let stockSizeValueText = `${fullStockWidth.toFixed(3)}" × ${fullStockDepth.toFixed(3)}"`
+                    if(unit == "mm"){
+                        stockSizeValueText = `${(fullStockWidth * 25.4).toFixed(3)}mm × ${(fullStockDepth * 25.4).toFixed(3)}mm`
+                    }
+                    stockSizeValue.textContent = stockSizeValueText;
                     stockSizeDisplay.style.display = 'flex';
                 }
             }
