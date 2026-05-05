@@ -324,6 +324,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Change label and default for tube mode
                     thicknessLabel.innerHTML = `
                         Tube Wall Thickness (inches)
+                        <select class="unitChooser" id="thicknessUnit">
+                                    <option value="mm">mm</option>
+                                    <option value="in">inches</option>
+                                </select>
                         <span class="label-hint">1/8" = 0.125"</span>
                     `;
                     thicknessInput.value = '0.125';
@@ -331,6 +335,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Standard label and default
                     thicknessLabel.innerHTML = `
                         Material Thickness (inches)
+                        <select class="unitChooser" id="thicknessUnit">
+                                    <option value="mm">mm</option>
+                                    <option value="in">inches</option>
+                                </select>
                         <span class="label-hint">1/4" = 0.25</span>
                     `;
                     thicknessInput.value = '0.25';
@@ -524,22 +532,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 formData.append('machine_id', machineSelect.value);
             }
 
+            formData.append('unit', document.getElementById('dxfunit').value);
+            console.log('📐 DXF units:', document.getElementById('dxfunit').value);
             const material = document.getElementById('material').value;
             formData.append('material', material);
-            formData.append('tool_diameter', document.getElementById('toolDiameter').value);
+            formData.append('tool_diameter', numberToInch(Number(document.getElementById('toolDiameter').value), document.getElementById('toolDiameterUnit').value)); // Tool diameter in inches
             formData.append('origin_corner', 'bottom-left'); // Always bottom-left
 
             // Add material-specific parameters
             if (material === 'aluminum_tube') {
                 // Tube-specific parameters
-                formData.append('thickness', document.getElementById('thickness').value); // Tube wall thickness
-                formData.append('tube_height', document.getElementById('tubeHeight').value);
+                formData.append('thickness', numberToInch(Number(document.getElementById('thickness').value),document.getElementById('thicknessUnit').value)); // Material thickness converted to inches                
+                formData.append('tube_height', numberToInch(Number(document.getElementById('tubeHeight').value), document.getElementById('tubeHeightUnit').value));
                 formData.append('square_end', document.getElementById('squareEnd').checked ? '1' : '0');
                 formData.append('cut_to_length', document.getElementById('cutToLength').checked ? '1' : '0');
             } else {
                 // Standard parameters
-                formData.append('thickness', document.getElementById('thickness').value);
-                formData.append('tab_spacing', document.getElementById('tabSpacing').value);
+                
+                formData.append('thickness', numberToInch(Number(document.getElementById('thickness').value),document.getElementById('thicknessUnit').value)); // Material thickness converted to inches
+                formData.append('tab_spacing', numberToInch(Number(document.getElementById('tabSpacing').value),document.getElementById('tabSpacingUnit').value)); // Tab spacing converted to inches
             }
             formData.append('rotation', rotationAngle); // Add rotation angle
             if (appState.suggestedFilename) {
@@ -1351,50 +1362,90 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('modeToggle').style.display = 'flex';
             switchMode('setup');
         }
-        
-        function createEntity(type, data) {
-            if (type === 'CIRCLE') {
-                return {
-                    type: 'CIRCLE',
-                    center: { x: data.centerX, y: data.centerY },
-                    radius: data.radius,
-                    layer: data.layer || '0'
-                };
-            } else if (type === 'ARC') {
-                return {
-                    type: 'ARC',
-                    center: { x: data.centerX, y: data.centerY },
-                    radius: data.radius,
-                    startAngle: data.startAngle || 0,
-                    endAngle: data.endAngle || 360,
-                    layer: data.layer || '0'
-                };
-            } else if (type === 'LINE') {
-                return {
-                    type: 'LINE',
-                    vertices: [
-                        { x: data.x1, y: data.y1 },
-                        { x: data.x2, y: data.y2 }
-                    ],
-                    layer: data.layer || '0'
-                };
-            } else if (type === 'LWPOLYLINE') {
-                return {
-                    type: 'LWPOLYLINE',
-                    vertices: data.vertices || [],
-                    closed: data.closed || false,  // Used to filter construction geometry
-                    shape: data.closed || false,  // Used by renderer to close path
-                    layer: data.layer || '0'
-                };
-            } else if (type === 'SPLINE') {
-                return {
-                    type: 'SPLINE',
-                    controlPoints: data.controlPoints || [],
-                    layer: data.layer || '0'
-                };
+        function numberToInch(number,unit){
+            if(unit === 'mm'){
+                return (number / 25.4); // Convert mm to inches and round to 4 decimal places
             }
-            return null;
+            return number; // Assume it's already in inches if not mm
         }
+    function createEntity(type, data) {
+        const unit = document.getElementById('dxfunit').value;
+
+        function convertPoint(p) {
+            return {
+                x: numberToInch(p.x, unit),
+                y: numberToInch(p.y, unit)
+            };
+        }
+
+        if (type === 'CIRCLE') {
+            return {
+                type: 'CIRCLE',
+                center: {
+                    x: numberToInch(data.centerX, unit),
+                    y: numberToInch(data.centerY, unit)
+                },
+                radius: numberToInch(data.radius, unit),
+                layer: data.layer || '0'
+            };
+        } 
+
+        else if (type === 'ARC') {
+            return {
+                type: 'ARC',
+                center: {
+                    x: numberToInch(data.centerX, unit),
+                    y: numberToInch(data.centerY, unit)
+                },
+                radius: numberToInch(data.radius, unit),
+                startAngle: data.startAngle || 0,
+                endAngle: data.endAngle || 360,
+                layer: data.layer || '0'
+            };
+        } 
+
+        else if (type === 'LINE') {
+            return {
+                type: 'LINE',
+                vertices: [
+                    {
+                        x: numberToInch(data.x1, unit),
+                        y: numberToInch(data.y1, unit)
+                    },
+                    {
+                        x: numberToInch(data.x2, unit),
+                        y: numberToInch(data.y2, unit)
+                    }
+                ],
+                layer: data.layer || '0'
+            };
+        } 
+
+        else if (type === 'LWPOLYLINE') {
+            return {
+                type: 'LWPOLYLINE',
+                vertices: (data.vertices || []).map(v => ({
+                    x: numberToInch(v.x, unit),
+                    y: numberToInch(v.y, unit),
+                    // keep bulge if exists (do NOT convert)
+                    ...(v.bulge !== undefined ? { bulge: v.bulge } : {})
+                })),
+                closed: data.closed || false,
+                shape: data.closed || false,
+                layer: data.layer || '0'
+            };
+        } 
+
+        else if (type === 'SPLINE') {
+            return {
+                type: 'SPLINE',
+                controlPoints: (data.controlPoints || []).map(p => convertPoint(p)),
+                layer: data.layer || '0'
+            };
+        }
+
+        return null;
+    }
 
         // Render 2D DXF setup view
         function renderDxfSetup() {
@@ -1636,11 +1687,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const machineXMax = window.MACHINE_CONFIG?.xMax || 48.0;
             const machineYMax = window.MACHINE_CONFIG?.yMax || 96.0;
             const fitsInMachine = displayWidth <= machineXMax && displayHeight <= machineYMax;
-
+            
             if (fitsInMachine) {
+                let unit = document.getElementById('dxfunit').value
+                let dimensonsText = "";
+                if(unit == "mm"){
+                    dimensonsText = `${(displayWidth*25.4).toFixed(2)}mm × ${(displayHeight*25.4).toFixed(2)}mm (${rotationAngle}°)`
+                }
+                else{
+                    dimensonsText = `${displayWidth.toFixed(2)}" × ${displayHeight.toFixed(2)}" (${rotationAngle}°)`
+                }
                 ctx.fillStyle = '#8B949E';
                 ctx.fillText(
-                    `${displayWidth.toFixed(2)}" × ${displayHeight.toFixed(2)}" (${rotationAngle}°)`,
+                    dimensonsText,
                     width / 2,
                     20
                 );
@@ -2008,6 +2067,7 @@ document.addEventListener('DOMContentLoaded', () => {
         function visualizeGcode(gcode) {
             // Parse G-code into moves
             const lines = gcode.split('\n');
+            const unit = document.getElementById('dxfunit').value;
             toolpathMoves = [];
             let currentX = 0, currentY = 0, currentZ = 0;
             let minX = Infinity, maxX = -Infinity;
@@ -2184,11 +2244,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // Get actual material thickness for visualization
             const material = document.getElementById('material').value;
             const isAluminumTube = (material === 'aluminum_tube');
-            const materialThickness = parseFloat(document.getElementById('thickness').value);
+            const materialThickness = parseFloat(document.getElementById('thickness').value,numberToInch);
 
             // For tube mode, use tube height as stock height instead of wall thickness
             const stockHeightValue = isAluminumTube ?
-                parseFloat(document.getElementById('tubeHeight').value) :
+                parseFloat(numberToInch(document.getElementById('tubeHeight').value,unit)) :
                 materialThickness;
 
             // Material boundaries (at material top surface)
@@ -2218,14 +2278,14 @@ document.addEventListener('DOMContentLoaded', () => {
             scene.add(sacrificeOutline);
 
             // Add stock material as semi-transparent solid
-            const stockHeight = stockHeightValue; // Use tube height for tubes, thickness for plates
+            const stockHeight = numberToInch(stockHeightValue,unit); // Use tube height for tubes, thickness for plates
 
             // Calculate stock dimensions
             let stockWidth, stockDepth;
             let stockCenterX, stockCenterZ; // Center position for stock box
 
             // Calculate and display stock size
-            const toolDiameter = parseFloat(document.getElementById('toolDiameter').value) || 0.157;
+            const toolDiameter = parseFloat(numberToInch(document.getElementById('toolDiameter').value, document.getElementById('toolDiameterUnit').value)) || 0.157;
             const stockSizeDisplay = document.getElementById('stockSizeDisplay');
             const stockSizeValue = document.getElementById('stockSizeValue');
 
@@ -2251,7 +2311,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (stockSizeDisplay && stockSizeValue) {
                     // Display as: width × height × length
-                    stockSizeValue.textContent = `${dxfShort.toFixed(0)}" × ${tubeHeightInput.toFixed(0)}" × ${tubeLength.toFixed(3)}"`;
+                    const unit = document.getElementById('dxfunit').value;
+                    let stocksizeValueText = `${dxfShort.toFixed(0)}" × ${tubeHeightInput.toFixed(0)}" × ${tubeLength.toFixed(3)}"`
+                    if(unit == "mm"){
+                        stocksizeValueText = `${(dxfShort * 25.4).toFixed(0)}mm × ${(tubeHeightInput * 25.4).toFixed(0)}mm × ${(tubeLength * 25.4).toFixed(3)}mm`
+                    }
+                    stockSizeValue.textContent = stocksizeValueText;
                     stockSizeDisplay.style.display = 'flex';
                 }
             } else {
@@ -2284,7 +2349,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const fullStockDepth = dxfHeight + (cutsOutsideY ? 2 * toolDiameter : 0);
 
                 if (stockSizeDisplay && stockSizeValue) {
-                    stockSizeValue.textContent = `${fullStockWidth.toFixed(3)}" × ${fullStockDepth.toFixed(3)}"`;
+                    const unit = document.getElementById('dxfunit').value;
+                    let stockSizeValueText = `${fullStockWidth.toFixed(3)}" × ${fullStockDepth.toFixed(3)}"`
+                    if(unit == "mm"){
+                        stockSizeValueText = `${(fullStockWidth * 25.4).toFixed(3)}mm × ${(fullStockDepth * 25.4).toFixed(3)}mm`
+                    }
+                    stockSizeValue.textContent = stockSizeValueText;
                     stockSizeDisplay.style.display = 'flex';
                 }
             }

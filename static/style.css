@@ -1108,3 +1108,6 @@
         .modal-actions button.secondary:hover {
             background: var(--border);
         }
+        .unitChooser {
+            width: auto;
+        }

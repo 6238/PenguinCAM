@@ -470,6 +470,8 @@ def index():
 def process_file():
     """Process uploaded DXF file and generate G-code"""
     try:
+        #get unit
+        unit = request.form.get('unit', 'in')
         # Get uploaded file
         if 'file' not in request.files:
             return jsonify({'error': 'No file uploaded'}), 400
@@ -485,7 +487,6 @@ def process_file():
         material = request.form.get('material', 'plywood')
         is_aluminum_tube = (material.lower() == 'aluminum_tube')
         machine_id = request.form.get('machine_id', None)  # Optional machine selection
-
         # Map special cases:
         # - 'aluminum_tube' -> 'aluminum' (aluminum_tube is UI-only, uses aluminum preset)
         # - 'polycarb' -> 'polycarbonate' (legacy compatibility)
@@ -605,7 +606,7 @@ def process_file():
                     pp.user_name = user_name
 
                 # Load and process DXF
-                pp.load_dxf(input_path)
+                pp.load_dxf(input_path, unit)
                 pp.transform_coordinates('bottom-left', rotation)  # Tube jig is always bottom-left
                 pp.identify_perimeter_and_pockets()  # Must come BEFORE classify_holes to remove perimeter circles
                 pp.classify_holes()
@@ -641,7 +642,7 @@ def process_file():
                 pp.tab_spacing = tab_spacing
 
                 # Load and process DXF
-                pp.load_dxf(input_path)
+                pp.load_dxf(input_path, unit)
                 pp.transform_coordinates(origin_corner, rotation)
                 pp.identify_perimeter_and_pockets()  # Must come BEFORE classify_holes to remove perimeter circles
                 pp.classify_holes()

@@ -88,7 +88,14 @@
                         <div class="step-number">1</div>
                         <div class="panel-title">Upload DXF File</div>
                     </div>
-
+                    <!-- Unit select-->
+                     <div style="padding: 0.75rem">
+                        <span>DXF Units:</span>
+                        <select id="dxfunit">
+                            <option value="in">Inches</option>
+                            <option value="mm">Millimeters</option>
+                        </select>
+                     </div>
                     <!-- Big drop zone (shown when no file loaded) -->
                     <div class="drop-zone" id="dropZone">
                         <div class="drop-zone-icon">📄</div>
@@ -162,7 +169,11 @@
 
                         <div class="param-group">
                             <label>
-                                Material Thickness (inches)
+                                Material Thickness
+                                <select class="unitChooser" id="thicknessUnit">
+                                    <option value="mm">mm</option>
+                                    <option value="in">inches</option>
+                                </select>
                                 <span class="label-hint">{% if detected_thickness %}Auto-detected from CAD{% else %}1/4" = 0.25{% endif %}</span>
                             </label>
                             <input type="number" id="thickness" step="0.001" value="{% if detected_thickness %}{{ '%.3f' | format(detected_thickness) }}{% else %}0.25{% endif %}" min="0.01" required autocomplete="off" {% if detected_thickness %}readonly style="background-color: var(--surface-light); cursor: not-allowed; opacity: 0.7;"{% endif %}>
@@ -175,7 +186,11 @@
 
                         <div class="param-group" style="display: none;">
                             <label>
-                                Tab Spacing (inches)
+                                Tab Spacing
+                                <select class="unitChooser" id="tabSpacingUnit">
+                                    <option value="mm">mm</option>
+                                    <option value="in">inches</option>
+                                </select>
                                 <span class="label-hint">Distance between tabs (min 3 tabs)</span>
                             </label>
                             <input type="number" id="tabSpacing" step="0.5" value="6.0" min="0.5" max="24" required>
@@ -185,7 +200,11 @@
                         <div id="tubeParams" style="display: none;">
                             <div class="param-group">
                                 <label>
-                                    Tube Z-Height (inches)
+                                    Tube Z-Height
+                                <select class="unitChooser" id="tubeHeightUnit">
+                                    <option value="mm">mm</option>
+                                    <option value="in">inches</option>
+                                </select>
                                     <span class="label-hint">Height of tube in machine</span>
                                 </label>
                                 <input type="number" id="tubeHeight" step="0.001" value="2.0" min="0.1">
@@ -211,7 +230,11 @@
 
                         <div class="param-group">
                             <label>
-                                Tool Diameter (inches)
+                                Tool Diameter
+                                <select class="unitChooser" id="toolDiameterUnit">
+                                    <option value="mm">mm</option>
+                                    <option value="in">inches</option>
+                                </select>
                                 <span class="label-hint">4mm = 0.157"</span>
                             </label>
                             <input type="number" id="toolDiameter" step="0.001" value="{{ default_tool_diameter }}" min="0.01" required>
