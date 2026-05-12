@@ -48,7 +48,14 @@
         <!-- Config status (in the middle) -->
         <div class="config-info">
             {% if session.get('team_config') and session.get('team_config').get('team_number') %}
-            <p class="config-status">Team configuration: {{ session.get('team_config').get('team_number') }} ({{ session.get('team_config').get('team_name', 'Unknown') }})</p>
+            {% set _config_url = session.get('team_config_url') %}
+            <p class="config-status">Team configuration:
+                {% if _config_url %}
+                <a href="{{ _config_url }}" target="_blank" rel="noopener">{{ session.get('team_config').get('team_number') }} ({{ session.get('team_config').get('team_name', 'Unknown') }})</a>
+                {% else %}
+                {{ session.get('team_config').get('team_number') }} ({{ session.get('team_config').get('team_name', 'Unknown') }})
+                {% endif %}
+            </p>
             {% else %}
             <p class="config-status config-status-default">Using default configuration</p>
             {% endif %}

@@ -1090,6 +1090,7 @@ def onshape_oauth_callback():
                 session['team_config_data'] = team_config._data
                 session['team_config'] = team_config.to_dict()
                 session['team_number'] = team_config.team_number
+                session['team_config_url'] = getattr(client, 'last_config_url', None)
                 session['using_default_config'] = False
             else:
                 log("⚠️  No team config found - using defaults")
@@ -1097,6 +1098,7 @@ def onshape_oauth_callback():
                 session['team_config_data'] = {}
                 session['team_config'] = team_config.to_dict()
                 session['team_number'] = team_config.team_number
+                session.pop('team_config_url', None)
                 session['using_default_config'] = True
         else:
             log("ℹ️  Authentication from Onshape extension - will load config during export")
@@ -1414,6 +1416,7 @@ def onshape_import():
             session['team_config_data'] = team_config._data
             session['team_config'] = team_config.to_dict()
             session['team_number'] = team_config.team_number
+            session['team_config_url'] = getattr(client, 'last_config_url', None)
             session['using_default_config'] = False
         else:
             log("⚠️  No team config found - using defaults")
@@ -1421,6 +1424,7 @@ def onshape_import():
             session['team_config_data'] = {}
             session['team_config'] = team_config.to_dict()
             session['team_number'] = team_config.team_number
+            session.pop('team_config_url', None)
             session['using_default_config'] = True
         log("="*60 + "\n")
 

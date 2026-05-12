@@ -1764,6 +1764,7 @@ class OnshapeClient:
         """
         try:
             log("\n🔍 Searching for PenguinCAM-config.yaml...")
+            self.last_config_url = None
 
             user_companies = self.get_companies() or []
             user_classroom_ids = {c.get('id') for c in user_companies if c.get('id')}
@@ -1925,6 +1926,7 @@ class OnshapeClient:
 
             # Return raw text content
             config_yaml = response.text
+            self.last_config_url = f"{self.BASE_URL}/documents/{doc_id}/w/{workspace_id}/e/{element_id}"
             log(f"   ✅ Successfully fetched config file ({len(config_yaml)} bytes)")
             log(f"   🔍 DEBUG: Returning config_yaml (is None? {config_yaml is None})")
 

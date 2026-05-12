@@ -90,6 +90,15 @@
             white-space: nowrap;
         }
 
+        .config-status a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .config-status a:hover {
+            text-decoration: underline;
+        }
+
         .config-status-default {
             color: var(--text-dim);
             font-style: italic;
