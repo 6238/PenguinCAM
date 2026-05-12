@@ -914,7 +914,6 @@ document.addEventListener('DOMContentLoaded', () => {
         function updateFormVisibility() {
             const materialSelect = document.getElementById('material');
             const tubeParams = document.getElementById('tubeParams');
-            const tabsGroup = document.getElementById('tabSpacing')?.closest('.param-group');
             const thicknessInput = document.getElementById('thickness');
             const isAluminumTube = materialSelect.value === 'aluminum_tube';
             const isMultiDepth = isMultiDepthMode();
@@ -946,11 +945,6 @@ document.addEventListener('DOMContentLoaded', () => {
             // Hide tube parameters unless aluminum_tube is selected
             if (tubeParams) {
                 tubeParams.style.display = isAluminumTube ? 'block' : 'none';
-            }
-
-            // Hide tabs for: aluminum tube OR 2.5D mode
-            if (tabsGroup) {
-                tabsGroup.style.display = (isAluminumTube || isMultiDepth) ? 'none' : 'block';
             }
         }
 
