@@ -1401,7 +1401,7 @@ def onshape_import():
         # Reload team config on every export (allows users to update config without re-authenticating)
         log("\n" + "="*60)
         log("🔄 Refreshing team config from Onshape...")
-        config_yaml = client.fetch_config_file()
+        config_yaml = client.fetch_config_file(document_id=document_id)
         if config_yaml:
             log(f"🔍 DEBUG: Raw YAML length: {len(config_yaml)} bytes")
             log(f"🔍 DEBUG: First 500 chars of YAML: {config_yaml[:500]}")

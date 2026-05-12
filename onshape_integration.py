@@ -1739,9 +1739,25 @@ class OnshapeClient:
             log(traceback.format_exc())
             return None
 
-    def fetch_config_file(self):
+    def fetch_config_file(self, document_id=None):
         """
-        Search for and fetch PenguinCAM-config.yaml from the user's documents.
+        Search for and fetch PenguinCAM-config.yaml from the classrooms
+        (companies/teams) the authenticated user belongs to.
+
+        The user is the source of truth for which classroom's config to
+        use — the mentor of the user's classroom configures the machines
+        the user has access to, regardless of where the active CAD part
+        was designed. When the user belongs to multiple classrooms and
+        has a config in more than one, the active document's classroom
+        is used as a tie-breaker so that students working inside a
+        particular team's documents land on that team's config; we
+        never fall back to a foreign classroom's config just because a
+        part was shared from there.
+
+        Args:
+            document_id: Optional Onshape document ID for the active
+                export. Only used as a tie-breaker among configs in the
+                user's own classrooms.
 
         Returns:
             str with raw YAML content, or None if not found or on error
@@ -1749,76 +1765,94 @@ class OnshapeClient:
         try:
             log("\n🔍 Searching for PenguinCAM-config.yaml...")
 
-            # Get user's companies to filter search results
-            user_companies = self.get_companies()
-            user_company_ids = set()
-            if user_companies:
-                user_company_ids = {c.get('id') for c in user_companies if c.get('id')}
-                log(f"   User belongs to {len(user_company_ids)} company/companies")
+            user_companies = self.get_companies() or []
+            user_classroom_ids = {c.get('id') for c in user_companies if c.get('id')}
 
-            # Search for documents with the config filename (v13 API)
-            search_body = {
-                'rawQuery': 'PenguinCAM-config.yaml'
-            }
-            response = self._make_api_request('POST', '/documents/search', json=search_body)
-
-            if response.status_code != 200:
-                log(f"   ❌ Document search failed: HTTP {response.status_code}")
-                log(f"   Response: {response.text[:200]}")
+            if not user_classroom_ids:
+                log("   ❌ User belongs to no classrooms — PenguinCAM expects the config to live in a company/team-owned document")
                 return None
 
-            search_results = response.json()
-            items = search_results.get('items', [])
+            log(f"   User belongs to {len(user_classroom_ids)} classroom(s)")
 
-            log(f"   Found {len(items)} matching document(s) (may include shared from other teams)")
+            # Tie-breaker only: use the active document's classroom to disambiguate
+            # when the user has configs in multiple of their own classrooms.
+            preferred_owner_id = None
+            if document_id:
+                doc_info = self.get_document_info(document_id)
+                if doc_info:
+                    owner = doc_info.get('owner', {})
+                    # owner type: 0 = user, 1 = company, 2 = team
+                    if owner.get('type') in (1, 2) and owner.get('id') in user_classroom_ids:
+                        preferred_owner_id = owner['id']
+                        log(f"   Active document classroom: {owner.get('name', 'Unknown')}")
 
-            if not items:
-                log("   ℹ️  No PenguinCAM-config.yaml found in documents")
+            # Onshape's /documents/search accepts a single ownerId per request,
+            # so issue one scoped search per classroom and dedupe by doc ID.
+            # Mirrors the Onshape UI's own search payload (ownerId, foundIn=w,
+            # documentFilter=7) to avoid picking up publicly-shared configs
+            # from unrelated teams.
+            candidates = {}
+            for owner_id in user_classroom_ids:
+                search_body = {
+                    'ownerId': owner_id,
+                    'foundIn': 'w',
+                    'when': 'latest',
+                    'documentFilter': 7,
+                    'rawQuery': '_all:PenguinCAM-config.yaml',
+                    'limit': 50,
+                }
+                response = self._make_api_request('POST', '/documents/search', json=search_body)
+                if response.status_code != 200:
+                    log(f"   ⚠️  Search failed for owner {owner_id[:8]}: HTTP {response.status_code}")
+                    continue
+                items = response.json().get('items', [])
+                log(f"   Owner {owner_id[:8]}: {len(items)} match(es)")
+                for item in items:
+                    item_id = item.get('id')
+                    if item_id and item_id not in candidates:
+                        candidates[item_id] = item
+
+            if not candidates:
+                log("   ℹ️  No PenguinCAM-config.yaml found in your classrooms")
                 return None
 
-            # Filter to only documents owned by user's companies (not publicly shared from other teams)
-            user_configs = []
-            for item in items:
+            # Belt-and-suspenders: re-verify each candidate's owner via document
+            # metadata, in case anything other than a user-classroom doc slipped
+            # into a scoped search result.
+            verified = []
+            for item_id, item in candidates.items():
                 doc_name = item.get('name', 'unknown')
-                doc_id = item.get('id', '')
-
-                # Get document info to check owner
-                doc_info = self.get_document_info(doc_id)
+                doc_info = self.get_document_info(item_id)
                 if not doc_info:
                     continue
-
-                owner_info = doc_info.get('owner', {})
-                owner_type = owner_info.get('type')
-                owner_id = owner_info.get('id')
-                owner_name = owner_info.get('name', 'Unknown')
-
-                log(f"   - Found: {doc_name} (ID: {doc_id[:8]}..., owner: {owner_name})")
-
-                # Check if owner is one of user's companies, or the user themselves
-                # owner_type: 0 = user, 1 = company, 2 = team
-                if owner_type in [1, 2] and owner_id in user_company_ids:
-                    # Owned by user's company/team
-                    log(f"     ✓ Owned by your company: {owner_name}")
-                    user_configs.append(item)
-                elif owner_type == 0:
-                    # Owned by a user (possibly this user, or someone in their company)
-                    # We'll accept this as it's not a public share from another team
-                    log(f"     ✓ Owned by user: {owner_name}")
-                    user_configs.append(item)
+                owner = doc_info.get('owner', {})
+                owner_type = owner.get('type')
+                owner_id = owner.get('id')
+                owner_name = owner.get('name', 'Unknown')
+                log(f"   - Found: {doc_name} (ID: {item_id[:8]}, owner: {owner_name})")
+                if owner_type in (1, 2) and owner_id in user_classroom_ids:
+                    verified.append((item, owner_id))
                 else:
-                    log(f"     ✗ Owned by external company/team (ignoring)")
+                    log(f"     ✗ Owner not in user's classrooms (ignoring)")
 
-            if not user_configs:
-                log("   ℹ️  No PenguinCAM-config.yaml found in your company/workspace")
-                log("   💡 Found configs from other teams - create your own to customize settings")
+            if not verified:
+                log("   ❌ No PenguinCAM-config.yaml found in your classrooms after verification")
                 return None
 
-            # Use the first config from user's company
-            config_doc = user_configs[0]
+            def sort_key(entry):
+                item, owner_id = entry
+                is_preferred = preferred_owner_id is not None and owner_id == preferred_owner_id
+                return (1 if is_preferred else 0, item.get('modifiedAt', ''))
+
+            verified.sort(key=sort_key, reverse=True)
+            config_doc, chosen_owner_id = verified[0]
             doc_id = config_doc.get('id')
             doc_name = config_doc.get('name', 'unknown')
 
-            log(f"   ✅ Using config from your workspace: {doc_name} (ID: {doc_id[:8]}...)")
+            if len(verified) > 1:
+                log(f"   ⚠️  {len(verified)} matching configs in your classrooms — picked one")
+
+            log(f"   ✅ Using config: {doc_name} (ID: {doc_id[:8]}, owner: {chosen_owner_id[:8]})")
 
             # Get workspace ID from search results (v13 includes defaultWorkspace)
             log(f"   🔍 DEBUG: config_doc keys: {list(config_doc.keys())}")
