@@ -2486,6 +2486,11 @@ class FRCPostProcessor:
         gcode.append(f"G1 X{final_x:.4f} Y{final_y:.4f} F{self.feed_rate}  ; Move to final radius")
         gcode.append(f"G3 X{final_x:.4f} Y{final_y:.4f} I{-final_toolpath_radius:.4f} J0 F{self.feed_rate}  ; Final cleanup circle CCW for climb milling")
 
+        # Spring pass: repeat the final circle at zero stepover to relieve tool
+        # deflection that left the hole slightly undersized.
+        gcode.append(f"(Spring pass - compensate for tool deflection)")
+        gcode.append(f"G3 X{final_x:.4f} Y{final_y:.4f} I{-final_toolpath_radius:.4f} J0 F{self.feed_rate}  ; Spring pass at final radius")
+
         # Retract
         gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
 
@@ -2577,6 +2582,11 @@ class FRCPostProcessor:
         gcode.append(f"(Final cleanup pass at exact radius)")
         gcode.append(f"G1 X{final_x:.4f} Y{final_y:.4f} F{self.feed_rate}  ; Move to final radius")
         gcode.append(f"G3 X{final_x:.4f} Y{final_y:.4f} I{-final_toolpath_radius:.4f} J0 F{self.feed_rate}  ; Cut final circle CCW for climb milling")
+
+        # Spring pass: repeat the final circle at zero stepover to relieve tool
+        # deflection that left the hole slightly undersized.
+        gcode.append(f"(Spring pass - compensate for tool deflection)")
+        gcode.append(f"G3 X{final_x:.4f} Y{final_y:.4f} I{-final_toolpath_radius:.4f} J0 F{self.feed_rate}  ; Spring pass at final radius")
 
         # Retract
         gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
@@ -2874,6 +2884,13 @@ class FRCPostProcessor:
             gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
         gcode.append(f"G1 X{offset_points[0][0]:.4f} Y{offset_points[0][1]:.4f} F{self.feed_rate}  ; Close pocket")
 
+        # Spring pass: re-trace the perimeter at zero stepover to relieve tool
+        # deflection that left the pocket slightly undersized.
+        gcode.append(f"(Spring pass - compensate for tool deflection)")
+        for point in offset_points[1:]:
+            gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
+        gcode.append(f"G1 X{offset_points[0][0]:.4f} Y{offset_points[0][1]:.4f} F{self.feed_rate}  ; Close spring pass")
+
         # Retract
         gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
 
@@ -3014,6 +3031,11 @@ class FRCPostProcessor:
         gcode.append(f"G3 X{outer_x:.4f} Y{outer_y:.4f} I{-outer_radius:.4f} J0 "
                      f"F{self.feed_rate}  ; Outer cleanup circle, CCW climb milling")
 
+        # Spring pass on outer wall: re-trace at zero stepover to relieve tool deflection.
+        gcode.append(f"(Spring pass - compensate for tool deflection)")
+        gcode.append(f"G3 X{outer_x:.4f} Y{outer_y:.4f} I{-outer_radius:.4f} J0 "
+                     f"F{self.feed_rate}  ; Outer wall spring pass")
+
         # Return to entry radius for inward spiral
         entry_on_ring_x = cx + entry_radius
         entry_on_ring_y = cy
@@ -3042,6 +3064,11 @@ class FRCPostProcessor:
         gcode.append(f"G1 X{inner_x:.4f} Y{inner_y:.4f} F{self.feed_rate}  ; Move to inner radius")
         gcode.append(f"G2 X{inner_x:.4f} Y{inner_y:.4f} I{-inner_radius:.4f} J0 "
                      f"F{self.feed_rate}  ; Inner cleanup circle, CW climb milling")
+
+        # Spring pass on inner wall: re-trace at zero stepover to relieve tool deflection.
+        gcode.append(f"(Spring pass - compensate for tool deflection)")
+        gcode.append(f"G2 X{inner_x:.4f} Y{inner_y:.4f} I{-inner_radius:.4f} J0 "
+                     f"F{self.feed_rate}  ; Inner wall spring pass")
 
         # Retract
         gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
@@ -3215,6 +3242,13 @@ class FRCPostProcessor:
                 gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
             gcode.append(f"G1 X{exterior_coords[0][0]:.4f} Y{exterior_coords[0][1]:.4f} F{self.feed_rate}")
 
+            # Spring pass: re-trace the exterior at zero stepover to relieve
+            # tool deflection.
+            gcode.append(f"(Spring pass - compensate for tool deflection)")
+            for point in exterior_coords[1:]:
+                gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
+            gcode.append(f"G1 X{exterior_coords[0][0]:.4f} Y{exterior_coords[0][1]:.4f} F{self.feed_rate}")
+
         # Also trace interior boundaries of the tool-compensated ring
         if hasattr(offset_poly, 'interiors'):
             for interior in offset_poly.interiors:
@@ -3223,6 +3257,12 @@ class FRCPostProcessor:
                     pass_number += 1
                     gcode.append(f"(Contour pass {pass_number} - inner boundary)")
                     gcode.append(f"G1 X{interior_coords[0][0]:.4f} Y{interior_coords[0][1]:.4f} F{self.feed_rate}")
+                    for point in interior_coords[1:]:
+                        gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
+                    gcode.append(f"G1 X{interior_coords[0][0]:.4f} Y{interior_coords[0][1]:.4f} F{self.feed_rate}")
+
+                    # Spring pass on this interior boundary.
+                    gcode.append(f"(Spring pass - compensate for tool deflection)")
                     for point in interior_coords[1:]:
                         gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
                     gcode.append(f"G1 X{interior_coords[0][0]:.4f} Y{interior_coords[0][1]:.4f} F{self.feed_rate}")
