@@ -3476,10 +3476,14 @@ class FRCPostProcessor:
             tab_number = 0
             current_z = pass_cut_depth  # Track current Z height to avoid unnecessary moves
 
-            # Store tab positions for the tab removal pass (only on final pass)
-            # List of (tab_idx, start_x, start_y, end_x, end_y) tuples
-            tab_positions = []
-            recorded_tabs = set()  # Track which tab_idx values we've already recorded
+            # Store tab positions for the tab removal pass (only on final pass).
+            # A single tab can straddle multiple contour segments — common on
+            # curves, where circles are approximated as many short chords — so
+            # we keep an ordered waypoint list per tab. The removal pass plunges
+            # at the first waypoint and traces every piece in order; a tab that
+            # lives entirely on one segment ends up with two waypoints, same as
+            # the old straight-line behavior.
+            tab_waypoints_by_idx = {}  # tab_idx -> [(x, y), (x, y), ...]
 
             # Create perimeter points list starting from where ramp ended
             # Continue from ramp_end_segment to end, then wrap around to start
@@ -3488,7 +3492,7 @@ class FRCPostProcessor:
 
             # Helper function to process a segment with tab checking
             def process_segment(p1, p2, seg_start_dist, seg_length):
-                nonlocal tab_number, current_z, tab_positions, recorded_tabs
+                nonlocal tab_number, current_z, tab_waypoints_by_idx
 
                 if seg_length == 0:
                     return
@@ -3548,10 +3552,13 @@ class FRCPostProcessor:
                         start_x = p1[0] + t_start * (p2[0] - p1[0])
                         start_y = p1[1] + t_start * (p2[1] - p1[1])
 
-                        # Store tab position for removal pass (only once per tab_idx)
-                        if tab_idx not in recorded_tabs:
-                            tab_positions.append((tab_idx, start_x, start_y, end_x, end_y))
-                            recorded_tabs.add(tab_idx)
+                        # Record this sub-segment for the removal pass. Contiguous
+                        # pieces of the same tab share an endpoint geometrically,
+                        # so we only append the new endpoint on continuations.
+                        if tab_idx not in tab_waypoints_by_idx:
+                            tab_waypoints_by_idx[tab_idx] = [(start_x, start_y), (end_x, end_y)]
+                        else:
+                            tab_waypoints_by_idx[tab_idx].append((end_x, end_y))
 
                         # Move to tab start in XY
                         gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.feed_rate}")
@@ -3595,7 +3602,7 @@ class FRCPostProcessor:
 
             # Store tab positions from final pass for removal
             if is_final_pass:
-                all_tab_positions = tab_positions
+                all_tab_positions = sorted(tab_waypoints_by_idx.items(), key=lambda kv: kv[0])
 
             # Retract
             gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
@@ -3608,8 +3615,7 @@ class FRCPostProcessor:
             gcode.append("(===== TAB REMOVAL PASS =====)")
             gcode.append(f"(Removing {len(all_tab_positions)} tabs in star pattern)")
 
-            # Sort tabs by their index to ensure consistent ordering
-            all_tab_positions.sort(key=lambda x: x[0])
+            # all_tab_positions is already sorted by tab_idx (see above).
 
             # Generate star pattern order: alternates between first and second half
             # For 4 tabs (0,1,2,3): order is 0,2,1,3
@@ -3630,9 +3636,10 @@ class FRCPostProcessor:
 
             # Remove each tab in star order
             for removal_num, tab_order_idx in enumerate(star_order, 1):
-                tab_idx, start_x, start_y, end_x, end_y = all_tab_positions[tab_order_idx]
+                tab_idx, waypoints = all_tab_positions[tab_order_idx]
+                start_x, start_y = waypoints[0]
 
-                gcode.append(f"(Tab {tab_order_idx + 1} removal - #{removal_num} in sequence)")
+                gcode.append(f"(Tab {tab_idx + 1} removal - #{removal_num} in sequence)")
 
                 # Rapid to retract height (like moving between holes)
                 gcode.append(f"G0 Z{self.retract_height:.4f}")
@@ -3643,8 +3650,10 @@ class FRCPostProcessor:
                 # Plunge to cut depth in empty kerf at approach rate (faster - no material)
                 gcode.append(f"G1 Z{self.cut_depth:.4f} F{self.approach_rate}  ; Plunge in kerf")
 
-                # Cut across the tab at contour feed rate
-                gcode.append(f"G1 X{end_x:.4f} Y{end_y:.4f} F{self.feed_rate}  ; Cut through tab")
+                # Cut through each piece of the tab in contour order so curved
+                # tabs (spanning multiple short chord segments) get fully removed.
+                for ex, ey in waypoints[1:]:
+                    gcode.append(f"G1 X{ex:.4f} Y{ey:.4f} F{self.feed_rate}  ; Cut through tab")
 
                 # Retract after each tab
                 gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
