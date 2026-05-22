@@ -17,14 +17,14 @@ from typing import Optional, Dict, Any
 
 TEAM_6238_DEFAULTS = {
     'team': {
-        'number': 6238,
-        'name': 'Popcorn Penguins'
+        'number': 4909,
+        'name': 'Bionics'
     },
     'machine': {
         'name': 'Generic CNC Router',
         'manufacturer': 'Generic',
         'controller': 'Generic',
-        'dimensions': {'x_max': 24.0, 'y_max': 24.0, 'z_max': 8.0},
+        'dimensions': {'x_max': 48.0, 'y_max': 48.0, 'z_max': 8.0},
         'park_position': {'x': 0.5, 'y': 0.5, 'z': -0.5},
         'standard_work_offset': 'G54',
         'tube_jig_work_offset': 'G55',
