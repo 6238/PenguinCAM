@@ -20,8 +20,8 @@ default_machine: omio_x8
 # TEAM INFORMATION (applies to all machines)
 # =============================================================================
 team:
-  number: 6238
-  name: "Popcorn Penguins"
+  number: 4909
+  name: "Bionics"
 
 # =============================================================================
 # MACHINES
