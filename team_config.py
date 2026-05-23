@@ -2,7 +2,7 @@
 Team Configuration Management for PenguinCAM
 
 Handles loading and managing team-specific settings from YAML config files
-stored in Onshape documents. Falls back to Team 6238 defaults if config
+stored in Onshape documents. Falls back to Team 4909 defaults if config
 is missing or incomplete.
 """
 
@@ -664,8 +664,8 @@ CONFIG_TEMPLATE = """# PenguinCAM Team Configuration
 # TEAM INFORMATION
 # =============================================================================
 team:
-  number: 6238
-  name: "Popcorn Penguins"
+  number: 4909
+  name: "Bionics"
 
 # =============================================================================
 # MACHINE & CONTROLLER
@@ -717,7 +717,7 @@ machining:
 
   # Tool parameters (defaults - can be overridden per job)
   default_tool:
-    diameter: 0.157                 # 4mm end mill (inches)
+    diameter: 0.125                 # 1/8 end mill (inches)
     # Note: This sets the default in the UI, but user can override for each job
 
 # =============================================================================
