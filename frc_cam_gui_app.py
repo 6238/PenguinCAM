@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PenguinCAM - FRC Team 6238 CAM Tool
+BionicsCam - FRC Team 4909 CAM Tool
 A Flask-based web interface for generating G-code from DXF files
 """
 
@@ -2067,10 +2067,10 @@ if not IS_SERVERLESS:
 
 if __name__ == '__main__':
     # Get port from environment variable (Railway) or default to 6238 for local dev
-    port = int(os.environ.get('PORT', 6238))
+    port = int(os.environ.get('PORT', 4909))
     
     log("="*70)
-    log("PenguinCAM - FRC Team 6238")
+    log("BionicsCam - FRC Team 4909")
     log("="*70)
     log(f"\nPost-processor script: {POST_PROCESSOR}")
     log(f"Temporary directory: {TEMP_DIR}")
