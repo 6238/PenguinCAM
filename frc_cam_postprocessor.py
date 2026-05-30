@@ -14,6 +14,7 @@ import json
 import math
 import os
 import re
+import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional, Dict, Any
@@ -154,6 +155,9 @@ class FRCPostProcessor:
         self.ramp_start_clearance = 0.15 if units == "inch" else 3.8  # Clearance above material to start ramping
         self.stepover_percentage = 0.6  # Radial stepover as fraction of tool diameter (default 60%)
 
+        self.use_25d = False
+        self.peck_drill_depth = 0.1 if units == "inch" else 2.54
+        
         # Tab parameters from config
         self.tabs_enabled = config.tabs_enabled  # Whether tabs are enabled
         self.tab_width = config.tab_width  # Width of tabs (inches)
@@ -228,6 +232,13 @@ class FRCPostProcessor:
         else:
             self.max_slotting_depth = preset['max_slotting_depth']
 
+        # Peck drill depth (preset is in inches; convert if needed)
+        peck_depth_in = preset.get('peck_drill_depth', 0.1)
+        if self.units == 'mm':
+            self.peck_drill_depth = peck_depth_in * 25.4
+        else:
+            self.peck_drill_depth = peck_depth_in
+            
         # Tab sizes (convert to mm if needed)
         if self.units == 'mm':
             self.tab_width = preset['tab_width'] * 25.4
@@ -238,12 +249,6 @@ class FRCPostProcessor:
 
         # Helix entry radius multiplier
         self.helix_radius_multiplier = preset['helix_radius_multiplier']
-
-        # Peck drill depth (convert to mm if needed)
-        if self.units == 'mm':
-            self.peck_drill_depth = preset['peck_drill_depth'] * 25.4
-        else:
-            self.peck_drill_depth = preset['peck_drill_depth']
 
         print(f"\nApplied material preset: {preset.get('name', material.capitalize())}")
         if 'description' in preset:
@@ -1331,12 +1336,6 @@ class FRCPostProcessor:
     def generate_gcode(self, suggested_filename: str = None, timestamp: str = None) -> PostProcessorResult:
         """
         Generate complete G-code for standard plate operations (single or multi-layer)
-
-        Args:
-            suggested_filename: Optional filename (without timestamp, will be added)
-
-        Returns:
-            PostProcessorResult with gcode string and stats
         """
         # Check for validation errors first
         if self.errors:
@@ -1348,18 +1347,24 @@ class FRCPostProcessor:
                 errors=self.errors.copy()
             )
 
-        # Multi-layer processing
+        # If 2.5D mode is explicitly required, fail fast when there are no layers
+        if self.use_25d and not self.layer_data:
+            return PostProcessorResult(
+                success=False,
+                errors=["2.5D mode is enabled, but this DXF does not contain depth layers."]
+            )
+    
+        # Auto-detect multi-layer DXF when layer data exists
         if self.layer_data:
             return self._generate_multilayer_gcode(suggested_filename, timestamp)
-
+    
         # Use provided timestamp (from client's timezone) or generate one
         if not timestamp:
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+    
         # Generate header
         gcode = self._generate_gcode_header(timestamp, is_multilayer=False)
         warnings = []
-
         # Holes (all circular features - helical entry + spiral clearing, or contouring for large holes)
         if self.holes:
             gcode.append("(===== HOLES =====)")
