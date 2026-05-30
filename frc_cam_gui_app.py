@@ -98,7 +98,8 @@ class FileTokenManager:
         self.tokens = {}  # token → {'filepath': ..., 'filename': ..., 'created': timestamp}
         self.lock = threading.Lock()
         self.use_session = os.environ.get('VERCEL') == '1'  # Use session storage on Vercel
-
+        self.use_25d = False
+        
     def register_file(self, filepath, real_filename):
         """
         Register a file and return a secure random token.
@@ -477,6 +478,7 @@ def process_file():
         tool_diameter = float(request.form.get('tool_diameter', 0.157))
         origin_corner = request.form.get('origin_corner', 'bottom-left')
         rotation = int(request.form.get('rotation', 0))
+        use_25d = request.form.get('use25d', 'false').lower() == 'true'
         suggested_filename = request.form.get('suggested_filename', '')
 
         # Get timestamp from client (in user's local timezone)
@@ -571,7 +573,7 @@ def process_file():
                     units='inch',
                     config=team_config
                 )
-
+                pp.use_25d = use_25d
                 # Store tube height for Z-offset calculations
                 pp.tube_height = tube_height
 
