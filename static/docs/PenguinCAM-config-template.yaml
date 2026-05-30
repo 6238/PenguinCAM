@@ -64,7 +64,7 @@ machines:
 
     # Default tooling for this machine
     default_tool:
-      diameter: 0.157                   # 4mm end mill (inches)
+      diameter: 0.125                   # 4mm end mill (inches)
 
     # General machining preferences
     machining:
