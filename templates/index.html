@@ -231,6 +231,15 @@
                                 <span class="label-hint">4mm = 0.157"</span>
                             </label>
                             <input type="number" id="toolDiameter" step="0.001" value="{{ default_tool_diameter }}" min="0.01" required>
+                            <div class="param-group">
+                                <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="checkbox" id="use25d">
+                                    <span>Enable 2.5D mode</span>
+                                </label>
+                                <div class="label-hint">
+                                    Use layered DXF depth processing when depth layers are present.
+                                </div>
+                            </div>
                         </div>
                     </form>
                 </div>
