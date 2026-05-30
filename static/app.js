@@ -105,8 +105,9 @@ const DEFAULT_SETTINGS = {
     tubeHeight: '2.0',
     squareEnd: true,
     cutToLength: true,
-    toolDiameter: '0.157',
-    rotationAngle: 0
+    toolDiameter: '0.125',
+    rotationAngle: 0,
+    use25d: false
 };
 
 /**
@@ -120,6 +121,7 @@ function saveSettings() {
         thickness: document.getElementById('thickness').value,
         tabSpacing: document.getElementById('tabSpacing').value,
         tubeHeight: document.getElementById('tubeHeight').value,
+        use25d: document.getElementById('use25d').checked,
         squareEnd: document.getElementById('squareEnd').checked,
         cutToLength: document.getElementById('cutToLength').checked,
         toolDiameter: document.getElementById('toolDiameter').value,
@@ -151,6 +153,7 @@ function loadSettings() {
         }
         document.getElementById('material').value = settings.material || DEFAULT_SETTINGS.material;
 
+
         // Only load thickness from localStorage if NOT auto-detected from CAD
         const detectedThickness = window.ONSHAPE_DATA && window.ONSHAPE_DATA.detectedThickness;
         if (!detectedThickness) {
@@ -162,6 +165,7 @@ function loadSettings() {
         document.getElementById('tubeHeight').value = settings.tubeHeight || DEFAULT_SETTINGS.tubeHeight;
         document.getElementById('squareEnd').checked = settings.squareEnd !== undefined ? settings.squareEnd : DEFAULT_SETTINGS.squareEnd;
         document.getElementById('cutToLength').checked = settings.cutToLength !== undefined ? settings.cutToLength : DEFAULT_SETTINGS.cutToLength;
+        document.getElementById('use25d').checked = settings.use25d !== undefined ? settings.use25d : DEFAULT_SETTINGS.use25d;
         // Use saved value if exists, otherwise keep server-provided default
         document.getElementById('toolDiameter').value = settings.toolDiameter || serverDefaultToolDiameter;
         appState.rotationAngle = settings.rotationAngle || DEFAULT_SETTINGS.rotationAngle;
@@ -195,7 +199,7 @@ function loadSettings() {
  * Attach event listeners to form elements to auto-save on change
  */
 function setupSettingsAutoSave() {
-    const fields = ['material', 'thickness', 'tabSpacing', 'tubeHeight', 'squareEnd', 'cutToLength', 'toolDiameter'];
+        const fields = ['material', 'thickness', 'tabSpacing', 'tubeHeight', 'squareEnd', 'cutToLength', 'toolDiameter', 'use25d'];
 
     fields.forEach(fieldId => {
         const element = document.getElementById(fieldId);
@@ -515,6 +519,9 @@ document.addEventListener('DOMContentLoaded', () => {
             formData.append('file', appState.uploadedFile);
             console.log('✅ FormData created with file:', appState.uploadedFile.name);
 
+            const use25d = document.getElementById('use25d')?.checked || false;
+            formData.append('use25d', use25d ? 'true' : 'false');
+            
             // Generate timestamp in user's local timezone
             const now = new Date();
             const year = now.getFullYear();
