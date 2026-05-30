@@ -609,7 +609,7 @@ def process_file():
                     units='inch',
                     config=team_config
                 )
-
+                pp.use_25d = use_25d
                 # Apply material preset (for specific machine if selected)
                 pp.apply_material_preset(material, machine_id)
 
