@@ -521,6 +521,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const use25d = document.getElementById('use25d')?.checked || false;
             formData.append('use25d', use25d ? 'true' : 'false');
+            if (use25d && !isMultiDepthMode()) {
+                hideLoading();
+                showError(
+                    '2.5D mode requires a multi-layer DXF',
+                    'This file only has one depth layer. Export the part from Onshape as a layered DXF, then try again.'
+                );
+                return;
+            }
             
             // Generate timestamp in user's local timezone
             const now = new Date();
