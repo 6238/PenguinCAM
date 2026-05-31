@@ -94,7 +94,6 @@ class FileTokenManager:
     """
 
     def __init__(self):
-        # For backwards compatibility with non-serverless environments
         self.tokens = {}  # token → {'filepath': ..., 'filename': ..., 'created': timestamp}
         self.lock = threading.Lock()
         self.use_session = os.environ.get('VERCEL') == '1'  # Use session storage on Vercel
@@ -105,24 +104,18 @@ class FileTokenManager:
         Register a file and return a secure random token.
         """
         token = secrets.token_urlsafe(16)  # Shorter token to save cookie space
-        
-        # Grab ONLY the file's base name (e.g. 'tmp_abc123.dxf')
-        # This completely strips out giant absolute system filepaths to minimize cookie size!
         disk_basename = os.path.basename(filepath)
 
         if self.use_session:
-            # Store in Flask session (cookie-based, works across serverless instances)
             if 'file_tokens' not in session:
                 session['file_tokens'] = {}
             
-            # Minimize payload size down to under 100 bytes total
             session['file_tokens'][token] = {
                 'b': disk_basename,
                 'f': real_filename
             }
             session.modified = True  # Force session save
         else:
-            # Store in memory (for non-serverless environments)
             with self.lock:
                 self.tokens[token] = {
                     'filepath': filepath,
@@ -143,8 +136,6 @@ class FileTokenManager:
             if not info:
                 return None
             
-            # Reconstruct the expected full system details mapping using the temp dir 
-            # This completely keeps massive path strings out of the user's browser cookie!
             return {
                 'filepath': os.path.join(tempfile.gettempdir(), info['b']),
                 'filename': info['f']
@@ -153,64 +144,13 @@ class FileTokenManager:
             with self.lock:
                 return self.tokens.get(token)
 
-    def clean_expired_files(self, max_age_seconds=3600):
-        """
-        Clean up files older than max_age_seconds.
-        """
-        if self.use_session:
-            # Session-based tokens naturally expire or get cleared with cookies,
-            # but we can prune the current session's dictionary if needed.
-            file_tokens = session.get('file_tokens', {})
-            if not file_tokens:
-                return
-            # Session cleanup can be handled on the fly, or skipped since Vercel temp files are ephemeral
-            return
-
-        current_time = time.time()
-        expired_tokens = []
-
-        with self.lock:
-            for token, info in self.tokens.items():
-                if current_time - info['created'] > max_age_seconds:
-                    expired_tokens.append(token)
-                    try:
-                        if os.path.exists(info['filepath']):
-                            os.remove(info['filepath'])
-                    except Exception as e:
-                        log(f"⚠️ Error deleting expired file {info['filepath']}: {e}")
-
-            for token in expired_tokens:
-                del self.tokens[token]
-
-        if expired_tokens:
-            log(f"🗑️ Cleaned up {len(expired_tokens)} expired memory tokens.")
-    def get_file(self, token):
-        """
-        Get file info for a token.
-
-        Args:
-            token: The secure token
-
-        Returns:
-            Dict with 'filepath' and 'filename', or None if not found
-        """
-        if self.use_session:
-            # Retrieve from Flask session
-            file_tokens = session.get('file_tokens', {})
-            return file_tokens.get(token)
-        else:
-            # Retrieve from memory
-            with self.lock:
-                return self.tokens.get(token)
-
     def cleanup_old_files(self, max_age_seconds=3600):
         """
         Remove files older than max_age_seconds (default 1 hour).
-        Deletes both the file on disk and the token mapping.
-
-        Args:
-            max_age_seconds: Maximum file age in seconds (default 3600 = 1 hour)
         """
+        if self.use_session:
+            return
+
         current_time = time.time()
         with self.lock:
             expired_tokens = []
@@ -218,7 +158,6 @@ class FileTokenManager:
                 age = current_time - info['created']
                 if age > max_age_seconds:
                     expired_tokens.append(token)
-                    # Delete the file from disk
                     try:
                         if os.path.exists(info['filepath']):
                             os.unlink(info['filepath'])
@@ -226,12 +165,12 @@ class FileTokenManager:
                     except Exception as e:
                         log(f"⚠️  Failed to delete {info['filepath']}: {e}")
 
-            # Remove expired tokens from mapping
             for token in expired_tokens:
                 del self.tokens[token]
 
             if expired_tokens:
                 log(f"✅ Cleanup complete: removed {len(expired_tokens)} expired file(s)")
+
 
 def cleanup_worker():
     """Background thread that periodically cleans up old files"""
@@ -240,22 +179,10 @@ def cleanup_worker():
         try:
             file_token_manager.cleanup_old_files(max_age_seconds=3600)  # 1 hour
         except Exception as e:
-            log(f"⚠️  Error in cleanup worker: {e}")
+            log(f"⚠️ Error in cleanup worker: {e}")
 
 # Initialize file token manager
 file_token_manager = FileTokenManager()
-
-# Start background cleanup thread (only for traditional server deployments)
-# Serverless platforms (Vercel, AWS Lambda) auto-cleanup when containers terminate
-IS_SERVERLESS = os.environ.get('VERCEL') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME')
-
-if IS_SERVERLESS:
-    log("✅ File token manager initialized (serverless mode - container auto-cleanup)")
-else:
-    cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
-    cleanup_thread.start()
-    log("✅ File token manager initialized with auto-cleanup thread (1 hour expiry)")
-
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
 
