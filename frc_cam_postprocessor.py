@@ -1347,13 +1347,24 @@ class FRCPostProcessor:
                 errors=self.errors.copy()
             )
 
-        # If 2.5D mode is explicitly required, fail fast when there are no layers
+        # If 2.5D mode is explicitly requested on a single-layer DXF,
+        # synthesize layer_data from the loaded geometry using material_thickness as depth.
+        # This gives the 2.5D header, arc-based holes, and pocket detection
+        # even when the DXF has no Z_ layer names.
         if self.use_25d and not self.layer_data:
-            return PostProcessorResult(
-                success=False,
-                errors=["2.5D mode is enabled, but this DXF does not contain depth layers."]
-            )
-    
+            print("2.5D mode requested on single-layer DXF - synthesizing layer data from geometry")
+            polygons = self._convert_to_shapely_polygons(self.circles, self.polylines)
+            layer_name = "Z_0p000"
+            self.layer_data = {
+                layer_name: {
+                    "depth": 0.0,
+                    "polygons": polygons,
+                    "circles": [c.copy() for c in self.circles],
+                    "polylines": [p[:] for p in self.polylines],
+                }
+            }
+            print(f"  Synthesized layer {layer_name!r} at Z=0.000" with {len(polygons)} polygon(s)")
+
         # Auto-detect multi-layer DXF when layer data exists
         if self.layer_data:
             return self._generate_multilayer_gcode(suggested_filename, timestamp)
