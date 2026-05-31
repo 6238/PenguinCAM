@@ -94,6 +94,7 @@ class FileTokenManager:
     """
 
     def __init__(self):
+        # For backwards compatibility with non-serverless environments
         self.tokens = {}  # token → {'filepath': ..., 'filename': ..., 'created': timestamp}
         self.lock = threading.Lock()
         self.use_session = os.environ.get('VERCEL') == '1'  # Use session storage on Vercel
@@ -104,18 +105,24 @@ class FileTokenManager:
         Register a file and return a secure random token.
         """
         token = secrets.token_urlsafe(16)  # Shorter token to save cookie space
+        
+        # Grab ONLY the file's base name (e.g. 'tmp_abc123.dxf')
+        # This completely strips out giant absolute system filepaths to minimize cookie size!
         disk_basename = os.path.basename(filepath)
 
         if self.use_session:
+            # Store in Flask session (cookie-based, works across serverless instances)
             if 'file_tokens' not in session:
                 session['file_tokens'] = {}
             
+            # Minimize payload size down to under 100 bytes total
             session['file_tokens'][token] = {
                 'b': disk_basename,
                 'f': real_filename
             }
             session.modified = True  # Force session save
         else:
+            # Store in memory (for non-serverless environments)
             with self.lock:
                 self.tokens[token] = {
                     'filepath': filepath,
@@ -136,6 +143,8 @@ class FileTokenManager:
             if not info:
                 return None
             
+            # Reconstruct the expected full system details mapping using the temp dir 
+            # This completely keeps massive path strings out of the user's browser cookie!
             return {
                 'filepath': os.path.join(tempfile.gettempdir(), info['b']),
                 'filename': info['f']
@@ -144,33 +153,31 @@ class FileTokenManager:
             with self.lock:
                 return self.tokens.get(token)
 
-    def cleanup_old_files(self, max_age_seconds=3600):
+    def clean_expired_files(self, max_age_seconds=3600):
         """
-        Remove files older than max_age_seconds (default 1 hour).
+        Clean up files older than max_age_seconds.
         """
         if self.use_session:
             return
 
         current_time = time.time()
+        expired_tokens = []
+
         with self.lock:
-            expired_tokens = []
             for token, info in self.tokens.items():
-                age = current_time - info['created']
-                if age > max_age_seconds:
+                if current_time - info['created'] > max_age_seconds:
                     expired_tokens.append(token)
                     try:
                         if os.path.exists(info['filepath']):
-                            os.unlink(info['filepath'])
-                            log(f"🗑️  Cleaned up expired file ({age/60:.1f} min old): {info['filename']}")
+                            os.remove(info['filepath'])
                     except Exception as e:
-                        log(f"⚠️  Failed to delete {info['filepath']}: {e}")
+                        log(f"⚠️ Error deleting expired file {info['filepath']}: {e}")
 
             for token in expired_tokens:
                 del self.tokens[token]
 
-            if expired_tokens:
-                log(f"✅ Cleanup complete: removed {len(expired_tokens)} expired file(s)")
-
+        if expired_tokens:
+            log(f"🗑️ Cleaned up {len(expired_tokens)} expired memory tokens.")
 
 def cleanup_worker():
     """Background thread that periodically cleans up old files"""
