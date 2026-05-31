@@ -144,7 +144,6 @@ class FileTokenManager:
                 return None
             
             # Reconstruct the expected full system details mapping using the temp dir 
-            # This completely keeps massive path strings out of the user's browser cookie!
             return {
                 'filepath': os.path.join(tempfile.gettempdir(), info['b']),
                 'filename': info['f']
@@ -184,7 +183,8 @@ def cleanup_worker():
     while True:
         time.sleep(600)  # Run every 10 minutes
         try:
-            file_token_manager.cleanup_old_files(max_age_seconds=3600)  # 1 hour
+            # 🔄 Fixed the method name here to match our clean function!
+            file_token_manager.clean_expired_files(max_age_seconds=3600)  # 1 hour
         except Exception as e:
             log(f"⚠️ Error in cleanup worker: {e}")
 
