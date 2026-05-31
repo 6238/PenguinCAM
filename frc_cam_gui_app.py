@@ -204,16 +204,16 @@ if os.environ.get('VERCEL'):
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # Set secret key for session management (required by auth and Onshape integration)
-# Check environment variable first for persistent sessions across deployments
+# Hardcoded fixed fallback ensures serverless containers NEVER desync keys!
 secret_key = os.environ.get('FLASK_SECRET_KEY')
 if secret_key:
     app.secret_key = secret_key
     log("✅ Using persistent FLASK_SECRET_KEY from environment")
-elif not app.secret_key:
-    app.secret_key = secrets.token_hex(32)
-    log("⚠️  WARNING: Using random secret key. Sessions will not persist across restarts.")
-    log("   Set FLASK_SECRET_KEY environment variable for persistent sessions.")
-
+else:
+    # Forced identical backup key so Container A and Container B always match
+    app.secret_key = 'b20029bd9519dbbe19397c970f5ab6116cd6077cd7e1c09f61db5ea56e805519'
+    log("🔒 Using hardcoded fallback FLASK_SECRET_KEY for container sync")
+    
 # Initialize authentication if available
 if AUTH_AVAILABLE:
     auth = init_auth(app)
