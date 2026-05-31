@@ -241,7 +241,7 @@ log("✅ Rate limiting enabled (200 requests/hour default)")
 # Directory for temporary files
 # Serverless platforms (Vercel, Lambda) have /tmp as only writable location
 # Traditional servers get isolated temp directory
-if IS_SERVERLESS:
+if os.environ.get('VERCEL') == '1':
     TEMP_DIR = '/tmp'
     log("✅ Using /tmp for serverless environment")
 else:
