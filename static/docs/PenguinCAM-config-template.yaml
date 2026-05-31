@@ -14,7 +14,7 @@
 version: 2
 
 # Which machine to use by default (if not specified in UI)
-default_machine: omio_x8
+default_machine: Velox
 
 # =============================================================================
 # TEAM INFORMATION (applies to all machines)
@@ -33,22 +33,19 @@ team:
 # - Controller settings
 
 machines:
-  # -------------------------------------------------------------------------
-  # MACHINE 1: Omio X8-2200 (most common FRC machine)
-  # -------------------------------------------------------------------------
   omio_x8:
-    name: "Omio X8-2200"
+    name: "Velox"
 
     # Machine specifications
     machine:
-      manufacturer: "Omio"
+      manufacturer: "Velox"
       controller: "Mach3"
 
       # Machine work envelope (inches)
       dimensions:
-        x_max: 48.0
-        y_max: 48.0
-        z_max: 3.3
+        x_max: 50
+        y_max: 50
+        z_max: 8
 
       # Park position (machine coordinates for safe part access)
       park_position:
@@ -64,7 +61,7 @@ machines:
 
     # Default tooling for this machine
     default_tool:
-      diameter: 0.125                   # 4mm end mill (inches)
+      diameter: 0.125                   # 1/8 inch end mill
 
     # General machining preferences
     machining:
@@ -75,7 +72,7 @@ machines:
 
       # Tab parameters (for perimeter operations)
       tabs:
-        enabled: true                   # Whether to use tabs at all
+        enabled: false                   # Whether to use tabs at all
         width: 0.25                     # Default tab width (inches)
         height: 0.15                    # Default tab height (inches)
         remove_tabs: true               # Automatically remove tabs at end of job
@@ -87,20 +84,7 @@ machines:
 
       # Fixturing options
       fixturing:
-        pause_before_perimeter: false   # M0 pause before perimeter for screw fixturing
-
-      # Pocket/hole contouring (for large internal through-cuts)
-      pockets:
-        # Contour threshold: feature area in multiples of tool cross-section (at 100% stepover)
-        # Actual threshold scales directly with stepover (tighter stepover = lower area threshold)
-        # Formula: threshold_area = contour_threshold × tool_diameter² × stepover_percentage
-        # Applies to both irregular pockets AND large circular holes
-        # IMPORTANT: Only applies to through-cuts (features cutting to sacrifice board at Z=0)
-        #            Partial-depth features are ALWAYS fully cleared (need flat bottoms)
-        # Large through-cut features are contoured instead of fully cleared to save machining time
-        # Note: Contoured features require manual post-processing to remove the tab-held center
-        # Set to 0 to disable contouring entirely (always fully clear all pockets/holes)
-        contour_threshold: 510          # Default: 510 (aluminum: ~2.0" dia, plywood: ~3.2" dia, polycarbonate: ~3.0" dia)
+        pause_before_perimeter: true   # M0 pause before perimeter for screw fixturing
 
     # Tube facing parameters (for aluminum tube operations)
     tube_facing:
@@ -147,7 +131,7 @@ machines:
         name: "Aluminum"
         description: "Aluminum - 18K RPM, 50 IPM cutting, 4° ramp"
 
-        spindle_speed: 18000
+        spindle_speed: 18s000
         feed_rate: 50.0
         ramp_feed_rate: 32.0
         plunge_rate: 14.0
@@ -190,144 +174,6 @@ machines:
       google_drive:
         enabled: false
         # folder_id: "your_folder_id_here"  # Get from Drive folder URL
-
-  # -------------------------------------------------------------------------
-  # MACHINE 2: Avid CNC Pro2424 (Team 6238's machine)
-  # -------------------------------------------------------------------------
-  avid_pro2424:
-    name: "Avid CNC Pro2424"
-
-    # Machine specifications
-    machine:
-      manufacturer: "Avid CNC"
-      controller: "Mach4"
-
-      # Work envelope
-      dimensions:
-        x_max: 24.0
-        y_max: 24.0
-        z_max: 8.0
-
-      park_position:
-        x: 0.5
-        y: 23.5
-        z: -0.5     # Z position for safe clearance (machine coords, negative = below home)
-
-      standard_work_offset: "G54"
-      tube_jig_work_offset: "G55"
-
-      coolant: "Air"
-
-    # Default tooling
-    default_tool:
-      diameter: 0.157
-
-    # General machining preferences (same as shop_router)
-    machining:
-      z_reference:
-        sacrifice_board_depth: 0.008
-        clearance_height: 0.5
-
-      tabs:
-        enabled: true
-        width: 0.25
-        height: 0.15
-        remove_tabs: true
-
-      holes:
-        detection_tolerance: 0.0001
-        min_millable_multiplier: 1.2
-
-      fixturing:
-        pause_before_perimeter: false
-
-      pockets:
-        contour_threshold: 510
-
-    # Tube facing (same as shop_router)
-    tube_facing:
-      depth_margin: 0.005
-      max_roughing_depth: 0.3
-      max_finishing_depth: 0.51
-
-      phase_1:
-        roughing_tool_edge: 0.05
-        finishing_tool_edge: 0.0625
-
-      phase_2:
-        roughing_tool_edge: -0.0125
-        finishing_tool_edge: 0.0
-
-      arc_advance: 0.04
-      arc_radius: 0.05
-
-    # Material-specific settings for THIS MACHINE
-    # Large, industrial-grade machine can handle full speeds
-    materials:
-      plywood:
-        name: "Plywood"
-        description: "Full-speed plywood for industrial router"
-
-        spindle_speed: 18000
-        feed_rate: 75.0               # Full speed - very rigid machine
-        ramp_feed_rate: 50.0
-        plunge_rate: 35.0
-        traverse_rate: 200.0
-        approach_rate: 50.0
-
-        ramp_angle: 20.0
-        ramp_start_clearance: 0.150
-        stepover_percentage: 0.65
-        helix_radius_multiplier: 0.75
-        max_slotting_depth: 0.4
-
-        tab_width: 0.25
-        tab_height: 0.15
-
-      aluminum:
-        name: "Aluminum"
-        description: "Full-speed aluminum for industrial router"
-
-        spindle_speed: 18000
-        feed_rate: 55.0               # Full speed - rigid machine
-        ramp_feed_rate: 35.0
-        plunge_rate: 15.0
-        traverse_rate: 200.0
-        approach_rate: 35.0
-
-        ramp_angle: 4.0
-        ramp_start_clearance: 0.050
-        stepover_percentage: 0.25
-        helix_radius_multiplier: 0.5
-        max_slotting_depth: 0.2
-
-        tab_width: 0.25
-        tab_height: 0.15
-
-      polycarbonate:
-        name: "Polycarbonate"
-        description: "Full-speed polycarbonate for industrial router"
-
-        spindle_speed: 18000
-        feed_rate: 75.0
-        ramp_feed_rate: 50.0
-        plunge_rate: 20.0
-        traverse_rate: 200.0
-        approach_rate: 50.0
-
-        ramp_angle: 20.0
-        ramp_start_clearance: 0.100
-        stepover_percentage: 0.55
-        helix_radius_multiplier: 0.75
-        max_slotting_depth: 0.25
-
-        tab_width: 0.25
-        tab_height: 0.15
-
-    # Integrations
-    integrations:
-      google_drive:
-        enabled: false
 
 # =============================================================================
 # NOTES
