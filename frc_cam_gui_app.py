@@ -2062,7 +2062,7 @@ def admin_metrics_dashboard():
 def cleanup():
     """Clean up temporary files on shutdown"""
     # Skip cleanup for serverless - containers are ephemeral
-    if IS_SERVERLESS:
+    if os.environ.get('VERCEL') == '1':
         return
 
     try:
@@ -2072,7 +2072,7 @@ def cleanup():
         log(f"⚠️  Failed to clean up temp directory: {e}")
 
 # Register cleanup only if not serverless (serverless containers auto-cleanup)
-if not IS_SERVERLESS:
+if os.environ.get('VERCEL') != '1':
     atexit.register(cleanup)
 
 if __name__ == '__main__':
