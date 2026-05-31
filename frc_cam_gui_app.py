@@ -802,42 +802,6 @@ def debug_download_dxf():
         log(f"❌ Debug DXF download error: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/uploads/<token>')
-@limiter.limit("30 per minute")
-def serve_upload(token):
-    """
-    Serve uploaded DXF files for frontend preview using secure token.
-    Token prevents filename guessing attacks.
-    """
-    try:
-        # Look up file by token
-        file_info = file_token_manager.get_file(token)
-        if not file_info:
-            return jsonify({'error': 'File not found or expired'}), 404
-
-        file_path = file_info['filepath']
-
-        # Verify file still exists on disk
-        if not os.path.exists(file_path):
-            return jsonify({'error': 'File not found'}), 404
-
-        log(f"📂 Upload preview: token {token[:16]}... → {file_info['filename']}")
-
-        return send_file(file_path, mimetype='application/dxf')
-    except Exception as e:
-        return jsonify({'error': f'File not found: {str(e)}'}), 404
-
-@app.route('/drive/status')
-@limiter.limit("30 per minute")
-def drive_status():
-    """Check if Google Drive integration is available and configured"""
-    if not GOOGLE_DRIVE_AVAILABLE:
-        return jsonify({
-            'available': False,
-            'enabled': False,
-            'message': 'Google Drive dependencies not installed'
-        })
-
     # Check team config to see if Drive is enabled
     team_config = session.get('team_config', {})
     drive_enabled = team_config.get('google_drive_enabled', False)
