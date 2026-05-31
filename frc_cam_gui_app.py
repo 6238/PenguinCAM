@@ -2050,7 +2050,65 @@ def admin_metrics_events():
         'limit': limit,
         'offset': offset
     })
+    
+@app.route('/uploads/<token>')
+@limiter.limit("30 per minute")
+def serve_upload(token):
+    """
+    Serve uploaded DXF files for frontend preview using secure token.
+    Token prevents filename guessing attacks.
+    """
+    try:
+        # Look up file by token
+        file_info = file_token_manager.get_file(token)
+        if not file_info:
+            return jsonify({'error': 'File not found or expired'}), 404
 
+        file_path = file_info['filepath']
+        real_filename = file_info['filename']
+
+        # Verify file still exists on disk
+        if not os.path.exists(file_path):
+            return jsonify({'error': 'File not found on disk'}), 404
+
+        log(f"🎨 Serving upload for preview: token {token[:16]}... → {real_filename}")
+
+        # as_attachment=False lets the frontend canvas layer read it directly
+        return send_file(
+            file_path,
+            as_attachment=False,
+            download_name=real_filename,
+            mimetype='image/vnd.dxf'  # standard DXF mime type
+        )
+    except Exception as e:
+        log(f"❌ Error serving upload preview: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/admin/metrics')
+def admin_metrics_dashboard():
+    """Simple admin view to check out what the team is generating"""
+    # Quick email check using your dummy/real auth module
+    user_email = session.get('user_email')
+    admin_email = os.environ.get('ADMIN_EMAIL', 'mentor@team4909.org')
+    
+    if not user_email or user_email != admin_email:
+        return "Unauthorized", 403
+        
+    event_type = request.args.get('event_type')
+    limit = min(int(request.args.get('limit', 100)), 1000)
+    offset = int(request.args.get('offset', 0))
+
+    events = metrics.get_events(event_type=event_type, limit=limit, offset=offset)
+    if events is None:
+        return jsonify({'error': 'Metrics database unavailable'}), 503
+
+    return jsonify({
+        'events': events,
+        'count': len(events),
+        'limit': limit,
+        'offset': offset
+    })
 def cleanup():
     """Clean up temporary files on shutdown"""
     # Skip cleanup for serverless - containers are ephemeral
