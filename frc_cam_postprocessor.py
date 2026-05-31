@@ -1363,7 +1363,7 @@ class FRCPostProcessor:
                     "polylines": [p[:] for p in self.polylines],
                 }
             }
-            print(f"  Synthesized layer {layer_name!r} at Z=0.000" with {len(polygons)} polygon(s)")
+            print("  Synthesized layer " + repr(layer_name) + " at Z=0.000in with " + str(len(polygons)) + " polygon(s)")
 
         # Auto-detect multi-layer DXF when layer data exists
         if self.layer_data:
