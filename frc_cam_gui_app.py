@@ -89,8 +89,8 @@ class FileTokenManager:
     Manages secure token-based file access to prevent filename guessing attacks.
     Maps random tokens to actual file paths and handles automatic cleanup.
 
-    For serverless (Vercel), tokens are stored in Flask session cookies to work
-    across different container instances.
+    For serverless (Vercel), tokens are stored in Flask session cookies using 
+    compact keys to keep under the 4KB size limit.
     """
 
     def __init__(self):
@@ -103,35 +103,87 @@ class FileTokenManager:
     def register_file(self, filepath, real_filename):
         """
         Register a file and return a secure random token.
-
-        Args:
-            filepath: Full path to the file on disk
-            real_filename: The original filename (for download headers)
-
-        Returns:
-            Random token string (safe for URLs)
         """
-        token = secrets.token_urlsafe(32)
-        file_info = {
-            'filepath': filepath,
-            'filename': real_filename,
-            'created': time.time()
-        }
+        token = secrets.token_urlsafe(16)  # Shorter token to save cookie space
+        
+        # Grab ONLY the file's base name (e.g. 'tmp_abc123.dxf')
+        # This completely strips out giant absolute system filepaths to minimize cookie size!
+        disk_basename = os.path.basename(filepath)
 
         if self.use_session:
             # Store in Flask session (cookie-based, works across serverless instances)
             if 'file_tokens' not in session:
                 session['file_tokens'] = {}
-            session['file_tokens'][token] = file_info
+            
+            # Minimize payload size down to under 100 bytes total
+            session['file_tokens'][token] = {
+                'b': disk_basename,
+                'f': real_filename
+            }
             session.modified = True  # Force session save
         else:
             # Store in memory (for non-serverless environments)
             with self.lock:
-                self.tokens[token] = file_info
+                self.tokens[token] = {
+                    'filepath': filepath,
+                    'filename': real_filename,
+                    'created': time.time()
+                }
 
-        log(f"🔐 Registered file: {real_filename} → token {token[:16]}... ({'session' if self.use_session else 'memory'})")
+        log(f"🔐 Compact token registered: {token[:8]}... ({'session' if self.use_session else 'memory'})")
         return token
 
+    def get_file(self, token):
+        """
+        Look up a registered file by its token.
+        """
+        if self.use_session:
+            file_tokens = session.get('file_tokens', {})
+            info = file_tokens.get(token)
+            if not info:
+                return None
+            
+            # Reconstruct the expected full system details mapping using the temp dir 
+            # This completely keeps massive path strings out of the user's browser cookie!
+            return {
+                'filepath': os.path.join(tempfile.gettempdir(), info['b']),
+                'filename': info['f']
+            }
+        else:
+            with self.lock:
+                return self.tokens.get(token)
+
+    def clean_expired_files(self, max_age_seconds=3600):
+        """
+        Clean up files older than max_age_seconds.
+        """
+        if self.use_session:
+            # Session-based tokens naturally expire or get cleared with cookies,
+            # but we can prune the current session's dictionary if needed.
+            file_tokens = session.get('file_tokens', {})
+            if not file_tokens:
+                return
+            # Session cleanup can be handled on the fly, or skipped since Vercel temp files are ephemeral
+            return
+
+        current_time = time.time()
+        expired_tokens = []
+
+        with self.lock:
+            for token, info in self.tokens.items():
+                if current_time - info['created'] > max_age_seconds:
+                    expired_tokens.append(token)
+                    try:
+                        if os.path.exists(info['filepath']):
+                            os.remove(info['filepath'])
+                    except Exception as e:
+                        log(f"⚠️ Error deleting expired file {info['filepath']}: {e}")
+
+            for token in expired_tokens:
+                del self.tokens[token]
+
+        if expired_tokens:
+            log(f"🗑️ Cleaned up {len(expired_tokens)} expired memory tokens.")
     def get_file(self, token):
         """
         Get file info for a token.
