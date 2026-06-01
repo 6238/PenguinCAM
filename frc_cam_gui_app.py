@@ -1680,6 +1680,12 @@ def onshape_import():
         session['debug_dxf_filename'] = f"{suggested_filename}.dxf"
         log(f"🐛 Debug DXF available at: /debug/download-dxf")
 
+        # Embed DXF content directly in page to avoid cross-instance file serving issues on Vercel
+        import base64
+        with open(dxf_path, 'r', errors='replace') as f:
+            dxf_content_inline = f.read()
+        log(f"📄 Embedding DXF inline ({len(dxf_content_inline)} chars)")
+
         # Render main page with DXF auto-loaded
         # The frontend will detect the dxf_file parameter and auto-upload it
 
@@ -1721,6 +1727,7 @@ def onshape_import():
 
         return render_template('index.html',
                              dxf_file=dxf_token,  # Pass token instead of filename
+                             dxf_content_inline=dxf_content_inline,  # Inline DXF for Vercel
                              from_onshape=True,
                              document_id=document_id,
                              face_id=face_id,
