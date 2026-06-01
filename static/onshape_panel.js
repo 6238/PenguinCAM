@@ -135,17 +135,33 @@
     function handleGenericSelection(data) {
         const selections = data.selections || [];
 
-        if (isWaitingForSelection && selections.length === 0) {
+        if (selections.length > 0) {
+            // User selected something - treat it as a valid face selection
+            const faceSelection = selections[0];
+            selectedFaceId = faceSelection.selectionId || faceSelection.faceId || faceSelection.id || 'selected';
+            selectedPartId = faceSelection.partId || null;
+            currentSelection = faceSelection;
+            isWaitingForSelection = false;
+
+            instruction.innerHTML = '✓ Onshape faceId selected: <strong>' + selectedFaceId + '</strong>';
+            instruction.style.color = '#27ae60';
+            instruction.style.display = 'block';
+            buttonGroup.style.display = 'flex';
+            sendBtn.disabled = false;
+
+            console.log('✓ Face selected via SELECTION:', selectedFaceId, 'Part:', selectedPartId);
+        } else if (isWaitingForSelection && selections.length === 0) {
             // Selection request timed out - re-issue it
             console.log('Selection request timed out, re-requesting...');
             requestFaceSelection();
         } else if (!isWaitingForSelection && currentSelection) {
-            // User made a selection change while we already have a face selected
-            // Treat this as a "select another" operation (whether they clicked something or deselected)
+            // User deselected - clear and re-request
             console.log('User changed selection, requesting new face selection...');
             selectedFaceId = null;
             selectedPartId = null;
             currentSelection = null;
+            buttonGroup.style.display = 'none';
+            sendBtn.disabled = true;
             requestFaceSelection();
         }
     }
