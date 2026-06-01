@@ -675,6 +675,7 @@ def process_file():
         response_data = {
             'success': True,
             'filename': output_token,  # Return secure token (not actual filename)
+            'real_filename': actual_filename,  # Real filename for client-side download
             'gcode': result.gcode,
             'console': console_output,
             'parameters': parameters
