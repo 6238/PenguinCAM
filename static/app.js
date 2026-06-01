@@ -2594,19 +2594,24 @@ document.addEventListener('DOMContentLoaded', () => {
             const fromOnshape = window.ONSHAPE_DATA?.fromOnshape || false;
             const onshapeSuggestedFilename = window.ONSHAPE_DATA?.suggestedFilename || '';
             
+            const dxfContentInline = window.ONSHAPE_DATA?.dxfContentInline || null;
+
             if (dxfFile && fromOnshape) {
                 console.log('Auto-loading DXF from Onshape:', dxfFile);
-                console.log('Fetching from:', `/uploads/${dxfFile}`);
-                
-                // Fetch the DXF and load it
-                fetch(`/uploads/${dxfFile}`)
-                    .then(response => {
-                        console.log('Fetch response:', response.status, response.statusText);
-                        if (!response.ok) {
-                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                        }
-                        return response.text();
-                    })
+
+                // Use inline DXF content if available (avoids cross-instance 404 on Vercel)
+                const dxfPromise = dxfContentInline
+                    ? Promise.resolve(dxfContentInline)
+                    : fetch(`/uploads/${dxfFile}`)
+                        .then(response => {
+                            console.log('Fetch response:', response.status, response.statusText);
+                            if (!response.ok) {
+                                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                            }
+                            return response.text();
+                        });
+
+                dxfPromise
                     .then(dxfContent => {
                         console.log('DXF content received:', dxfContent.length, 'bytes');
                         console.log('First 200 chars:', dxfContent.substring(0, 200));
