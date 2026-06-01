@@ -1,31 +1,28 @@
-# PenguinCAM
+#BionicsCAM
 
 **Onshape-to-CNC for FRC Teams**
 
-A web-based tool for FRC robotics teams to automatically generate CNC G-code from Onshape designs. No CAM software required! Built by Team 6238, hosted for all FRC teams.
+First thing's first, I want to thank Team 6238 and give a lil backstory. It was really late, and we need a part made immediately. The bad news was that Railway, the site that hosted PenguinCAM was down. We immediately asked Claude (the best Coding AI out there how to host our own version of PenguinCAM. We ended up making a local host. So I, Srihaas Mynampati got obsessed with making BionicsCAM. It took 3 days, multiple energy bars, and hundreds of AI prompts to make it. BionicsCAM was on Vercel! I wasn't done yet. I wanted to add implementation to Onshape. This took 2 days, more energy bars (I had to take a break to go to Costco to get more), and hundreds of MORE AI prompts. (ChatGPT started to get pissed off). And now I'm done. But not in the way you think. I still have to make this for my entire team. I also want to add a few features to BionicsCAM to make it BETTER than it's SisterCAM.
 
 🔗 **Demo video:**  
 [![Demo video](https://img.youtube.com/vi/gFReFDz-_LI/0.jpg)](https://youtu.be/zPZCTVh2n2Q)
 
-
-🔗 **Live app:** https://penguincam.popcornpenguins.com
-
+**Live app:** https://bionicscam.vercel.app
 ---
 
-## What is PenguinCAM?
+## What is BionicsCAM?
 
-PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC teams:
-
+BionicsCAM streamlines the workflow from CAD design to CNC machining for FRC teams:
 1. **Design in Onshape** → Create flat plates or tubes, with holes and pockets
-2. **Open app → "Send to PenguinCAM"** → One-click export from Onshape
+2. **Open app → "Send to BionicsCAM"** → One-click export from Onshape
 3. **Orient & Generate** → Rotate part, auto-generate toolpaths
 4. **Download or Save to Drive** → Ready to run on your CNC router
 
-**No difficult CAM software, no manual exports!** PenguinCAM knows what FRC teams need.
+**No difficult CAM software, no manual exports!** BionicsCAM knows what FRC teams need.
 
 Designed to feel like 3D printer slicers or laser cutter software. Get the design, orient it on the machine, and go. Launching directly from Onshape means no export/import steps, lost files or inconsistent naming. Every part designed by your team members automatically get the same CNC behavior. Students don't have to know feeds & speeds, understand ramp angles, risk machine collisions. Just select the part and go.
 
-**Multi-team support:** Other teams can use the hosted service at https://penguincam.popcornpenguins.com! Just upload a `PenguinCAM-config.yaml` file to your Onshape documents to customize settings for your CNC machine. See "For Other FRC Teams" below.
+**Multi-team support:** Other teams can use the hosted service at https://bionicscam.vercel.app! Just upload a `PenguinCAM-config.yaml` file to your Onshape documents to customize settings for your CNC machine. See "For Other FRC Teams" below.
 
 ---
 
@@ -57,14 +54,14 @@ Designed to feel like 3D printer slicers or laser cutter software. Get the desig
 ### 🔗 **Onshape Integration** ⭐ Preferred Workflow
 
 **One-Click Export from Onshape:**
-- Select top face of part in Onshape → "Send to PenguinCAM"
-- Opens PenguinCAM with part already loaded
+- Select top face of part in Onshape → "Send to BionicsCAM"
+- Opens BionicsCAM with part already loaded
 - No manual DXF export needed
 
 **How to Set Up:**
-1. Install PenguinCAM app in your Onshape classroom
+1. Install BionicsCAM app in your Onshape classroom
 2. Extension appears in right side panel in Parts Studios
-3. Click once to send part directly to PenguinCAM
+3. Click once to send part directly to BionicsCAM
 4. OAuth authentication (one-time per team member)
 
 **Alternative:** Manual DXF upload available for offline work
@@ -103,9 +100,9 @@ Designed to feel like 3D printer slicers or laser cutter software. Get the desig
 
 **One-Click Workflow:**
 1. **Design your part** in Onshape (flat plate with holes/pockets)
-2. **Open the PenguinCAM app** in the right panel
+2. **Open the BionicsCAM app** in the right panel
 2. **Select the top face** by clicking on it
-3. **Click "Send to PenguinCAM"** in the PenguinCAM panel
+3. **Click "Send to BionicsCAM"** in the BionicsCAM panel
 4. **Orient your part** - Rotate if needed in 2D setup view
 5. **Click "Generate Program"** - Review 3D preview
 6. **Download or save to Drive** - Ready for CNC!
@@ -116,7 +113,7 @@ Designed to feel like 3D printer slicers or laser cutter software. Get the desig
 
 **For offline work or non-Onshape files:**
 1. **Export DXF** from your CAD software
-2. **Visit** https://penguincam.popcornpenguins.com
+2. **Visit** https://bionicscam.vercel.app
 3. **Upload DXF file** via drag-and-drop
 4. **Orient & generate** - Same as above
 5. **Download or save to Drive**
@@ -135,17 +132,17 @@ Designed to feel like 3D printer slicers or laser cutter software. Get the desig
 
 **For teams using the hosted service:**
 
-Create a `PenguinCAM-config.yaml` file to customize machine settings for your CNC:
+Create a `penguincam-config.yaml` file to customize machine settings for your CNC:
 - Download template: [`PenguinCAM-config-template.yaml`](https://github.com/6238/PenguinCAM/blob/main/PenguinCAM-config-template.yaml)
 - Edit for your team (machine park position, controller type, feeds/speeds, etc.)
 - Save as `PenguinCAM-config.yaml` and drag into your Onshape documents folder
-- Done! Your settings load automatically when team members use PenguinCAM
+- Done! Your settings load automatically when team members use BionicsCAM
 
 See "For Other FRC Teams" section below for complete instructions.
 
 ### Deployment (Advanced)
 
-For teams self-hosting PenguinCAM, it's can be deployed on Railway (server-based) or Vercel (serverless) with automatic GitHub integration, or your own hosting service or server.
+For teams self-hosting BionicsCAM, it's can be deployed on Railway (server-based) or Vercel (serverless) with automatic GitHub integration, or your own hosting service or server.
 
 **Setup guides:**
 - [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Deploy to Railway, environment variables
@@ -224,7 +221,7 @@ Google Drive Upload
 
 ### G-code Operations
 
-PenguinCAM generates optimized toolpaths:
+BionicsCAM generates optimized toolpaths:
 
 1. **Holes (all sizes):**
    - Helical entry from center
@@ -256,7 +253,7 @@ See [Z_COORDINATE_SYSTEM.md](docs/Z_COORDINATE_SYSTEM.md) for details.
 
 ## Default Settings
 
-PenguinCAM uses Team 6238 defaults optimized for FRC robotics:
+BionicsCAM uses Team 6238 defaults optimized for FRC robotics:
 
 **Material:**
 - Thickness: 0.25" (configurable per job)
@@ -289,7 +286,7 @@ No code changes required - just upload your config file!
 ## Repository Structure
 
 ```
-penguincam/
+BionicsCAM/
 ├── README.md                          # This file
 ├── ROADMAP.md                         # Future plans
 ├── requirements.txt                   # Python dependencies
@@ -330,8 +327,8 @@ We use [uv](https://docs.astral.sh/uv/) for fast Python dependency management. T
 
 1. **Clone repository:**
    ```bash
-   git clone https://github.com/your-team/penguincam.git
-   cd penguincam
+   git clone https://github.com/your-team/BionicsCAM.git
+   cd BionicsCAM
    ```
 
 2. **Install dependencies:**
@@ -372,7 +369,7 @@ See [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for complete setup.
 
 ## Contributing
 
-PenguinCAM was built for FRC Team 6238 but is open for other teams to use and improve!
+BionicsCAM was built for FRC Team 6238 but is open for other teams to use and improve!
 
 **Ideas welcome:**
 - Multiple parts in a single job
@@ -394,18 +391,18 @@ This project is licensed under the [MIT License](LICENSE.txt).
 **Built by FRC Team 6238 Popcorn Penguins**
 
 For questions or support:
-- GitHub Issues: https://github.com/6238/PenguinCAM/issues
-- Team mentor: Josh Sirota <josh@popcornpenguins.com>
+- GitHub Issues: https://github.com/Srihaas-tech/BionicsCAM/issues
+- Maker: bpsschool46@gmail.com
 
 ---
 
 ## For Other FRC Teams
 
-Interested in using PenguinCAM for your team? Great! **You can use the hosted service at https://penguincam.popcornpenguins.com** - no deployment required!
+Interested in using BionicsCAM for your team? Great! **You can use the hosted service at https://bionicscam.vercel.app** - no deployment required!
 
 ### Recommended Approach: Use the Hosted Service
 
-PenguinCAM is designed to support multiple teams using the same hosted instance. Each team can customize machine settings, feeds/speeds, and other preferences using a configuration file stored in your Onshape documents.
+BionicsCAM is designed to support multiple teams using the same hosted instance. Each team can customize machine settings, feeds/speeds, and other preferences using a configuration file stored in your Onshape documents.
 
 **Setup steps (5 minutes):**
 
@@ -424,7 +421,7 @@ PenguinCAM is designed to support multiple teams using the same hosted instance.
    - The file should appear alongside your parts and assemblies
 
 4. **Authenticate:**
-   - Visit https://penguincam.popcornpenguins.com
+   - Visit https://bionicscam.vercel.app
    - Sign in with Onshape (one-time setup per team member)
    - Your team's configuration will be automatically loaded!
 
@@ -454,7 +451,7 @@ All other values automatically use proven Team 6238 defaults.
 
 ### Advanced: Self-Hosting (Optional)
 
-Want to run your own instance? You can deploy PenguinCAM yourself:
+Want to run your own instance? You can deploy BionicsCAM yourself:
 
 **Setup steps:**
 1. Fork this repository
