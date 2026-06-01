@@ -1864,7 +1864,7 @@ def onshape_save_dxf():
         base_filename = generate_onshape_filename(doc_name, part_name_from_body)
 
         # Add timestamp (server's local time)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         dxf_filename = f"{base_filename}_{timestamp}.dxf"
 
         log(f"✅ Generated filename: {dxf_filename}")
