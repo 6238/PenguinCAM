@@ -583,7 +583,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 appState.gcodeContent = data.gcode;
-                appState.outputFilename = data.filename;
+                appState.outputFilename = data.real_filename || data.filename;
 
                 // Show results
                 showResults(data);
@@ -612,10 +612,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // Download G-code
+        // Download G-code — use in-memory content to avoid Vercel cross-instance 404
         downloadBtn.addEventListener('click', () => {
-            if (!appState.outputFilename) return;
-            window.location.href = `/download/${appState.outputFilename}`;
+            if (!appState.gcodeContent || !appState.outputFilename) return;
+            const blob = new Blob([appState.gcodeContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = appState.outputFilename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         });
 
         // Upload to Google Drive
