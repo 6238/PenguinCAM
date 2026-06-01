@@ -410,6 +410,7 @@
         window.ONSHAPE_DATA = {
             errorMessage: '{{ error_message if error_message else "" }}',
             dxfFile: '{{ dxf_file if dxf_file else "" }}',
+            dxfContentInline: {{ (dxf_content_inline | tojson) if dxf_content_inline else 'null' }},
             fromOnshape: {{ 'true' if from_onshape else 'false' }},
             suggestedFilename: '{{ suggested_filename if suggested_filename else "" }}',
             usingDefaultConfig: {{ 'true' if using_default_config else 'false' }},
