@@ -18,6 +18,62 @@ from pathlib import Path
 import json
 import secrets
 import re
+import uuid
+
+# Upstash Redis for job history
+try:
+    from upstash_redis import Redis as UpstashRedis
+    _redis_url = os.environ.get('UPSTASH_REDIS_KV_REST_API_URL')
+    _redis_token = os.environ.get('UPSTASH_REDIS_KV_REST_API_TOKEN')
+    if _redis_url and _redis_token:
+        job_redis = UpstashRedis(url=_redis_url, token=_redis_token)
+        REDIS_AVAILABLE = True
+        print("✅ Upstash Redis connected for job history")
+    else:
+        job_redis = None
+        REDIS_AVAILABLE = False
+        print("⚠️ Redis env vars not set, job history disabled")
+except ImportError:
+    job_redis = None
+    REDIS_AVAILABLE = False
+    print("⚠️ upstash-redis not installed, job history disabled")
+
+def save_job(user_id, job_data):
+    """Save a job to Redis history."""
+    if not REDIS_AVAILABLE or not job_redis:
+        return
+    try:
+        job_id = str(uuid.uuid4())
+        job_data['id'] = job_id
+        key = f"jobs:{user_id}:{job_id}"
+        job_redis.set(key, json.dumps(job_data))
+        job_redis.expire(key, 60 * 60 * 24 * 90)  # 90 days
+        # Add to user's job index
+        index_key = f"job_index:{user_id}"
+        job_redis.lpush(index_key, job_id)
+        job_redis.ltrim(index_key, 0, 99)  # Keep last 100 jobs
+        job_redis.expire(index_key, 60 * 60 * 24 * 90)
+        print(f"✅ Saved job {job_id} for user {user_id}")
+    except Exception as e:
+        print(f"⚠️ Failed to save job: {e}")
+
+def get_jobs(user_id):
+    """Get all jobs for a user from Redis."""
+    if not REDIS_AVAILABLE or not job_redis:
+        return []
+    try:
+        index_key = f"job_index:{user_id}"
+        job_ids = job_redis.lrange(index_key, 0, 99)
+        jobs = []
+        for job_id in job_ids:
+            key = f"jobs:{user_id}:{job_id}"
+            data = job_redis.get(key)
+            if data:
+                jobs.append(json.loads(data))
+        return jobs
+    except Exception as e:
+        print(f"⚠️ Failed to get jobs: {e}")
+        return []
 import atexit
 import time
 import threading
@@ -698,6 +754,24 @@ def process_file():
                              'from_onshape': request.form.get('fromOnshape', 'false') == 'true'
                          })
 
+        # Save job to Redis history
+        user_id = session.get('user_email') or session.get('user_id') or request.remote_addr
+        save_job(user_id, {
+            'part_name': base_name,
+            'filename': actual_filename,
+            'material': material,
+            'machine_id': machine_id or 'default',
+            'thickness': thickness,
+            'gcode_lines': result.stats.get('total_lines', 0),
+            'holes': result.stats.get('num_holes', 0),
+            'pockets': result.stats.get('num_pockets', 0),
+            'cycle_time': result.stats.get('cycle_time_display', 'N/A'),
+            'cycle_time_seconds': result.stats.get('cycle_time_seconds', 0),
+            'from_onshape': request.form.get('fromOnshape', 'false') == 'true',
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'gcode': result.gcode,
+        })
+
         return jsonify(response_data)
 
     except ValueError as e:
@@ -929,6 +1003,32 @@ def upload_to_drive(token):
 # ============================================================================
 # Onshape Integration Routes
 # ============================================================================
+
+@app.route('/history')
+def job_history():
+    user_id = session.get('user_email') or session.get('user_id') or request.remote_addr
+    jobs = get_jobs(user_id)
+    return render_template('history.html', jobs=jobs)
+
+@app.route('/history/download/<job_id>')
+def history_download(job_id):
+    user_id = session.get('user_email') or session.get('user_id') or request.remote_addr
+    try:
+        key = f"jobs:{user_id}:{job_id}"
+        data = job_redis.get(key)
+        if not data:
+            return jsonify({'error': 'Job not found'}), 404
+        job = json.loads(data)
+        gcode = job.get('gcode', '')
+        filename = job.get('filename', f'{job_id}.nc')
+        from flask import Response
+        return Response(
+            gcode,
+            mimetype='text/plain',
+            headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/onshape/auth')
 def onshape_auth():
