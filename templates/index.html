@@ -79,7 +79,7 @@
         {% if session.get('user_name') %}
         <div class="user-info">
             <div class="user-details">
-                <span class="user-icon">👤</span>
+                <span class="user-icon">▸</span>
                 <span class="user-name">{{ session.get('user_name') }}</span>
                 <a href="/docs/" class="icon-btn" title="Help & Documentation" target="_blank">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -89,6 +89,7 @@
                     </svg>
                 </a>
             </div>
+            <a href="/history" class="logout-btn" style="background: var(--primary); color: #fff; border-color: var(--primary);">Job History</a>
             <a href="/auth/logout" class="logout-btn">Logout</a>
         </div>
         {% endif %}
@@ -115,7 +116,7 @@
 
                     <!-- Big drop zone (shown when no file loaded) -->
                     <div class="drop-zone" id="dropZone">
-                        <div class="drop-zone-icon">📄</div>
+                        <div class="drop-zone-icon"></div>
                         <div class="drop-zone-text">Drag & drop your DXF file here</div>
                         <div class="drop-zone-hint">or click to browse</div>
                         <input type="file" id="fileInput" accept=".dxf" style="display: none;">
@@ -124,7 +125,7 @@
                     <!-- File loaded card (shown when file is loaded) -->
                     <div id="fileLoadedCard" style="display: none;">
                         <div class="file-info">
-                            <div class="file-info-icon">📄</div>
+                            <div class="file-info-icon"></div>
                             <div class="file-info-details">
                                 <div class="file-info-name" id="fileName"></div>
                                 <div class="file-info-size" id="fileSize"></div>
@@ -281,7 +282,7 @@
                         <div id="errorMessage"></div>
                         <div id="debugDxfLinkError" style="margin-top: 0.75rem; display: none;">
                             <a href="/debug/download-dxf" style="color: var(--primary); text-decoration: underline;">
-                                🐛 Download debug DXF for manual testing
+                                Download debug DXF for manual testing
                             </a>
                         </div>
                     </div>
@@ -299,7 +300,7 @@
                         </details>
                         <div id="debugDxfLinkSuccess" style="margin-top: 1rem; display: none;">
                             <a href="/debug/download-dxf" style="color: var(--text-dim); text-decoration: underline; font-size: 0.875rem;">
-                                🐛 Download debug DXF
+                                Download debug DXF
                             </a>
                         </div>
                     </div>
@@ -345,7 +346,7 @@
                     <!-- 3D G-code Preview -->
                     <div id="canvas-container">
                         <div class="empty-state">
-                            <div class="empty-state-icon">🔧</div>
+                            <div class="empty-state-icon"></div>
                             <div>G-code preview will appear here</div>
                         </div>
                         <canvas id="gcodeCanvas"></canvas>
@@ -388,10 +389,10 @@
 
                     <div class="button-group" id="gcodeButtons" style="margin-top: 1rem; display: none; gap: 1rem;">
                         <button id="downloadBtn" class="secondary" disabled>
-                            📥 Download Program
+                            Download Program
                         </button>
                         <button id="driveBtn" class="primary" disabled style="display: none;">
-                            💾 Save to Google Drive
+                            ↑ Save to Google Drive
                         </button>
                     </div>
 
