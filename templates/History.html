@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job History — BionicsCAM</title>
+    <link rel="icon" type="image/png" href="/static/bionicslogo.png">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #0F4F3A;
+            --primary-dark: #0B3A2B;
+            --primary-light: #1a6b50;
+            --accent: #2ecc71;
+            --accent-dim: rgba(46, 204, 113, 0.15);
+            --bg: #0a0e0c;
+            --bg-card: #111815;
+            --bg-card-hover: #161f1c;
+            --border: #1e2e28;
+            --border-light: #264038;
+            --text: #e8f0ec;
+            --text-dim: #7a9e8e;
+            --text-muted: #4a6a5a;
+            --mono: 'DM Mono', monospace;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+        }
+
+        /* Grid background */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(15, 79, 58, 0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(15, 79, 58, 0.04) 1px, transparent 1px);
+            background-size: 32px 32px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* Header */
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(10, 14, 12, 0.92);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            padding: 0 2rem;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo-wrap {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            text-decoration: none;
+        }
+
+        .logo-wrap img {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+        }
+
+        .logo-text {
+            font-family: 'Syne', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 800;
+            color: var(--text);
+        }
+
+        .logo-text span {
+            color: var(--accent);
+        }
+
+        .divider {
+            width: 1px;
+            height: 24px;
+            background: var(--border-light);
+        }
+
+        .page-title {
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        .back-btn {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-family: var(--mono);
+            transition: all 0.2s;
+        }
+
+        .back-btn:hover {
+            background: var(--bg-card-hover);
+            color: var(--text);
+            border-color: var(--primary-light);
+        }
+
+        /* Main content */
+        main {
+            position: relative;
+            z-index: 1;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 3rem 2rem;
+        }
+
+        .page-header {
+            margin-bottom: 2.5rem;
+        }
+
+        .page-header h1 {
+            font-family: 'Syne', sans-serif;
+            font-size: 2.5rem;
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 0.5rem;
+        }
+
+        .page-header h1 span {
+            color: var(--accent);
+        }
+
+        .page-header p {
+            color: var(--text-dim);
+            font-size: 0.95rem;
+        }
+
+        .stats-bar {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+            padding: 1rem 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+        }
+
+        .stat {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .stat-value {
+            font-family: 'Syne', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .stat-label {
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 5rem 2rem;
+            color: var(--text-dim);
+        }
+
+        .empty-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .empty-state h2 {
+            font-family: 'Syne', sans-serif;
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            color: var(--text);
+        }
+
+        .empty-state p {
+            font-size: 0.9rem;
+        }
+
+        /* Job list */
+        .job-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .job-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.25rem 1.5rem;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 1rem;
+            align-items: center;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .job-card::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: var(--primary-light);
+            border-radius: 3px 0 0 3px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .job-card:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--border-light);
+            transform: translateX(2px);
+        }
+
+        .job-card:hover::before {
+            opacity: 1;
+        }
+
+        .job-main {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .job-top {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .job-name {
+            font-family: 'Syne', sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .job-filename {
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            background: rgba(15, 79, 58, 0.2);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+        }
+
+        .badge {
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            padding: 0.2rem 0.6rem;
+            border-radius: 20px;
+            border: 1px solid;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .badge-onshape {
+            color: #5ba3f5;
+            border-color: rgba(91, 163, 245, 0.3);
+            background: rgba(91, 163, 245, 0.08);
+        }
+
+        .badge-manual {
+            color: var(--text-muted);
+            border-color: var(--border);
+            background: transparent;
+        }
+
+        .job-meta {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .meta-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.1rem;
+        }
+
+        .meta-label {
+            font-family: var(--mono);
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .meta-value {
+            font-family: var(--mono);
+            font-size: 0.82rem;
+            color: var(--text-dim);
+        }
+
+        .meta-value.highlight {
+            color: var(--accent);
+        }
+
+        .job-timestamp {
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            margin-top: 0.2rem;
+        }
+
+        .job-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .download-btn {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.6rem 1.1rem;
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.82rem;
+            font-family: var(--mono);
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .download-btn:hover {
+            background: var(--primary-light);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(15, 79, 58, 0.4);
+        }
+
+        /* Gcode lines badge */
+        .lines-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.15rem 0.5rem;
+        }
+
+        /* Footer */
+        footer {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            border-top: 1px solid var(--border);
+            margin-top: 4rem;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <a href="/" class="logo-wrap">
+                <img src="/static/bionicslogo.png" alt="4909">
+                <span class="logo-text"><span>Bionics</span>CAM</span>
+            </a>
+            <div class="divider"></div>
+            <span class="page-title">Job History</span>
+        </div>
+        <a href="/" class="back-btn">← Back to CAM</a>
+    </header>
+
+    <main>
+        <div class="page-header">
+            <h1>Cut <span>History</span></h1>
+            <p>FRC Team 4909 · All generated NC programs</p>
+        </div>
+
+        {% if jobs %}
+        <div class="stats-bar">
+            <div class="stat">
+                <span class="stat-value">{{ jobs | length }}</span>
+                <span class="stat-label">Total Jobs</span>
+            </div>
+            <div class="stat">
+                <span class="stat-value">{{ jobs | selectattr('from_onshape') | list | length }}</span>
+                <span class="stat-label">From Onshape</span>
+            </div>
+            <div class="stat">
+                <span class="stat-value">
+                    {% set total_seconds = jobs | sum(attribute='cycle_time_seconds') %}
+                    {% set hours = (total_seconds // 3600) | int %}
+                    {% set mins = ((total_seconds % 3600) // 60) | int %}
+                    {% if hours > 0 %}{{ hours }}h {{ mins }}m{% else %}{{ mins }}m{% endif %}
+                </span>
+                <span class="stat-label">Total Cut Time</span>
+            </div>
+            <div class="stat">
+                <span class="stat-value">{{ jobs | sum(attribute='holes') }}</span>
+                <span class="stat-label">Total Holes</span>
+            </div>
+        </div>
+
+        <div class="job-list">
+            {% for job in jobs %}
+            <div class="job-card">
+                <div class="job-main">
+                    <div class="job-top">
+                        <span class="job-name">{{ job.part_name or 'Unnamed Part' }}</span>
+                        <span class="job-filename">{{ job.filename }}</span>
+                        {% if job.from_onshape %}
+                        <span class="badge badge-onshape">Onshape</span>
+                        {% else %}
+                        <span class="badge badge-manual">Manual</span>
+                        {% endif %}
+                    </div>
+                    <div class="job-meta">
+                        <div class="meta-item">
+                            <span class="meta-label">Material</span>
+                            <span class="meta-value">{{ job.material | title }}</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Thickness</span>
+                            <span class="meta-value">{{ job.thickness }}"</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Est. Time</span>
+                            <span class="meta-value highlight">{{ job.cycle_time or 'N/A' }}</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Holes</span>
+                            <span class="meta-value">{{ job.holes }}</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Pockets</span>
+                            <span class="meta-value">{{ job.pockets }}</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">G-code Lines</span>
+                            <span class="meta-value">{{ job.gcode_lines }}</span>
+                        </div>
+                        {% if job.machine_id and job.machine_id != 'default' %}
+                        <div class="meta-item">
+                            <span class="meta-label">Machine</span>
+                            <span class="meta-value">{{ job.machine_id }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="job-timestamp">{{ job.timestamp }}</div>
+                </div>
+                <div class="job-actions">
+                    <a href="/history/download/{{ job.id }}" class="download-btn">
+                        ↓ Download NC
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">⬡</div>
+            <h2>No jobs yet</h2>
+            <p>Generate your first NC program and it'll appear here.</p>
+        </div>
+        {% endif %}
+    </main>
+
+    <footer>
+        BionicsCAM · FRC Team 4909 Billerica Bionics · Built on PenguinCAM by Team 6238
+    </footer>
+</body>
+</html>
