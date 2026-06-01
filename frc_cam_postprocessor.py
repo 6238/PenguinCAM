@@ -1562,8 +1562,8 @@ class FRCPostProcessor:
 
         # Generate filename with timestamp
         base_name = suggested_filename if suggested_filename else "output"
-        # Format timestamp for filename: YYYYMMDD_HHMMSS
-        timestamp_for_file = timestamp.replace('-', '').replace(' ', '_').replace(':', '')
+        # Keep timestamp readable: YYYY-MM-DD_HH-MM-SS
+        timestamp_for_file = timestamp.replace(' ', '_').replace(':', '-')
         filename = f"{base_name}_{timestamp_for_file}.nc"
 
         # Return result
@@ -2380,7 +2380,7 @@ class FRCPostProcessor:
 
         # Generate filename
         base_name = suggested_filename if suggested_filename else "output"
-        timestamp_for_file = timestamp.replace('-', '').replace(' ', '_').replace(':', '')
+        timestamp_for_file = timestamp.replace(' ', '_').replace(':', '-')
         filename = f"{base_name}_{timestamp_for_file}.nc"
 
         return PostProcessorResult(
@@ -4211,8 +4211,8 @@ class FRCPostProcessor:
 
         # Generate filename with timestamp
         base_name = suggested_filename if suggested_filename else "tube_facing"
-        # Format timestamp for filename: YYYYMMDD_HHMMSS
-        timestamp_for_file = timestamp.replace('-', '').replace(' ', '_').replace(':', '')
+        # Keep timestamp readable: YYYY-MM-DD_HH-MM-SS
+        timestamp_for_file = timestamp.replace(' ', '_').replace(':', '-')
         filename = f"{base_name}_{timestamp_for_file}.nc"
 
         # Return result
@@ -4467,8 +4467,8 @@ class FRCPostProcessor:
 
         # Generate filename with timestamp
         base_name = suggested_filename if suggested_filename else "tube_pattern"
-        # Format timestamp for filename: YYYYMMDD_HHMMSS
-        timestamp_for_file = timestamp.replace('-', '').replace(' ', '_').replace(':', '')
+        # Keep timestamp readable: YYYY-MM-DD_HH-MM-SS
+        timestamp_for_file = timestamp.replace(' ', '_').replace(':', '-')
         filename = f"{base_name}_{timestamp_for_file}.nc"
 
         # Build operation notes based on configuration
