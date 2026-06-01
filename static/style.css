@@ -1,4 +1,4 @@
-        * {
+* {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
@@ -454,6 +454,14 @@
             box-shadow: none;
         }
 
+        /* Download button is Bionics green even when disabled, just dimmed */
+        #downloadBtn:disabled {
+            background: var(--primary);
+            color: #ffffff;
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
         button.secondary {
             color: var(--text-dim);
             background: var(--secondary);
@@ -461,6 +469,19 @@
 
         button.secondary:hover {
             background: #34495E;
+        }
+
+        /* Download button turns Bionics green when enabled */
+        #downloadBtn:not(:disabled) {
+            background: var(--primary);
+            color: #ffffff;
+            border: none;
+        }
+
+        #downloadBtn:not(:disabled):hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(15, 79, 58, 0.4);
         }
 
         /* Visualization */
