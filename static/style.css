@@ -1,11 +1,11 @@
-        * {
+* {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
 
         :root {
-            --primary: #FDB515;
+            --primary: #154733;
             --primary-dark: #D99F12;
             --secondary: #2C3E50;
             --bg: #0A0E14;
@@ -454,6 +454,14 @@
             box-shadow: none;
         }
 
+        /* Download button is Bionics green even when disabled, just dimmed */
+        #downloadBtn:disabled {
+            background: var(--primary);
+            color: #ffffff;
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
         button.secondary {
             color: var(--text-dim);
             background: var(--secondary);
@@ -461,6 +469,19 @@
 
         button.secondary:hover {
             background: #34495E;
+        }
+
+        /* Download button turns Bionics green when enabled */
+        #downloadBtn:not(:disabled) {
+            background: var(--primary);
+            color: #ffffff;
+            border: none;
+        }
+
+        #downloadBtn:not(:disabled):hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(15, 79, 58, 0.4);
         }
 
         /* Visualization */
@@ -734,6 +755,60 @@
         .toolpath-scrubber::-moz-range-thumb:hover {
             background: var(--primary-dark);
             transform: scale(1.1);
+        }
+
+
+        /* Toggle Switch */
+        .toggle-switch {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.65rem;
+            min-height: 42px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .toggle-switch input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .toggle-slider {
+            position: relative;
+            width: 48px;
+            height: 26px;
+            border-radius: 999px;
+            background: var(--surface-light);
+            border: 1px solid var(--border);
+            transition: background 0.2s, border-color 0.2s;
+        }
+
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            left: 2px;
+            top: 2px;
+            border-radius: 50%;
+            background: var(--text-dim);
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background: rgba(253, 181, 21, 0.25);
+            border-color: var(--primary);
+        }
+
+        .toggle-switch input:checked + .toggle-slider::before {
+            transform: translateX(22px);
+            background: var(--primary);
+        }
+
+        .toggle-text {
+            color: var(--text);
+            font-size: 0.99rem;
         }
 
         /* Mode Toggle */

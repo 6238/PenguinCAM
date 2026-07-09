@@ -4,6 +4,7 @@
 
 const appState = {
     // File upload
+    uploadedFiles: [],
     uploadedFile: null,
     suggestedFilename: null,
     gcodeContent: null,
@@ -99,14 +100,17 @@ function calculateArcBounds(centerX, centerY, radius, startAngle, endAngle) {
  * Default settings for the application
  */
 const DEFAULT_SETTINGS = {
-    material: 'plywood',
+    material: 'polycarbonate',
     thickness: '0.25',
     tabSpacing: '6.0',
+    tabsEnabled: false,
+    optionalStopAfterHoles: true,
     tubeHeight: '2.0',
     squareEnd: true,
     cutToLength: true,
-    toolDiameter: '0.157',
-    rotationAngle: 0
+    toolDiameter: '0.125',
+    rotationAngle: 0,
+    use25d: false
 };
 
 /**
@@ -119,7 +123,10 @@ function saveSettings() {
         material: document.getElementById('material').value,
         thickness: document.getElementById('thickness').value,
         tabSpacing: document.getElementById('tabSpacing').value,
+        tabsEnabled: document.getElementById('tabsEnabled').checked,
+        optionalStopAfterHoles: document.getElementById('optionalStopAfterHoles')?.checked || false,
         tubeHeight: document.getElementById('tubeHeight').value,
+        use25d: document.getElementById('use25d').checked,
         squareEnd: document.getElementById('squareEnd').checked,
         cutToLength: document.getElementById('cutToLength').checked,
         toolDiameter: document.getElementById('toolDiameter').value,
@@ -151,6 +158,7 @@ function loadSettings() {
         }
         document.getElementById('material').value = settings.material || DEFAULT_SETTINGS.material;
 
+
         // Only load thickness from localStorage if NOT auto-detected from CAD
         const detectedThickness = window.ONSHAPE_DATA && window.ONSHAPE_DATA.detectedThickness;
         if (!detectedThickness) {
@@ -159,9 +167,20 @@ function loadSettings() {
         // If detected thickness exists, the HTML already has the correct value - don't override it
 
         document.getElementById('tabSpacing').value = settings.tabSpacing || DEFAULT_SETTINGS.tabSpacing;
+        const optionalStopAfterHolesEl = document.getElementById('optionalStopAfterHoles');
+        if (optionalStopAfterHolesEl) {
+            optionalStopAfterHolesEl.checked = settings.optionalStopAfterHoles !== undefined ? settings.optionalStopAfterHoles : DEFAULT_SETTINGS.optionalStopAfterHoles;
+            updateToggleLabel(optionalStopAfterHolesEl);
+        }
+        const tabsEnabledEl = document.getElementById('tabsEnabled');
+        if (tabsEnabledEl) {
+            tabsEnabledEl.checked = settings.tabsEnabled !== undefined ? settings.tabsEnabled : DEFAULT_SETTINGS.tabsEnabled;
+            updateToggleLabel(tabsEnabledEl);
+        }
         document.getElementById('tubeHeight').value = settings.tubeHeight || DEFAULT_SETTINGS.tubeHeight;
         document.getElementById('squareEnd').checked = settings.squareEnd !== undefined ? settings.squareEnd : DEFAULT_SETTINGS.squareEnd;
         document.getElementById('cutToLength').checked = settings.cutToLength !== undefined ? settings.cutToLength : DEFAULT_SETTINGS.cutToLength;
+        document.getElementById('use25d').checked = settings.use25d !== undefined ? settings.use25d : DEFAULT_SETTINGS.use25d;
         // Use saved value if exists, otherwise keep server-provided default
         document.getElementById('toolDiameter').value = settings.toolDiameter || serverDefaultToolDiameter;
         appState.rotationAngle = settings.rotationAngle || DEFAULT_SETTINGS.rotationAngle;
@@ -195,13 +214,18 @@ function loadSettings() {
  * Attach event listeners to form elements to auto-save on change
  */
 function setupSettingsAutoSave() {
-    const fields = ['material', 'thickness', 'tabSpacing', 'tubeHeight', 'squareEnd', 'cutToLength', 'toolDiameter'];
+    const fields = ['material', 'thickness', 'tabsEnabled', 'tabSpacing', 'optionalStopAfterHoles', 'tubeHeight', 'squareEnd', 'cutToLength', 'toolDiameter', 'use25d'];
 
     fields.forEach(fieldId => {
         const element = document.getElementById(fieldId);
         if (element) {
             const eventType = element.type === 'checkbox' ? 'change' : 'input';
-            element.addEventListener(eventType, saveSettings);
+            element.addEventListener(eventType, () => {
+                if (fieldId === 'tabsEnabled' || fieldId === 'optionalStopAfterHoles') {
+                    updateToggleLabel(element);
+                }
+                saveSettings();
+            });
         }
     });
 }
@@ -209,6 +233,17 @@ function setupSettingsAutoSave() {
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+function updateToggleLabel(toggleElement) {
+    const label = toggleElement?.closest('.toggle-switch')?.querySelector('.toggle-text');
+    if (label && toggleElement) {
+        label.textContent = toggleElement.checked ? 'Enabled' : 'Disabled';
+    }
+}
+
+function updateTabsToggleLabel() {
+    updateToggleLabel(document.getElementById('tabsEnabled'));
+}
 
 /**
  * Create a bounds tracker for calculating min/max coordinates
@@ -447,28 +482,37 @@ document.addEventListener('DOMContentLoaded', () => {
         dropZone.addEventListener('drop', (e) => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
-            const files = e.dataTransfer.files;
+            const files = Array.from(e.dataTransfer.files || []);
             if (files.length > 0) {
-                handleFile(files[0]);
+                handleFiles(files);
             }
         });
 
         fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                handleFile(e.target.files[0]);
+            const files = Array.from(e.target.files || []);
+            if (files.length > 0) {
+                handleFiles(files);
             }
         });
 
-        function handleFile(file) {
-            if (!file.name.toLowerCase().endsWith('.dxf')) {
-                showError('Invalid file type', 'Please upload a DXF file.');
+        function handleFiles(files) {
+            const dxfFiles = files.filter(file => file.name.toLowerCase().endsWith('.dxf'));
+            if (dxfFiles.length === 0) {
+                showError('Invalid file type', 'Please upload one or more DXF files.');
                 return;
             }
 
             // Store in appState for access across scopes
-            appState.uploadedFile = file;
-            fileName.textContent = file.name;
-            fileSize.textContent = formatFileSize(file.size);
+            appState.uploadedFiles = dxfFiles;
+            appState.uploadedFile = dxfFiles[0];
+            if (dxfFiles.length === 1) {
+                fileName.textContent = dxfFiles[0].name;
+                fileSize.textContent = formatFileSize(dxfFiles[0].size);
+            } else {
+                const totalBytes = dxfFiles.reduce((sum, file) => sum + file.size, 0);
+                fileName.textContent = `${dxfFiles.length} DXF files selected`;
+                fileSize.textContent = `${formatFileSize(totalBytes)} total`;
+            }
 
             // Show file loaded card, hide drop zone
             dropZone.style.display = 'none';
@@ -479,12 +523,17 @@ document.addEventListener('DOMContentLoaded', () => {
             hideError();
             hideResults();
 
-            // Read DXF file for setup mode
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                parseDxfForSetup(e.target.result);
-            };
-            reader.readAsText(file);
+            // Read DXF file(s) for setup preview. Multi-file jobs must preview
+            // every part, not just dxfFiles[0].
+            if (dxfFiles.length > 1) {
+                parseDxfFilesForSetup(dxfFiles);
+            } else {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    parseDxfForSetup(e.target.result);
+                };
+                reader.readAsText(dxfFiles[0]);
+            }
         }
 
         // Handle "Upload a different file" link
@@ -504,17 +553,33 @@ document.addEventListener('DOMContentLoaded', () => {
         // Generate G-code
         generateBtn.addEventListener('click', async () => {
             console.log('🔍 Generate button clicked');
-            console.log('📂 appState.uploadedFile:', appState.uploadedFile);
+            const filesToUpload = (appState.uploadedFiles && appState.uploadedFiles.length > 0)
+                ? appState.uploadedFiles
+                : (appState.uploadedFile ? [appState.uploadedFile] : []);
 
-            if (!appState.uploadedFile) {
-                console.error('❌ No file in appState.uploadedFile');
+            console.log('📂 appState.uploadedFiles:', filesToUpload);
+
+            if (!filesToUpload.length) {
+                console.error('❌ No file in appState.uploadedFiles');
                 return;
             }
 
             const formData = new FormData();
-            formData.append('file', appState.uploadedFile);
-            console.log('✅ FormData created with file:', appState.uploadedFile.name);
+            if (filesToUpload.length === 1) {
+                formData.append('file', filesToUpload[0]);
+                console.log('✅ FormData created with file:', filesToUpload[0].name);
+            } else {
+                filesToUpload.forEach((file) => {
+                    formData.append('files', file, file.name);
+                });
+                console.log(`✅ FormData created with ${filesToUpload.length} files`);
+            }
 
+            const use25d = document.getElementById('use25d')?.checked || false;
+            formData.append('use25d', use25d ? 'true' : 'false');
+            // Single-layer DXFs are allowed in 2.5D mode — the geometry is treated as
+            // the perimeter/profile and depth comes from the thickness field.
+            
             // Generate timestamp in user's local timezone
             const now = new Date();
             const year = now.getFullYear();
@@ -548,8 +613,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Standard parameters
                 formData.append('thickness', document.getElementById('thickness').value);
                 formData.append('tab_spacing', document.getElementById('tabSpacing').value);
+                formData.append('tabs_enabled', document.getElementById('tabsEnabled').checked ? '1' : '0');
+                formData.append('optional_stop_after_holes', document.getElementById('optionalStopAfterHoles')?.checked ? '1' : '0');
             }
             formData.append('rotation', rotationAngle); // Add rotation angle
+            const quantityVal = parseInt(document.getElementById('quantity')?.value || '1', 10);
+            formData.append('quantity', filesToUpload.length > 1 ? '1' : Math.max(1, quantityVal));
+            const nestRotationVal = document.getElementById('nestRotation')?.value || 'auto';
+            formData.append('nest_rotation', nestRotationVal);
             if (appState.suggestedFilename) {
                 formData.append('suggested_filename', appState.suggestedFilename); // Onshape filename
             }
@@ -574,7 +645,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 appState.gcodeContent = data.gcode;
-                appState.outputFilename = data.filename;
+                appState.outputFilename = data.real_filename || data.filename;
 
                 // Show results
                 showResults(data);
@@ -603,10 +674,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // Download G-code
+        // Download G-code — use in-memory content to avoid Vercel cross-instance 404
         downloadBtn.addEventListener('click', () => {
-            if (!appState.outputFilename) return;
-            window.location.href = `/download/${appState.outputFilename}`;
+            if (!appState.gcodeContent || !appState.outputFilename) return;
+            const blob = new Blob([appState.gcodeContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = appState.outputFilename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         });
 
         // Upload to Google Drive
@@ -915,6 +994,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const materialSelect = document.getElementById('material');
             const tubeParams = document.getElementById('tubeParams');
             const thicknessInput = document.getElementById('thickness');
+            const quantityGroup = document.getElementById('quantityGroup');
             const isAluminumTube = materialSelect.value === 'aluminum_tube';
             const isMultiDepth = isMultiDepthMode();
 
@@ -945,6 +1025,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Hide tube parameters unless aluminum_tube is selected
             if (tubeParams) {
                 tubeParams.style.display = isAluminumTube ? 'block' : 'none';
+            if (quantityGroup) quantityGroup.style.display = isAluminumTube ? 'none' : 'block';
+            const nestRotationGroup = document.getElementById('nestRotationGroup');
+            if (nestRotationGroup) nestRotationGroup.style.display = isAluminumTube ? 'none' : 'block';
             }
         }
 
@@ -1011,7 +1094,228 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Parse DXF geometry from file using dxf-parser library
         function parseDxfForSetup(dxfContent) {
-            parseDxfManually(dxfContent);
+            return parseDxfManually(dxfContent);
+        }
+
+        function readDxfFileAsText(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = () => reject(reader.error || new Error(`Failed to read ${file.name}`));
+                reader.readAsText(file);
+            });
+        }
+
+        function getPreviewStockSize() {
+            const machineXMax = Number(window.MACHINE_CONFIG?.xMax) || 48.0;
+            const machineYMax = Number(window.MACHINE_CONFIG?.yMax) || 48.0;
+            return { width: machineXMax, height: machineYMax };
+        }
+
+        function getEntityVisualBounds(entity) {
+            if (!entity) return null;
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+
+            const update = (x, y) => {
+                if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+                minX = Math.min(minX, x);
+                maxX = Math.max(maxX, x);
+                minY = Math.min(minY, y);
+                maxY = Math.max(maxY, y);
+            };
+
+            if (entity.type === 'CIRCLE' && entity.center && Number.isFinite(entity.radius)) {
+                update(entity.center.x - entity.radius, entity.center.y - entity.radius);
+                update(entity.center.x + entity.radius, entity.center.y + entity.radius);
+            } else if (entity.type === 'ARC' && entity.center && Number.isFinite(entity.radius)) {
+                const b = calculateArcBounds(
+                    entity.center.x,
+                    entity.center.y,
+                    entity.radius,
+                    entity.startAngle || 0,
+                    entity.endAngle || 360
+                );
+                update(b.minX, b.minY);
+                update(b.maxX, b.maxY);
+            } else if (entity.type === 'LINE' || entity.type === 'LWPOLYLINE' || entity.type === 'POLYLINE') {
+                (entity.vertices || []).forEach(v => update(v.x, v.y));
+            } else if (entity.type === 'SPLINE') {
+                (entity.controlPoints || []).forEach(p => update(p.x, p.y));
+            }
+
+            if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) {
+                return null;
+            }
+            return { minX, maxX, minY, maxY, width: maxX - minX, height: maxY - minY };
+        }
+
+        function calculateGeometryVisualBounds(geometry) {
+            if (!geometry || !Array.isArray(geometry.entities)) return null;
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+
+            for (const entity of geometry.entities) {
+                const b = getEntityVisualBounds(entity);
+                if (!b) continue;
+                minX = Math.min(minX, b.minX);
+                maxX = Math.max(maxX, b.maxX);
+                minY = Math.min(minY, b.minY);
+                maxY = Math.max(maxY, b.maxY);
+            }
+
+            if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY) || maxX <= minX || maxY <= minY) {
+                return null;
+            }
+            return {
+                minX, maxX, minY, maxY,
+                width: maxX - minX,
+                height: maxY - minY,
+                centerX: (minX + maxX) / 2,
+                centerY: (minY + maxY) / 2
+            };
+        }
+
+        function transformPreviewPoint(x, y, bounds, rotated) {
+            if (rotated) {
+                return {
+                    x: y - bounds.minY,
+                    y: bounds.maxX - x
+                };
+            }
+            return {
+                x: x - bounds.minX,
+                y: y - bounds.minY
+            };
+        }
+
+        function cloneEntityForPreview(entity, bounds, rotated, offsetX, offsetY, layerName) {
+            const movePoint = (pt) => {
+                const p = transformPreviewPoint(pt.x, pt.y, bounds, rotated);
+                return { x: p.x + offsetX, y: p.y + offsetY };
+            };
+
+            if (entity.type === 'CIRCLE') {
+                return { ...entity, center: movePoint(entity.center), layer: layerName };
+            }
+            if (entity.type === 'ARC') {
+                return {
+                    ...entity,
+                    center: movePoint(entity.center),
+                    startAngle: (entity.startAngle || 0) + (rotated ? 90 : 0),
+                    endAngle: (entity.endAngle || 360) + (rotated ? 90 : 0),
+                    layer: layerName
+                };
+            }
+            if (entity.type === 'LINE' || entity.type === 'LWPOLYLINE' || entity.type === 'POLYLINE') {
+                return { ...entity, vertices: (entity.vertices || []).map(movePoint), layer: layerName };
+            }
+            if (entity.type === 'SPLINE') {
+                return { ...entity, controlPoints: (entity.controlPoints || []).map(movePoint), layer: layerName };
+            }
+            return { ...entity, layer: layerName };
+        }
+
+        function buildCompositePreview(parts) {
+            const stock = getPreviewStockSize();
+            // Auto-nest clearance between part bounding boxes.
+            // Keep this matched with AUTO_NEST_CLEARANCE_INCHES in frc_cam_gui_app.py.
+            const gap = 0.125;
+            const rotationMode = document.getElementById('nestRotation')?.value || 'auto';
+            const colors = [0xFDB515, 0x58A6FF, 0xA371F7, 0x2EA043, 0xF778BA, 0xFF7B72, 0x79C0FF, 0xD2A8FF];
+
+            const packParts = parts
+                .filter(part => part && part.geometry && part.bounds && Number.isFinite(part.bounds.width) && Number.isFinite(part.bounds.height))
+                .map((part, originalIndex) => {
+                    let rotated = false;
+                    if (rotationMode === '90') rotated = true;
+                    else if (rotationMode === 'auto') rotated = part.bounds.height > part.bounds.width;
+                    const slotW = rotated ? part.bounds.height : part.bounds.width;
+                    const slotH = rotated ? part.bounds.width : part.bounds.height;
+                    return { ...part, originalIndex, rotated, slotW, slotH, area: slotW * slotH };
+                })
+                .sort((a, b) => b.area - a.area);
+
+            const entities = [];
+            const layers = new Map();
+            const placements = [];
+            let x = 0;
+            let y = 0;
+            let rowH = 0;
+
+            for (const part of packParts) {
+                if (x > 0 && x + part.slotW > stock.width) {
+                    x = 0;
+                    y += rowH + gap;
+                    rowH = 0;
+                }
+
+                const layerName = `preview_part_${part.originalIndex + 1}`;
+                layers.set(layerName, {
+                    name: layerName,
+                    color: colors[part.originalIndex % colors.length],
+                    depth: 0,
+                    isDepthLayer: false,
+                    entities: []
+                });
+
+                for (const entity of part.geometry.entities || []) {
+                    const cloned = cloneEntityForPreview(entity, part.bounds, part.rotated, x, y, layerName);
+                    entities.push(cloned);
+                    layers.get(layerName).entities.push(cloned);
+                }
+
+                placements.push({ x, y, w: part.slotW, h: part.slotH, name: part.name, rotated: part.rotated });
+                x += part.slotW + gap;
+                rowH = Math.max(rowH, part.slotH);
+            }
+
+            dxfGeometry = {
+                minX: 0,
+                minY: 0,
+                maxX: stock.width,
+                maxY: stock.height,
+                entities,
+                layers,
+                layerOrder: Array.from(layers.keys()),
+                placements,
+                isCompositePreview: true
+            };
+            dxfBounds = {
+                width: stock.width,
+                height: stock.height,
+                centerX: stock.width / 2,
+                centerY: stock.height / 2
+            };
+
+            updateFormVisibility();
+            document.getElementById('modeToggle').style.display = 'flex';
+            switchMode('setup');
+        }
+
+        async function parseDxfFilesForSetup(files) {
+            try {
+                if (!files || files.length === 0) return;
+                if (files.length === 1) {
+                    parseDxfForSetup(await readDxfFileAsText(files[0]));
+                    return;
+                }
+
+                const texts = await Promise.all(files.map(readDxfFileAsText));
+                const parts = texts.map((text, index) => {
+                    const parsed = parseDxfManually(text);
+                    const visualBounds = calculateGeometryVisualBounds(parsed?.geometry) || parsed?.bounds;
+                    return {
+                        name: files[index]?.name || `Part ${index + 1}`,
+                        geometry: parsed?.geometry,
+                        bounds: visualBounds
+                    };
+                });
+                buildCompositePreview(parts);
+            } catch (error) {
+                console.error('Failed to build multi-DXF setup preview:', error);
+                showError('Preview failed', error.message || 'Could not build setup preview for uploaded DXF files.');
+            }
         }
 
         // Extract HATCH boundary paths as LWPOLYLINE entities
@@ -1219,6 +1523,9 @@ document.addEventListener('DOMContentLoaded', () => {
             let minY = Infinity, maxY = -Infinity;
 
             function updateBounds(x, y) {
+                if (!Number.isFinite(x) || !Number.isFinite(y)) {
+                    return;
+                }
                 minX = Math.min(minX, x);
                 maxX = Math.max(maxX, x);
                 minY = Math.min(minY, y);
@@ -1314,7 +1621,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             console.log(`After bounds calculation: X=[${minX.toFixed(3)}, ${maxX.toFixed(3)}], Y=[${minY.toFixed(3)}, ${maxY.toFixed(3)}]`);
 
-            if (minX === Infinity) {
+            if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY) || maxX <= minX || maxY <= minY) {
                 console.warn('⚠️ No valid geometry found, using fallback 10×10 bounds');
                 minX = 0; maxX = 10;
                 minY = 0; maxY = 10;
@@ -1344,6 +1651,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             document.getElementById('modeToggle').style.display = 'flex';
             switchMode('setup');
+
+            return { geometry: dxfGeometry, bounds: dxfBounds };
         }
         
         function createEntity(type, data) {
@@ -1415,13 +1724,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const availHeight = height - 2 * padding;
             
             // Apply rotation to bounds for calculating display size
-            let displayWidth = dxfBounds.width;
-            let displayHeight = dxfBounds.height;
+            let displayWidth = Number(dxfBounds.width);
+            let displayHeight = Number(dxfBounds.height);
+            if (!Number.isFinite(displayWidth) || displayWidth <= 0) displayWidth = Number(window.MACHINE_CONFIG?.xMax) || 48.0;
+            if (!Number.isFinite(displayHeight) || displayHeight <= 0) displayHeight = Number(window.MACHINE_CONFIG?.yMax) || 48.0;
             if (rotationAngle === 90 || rotationAngle === 270) {
                 [displayWidth, displayHeight] = [displayHeight, displayWidth];
             }
             
             const scale = Math.min(availWidth / displayWidth, availHeight / displayHeight);
+            if (!Number.isFinite(scale) || scale <= 0) {
+                console.warn('Invalid preview scale, skipping render', { displayWidth, displayHeight, availWidth, availHeight });
+                return;
+            }
             
             // Center position (no rotation of entire canvas)
             const centerX = width / 2;
@@ -2308,10 +2623,9 @@ document.addEventListener('DOMContentLoaded', () => {
             stockMesh.renderOrder = -1; // Render stock before toolpaths
             scene.add(stockMesh);
 
-            // Render DXF geometry overlay (white lines on stock top surface)
-            if (dxfGeometry && dxfGeometry.entities) {
-                renderDxfGeometry(scene, dxfGeometry.entities, stockHeight);
-            }
+            // Do not render the DXF setup overlay in G-code preview mode.
+            // The yellow toolpath is the source of truth here; overlaying the colored/white DXF
+            // preview makes small placement differences look like collisions.
 
             // Create tool representation (endmill)
             const toolLength = Math.max(maxZ * 1.5, 1.0);
@@ -2585,19 +2899,74 @@ document.addEventListener('DOMContentLoaded', () => {
             const fromOnshape = window.ONSHAPE_DATA?.fromOnshape || false;
             const onshapeSuggestedFilename = window.ONSHAPE_DATA?.suggestedFilename || '';
             
-            if (dxfFile && fromOnshape) {
+            const dxfContentInline = window.ONSHAPE_DATA?.dxfContentInline || null;
+
+            // ── Multi-part Onshape import ──────────────────────────────────
+            const dxfFiles = window.ONSHAPE_DATA?.dxfFiles || null;
+
+            if (dxfFiles && dxfFiles.length > 0 && fromOnshape) {
+                console.log(`Auto-loading ${dxfFiles.length} DXF(s) from Onshape multi-part import`);
+
+                const files = dxfFiles.map(({ filename, content }) => {
+                    const blob = new Blob([content], { type: 'application/dxf' });
+                    return new File([blob], filename, { type: 'application/dxf' });
+                });
+
+                appState.uploadedFiles = files;
+                appState.uploadedFile = files[0];
+                appState.suggestedFilename = null;
+
+                // Onshape multi-part import exports layered DXFs. Force 2.5D
+                // on the main page so Generate uses the multilayer path.
+                const use25dEl = document.getElementById('use25d');
+                if (use25dEl) {
+                    use25dEl.checked = true;
+                    use25dEl.dispatchEvent(new Event('change'));
+                }
+
+                const fileNameEl = document.getElementById('fileName');
+                const fileSizeEl = document.getElementById('fileSize');
+                const fileLoadedCardEl = document.getElementById('fileLoadedCard');
+                const dropZoneEl = document.getElementById('dropZone');
+                const generateBtnEl = document.getElementById('generateBtn');
+
+                const totalBytes = dxfFiles.reduce((sum, f) => sum + f.content.length, 0);
+                if (fileNameEl) fileNameEl.textContent = `${files.length} DXF file${files.length === 1 ? '' : 's'} selected`;
+                if (fileSizeEl) fileSizeEl.textContent = formatFileSize(totalBytes);
+                if (dropZoneEl) dropZoneEl.style.display = 'none';
+                if (fileLoadedCardEl) fileLoadedCardEl.style.display = 'block';
+                if (generateBtnEl) {
+                    generateBtnEl.disabled = false;
+                    generateBtnEl.textContent = '🚀 Generate Program';
+                }
+
+                // Parse all imported files for setup preview. This keeps the preview
+                // aligned with the actual multi-part job instead of showing only one DXF.
+                parseDxfFilesForSetup(files);
+
+                const statusDiv = document.getElementById('statusMessage');
+                if (statusDiv) {
+                    statusDiv.textContent = `✅ Imported ${files.length} part(s) from Onshape! Click Generate Program to continue.`;
+                    statusDiv.style.display = 'block';
+                }
+
+            } else if (dxfFile && fromOnshape) {
+            // ── Single-part Onshape import (existing) ─────────────────────
                 console.log('Auto-loading DXF from Onshape:', dxfFile);
-                console.log('Fetching from:', `/uploads/${dxfFile}`);
-                
-                // Fetch the DXF and load it
-                fetch(`/uploads/${dxfFile}`)
-                    .then(response => {
-                        console.log('Fetch response:', response.status, response.statusText);
-                        if (!response.ok) {
-                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                        }
-                        return response.text();
-                    })
+
+                // Use inline DXF content if available (avoids cross-instance 404 on Vercel)
+                const dxfPromise = dxfContentInline
+                    ? Promise.resolve(dxfContentInline)
+                    : fetch(`/uploads/${dxfFile}`)
+                        .then(response => {
+                            console.log('Fetch response:', response.status, response.statusText);
+                            if (!response.ok) {
+                                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                            }
+                            return response.text();
+                        });
+
+                dxfPromise
                     .then(dxfContent => {
                         console.log('DXF content received:', dxfContent.length, 'bytes');
                         console.log('First 200 chars:', dxfContent.substring(0, 200));
@@ -2612,6 +2981,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         // Use appState to store file (accessible across scopes)
                         appState.uploadedFile = file;
+                        appState.uploadedFiles = [file];
                         appState.suggestedFilename = onshapeSuggestedFilename || null;
 
                         // Update UI elements

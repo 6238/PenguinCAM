@@ -3,204 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PenguinCAM Panel</title>
-    <style>
-        /* Team 6238 Popcorn Penguins colors */
-        :root {
-            --primary: #FDB515;
-            --primary-dark: #D99F12;
-            --secondary: #2C3E50;
-            --bg: #f5f5f5;
-            --surface: #ffffff;
-            --text: #2C3E50;
-            --text-dim: #666;
-        }
-
-        /* Minimal CSS - must work in iframe */
-        body {
-            margin: 0;
-            padding: 16px;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: var(--bg);
-            font-size: 14px;
-        }
-        .panel-content {
-            background: var(--surface);
-            border-radius: 8px;
-            padding: 16px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            border-top: 3px solid var(--primary);
-        }
-        .instruction {
-            text-align: center;
-            color: var(--text-dim);
-            padding: 24px 16px;
-            line-height: 1.5;
-            font-size: 14px;
-        }
-        .instruction strong {
-            font-weight: 600;
-        }
-        .button-group {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            margin-top: 16px;
-        }
-        button {
-            padding: 12px 16px;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .btn-primary {
-            background: var(--primary);
-            color: var(--secondary);
-        }
-        .btn-primary:hover:not(:disabled) {
-            background: var(--primary-dark);
-        }
-        .btn-secondary {
-            background: var(--secondary);
-            color: white;
-        }
-        .btn-secondary:hover:not(:disabled) {
-            background: #1a2a3a;
-        }
-        .logo {
-            text-align: center;
-            margin-bottom: 16px;
-            font-size: 18px;
-            font-weight: 700;
-            color: var(--text);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-        .logo img {
-            height: 24px;
-            width: auto;
-        }
-        .logo .accent {
-            color: var(--primary);
-        }
-        .mode-selector {
-            margin: 16px 0;
-            padding: 12px;
-            background: #f8f9fa;
-            border-radius: 6px;
-            border-left: 3px solid var(--primary);
-        }
-        .mode-switch-container {
-            display: flex;
-            justify-content: center;
-            gap: 12px;
-            margin-bottom: 8px;
-        }
-        .mode-switch {
-            position: relative;
-            display: inline-block;
-            width: 60px;
-            height: 28px;
-        }
-        .mode-switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-        .mode-slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: var(--secondary);
-            transition: .3s;
-            border-radius: 28px;
-        }
-        .mode-slider:before {
-            position: absolute;
-            content: "";
-            height: 20px;
-            width: 20px;
-            left: 4px;
-            bottom: 4px;
-            background-color: white;
-            transition: .3s;
-            border-radius: 50%;
-        }
-        .mode-switch input:checked + .mode-slider {
-            background-color: var(--primary);
-        }
-        .mode-switch input:checked + .mode-slider:before {
-            transform: translateX(32px);
-        }
-        .mode-label-text {
-            font-weight: 500;
-            color: var(--text);
-            font-size: 13px;
-            line-height: 28px;
-        }
-        .mode-label-text.active {
-            font-weight: 600;
-            color: var(--text);
-        }
-        .mode-hint {
-            margin-top: 4px;
-            font-size: 12px;
-            color: var(--text-dim);
-            line-height: 1.4;
-            text-align: center;
-        }
-    </style>
+    <title>BionicsCAM Onshape Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/refresh-ui.css">
+    <script>window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };</script>
+    <script defer src="/_vercel/speed-insights/script.js"></script>
 </head>
-<body>
+<body class="panel-shell">
     <div class="panel-content">
-        <div class="logo">
-            <img src="/static/popcornlogo.png" alt="Popcorn Penguins">
-            <span><span class="accent">Penguin</span>CAM</span>
+        <div class="panel-logo">
+            <img src="/static/bionicslogo.png" alt="4909">
+            <div class="panel-logo-text"><span>Bionics</span>CAM</div>
         </div>
 
         <div class="mode-selector">
+            <div class="mode-title">Import mode</div>
             <div class="mode-switch-container">
                 <span class="mode-label-text active" id="mode2DLabel">2D</span>
-                <label class="mode-switch">
+                <label class="mode-switch" aria-label="Toggle 2D or 2.5D mode">
                     <input type="checkbox" id="multilayerMode">
                     <span class="mode-slider"></span>
                 </label>
                 <span class="mode-label-text" id="mode25DLabel">2.5D</span>
             </div>
-            <div class="mode-hint" id="modeHint">
-                Any stock thickness works - cutting a flat pattern only
-            </div>
+            <div class="mode-hint" id="modeHint">Any stock thickness works — cutting a flat pattern only.</div>
         </div>
 
-        <div id="instruction" class="instruction">
-            Select the top face of your part to manufacture
+        <div id="instruction" class="instruction">Select the top face of your part to manufacture.</div>
+
+        <div id="multiPartGroup" class="button-group" style="display: none;">
+            <button id="importAllParts" class="btn-primary">Import selected part(s)</button>
+            <div class="mode-hint">Exports selected faces as separate DXFs for nesting.</div>
         </div>
 
         <div id="buttonGroup" class="button-group" style="display: none;">
-            <button id="sendToPenguinCAM" class="btn-primary" disabled>
-                Send to PenguinCAM
-            </button>
-            <button id="selectAnotherFace" class="btn-secondary">
-                Select another face
-            </button>
-            <!-- Drive button removed - doesn't work in embedded iframe context -->
+            <button id="selectAnotherFace" class="btn-secondary">Select another face</button>
         </div>
     </div>
 
     <script>
-        // Pass template variables to JavaScript
         window.ONSHAPE_CONTEXT = {
             documentId: '{{ document_id }}',
             workspaceId: '{{ workspace_id }}',

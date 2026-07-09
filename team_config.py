@@ -2,7 +2,7 @@
 Team Configuration Management for PenguinCAM
 
 Handles loading and managing team-specific settings from YAML config files
-stored in Onshape documents. Falls back to Team 6238 defaults if config
+stored in Onshape documents. Falls back to Team 4909 defaults if config
 is missing or incomplete.
 """
 
@@ -17,14 +17,14 @@ from typing import Optional, Dict, Any
 
 TEAM_6238_DEFAULTS = {
     'team': {
-        'number': 6238,
-        'name': 'Popcorn Penguins'
+        'number': 4909,
+        'name': 'Bionics'
     },
     'machine': {
         'name': 'Generic CNC Router',
         'manufacturer': 'Generic',
         'controller': 'Generic',
-        'dimensions': {'x_max': 24.0, 'y_max': 24.0, 'z_max': 8.0},
+        'dimensions': {'x_max': 48.0, 'y_max': 48.0, 'z_max': 8.0},
         'park_position': {'x': 0.5, 'y': 0.5, 'z': -0.5},
         'standard_work_offset': 'G54',
         'tube_jig_work_offset': 'G55',
@@ -664,8 +664,8 @@ CONFIG_TEMPLATE = """# PenguinCAM Team Configuration
 # TEAM INFORMATION
 # =============================================================================
 team:
-  number: 6238
-  name: "Popcorn Penguins"
+  number: 4909
+  name: "Bionics"
 
 # =============================================================================
 # MACHINE & CONTROLLER
@@ -717,7 +717,7 @@ machining:
 
   # Tool parameters (defaults - can be overridden per job)
   default_tool:
-    diameter: 0.157                 # 4mm end mill (inches)
+    diameter: 0.125                 # 1/8 end mill (inches)
     # Note: This sets the default in the UI, but user can override for each job
 
 # =============================================================================

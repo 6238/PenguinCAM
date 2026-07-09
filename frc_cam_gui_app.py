@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-PenguinCAM - FRC Team 6238 CAM Tool
+BionicsCam - FRC Team 4909 CAM Tool
 A Flask-based web interface for generating G-code from DXF files
 """
-
+"""
+This is a test commit
+"""
 from flask import Flask, render_template, request, jsonify, send_file, session, send_from_directory, redirect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -18,6 +20,190 @@ from pathlib import Path
 import json
 import secrets
 import re
+import uuid
+
+# Upstash Redis for job history
+try:
+    from upstash_redis import Redis as UpstashRedis
+    _redis_url = os.environ.get('UPSTASH_REDIS_KV_REST_API_URL')
+    _redis_token = os.environ.get('UPSTASH_REDIS_KV_REST_API_TOKEN')
+    if _redis_url and _redis_token:
+        job_redis = UpstashRedis(url=_redis_url, token=_redis_token)
+        REDIS_AVAILABLE = True
+        print("✅ Upstash Redis connected for job history")
+    else:
+        job_redis = None
+        REDIS_AVAILABLE = False
+        print("⚠️ Redis env vars not set, job history disabled")
+except ImportError:
+    job_redis = None
+    REDIS_AVAILABLE = False
+    print("⚠️ upstash-redis not installed, job history disabled")
+
+def save_job(user_id, job_data):
+    """Save a job to Redis history."""
+    if not REDIS_AVAILABLE or not job_redis:
+        return
+    try:
+        job_id = str(uuid.uuid4())
+        job_data['id'] = job_id
+        key = f"jobs:{user_id}:{job_id}"
+        job_redis.set(key, json.dumps(job_data))
+        job_redis.expire(key, 60 * 60 * 24 * 90)  # 90 days
+        # Add to user's job index
+        index_key = f"job_index:{user_id}"
+        job_redis.lpush(index_key, job_id)
+        job_redis.ltrim(index_key, 0, 99)  # Keep last 100 jobs
+        job_redis.expire(index_key, 60 * 60 * 24 * 90)
+        print(f"✅ Saved job {job_id} for user {user_id}")
+    except Exception as e:
+        print(f"⚠️ Failed to save job: {e}")
+
+def get_jobs(user_id):
+    """Get all jobs for a user from Redis."""
+    if not REDIS_AVAILABLE or not job_redis:
+        return []
+    try:
+        index_key = f"job_index:{user_id}"
+        job_ids = job_redis.lrange(index_key, 0, 99)
+        jobs = []
+        for job_id in job_ids:
+            key = f"jobs:{user_id}:{job_id}"
+            data = job_redis.get(key)
+            if data:
+                jobs.append(json.loads(data))
+        return jobs
+    except Exception as e:
+        print(f"⚠️ Failed to get jobs: {e}")
+        return []
+
+
+def process_standard_dxf_file(
+    input_path,
+    material,
+    machine_id,
+    thickness,
+    tool_diameter,
+    origin_corner,
+    rotation,
+    use_25d,
+    tab_spacing,
+    tabs_enabled,
+    optional_stop_after_holes,
+    team_config,
+    user_name,
+    suggested_filename,
+    timestamp_str,
+):
+    """Process a single standard DXF into G-code."""
+    pp = FRCPostProcessor(
+        material_thickness=thickness,
+        tool_diameter=tool_diameter,
+        units='inch',
+        config=team_config
+    )
+    pp.use_25d = use_25d
+    pp.apply_material_preset(material, machine_id)
+
+    if user_name:
+        pp.user_name = user_name
+
+    pp.tab_spacing = tab_spacing
+    pp.tabs_enabled = tabs_enabled
+    pp.optional_stop_after_holes = optional_stop_after_holes
+    pp.load_dxf(input_path)
+    pp.transform_coordinates(origin_corner, rotation)
+    pp.identify_perimeter_and_pockets()
+    pp.classify_holes()
+
+    result = pp.generate_gcode(suggested_filename=suggested_filename, timestamp=timestamp_str)
+    return pp, result
+
+
+def combine_multi_dxf_results(parts, stock_x, stock_y, gap, nest_rotation, timestamp_str):
+    """Place multiple independently generated parts side-by-side on the sheet."""
+    if not parts:
+        raise ValueError('No parts to combine')
+
+    def choose_rotation(part):
+        if nest_rotation == '90':
+            return True
+        if nest_rotation == '0':
+            return False
+        # Auto: rotate if it makes the part narrower for side-by-side layout
+        return part['part_h'] < part['part_w']
+
+    def extract_toolpath(gcode_str):
+        lines = gcode_str.splitlines()
+        start = next((i for i, l in enumerate(lines)
+                      if l.strip() and not l.strip().startswith('(')
+                      and any(c in l for c in ('G0 ', 'G1 ', 'G2 ', 'G3 ',
+                                                'G00', 'G01', 'G02', 'G03',
+                                                'M3', 'M03'))), 0)
+        end = next((i for i, l in enumerate(lines)
+                    if l.strip().startswith(('M30', 'M2 ', 'M02'))), len(lines))
+        return '\n'.join(lines[start:end])
+
+    placements = []
+    x_cursor = 0.0
+    y_cursor = 0.0
+    row_height = 0.0
+    max_x_used = 0.0
+
+    for idx, part in enumerate(parts):
+        do_rotate = choose_rotation(part)
+        if do_rotate:
+            slot_w, slot_h = part['part_h'], part['part_w']
+            gcode = FRCPostProcessor.rotate_gcode_90(part['result'].gcode, part['part_w'], part['part_h'])
+            rot_label = '90°'
+        else:
+            slot_w, slot_h = part['part_w'], part['part_h']
+            gcode = part['result'].gcode
+            rot_label = '0°'
+
+        if x_cursor > 0 and (x_cursor + slot_w) > stock_x:
+            x_cursor = 0.0
+            y_cursor += row_height + gap
+            row_height = 0.0
+
+        if (x_cursor + slot_w) > stock_x and x_cursor == 0.0 and idx == 0:
+            # First part is simply too large for the stock; let it through but warn later.
+            pass
+
+        if (y_cursor + slot_h) > stock_y:
+            raise ValueError(
+                f'Not enough stock space for part {idx + 1}: needed {(slot_w):.3f}\" x {(slot_h):.3f}\", '
+                f'but only {(stock_x - x_cursor):.3f}\" x {(stock_y - y_cursor):.3f}\" remained.'
+            )
+
+        placements.append({
+            'index': idx,
+            'source_name': part['source_name'],
+            'gcode': gcode,
+            'x': x_cursor,
+            'y': y_cursor,
+            'slot_w': slot_w,
+            'slot_h': slot_h,
+            'rotation_label': rot_label,
+        })
+
+        max_x_used = max(max_x_used, x_cursor + slot_w)
+        x_cursor += slot_w + gap
+        row_height = max(row_height, slot_h)
+
+    combined_blocks = []
+    for placement in placements:
+        shifted = FRCPostProcessor.offset_gcode(placement['gcode'], dx=placement['x'], dy=placement['y'])
+        if placement['index'] == 0:
+            combined_blocks.append(shifted)
+        else:
+            combined_blocks.append(
+                f"( --- Part {placement['index'] + 1}: {placement['source_name']} X+{placement['x']:.3f}\" Y+{placement['y']:.3f}\" rot={placement['rotation_label']} --- )"
+            )
+            combined_blocks.append(extract_toolpath(shifted))
+
+    combined_gcode = '\n'.join(combined_blocks)
+    return combined_gcode, placements, max_x_used, y_cursor + row_height
 import atexit
 import time
 import threading
@@ -89,8 +275,8 @@ class FileTokenManager:
     Manages secure token-based file access to prevent filename guessing attacks.
     Maps random tokens to actual file paths and handles automatic cleanup.
 
-    For serverless (Vercel), tokens are stored in Flask session cookies to work
-    across different container instances.
+    For serverless (Vercel), tokens are stored in Flask session cookies using 
+    compact keys to keep under the 4KB size limit.
     """
 
     def __init__(self):
@@ -98,111 +284,98 @@ class FileTokenManager:
         self.tokens = {}  # token → {'filepath': ..., 'filename': ..., 'created': timestamp}
         self.lock = threading.Lock()
         self.use_session = os.environ.get('VERCEL') == '1'  # Use session storage on Vercel
-
+        self.use_25d = False
+        
     def register_file(self, filepath, real_filename):
         """
         Register a file and return a secure random token.
-
-        Args:
-            filepath: Full path to the file on disk
-            real_filename: The original filename (for download headers)
-
-        Returns:
-            Random token string (safe for URLs)
         """
-        token = secrets.token_urlsafe(32)
-        file_info = {
-            'filepath': filepath,
-            'filename': real_filename,
-            'created': time.time()
-        }
+        token = secrets.token_urlsafe(16)  # Shorter token to save cookie space
+        
+        # Grab ONLY the file's base name (e.g. 'tmp_abc123.dxf')
+        # This completely strips out giant absolute system filepaths to minimize cookie size!
+        disk_basename = os.path.basename(filepath)
 
         if self.use_session:
             # Store in Flask session (cookie-based, works across serverless instances)
             if 'file_tokens' not in session:
                 session['file_tokens'] = {}
-            session['file_tokens'][token] = file_info
+            
+            # Minimize payload size down to under 100 bytes total
+            session['file_tokens'][token] = {
+                'b': disk_basename,
+                'f': real_filename
+            }
             session.modified = True  # Force session save
         else:
             # Store in memory (for non-serverless environments)
             with self.lock:
-                self.tokens[token] = file_info
+                self.tokens[token] = {
+                    'filepath': filepath,
+                    'filename': real_filename,
+                    'created': time.time()
+                }
 
-        log(f"🔐 Registered file: {real_filename} → token {token[:16]}... ({'session' if self.use_session else 'memory'})")
+        log(f"🔐 Compact token registered: {token[:8]}... ({'session' if self.use_session else 'memory'})")
         return token
 
     def get_file(self, token):
         """
-        Get file info for a token.
-
-        Args:
-            token: The secure token
-
-        Returns:
-            Dict with 'filepath' and 'filename', or None if not found
+        Look up a registered file by its token.
         """
         if self.use_session:
-            # Retrieve from Flask session
             file_tokens = session.get('file_tokens', {})
-            return file_tokens.get(token)
+            info = file_tokens.get(token)
+            if not info:
+                return None
+            
+            # Reconstruct the expected full system details mapping using the temp dir 
+            return {
+                'filepath': os.path.join(tempfile.gettempdir(), info['b']),
+                'filename': info['f']
+            }
         else:
-            # Retrieve from memory
             with self.lock:
                 return self.tokens.get(token)
 
-    def cleanup_old_files(self, max_age_seconds=3600):
+    def clean_expired_files(self, max_age_seconds=3600):
         """
-        Remove files older than max_age_seconds (default 1 hour).
-        Deletes both the file on disk and the token mapping.
+        Clean up files older than max_age_seconds.
+        """
+        if self.use_session:
+            return
 
-        Args:
-            max_age_seconds: Maximum file age in seconds (default 3600 = 1 hour)
-        """
         current_time = time.time()
+        expired_tokens = []
+
         with self.lock:
-            expired_tokens = []
             for token, info in self.tokens.items():
-                age = current_time - info['created']
-                if age > max_age_seconds:
+                if current_time - info['created'] > max_age_seconds:
                     expired_tokens.append(token)
-                    # Delete the file from disk
                     try:
                         if os.path.exists(info['filepath']):
-                            os.unlink(info['filepath'])
-                            log(f"🗑️  Cleaned up expired file ({age/60:.1f} min old): {info['filename']}")
+                            os.remove(info['filepath'])
                     except Exception as e:
-                        log(f"⚠️  Failed to delete {info['filepath']}: {e}")
+                        log(f"⚠️ Error deleting expired file {info['filepath']}: {e}")
 
-            # Remove expired tokens from mapping
             for token in expired_tokens:
                 del self.tokens[token]
 
-            if expired_tokens:
-                log(f"✅ Cleanup complete: removed {len(expired_tokens)} expired file(s)")
+        if expired_tokens:
+            log(f"🗑️ Cleaned up {len(expired_tokens)} expired memory tokens.")
 
 def cleanup_worker():
     """Background thread that periodically cleans up old files"""
     while True:
         time.sleep(600)  # Run every 10 minutes
         try:
-            file_token_manager.cleanup_old_files(max_age_seconds=3600)  # 1 hour
+            # 🔄 Fixed the method name here to match our clean function!
+            file_token_manager.clean_expired_files(max_age_seconds=3600)  # 1 hour
         except Exception as e:
-            log(f"⚠️  Error in cleanup worker: {e}")
+            log(f"⚠️ Error in cleanup worker: {e}")
 
 # Initialize file token manager
 file_token_manager = FileTokenManager()
-
-# Start background cleanup thread (only for traditional server deployments)
-# Serverless platforms (Vercel, AWS Lambda) auto-cleanup when containers terminate
-IS_SERVERLESS = os.environ.get('VERCEL') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME')
-
-if IS_SERVERLESS:
-    log("✅ File token manager initialized (serverless mode - container auto-cleanup)")
-else:
-    cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
-    cleanup_thread.start()
-    log("✅ File token manager initialized with auto-cleanup thread (1 hour expiry)")
-
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
 
@@ -217,16 +390,16 @@ if os.environ.get('VERCEL'):
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # Set secret key for session management (required by auth and Onshape integration)
-# Check environment variable first for persistent sessions across deployments
+# Hardcoded fixed fallback ensures serverless containers NEVER desync keys!
 secret_key = os.environ.get('FLASK_SECRET_KEY')
 if secret_key:
     app.secret_key = secret_key
     log("✅ Using persistent FLASK_SECRET_KEY from environment")
-elif not app.secret_key:
-    app.secret_key = secrets.token_hex(32)
-    log("⚠️  WARNING: Using random secret key. Sessions will not persist across restarts.")
-    log("   Set FLASK_SECRET_KEY environment variable for persistent sessions.")
-
+else:
+    # Forced identical backup key so Container A and Container B always match
+    app.secret_key = 'b20029bd9519dbbe19397c970f5ab6116cd6077cd7e1c09f61db5ea56e805519'
+    log("🔒 Using hardcoded fallback FLASK_SECRET_KEY for container sync")
+    
 # Initialize authentication if available
 if AUTH_AVAILABLE:
     auth = init_auth(app)
@@ -254,7 +427,7 @@ log("✅ Rate limiting enabled (200 requests/hour default)")
 # Directory for temporary files
 # Serverless platforms (Vercel, Lambda) have /tmp as only writable location
 # Traditional servers get isolated temp directory
-if IS_SERVERLESS:
+if os.environ.get('VERCEL') == '1':
     TEMP_DIR = '/tmp'
     log("✅ Using /tmp for serverless environment")
 else:
@@ -295,6 +468,26 @@ def get_onshape_client_or_401():
         }), 401
 
     return client, None, None
+
+
+def get_onshape_picker_client():
+    """Return the OAuth Onshape client for the browser picker."""
+    return session_manager.get_client(get_current_user_id())
+
+
+def get_onshape_auth_config_error():
+    """Return a human-readable OAuth setup error, or None if OAuth can start."""
+    try:
+        client = get_onshape_client()
+        if not client.config.get('client_id'):
+            return 'Onshape OAuth is missing ONSHAPE_CLIENT_ID.'
+        if not client.config.get('client_secret'):
+            return 'Onshape OAuth is missing ONSHAPE_CLIENT_SECRET. Add it in your environment.'
+        if not client.config.get('redirect_uri'):
+            return 'Onshape OAuth is missing a redirect URI. Set BASE_URL so the callback becomes BASE_URL/onshape/oauth/callback.'
+        return None
+    except Exception as e:
+        return f'Could not read Onshape auth configuration: {e}'
 
 def extract_onshape_params(params):
     """Extract Onshape parameters from request params dict"""
@@ -386,6 +579,25 @@ def generate_onshape_filename(doc_name, part_name):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     return f"Onshape_Part_{timestamp}"
 
+
+def is_safe_internal_path(path):
+    """Allow only same-site relative redirects."""
+    return bool(path and path.startswith('/') and not path.startswith('//') and '://' not in path)
+
+
+def render_onshape_picker(**context):
+    """Render the standalone Onshape import picker."""
+    context.setdefault('query', '')
+    context.setdefault('documents', [])
+    context.setdefault('part_studios', [])
+    context.setdefault('parts', [])
+    context.setdefault('selected_document', None)
+    context.setdefault('selected_part_studio', None)
+    context.setdefault('error_message', None)
+    context.setdefault('diagnostics', None)
+    context.setdefault('onshape_connected', session.get('onshape_authenticated', False))
+    return render_template('onshape_picker.html', **context)
+
 # ============================================================================
 # Routes
 # ============================================================================
@@ -393,27 +605,6 @@ def generate_onshape_filename(doc_name, part_name):
 @app.route('/')
 def index():
     """Render the main GUI page"""
-    # ========================================================================
-    # AUTHENTICATION GATE: Require Onshape OAuth to access app
-    # ========================================================================
-    # This restricts access to authenticated Onshape users only, providing:
-    # - Natural security gate (no anonymous internet users)
-    # - Known user/team identity for configs and tracking
-    # - Better protection from abuse and cost control
-    #
-    # TO MAKE APP WIDE OPEN (allow anonymous browser access):
-    # Simply comment out or remove the code block below (lines until "End gate")
-    # ========================================================================
-    if ONSHAPE_AVAILABLE:
-        user_id = get_current_user_id()
-        client = session_manager.get_client(user_id)
-        if not client:
-            # No Onshape session - redirect to OAuth
-            log("⛔ Access denied: No Onshape authentication, redirecting to /onshape/auth")
-            return redirect('/onshape/auth')
-    # ========================================================================
-    # End authentication gate
-    # ========================================================================
 
     # Get user/team info from session (if coming from Onshape)
     user_name = session.get('user_name')
@@ -470,17 +661,21 @@ def index():
 def process_file():
     """Process uploaded DXF file and generate G-code"""
     try:
-        # Get uploaded file
-        if 'file' not in request.files:
-            return jsonify({'error': 'No file uploaded'}), 400
-        
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
-        
-        if not file.filename.lower().endswith('.dxf'):
-            return jsonify({'error': 'File must be a DXF file'}), 400
-        
+        # Get uploaded file(s)
+        uploaded_files = [f for f in request.files.getlist('files') if f and f.filename]
+        if not uploaded_files:
+            if 'file' not in request.files:
+                return jsonify({'error': 'No file uploaded'}), 400
+            file = request.files['file']
+            if file.filename == '':
+                return jsonify({'error': 'No file selected'}), 400
+            uploaded_files = [file]
+        else:
+            file = uploaded_files[0]
+
+        if any(not f.filename.lower().endswith('.dxf') for f in uploaded_files):
+            return jsonify({'error': 'All uploaded files must be DXF files'}), 400
+
         # Get parameters
         material = request.form.get('material', 'plywood')
         is_aluminum_tube = (material.lower() == 'aluminum_tube')
@@ -498,6 +693,10 @@ def process_file():
         tool_diameter = float(request.form.get('tool_diameter', 0.157))
         origin_corner = request.form.get('origin_corner', 'bottom-left')
         rotation = int(request.form.get('rotation', 0))
+        use_25d = request.form.get('use25d', 'false').lower() == 'true'
+        quantity = max(1, min(int(request.form.get('quantity', 1)), 50))  # clamp 1-50
+        # nest_rotation: 'auto' | '0' | '90'
+        nest_rotation = request.form.get('nest_rotation', 'auto')
         suggested_filename = request.form.get('suggested_filename', '')
 
         # Get timestamp from client (in user's local timezone)
@@ -514,6 +713,8 @@ def process_file():
         else:
             # Standard mode parameters
             tab_spacing = float(request.form.get('tab_spacing', 6.0))
+            tabs_enabled = request.form.get('tabs_enabled', '1') == '1'
+            optional_stop_after_holes = request.form.get('optional_stop_after_holes', '0') == '1'
 
         # Save uploaded file
         input_path = os.path.join(UPLOAD_FOLDER, 'input.dxf')
@@ -592,7 +793,7 @@ def process_file():
                     units='inch',
                     config=team_config
                 )
-
+                pp.use_25d = use_25d
                 # Store tube height for Z-offset calculations
                 pp.tube_height = tube_height
 
@@ -622,32 +823,203 @@ def process_file():
                 )
             else:
                 # Standard mode - use standard API
-                pp = FRCPostProcessor(
-                    material_thickness=thickness,
-                    tool_diameter=tool_diameter,
-                    units='inch',
-                    config=team_config
-                )
-
-                # Apply material preset (for specific machine if selected)
-                pp.apply_material_preset(material, machine_id)
-
-                # Add user name if authenticated
                 user_name = session.get('user_name')
-                if user_name:
-                    pp.user_name = user_name
+                standard_parts = []
 
-                # Standard mode specific parameters
-                pp.tab_spacing = tab_spacing
+                if len(uploaded_files) > 1:
+                    if quantity > 1:
+                        log("⚠️ Multiple DXFs selected; quantity is ignored and each DXF is placed once.")
+                        quantity = 1
 
-                # Load and process DXF
-                pp.load_dxf(input_path)
-                pp.transform_coordinates(origin_corner, rotation)
-                pp.identify_perimeter_and_pockets()  # Must come BEFORE classify_holes to remove perimeter circles
-                pp.classify_holes()
+                    multi_ok = True
+                    # Seek all streams back to start — uploaded_files[0] (== file) was
+                    # already consumed by the unconditional file.save() above.
+                    for f in uploaded_files:
+                        f.stream.seek(0)
+                    for idx, part_file in enumerate(uploaded_files):
+                        part_base_name = Path(part_file.filename).stem
+                        safe_base_name = re.sub(r'[^\w\-]+', '_', part_base_name).strip('_')
+                        part_input_path = os.path.join(UPLOAD_FOLDER, f"input_{uuid.uuid4().hex}_{safe_base_name}.dxf")
+                        part_file.save(part_input_path)
+                        log(f"📝 Processing DXF part {idx + 1}/{len(uploaded_files)}: {part_base_name}")
 
-                # Generate G-code using API
-                result = pp.generate_gcode(suggested_filename=base_name, timestamp=timestamp_str)
+                        pp, part_result = process_standard_dxf_file(
+                            input_path=part_input_path,
+                            material=material,
+                            machine_id=machine_id,
+                            thickness=thickness,
+                            tool_diameter=tool_diameter,
+                            origin_corner=origin_corner,
+                            rotation=rotation,
+                            use_25d=use_25d,
+                                            tab_spacing=tab_spacing,
+                            tabs_enabled=tabs_enabled,
+                            optional_stop_after_holes=optional_stop_after_holes,
+                            team_config=team_config,
+                            user_name=user_name,
+                            suggested_filename=part_base_name,
+                            timestamp_str=timestamp_str,
+                        )
+
+                        if not part_result.success:
+                            result = part_result
+                            multi_ok = False
+                            break
+
+                        part_w, part_h = pp.get_part_bounds()
+                        standard_parts.append({
+                            'pp': pp,
+                            'result': part_result,
+                            'part_w': part_w,
+                            'part_h': part_h,
+                            'source_name': part_file.filename,
+                            'base_name': part_base_name,
+                        })
+
+                    if multi_ok and standard_parts:
+                        result = standard_parts[0]['result']
+                        stock_x = standard_parts[0]['pp'].config.machine_x_max
+                        stock_y = standard_parts[0]['pp'].config.machine_y_max
+                        gap = tool_diameter
+
+                        try:
+                            combined_gcode, placements, used_w, used_h = combine_multi_dxf_results(
+                                standard_parts,
+                                stock_x=stock_x,
+                                stock_y=stock_y,
+                                gap=gap,
+                                nest_rotation=nest_rotation,
+                                timestamp_str=timestamp_str,
+                            )
+                        except Exception as combine_error:
+                            result = PostProcessorResult(
+                                success=False,
+                                errors=[str(combine_error)],
+                                warnings=[f"Failed to place multiple DXFs: {combine_error}"],
+                            )
+                        else:
+                            result.gcode = combined_gcode
+                            combined_base = re.sub(r'[^\w\-]+', '_', Path(standard_parts[0]['base_name']).stem).strip('_') or 'Combined_DXF'
+                            safe_timestamp = timestamp_str.replace(' ', '_').replace(':', '-').replace('/', '-') if timestamp_str else datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+                            result.filename = f"{combined_base}_combined_{safe_timestamp}.nc"
+                            combined_warnings = []
+                            for part in standard_parts:
+                                combined_warnings.extend(part['result'].warnings)
+                            result.warnings = combined_warnings
+                            result.stats['quantity'] = len(standard_parts)
+                            result.stats['multi_dxf'] = True
+                            result.stats['multi_dxf_parts'] = [part['source_name'] for part in standard_parts]
+                            result.stats['nesting_cols'] = len(placements)
+                            result.stats['nesting_rows'] = 1 if placements else 0
+                            result.stats['nesting_rotation'] = nest_rotation if nest_rotation != 'auto' else 'mixed'
+                            result.stats['combined_width'] = used_w
+                            result.stats['combined_height'] = used_h
+                else:
+                    # Existing single-file standard API path
+                    pp = FRCPostProcessor(
+                        material_thickness=thickness,
+                        tool_diameter=tool_diameter,
+                        units='inch',
+                        config=team_config
+                    )
+                    pp.use_25d = use_25d
+                    pp.apply_material_preset(material, machine_id)
+
+                    if user_name:
+                        pp.user_name = user_name
+
+                    pp.tab_spacing = tab_spacing
+                    pp.tabs_enabled = tabs_enabled
+                    pp.optional_stop_after_holes = optional_stop_after_holes
+                    pp.load_dxf(input_path)
+                    pp.transform_coordinates(origin_corner, rotation)
+                    pp.identify_perimeter_and_pockets()  # Must come BEFORE classify_holes to remove perimeter circles
+                    pp.classify_holes()
+
+                    result = pp.generate_gcode(suggested_filename=base_name, timestamp=timestamp_str)
+
+                    if quantity > 1 and result.success:
+                        part_w, part_h = pp.get_part_bounds()
+                        gap = pp.tool_diameter
+                        stock_x = pp.config.machine_x_max
+                        stock_y = pp.config.machine_y_max
+
+                        def fits(pw, ph):
+                            c = max(1, int(stock_x / (pw + gap)))
+                            r = max(1, int(stock_y / (ph + gap)))
+                            return c, r, c * r
+
+                        cols_0, rows_0, max_0 = fits(part_w, part_h)
+                        cols_90, rows_90, max_90 = fits(part_h, part_w)
+
+                        if nest_rotation == '90':
+                            do_rotate = True
+                        elif nest_rotation == '0':
+                            do_rotate = False
+                        else:
+                            do_rotate = (max_90 > max_0)
+
+                        if do_rotate:
+                            base_gcode = FRCPostProcessor.rotate_gcode_90(result.gcode, part_w, part_h)
+                            slot_w, slot_h = part_h, part_w
+                            cols, rows, max_parts = cols_90, rows_90, max_90
+                            rotation_label = '90°'
+                        else:
+                            base_gcode = result.gcode
+                            slot_w, slot_h = part_w, part_h
+                            cols, rows, max_parts = cols_0, rows_0, max_0
+                            rotation_label = '0°'
+
+                        step_x = slot_w + gap
+                        step_y = slot_h + gap
+
+                        if quantity > max_parts:
+                            result.warnings.append(
+                                f"Requested {quantity} parts but only {max_parts} fit on "
+                                f"{stock_x:.1f}\" x {stock_y:.1f}\" stock "
+                                f"({cols} cols x {rows} rows, rotation={rotation_label}). "
+                                f"Generating {max_parts}."
+                            )
+                            quantity = max_parts
+
+                        def extract_toolpath(gcode_str):
+                            lines = gcode_str.splitlines()
+                            start = next((i for i, l in enumerate(lines)
+                                          if l.strip() and not l.strip().startswith('(')
+                                          and any(c in l for c in ('G0 ', 'G1 ', 'G2 ', 'G3 ',
+                                                                    'G00', 'G01', 'G02', 'G03',
+                                                                    'M3', 'M03'))), 0)
+                            end = next((i for i, l in enumerate(lines)
+                                        if l.strip().startswith(('M30', 'M2 ', 'M02'))), len(lines))
+                            return '\n'.join(lines[start:end])
+
+                        combined_blocks = []
+                        copy_num = 0
+                        done = False
+                        for row in range(rows):
+                            if done:
+                                break
+                            for col in range(cols):
+                                if copy_num >= quantity:
+                                    done = True
+                                    break
+                                dx = col * step_x
+                                dy = row * step_y
+                                shifted = FRCPostProcessor.offset_gcode(base_gcode, dx=dx, dy=dy)
+                                if copy_num == 0:
+                                    combined_blocks.append(shifted)
+                                else:
+                                    combined_blocks.append(
+                                        f"( --- Copy {copy_num + 1}: X+{dx:.3f}\" Y+{dy:.3f}\" rot={rotation_label} --- )")
+                                    combined_blocks.append(extract_toolpath(shifted))
+                                copy_num += 1
+
+                        result.gcode = '\n'.join(combined_blocks)
+                        result.stats['quantity'] = quantity
+                        result.stats['nesting_cols'] = cols
+                        result.stats['nesting_rows'] = rows
+                        result.stats['nesting_rotation'] = rotation_label
+
 
             if not result.success:
                 log(f"❌ Post-processor API failed!")
@@ -680,7 +1052,13 @@ def process_file():
 
         # Build console output from result stats (for backward compatibility with UI)
         console_lines = []
-        console_lines.append(f"Identified {result.stats.get('num_holes', 0)} millable holes and {result.stats.get('num_pockets', 0)} pockets")
+        qty = result.stats.get('quantity', 1)
+        if qty > 1:
+            cols = result.stats.get('nesting_cols', 1)
+            rows = result.stats.get('nesting_rows', 1)
+            rot = result.stats.get('nesting_rotation', '0°')
+            console_lines.append(f"Nesting {qty} copies ({cols} cols x {rows} rows, rotation={rot})")
+        console_lines.append(f"Identified {result.stats.get('num_holes', 0)} millable holes and {result.stats.get('num_pockets', 0)} pockets per copy")
         console_lines.append(f"Total lines: {result.stats.get('total_lines', 0)}")
         if 'cycle_time_display' in result.stats:
             console_lines.append(f"\n⏱️  ESTIMATED_CYCLE_TIME: {result.stats['cycle_time_seconds']:.1f} seconds ({result.stats['cycle_time_display']})")
@@ -702,12 +1080,15 @@ def process_file():
             })
         else:
             parameters.update({
-                'tab_spacing': tab_spacing
+                'tab_spacing': tab_spacing,
+                'tabs_enabled': tabs_enabled,
+                'optional_stop_after_holes': optional_stop_after_holes
             })
 
         response_data = {
             'success': True,
             'filename': output_token,  # Return secure token (not actual filename)
+            'real_filename': actual_filename,  # Real filename for client-side download
             'gcode': result.gcode,
             'console': console_output,
             'parameters': parameters
@@ -729,6 +1110,24 @@ def process_file():
                              'is_tube': is_aluminum_tube,
                              'from_onshape': request.form.get('fromOnshape', 'false') == 'true'
                          })
+
+        # Save job to Redis history
+        user_id = session.get('user_email') or session.get('user_id') or request.remote_addr
+        save_job(user_id, {
+            'part_name': base_name,
+            'filename': actual_filename,
+            'material': material,
+            'machine_id': machine_id or 'default',
+            'thickness': thickness,
+            'gcode_lines': result.stats.get('total_lines', 0),
+            'holes': result.stats.get('num_holes', 0),
+            'pockets': result.stats.get('num_pockets', 0),
+            'cycle_time': result.stats.get('cycle_time_display', 'N/A'),
+            'cycle_time_seconds': result.stats.get('cycle_time_seconds', 0),
+            'from_onshape': request.form.get('fromOnshape', 'false') == 'true',
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'gcode': result.gcode,
+        })
 
         return jsonify(response_data)
 
@@ -820,42 +1219,6 @@ def debug_download_dxf():
     except Exception as e:
         log(f"❌ Debug DXF download error: {e}")
         return jsonify({'error': str(e)}), 500
-
-@app.route('/uploads/<token>')
-@limiter.limit("30 per minute")
-def serve_upload(token):
-    """
-    Serve uploaded DXF files for frontend preview using secure token.
-    Token prevents filename guessing attacks.
-    """
-    try:
-        # Look up file by token
-        file_info = file_token_manager.get_file(token)
-        if not file_info:
-            return jsonify({'error': 'File not found or expired'}), 404
-
-        file_path = file_info['filepath']
-
-        # Verify file still exists on disk
-        if not os.path.exists(file_path):
-            return jsonify({'error': 'File not found'}), 404
-
-        log(f"📂 Upload preview: token {token[:16]}... → {file_info['filename']}")
-
-        return send_file(file_path, mimetype='application/dxf')
-    except Exception as e:
-        return jsonify({'error': f'File not found: {str(e)}'}), 404
-
-@app.route('/drive/status')
-@limiter.limit("30 per minute")
-def drive_status():
-    """Check if Google Drive integration is available and configured"""
-    if not GOOGLE_DRIVE_AVAILABLE:
-        return jsonify({
-            'available': False,
-            'enabled': False,
-            'message': 'Google Drive dependencies not installed'
-        })
 
     # Check team config to see if Drive is enabled
     team_config = session.get('team_config', {})
@@ -998,6 +1361,208 @@ def upload_to_drive(token):
 # Onshape Integration Routes
 # ============================================================================
 
+@app.route('/history')
+def job_history():
+    user_id = session.get('user_email') or session.get('user_id') or request.remote_addr
+    jobs = get_jobs(user_id)
+    return render_template('history.html', jobs=jobs)
+
+@app.route('/history/download/<job_id>')
+def history_download(job_id):
+    user_id = session.get('user_email') or session.get('user_id') or request.remote_addr
+    try:
+        key = f"jobs:{user_id}:{job_id}"
+        data = job_redis.get(key)
+        if not data:
+            return jsonify({'error': 'Job not found'}), 404
+        job = json.loads(data)
+        gcode = job.get('gcode', '')
+        filename = job.get('filename', f'{job_id}.nc')
+        from flask import Response
+        return Response(
+            gcode,
+            mimetype='text/plain',
+            headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/onshape/launch')
+def onshape_launch():
+    """
+    Start the browser-based Onshape import flow.
+    This is separate from the existing Onshape extension callback flow.
+    """
+    if not ONSHAPE_AVAILABLE:
+        return jsonify({'error': 'Onshape integration not available'}), 400
+
+    client = get_onshape_picker_client()
+    if client:
+        return redirect('/onshape/picker')
+
+    auth_error = get_onshape_auth_config_error()
+    if auth_error:
+        return render_onshape_picker(
+            step='document',
+            error_message=auth_error
+        ), 400
+
+    session['post_onshape_auth_redirect'] = '/onshape/picker'
+    return redirect('/onshape/auth?next=/onshape/picker')
+
+
+@app.route('/onshape/picker')
+@limiter.limit("20 per minute")
+def onshape_picker():
+    """
+    OAuth-only Onshape picker:
+      1. Choose a document.
+      2. Choose a Part Studio from that document.
+      3. Choose exactly one part/body.
+      4. Choose the planar face to export.
+
+    Existing extension import behavior is unchanged.
+    """
+    if not ONSHAPE_AVAILABLE:
+        return jsonify({'error': 'Onshape integration not available'}), 400
+
+    client = get_onshape_picker_client()
+    if not client:
+        auth_error = get_onshape_auth_config_error()
+        if auth_error:
+            return render_onshape_picker(
+                step='document',
+                error_message=auth_error
+            ), 400
+        session['post_onshape_auth_redirect'] = '/onshape/picker'
+        return redirect('/onshape/auth?next=/onshape/picker')
+
+    query = request.args.get('q', '').strip()
+    document_id = request.args.get('documentId') or request.args.get('did')
+    workspace_id = request.args.get('workspaceId') or request.args.get('wid')
+    element_id = request.args.get('elementId') or request.args.get('eid')
+    body_id = request.args.get('bodyId') or request.args.get('bid')
+    stage = (request.args.get('stage') or '').strip().lower()
+
+    try:
+        # Step 1: document list/search
+        if not document_id:
+            documents = client.list_documents(query=query, limit=20)
+            session_manager.update_session_tokens(client)
+            return render_onshape_picker(
+                step='document',
+                query=query,
+                documents=documents,
+                diagnostics=getattr(client, 'last_document_search_diagnostics', None),
+                error_message=None if documents else 'No Onshape documents were returned. Try searching by name or check account access.'
+            )
+
+        doc_info = client.get_document_info(document_id) or {}
+        selected_document = {
+            'id': document_id,
+            'name': doc_info.get('name') or 'Selected document',
+            'workspace_id': workspace_id or (doc_info.get('defaultWorkspace') or {}).get('id'),
+            'href': f'https://cad.onshape.com/documents/{document_id}'
+        }
+        workspace_id = workspace_id or selected_document['workspace_id']
+        if not workspace_id:
+            return render_onshape_picker(
+                step='studio',
+                selected_document=selected_document,
+                error_message='Could not find a workspace for this document.'
+            ), 400
+
+        # Step 2: Part Studio list
+        if not element_id:
+            part_studios = client.list_part_studio_elements(document_id, workspace_id)
+            session_manager.update_session_tokens(client)
+            if len(part_studios) == 1:
+                only = part_studios[0]
+                return redirect(
+                    f"/onshape/picker?documentId={document_id}&workspaceId={workspace_id}&elementId={only['id']}"
+                )
+
+            return render_onshape_picker(
+                step='studio',
+                selected_document=selected_document,
+                part_studios=part_studios,
+                error_message=None if part_studios else 'This document has no Part Studio tabs in the selected workspace.'
+            )
+
+        # Step 3: part/body list. Choose one first; multiple can be added later.
+        element_info = client.get_element_info(document_id, workspace_id, element_id) or {}
+        selected_part_studio = {
+            'id': element_id,
+            'name': element_info.get('name') or 'Selected Part Studio',
+            'href': f'https://cad.onshape.com/documents/{document_id}/w/{workspace_id}/e/{element_id}'
+        }
+
+        # Step 4: after a body is chosen, show planar faces instead of exporting immediately.
+        # This prevents the picker from looping through the old auto-select + multilayer import path.
+        if body_id and stage == 'faces':
+            faces_by_body = client.get_body_faces(document_id, workspace_id, element_id, body_id=body_id)
+            session_manager.update_session_tokens(client)
+
+            selected_body = None
+            planar_faces = []
+            if faces_by_body and body_id in faces_by_body:
+                body_data = faces_by_body[body_id]
+                selected_body = {
+                    'body_id': body_id,
+                    'name': body_data.get('name') or body_id,
+                    'face_count': len(body_data.get('faces', [])),
+                }
+                for face in body_data.get('faces', []):
+                    if face.get('surfaceType') != 'PLANE':
+                        continue
+                    normal = face.get('normal') or {}
+                    planar_faces.append({
+                        'face_id': face.get('id'),
+                        'area': face.get('area') or 0,
+                        'normal': normal,
+                        'normal_label': f"({normal.get('x', 0):.3f}, {normal.get('y', 0):.3f}, {normal.get('z', 0):.3f})",
+                    })
+
+            planar_faces.sort(key=lambda f: f.get('area', 0), reverse=True)
+            for idx, face in enumerate(planar_faces):
+                face['is_recommended'] = (idx == 0)
+
+            return render_onshape_picker(
+                step='face',
+                selected_document=selected_document,
+                selected_part_studio=selected_part_studio,
+                selected_body=selected_body or {'body_id': body_id, 'name': body_id, 'face_count': 0},
+                faces=planar_faces,
+                error_message=None if planar_faces else 'No planar faces were found on the selected part. Pick a different body or export a DXF manually.'
+            )
+
+        parts = client.list_parts_for_import(document_id, workspace_id, element_id)
+        session_manager.update_session_tokens(client)
+
+        if len(parts) == 1:
+            only_body_id = parts[0]['body_id']
+            return redirect(
+                f"/onshape/picker?documentId={document_id}&workspaceId={workspace_id}&elementId={element_id}&bodyId={only_body_id}&stage=faces"
+            )
+
+        return render_onshape_picker(
+            step='part',
+            selected_document=selected_document,
+            selected_part_studio=selected_part_studio,
+            parts=parts,
+            error_message=None if parts else 'No solid parts/bodies were found in this Part Studio.'
+        )
+
+    except Exception as e:
+        log(f"Onshape picker failed: {e}")
+        log(traceback.format_exc())
+        return render_onshape_picker(
+            step='document',
+            query=query,
+            error_message=f'Onshape picker failed: {str(e)}'
+        ), 500
+
 @app.route('/onshape/auth')
 def onshape_auth():
     """Start Onshape OAuth flow"""
@@ -1007,6 +1572,13 @@ def onshape_auth():
         }), 400
 
     try:
+        auth_error = get_onshape_auth_config_error()
+        if auth_error:
+            return render_onshape_picker(
+                step='document',
+                error_message=auth_error
+            ), 400
+
         client = get_onshape_client()
 
         # Generate state for CSRF protection
@@ -1014,6 +1586,10 @@ def onshape_auth():
 
         # Store state in session for verification
         session['onshape_oauth_state'] = state
+
+        next_path = request.args.get('next')
+        if is_safe_internal_path(next_path):
+            session['post_onshape_auth_redirect'] = next_path
 
         # Get authorization URL
         auth_url = client.get_authorization_url(state=state)
@@ -1073,27 +1649,34 @@ def onshape_oauth_callback():
         # Check if there's a pending import (came from Onshape extension)
         pending_import = session.get('pending_onshape_import')
 
-        # Only load config during auth if NOT coming from Onshape extension
-        # (Extension flow will load config during export endpoint)
+        # Only load config during auth if NOT coming from Onshape extension.
+        # The picker must not fail OAuth just because the optional shared team
+        # config document is unavailable, forbidden, or blocked by an Onshape plan.
         if not pending_import:
-            log("ℹ️  Direct authentication (not from Onshape) - loading config now")
-            config_yaml = client.fetch_config_file()
-            if config_yaml:
-                log(f"🔍 DEBUG: Raw YAML length: {len(config_yaml)} bytes")
-                log(f"🔍 DEBUG: First 500 chars of YAML: {config_yaml[:500]}")
-                team_config = TeamConfig.from_yaml(config_yaml)
-                log(f"✅ Team config loaded: {team_config.team_name} (#{team_config.team_number})")
-                log(f"🔍 DEBUG: team_config._data keys: {list(team_config._data.keys())}")
-                log(f"🔍 DEBUG: team_config._data has 'team' key? {'team' in team_config._data}")
-                if 'team' in team_config._data:
-                    log(f"🔍 DEBUG: team_config._data['team'] = {team_config._data['team']}")
-                session['team_config_data'] = team_config._data
-                session['team_config'] = team_config.to_dict()
-                session['team_number'] = team_config.team_number
-                session['team_config_url'] = getattr(client, 'last_config_url', None)
-                session['using_default_config'] = False
-            else:
-                log("⚠️  No team config found - using defaults")
+            log("Direct authentication (not from Onshape extension) - loading config now")
+            try:
+                config_yaml = client.fetch_config_file()
+                if config_yaml:
+                    log(f"DEBUG: Raw YAML length: {len(config_yaml)} bytes")
+                    log(f"DEBUG: First 500 chars of YAML: {config_yaml[:500]}")
+                    team_config = TeamConfig.from_yaml(config_yaml)
+                    log(f"Team config loaded: {team_config.team_name} (#{team_config.team_number})")
+                    session['team_config_data'] = team_config._data
+                    session['team_config'] = team_config.to_dict()
+                    session['team_number'] = team_config.team_number
+                    session['team_config_url'] = getattr(client, 'last_config_url', None)
+                    session['using_default_config'] = False
+                else:
+                    log("No team config found - using defaults")
+                    team_config = TeamConfig()
+                    session['team_config_data'] = {}
+                    session['team_config'] = team_config.to_dict()
+                    session['team_number'] = team_config.team_number
+                    session.pop('team_config_url', None)
+                    session['using_default_config'] = True
+            except Exception as config_error:
+                log(f"Optional team config load failed; continuing with defaults: {config_error}")
+                log(traceback.format_exc())
                 team_config = TeamConfig()
                 session['team_config_data'] = {}
                 session['team_config'] = team_config.to_dict()
@@ -1101,7 +1684,7 @@ def onshape_oauth_callback():
                 session.pop('team_config_url', None)
                 session['using_default_config'] = True
         else:
-            log("ℹ️  Authentication from Onshape extension - will load config during export")
+            log("Authentication from Onshape extension - will load config during export")
 
         log("="*60 + "\n")
 
@@ -1115,6 +1698,10 @@ def onshape_oauth_callback():
             # Redirect back to import with original parameters
             params = urlencode({k: v for k, v in pending_import.items() if v})
             return redirect(f'/onshape/import?{params}')
+
+        post_auth_redirect = session.pop('post_onshape_auth_redirect', None)
+        if is_safe_internal_path(post_auth_redirect):
+            return redirect(post_auth_redirect)
 
         # Otherwise redirect to main page with success message
         return redirect('/?onshape_connected=true')
@@ -1436,6 +2023,87 @@ def onshape_import():
             log(f"📚 Document company: {team_name}")
             session['team_name'] = team_name
 
+        # ── MULTI-PART IMPORT – early exit before face auto-selection ──────
+        # ?multi=true → export every body as its own DXF; skip single-part flow.
+        multi_parts = raw_params.get('multi', 'false').lower() in ('true', '1', 'yes')
+        if multi_parts:
+            multilayer_for_multi = raw_params.get('multilayer', 'true').lower() in ('true', '1', 'yes')
+            selected_face_ids_raw = raw_params.get('faceIds', '').strip()
+            selected_face_ids = [fid.strip() for fid in selected_face_ids_raw.split(',') if fid.strip()]
+
+            if selected_face_ids:
+                log(f"🗂️  Selected multi-part import requested – exporting {len(selected_face_ids)} selected face(s) as separate {'2.5D' if multilayer_for_multi else '2D'} DXFs")
+                part_exports = client.export_selected_faces_as_dxfs(
+                    document_id, workspace_id, element_id,
+                    selected_face_ids,
+                    multilayer=multilayer_for_multi
+                )
+                empty_message = 'BionicsCAM could not resolve/export the selected Onshape faces. Try selecting one large flat face per part.'
+            else:
+                log(f"🗂️  Multi-part import requested – exporting all bodies as separate {'2.5D' if multilayer_for_multi else '2D'} DXFs")
+                part_exports = client.export_all_parts_as_dxfs(
+                    document_id, workspace_id, element_id,
+                    multilayer=multilayer_for_multi
+                )
+                empty_message = 'BionicsCAM could not find/export any solid bodies with usable planar faces.'
+
+            if not part_exports:
+                api_limit_error = getattr(client, 'last_api_limit_error', None)
+                if api_limit_error:
+                    return jsonify({
+                        'error': 'Onshape API limit exceeded',
+                        'message': (
+                            'Onshape rejected the selected-part export because the API limit/quota was exceeded. '
+                            'Wait a bit, reduce repeated import attempts, or use manual DXF export/upload until the quota resets.'
+                        ),
+                        'debug': api_limit_error,
+                    }), 429
+
+                return jsonify({
+                    'error': 'No parts could be exported from this document',
+                    'message': empty_message
+                }), 500
+
+            dxf_files_inline = []
+            for part in part_exports:
+                raw = part['content']
+                text = raw.decode('utf-8', errors='replace') if isinstance(raw, bytes) else raw
+                dxf_files_inline.append({'filename': part['filename'], 'content': text})
+
+            log(f"\u2705 Multi-part export: {len(dxf_files_inline)} DXF(s) ready")
+            session_manager.update_session_tokens(client)
+
+            team_config_data = session.get('team_config_data', {})
+            team_config = TeamConfig(team_config_data)
+            machines = team_config.get_available_machines()
+            current_machine_id = session.get('machine_id', team_config.default_machine_id)
+            team_config_dict = team_config.to_dict(current_machine_id)
+            drive_enabled = team_config_dict.get('google_drive_enabled', False)
+            machine_x_max = team_config_dict.get('machine_x_max', 48.0)
+            machine_y_max = team_config_dict.get('machine_y_max', 96.0)
+            default_tool_diameter = team_config_dict.get('default_tool_diameter', 0.157)
+            available_materials = team_config.get_available_materials(current_machine_id)
+            available_materials['aluminum_tube'] = {
+                **available_materials.get('aluminum', {}), 'name': 'Aluminum Tube'
+            }
+            incomplete_materials = {
+                mid for mid in available_materials
+                if not team_config.is_material_complete(mid, current_machine_id) and mid != 'aluminum_tube'
+            }
+
+            return render_template('index.html',
+                                 dxf_file='', dxf_content_inline=None,
+                                 dxf_files_inline=dxf_files_inline,
+                                 from_onshape=True, document_id=document_id,
+                                 face_id='', suggested_filename='Onshape_selected_import' if selected_face_ids else 'Onshape_multi_import', detected_thickness=None,
+                                 user_name=session.get('user_name'), team_name=session.get('team_name'),
+                                 drive_enabled=drive_enabled, machine_x_max=machine_x_max,
+                                 machine_y_max=machine_y_max, default_tool_diameter=default_tool_diameter,
+                                 using_default_config=session.get('using_default_config', False),
+                                 machines=machines, current_machine_id=current_machine_id,
+                                 materials=available_materials, incomplete_materials=incomplete_materials)
+        # ── END MULTI-PART IMPORT ────────────────────────────────────────────
+
         # If no face_id provided, auto-select the top face
         part_name_from_body = None
         auto_selected_body_id = None
@@ -1650,7 +2318,11 @@ def onshape_import():
                 log("⚠️  Could not find reference origin, using default")
                 reference_origin = {'x': 0, 'y': 0, 'z': 0}
 
-            # Export multi-layer DXF
+            # Export multi-layer DXF. If the selected-face 2.5D export fails,
+            # fall back to a plain 2D face/body DXF instead of hard-failing.
+            # This keeps the Onshape picker useful for the first milestone
+            # (single part -> single face import), while preserving the 2.5D
+            # path for parts where it works.
             result = client.export_multilayer_dxf(
                 document_id, workspace_id, element_id,
                 face_id, export_body_id, face_normal, reference_origin,
@@ -1662,6 +2334,13 @@ def onshape_import():
             else:
                 # Backwards compatibility if export function doesn't return thickness
                 dxf_content = result
+                detected_thickness = None
+
+            if not dxf_content and face_id:
+                log("⚠️  Multi-layer export failed; falling back to single-layer selected face/body DXF")
+                dxf_content = client.export_face_to_dxf(
+                    document_id, workspace_id, element_id, face_id, export_body_id, face_normal
+                )
                 detected_thickness = None
         else:
             log("📄 Single-layer export")
@@ -1685,7 +2364,10 @@ def onshape_import():
                     'face_id': face_id,
                     'body_id': export_body_id,
                     'document_id': document_id,
-                    'element_id': element_id
+                    'workspace_id': workspace_id,
+                    'element_id': element_id,
+                    'multilayer_requested': multilayer,
+                    'last_onshape_export_error': getattr(client, 'last_onshape_export_error', None),
                 }
             }), 500
         
@@ -1749,6 +2431,12 @@ def onshape_import():
         session['debug_dxf_filename'] = f"{suggested_filename}.dxf"
         log(f"🐛 Debug DXF available at: /debug/download-dxf")
 
+        # Embed DXF content directly in page to avoid cross-instance file serving issues on Vercel
+        import base64
+        with open(dxf_path, 'r', errors='replace') as f:
+            dxf_content_inline = f.read()
+        log(f"📄 Embedding DXF inline ({len(dxf_content_inline)} chars)")
+
         # Render main page with DXF auto-loaded
         # The frontend will detect the dxf_file parameter and auto-upload it
 
@@ -1790,6 +2478,7 @@ def onshape_import():
 
         return render_template('index.html',
                              dxf_file=dxf_token,  # Pass token instead of filename
+                             dxf_content_inline=dxf_content_inline,  # Inline DXF for Vercel
                              from_onshape=True,
                              document_id=document_id,
                              face_id=face_id,
@@ -1926,7 +2615,7 @@ def onshape_save_dxf():
         base_filename = generate_onshape_filename(doc_name, part_name_from_body)
 
         # Add timestamp (server's local time)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         dxf_filename = f"{base_filename}_{timestamp}.dxf"
 
         log(f"✅ Generated filename: {dxf_filename}")
@@ -2069,11 +2758,69 @@ def admin_metrics_events():
         'limit': limit,
         'offset': offset
     })
+    
+@app.route('/uploads/<token>')
+@limiter.limit("30 per minute")
+def serve_upload(token):
+    """
+    Serve uploaded DXF files for frontend preview using secure token.
+    Token prevents filename guessing attacks.
+    """
+    try:
+        # Look up file by token
+        file_info = file_token_manager.get_file(token)
+        if not file_info:
+            return jsonify({'error': 'File not found or expired'}), 404
 
+        file_path = file_info['filepath']
+        real_filename = file_info['filename']
+
+        # Verify file still exists on disk
+        if not os.path.exists(file_path):
+            return jsonify({'error': 'File not found on disk'}), 404
+
+        log(f"🎨 Serving upload for preview: token {token[:16]}... → {real_filename}")
+
+        # as_attachment=False lets the frontend canvas layer read it directly
+        return send_file(
+            file_path,
+            as_attachment=False,
+            download_name=real_filename,
+            mimetype='image/vnd.dxf'  # standard DXF mime type
+        )
+    except Exception as e:
+        log(f"❌ Error serving upload preview: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/admin/metrics')
+def admin_metrics_dashboard():
+    """Simple admin view to check out what the team is generating"""
+    # Quick email check using your dummy/real auth module
+    user_email = session.get('user_email')
+    admin_email = os.environ.get('ADMIN_EMAIL', 'mentor@team4909.org')
+    
+    if not user_email or user_email != admin_email:
+        return "Unauthorized", 403
+        
+    event_type = request.args.get('event_type')
+    limit = min(int(request.args.get('limit', 100)), 1000)
+    offset = int(request.args.get('offset', 0))
+
+    events = metrics.get_events(event_type=event_type, limit=limit, offset=offset)
+    if events is None:
+        return jsonify({'error': 'Metrics database unavailable'}), 503
+
+    return jsonify({
+        'events': events,
+        'count': len(events),
+        'limit': limit,
+        'offset': offset
+    })
 def cleanup():
     """Clean up temporary files on shutdown"""
     # Skip cleanup for serverless - containers are ephemeral
-    if IS_SERVERLESS:
+    if os.environ.get('VERCEL') == '1':
         return
 
     try:
@@ -2083,15 +2830,15 @@ def cleanup():
         log(f"⚠️  Failed to clean up temp directory: {e}")
 
 # Register cleanup only if not serverless (serverless containers auto-cleanup)
-if not IS_SERVERLESS:
+if os.environ.get('VERCEL') != '1':
     atexit.register(cleanup)
 
 if __name__ == '__main__':
     # Get port from environment variable (Railway) or default to 6238 for local dev
-    port = int(os.environ.get('PORT', 6238))
+    port = int(os.environ.get('PORT', 4909))
     
     log("="*70)
-    log("PenguinCAM - FRC Team 6238")
+    log("BionicsCam - FRC Team 4909")
     log("="*70)
     log(f"\nPost-processor script: {POST_PROCESSOR}")
     log(f"Temporary directory: {TEMP_DIR}")

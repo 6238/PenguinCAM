@@ -14,6 +14,7 @@ import json
 import math
 import os
 import re
+import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional, Dict, Any
@@ -154,6 +155,9 @@ class FRCPostProcessor:
         self.ramp_start_clearance = 0.15 if units == "inch" else 3.8  # Clearance above material to start ramping
         self.stepover_percentage = 0.6  # Radial stepover as fraction of tool diameter (default 60%)
 
+        self.use_25d = False
+        self.peck_drill_depth = 0.1 if units == "inch" else 2.54
+        
         # Tab parameters from config
         self.tabs_enabled = config.tabs_enabled  # Whether tabs are enabled
         self.tab_width = config.tab_width  # Width of tabs (inches)
@@ -162,6 +166,7 @@ class FRCPostProcessor:
 
         # Fixturing preferences from config
         self.pause_before_perimeter = config.pause_before_perimeter  # Pause before perimeter for screw fixturing
+        self.optional_stop_after_holes = False  # Insert M01 after hole operations when requested by UI
 
         # Tube facing parameters
         self.tube_facing_offset = 0.0625  # Hole offset to align with faced surface at Y=+1/16" (inches)
@@ -228,6 +233,13 @@ class FRCPostProcessor:
         else:
             self.max_slotting_depth = preset['max_slotting_depth']
 
+        # Peck drill depth (preset is in inches; convert if needed)
+        peck_depth_in = preset.get('peck_drill_depth', 0.1)
+        if self.units == 'mm':
+            self.peck_drill_depth = peck_depth_in * 25.4
+        else:
+            self.peck_drill_depth = peck_depth_in
+            
         # Tab sizes (convert to mm if needed)
         if self.units == 'mm':
             self.tab_width = preset['tab_width'] * 25.4
@@ -238,12 +250,6 @@ class FRCPostProcessor:
 
         # Helix entry radius multiplier
         self.helix_radius_multiplier = preset['helix_radius_multiplier']
-
-        # Peck drill depth (convert to mm if needed)
-        if self.units == 'mm':
-            self.peck_drill_depth = preset['peck_drill_depth'] * 25.4
-        else:
-            self.peck_drill_depth = preset['peck_drill_depth']
 
         print(f"\nApplied material preset: {preset.get('name', material.capitalize())}")
         if 'description' in preset:
@@ -1048,6 +1054,168 @@ class FRCPostProcessor:
             self._add_error(error_msg)
             print(f"  ❌ {error_msg}")
     
+    def get_part_bounds(self):
+        """Return (width, height) of the transformed part.
+
+        This is used by the auto-nesting combiner to reserve each part's slot.
+        Keep it conservative: include every entity type that can produce visible
+        G-code. If this omits arcs/splines/layer geometry, the reserved slot can
+        be smaller than the generated yellow toolpath and neighboring parts can
+        overlap by a small amount.
+        """
+        all_x = []
+        all_y = []
+
+        def add_point(x, y):
+            try:
+                x = float(x)
+                y = float(y)
+            except (TypeError, ValueError):
+                return
+            if math.isfinite(x) and math.isfinite(y):
+                all_x.append(x)
+                all_y.append(y)
+
+        def add_circle_bounds(circle):
+            cx, cy = circle['center']
+            r = circle.get('radius') or (circle.get('diameter', 0) / 2)
+            add_point(cx - r, cy - r)
+            add_point(cx + r, cy + r)
+
+        def add_arc_bounds(arc):
+            # Conservative bound: use the full circle radius. This may reserve a
+            # little extra space, but it prevents small auto-nest collisions.
+            cx, cy = arc['center']
+            r = arc.get('radius', 0)
+            add_point(cx - r, cy - r)
+            add_point(cx + r, cy + r)
+
+        for circle in self.circles:
+            add_circle_bounds(circle)
+
+        for line in self.lines:
+            add_point(line['start'][0], line['start'][1])
+            add_point(line['end'][0], line['end'][1])
+
+        for arc in self.arcs:
+            add_arc_bounds(arc)
+
+        for spline in self.splines:
+            for x, y in self._sample_spline(spline):
+                add_point(x, y)
+
+        for polyline in self.polylines:
+            for x, y in polyline:
+                add_point(x, y)
+
+        if self.layer_data:
+            for layer_info in self.layer_data.values():
+                for circle in layer_info.get('circles', []):
+                    add_circle_bounds(circle)
+                for polyline in layer_info.get('polylines', []):
+                    for x, y in polyline:
+                        add_point(x, y)
+
+        if not all_x or not all_y:
+            return (0.0, 0.0)
+        return (max(all_x) - min(all_x), max(all_y) - min(all_y))
+
+    @staticmethod
+    def rotate_gcode_90(gcode: str, part_w: float, part_h: float) -> str:
+        """Rotate all X/Y coordinates 90° CCW around the part origin, then
+        translate back so the result sits in positive space (origin at 0,0).
+
+        90° CCW transform:  (x, y) -> (-y, x)
+        After rotation the bounding box is (−part_h..0, 0..part_w).
+        We translate by (+part_h, 0) to return to positive space:
+            final: (x, y) -> (part_h - y,  x)
+
+        Arc direction codes G2/G3 swap because CCW rotation inverts winding.
+        I/J arc offsets rotate the same way as X/Y.
+        """
+        import re
+        coord_pat = re.compile(r'([XYIJ])(-?\d+\.\d+)')
+
+        def rotate_coords(line):
+            # Collect all coord tokens on this line
+            tokens = {m.group(1): float(m.group(2)) for m in coord_pat.finditer(line)}
+            if not tokens:
+                return line
+
+            result = line
+            new_vals = {}
+
+            # Rotate X/Y: new_x = part_h - old_y,  new_y = old_x
+            if 'X' in tokens or 'Y' in tokens:
+                old_x = tokens.get('X', 0.0)
+                old_y = tokens.get('Y', 0.0)
+                new_vals['X'] = part_h - old_y
+                new_vals['Y'] = old_x
+
+            # Rotate I/J arc offsets the same way (they are relative vectors)
+            if 'I' in tokens or 'J' in tokens:
+                old_i = tokens.get('I', 0.0)
+                old_j = tokens.get('J', 0.0)
+                new_vals['I'] = -old_j
+                new_vals['J'] = old_i
+
+            # Substitute back
+            def replacer(m):
+                key = m.group(1)
+                if key in new_vals:
+                    return key + f"{new_vals[key]:.4f}"
+                return m.group(0)
+
+            result = coord_pat.sub(replacer, result)
+
+            # Swap G2 <-> G3 (arc direction flips under rotation)
+            result = re.sub(r'\bG2\b', 'G2_TMP', result)
+            result = re.sub(r'\bG3\b', 'G2', result)
+            result = re.sub(r'G2_TMP', 'G3', result)
+            # Handle zero-padded variants
+            result = re.sub(r'\bG02\b', 'G02_TMP', result)
+            result = re.sub(r'\bG03\b', 'G02', result)
+            result = re.sub(r'G02_TMP', 'G03', result)
+
+            return result
+
+        lines_out = []
+        for line in gcode.splitlines():
+            stripped = line.strip()
+            if stripped.startswith('(') or stripped.startswith(';'):
+                lines_out.append(line)
+                continue
+            lines_out.append(rotate_coords(line))
+        return '\n'.join(lines_out)
+
+    @staticmethod
+    def offset_gcode(gcode: str, dx: float = 0.0, dy: float = 0.0) -> str:
+        """Shift all X/Y coordinates in a G-code string by (dx, dy).
+        Used by the nesting layer to place copies at different positions on stock.
+        """
+        import re
+        x_pat = re.compile(r'(X)(-?\d+\.\d+)')
+        y_pat = re.compile(r'(Y)(-?\d+\.\d+)')
+
+        def shift_x(m):
+            return m.group(1) + f"{float(m.group(2)) + dx:.4f}"
+
+        def shift_y(m):
+            return m.group(1) + f"{float(m.group(2)) + dy:.4f}"
+
+        lines_out = []
+        for line in gcode.splitlines():
+            stripped = line.strip()
+            if stripped.startswith('(') or stripped.startswith(';'):
+                lines_out.append(line)
+                continue
+            if dx != 0.0:
+                line = x_pat.sub(shift_x, line)
+            if dy != 0.0:
+                line = y_pat.sub(shift_y, line)
+            lines_out.append(line)
+        return '\n'.join(lines_out)
+
     def classify_holes(self):
         """Classify holes by diameter"""
         # Classify all circles as holes (apply size check)
@@ -1331,12 +1499,6 @@ class FRCPostProcessor:
     def generate_gcode(self, suggested_filename: str = None, timestamp: str = None) -> PostProcessorResult:
         """
         Generate complete G-code for standard plate operations (single or multi-layer)
-
-        Args:
-            suggested_filename: Optional filename (without timestamp, will be added)
-
-        Returns:
-            PostProcessorResult with gcode string and stats
         """
         # Check for validation errors first
         if self.errors:
@@ -1348,18 +1510,35 @@ class FRCPostProcessor:
                 errors=self.errors.copy()
             )
 
-        # Multi-layer processing
+        # If 2.5D mode is explicitly requested on a single-layer DXF,
+        # synthesize layer_data from the loaded geometry using material_thickness as depth.
+        # This gives the 2.5D header, arc-based holes, and pocket detection
+        # even when the DXF has no Z_ layer names.
+        if self.use_25d and not self.layer_data:
+            print("2.5D mode requested on single-layer DXF - synthesizing layer data from geometry")
+            polygons = self._convert_to_shapely_polygons(self.circles, self.polylines)
+            layer_name = "Z_0p000"
+            self.layer_data = {
+                layer_name: {
+                    "depth": 0.0,
+                    "polygons": polygons,
+                    "circles": [c.copy() for c in self.circles],
+                    "polylines": [p[:] for p in self.polylines],
+                }
+            }
+            print("  Synthesized layer " + repr(layer_name) + " at Z=0.000in with " + str(len(polygons)) + " polygon(s)")
+
+        # Auto-detect multi-layer DXF when layer data exists
         if self.layer_data:
             return self._generate_multilayer_gcode(suggested_filename, timestamp)
-
+    
         # Use provided timestamp (from client's timezone) or generate one
         if not timestamp:
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+    
         # Generate header
         gcode = self._generate_gcode_header(timestamp, is_multilayer=False)
         warnings = []
-
         # Holes (all circular features - helical entry + spiral clearing, or contouring for large holes)
         if self.holes:
             gcode.append("(===== HOLES =====)")
@@ -1438,6 +1617,8 @@ class FRCPostProcessor:
                     gcode.append(f"(Hole {i} - {diameter:.3f}\" dia, {area:.3f} sq in - CONTOUR ONLY)")
                     gcode.extend(self._generate_pocket_contour_gcode(circle_points))
                     gcode.append("")
+
+            gcode.extend(self._generate_optional_stop_after_holes_gcode())
         
         # Pockets
         if self.pockets:
@@ -1546,8 +1727,8 @@ class FRCPostProcessor:
 
         # Generate filename with timestamp
         base_name = suggested_filename if suggested_filename else "output"
-        # Format timestamp for filename: YYYYMMDD_HHMMSS
-        timestamp_for_file = timestamp.replace('-', '').replace(' ', '_').replace(':', '')
+        # Keep timestamp readable: YYYY-MM-DD_HH-MM-SS
+        timestamp_for_file = timestamp.replace(' ', '_').replace(':', '-')
         filename = f"{base_name}_{timestamp_for_file}.nc"
 
         # Return result
@@ -1568,6 +1749,17 @@ class FRCPostProcessor:
                 'dwell_time': self._format_time(time_estimate['dwell'])
             }
         )
+
+    def _generate_optional_stop_after_holes_gcode(self) -> List[str]:
+        """Generate an M01 optional stop after hole operations."""
+        if not getattr(self, 'optional_stop_after_holes', False):
+            return []
+        return [
+            "",
+            "(Optional stop after holes - inspect hole size/depth, clear chips, then Cycle Start)",
+            "M01",
+            ""
+        ]
 
     def _generate_gcode_header(self, timestamp: str = None, is_multilayer: bool = False) -> List[str]:
         """Generate common G-code header (comments + initialization)"""
@@ -2175,6 +2367,8 @@ class FRCPostProcessor:
                     gcode.append(f"(Large hole {diameter:.3f}\" dia - CONTOUR ONLY)")
                     gcode.extend(self._generate_pocket_contour_gcode(circle_points))
 
+                gcode.extend(self._generate_optional_stop_after_holes_gcode())
+
             if self.pockets:
                 gcode.append(f"(Layer {layer_name}: {len(self.pockets)} pockets)")
                 total_pockets += len(self.pockets)
@@ -2287,6 +2481,8 @@ class FRCPostProcessor:
                     gcode.extend(self._generate_pocket_contour_gcode(circle_points))
                     gcode.append("")
 
+                gcode.extend(self._generate_optional_stop_after_holes_gcode())
+
             if self.pockets:
                 gcode.append("(===== POCKETS =====)")
                 total_pockets += len(self.pockets)
@@ -2364,7 +2560,7 @@ class FRCPostProcessor:
 
         # Generate filename
         base_name = suggested_filename if suggested_filename else "output"
-        timestamp_for_file = timestamp.replace('-', '').replace(' ', '_').replace(':', '')
+        timestamp_for_file = timestamp.replace(' ', '_').replace(':', '-')
         filename = f"{base_name}_{timestamp_for_file}.nc"
 
         return PostProcessorResult(
@@ -2777,8 +2973,9 @@ class FRCPostProcessor:
 
         if offset_poly.is_empty or offset_poly.area < 0.001:
             center_x, center_y = self._get_polygon_center(pocket_poly)
-            error_msg = f"Pocket at approximately ({center_x:.3f}, {center_y:.3f}) is too small for {self.tool_diameter:.4f}\" tool - tool cannot fit inside with proper clearance"
-            self._add_error(error_msg)
+            warning_msg = f"Skipping tiny pocket at approximately ({center_x:.3f}, {center_y:.3f}); {self.tool_diameter:.4f}\" tool cannot fit with proper clearance"
+            print(f"  ⚠️  WARNING: {warning_msg}")
+            gcode.append(f"(WARNING: {warning_msg})")
             return gcode
 
         # Get the boundary of the offset polygon
@@ -3094,12 +3291,13 @@ class FRCPostProcessor:
 
             if min_groove_width < self.tool_diameter:
                 center_x, center_y = pocket_poly.centroid.x, pocket_poly.centroid.y
-                error_msg = (
-                    f"Groove at approximately ({center_x:.3f}, {center_y:.3f}) "
-                    f"is {min_groove_width:.4f}\" wide, which is too narrow for "
+                warning_msg = (
+                    f"Skipping narrow groove at approximately ({center_x:.3f}, {center_y:.3f}); "
+                    f"groove is {min_groove_width:.4f}\" wide and too narrow for "
                     f"{self.tool_diameter:.4f}\" tool"
                 )
-                self._add_error(error_msg)
+                print(f"  ⚠️  WARNING: {warning_msg}")
+                gcode.append(f"(WARNING: {warning_msg})")
                 return gcode
 
         # Buffer inward (negative buffer) for tool compensation
@@ -3108,8 +3306,9 @@ class FRCPostProcessor:
 
         if offset_poly.is_empty or offset_poly.area < 0.001:
             center_x, center_y = pocket_poly.centroid.x, pocket_poly.centroid.y
-            error_msg = f"Pocket at approximately ({center_x:.3f}, {center_y:.3f}) is too small for {self.tool_diameter:.4f}\" tool - tool cannot fit inside with proper clearance"
-            self._add_error(error_msg)
+            warning_msg = f"Skipping tiny pocket at approximately ({center_x:.3f}, {center_y:.3f}); {self.tool_diameter:.4f}\" tool cannot fit with proper clearance"
+            print(f"  ⚠️  WARNING: {warning_msg}")
+            gcode.append(f"(WARNING: {warning_msg})")
             return gcode
 
         # Check for circular ring - use spiral clearing instead of contour-parallel
@@ -3492,7 +3691,7 @@ class FRCPostProcessor:
 
             # Helper function to process a segment with tab checking
             def process_segment(p1, p2, seg_start_dist, seg_length):
-                nonlocal tab_number, current_z, tab_waypoints_by_idx
+                nonlocal tab_number, current_z
 
                 if seg_length == 0:
                     return
@@ -4195,8 +4394,8 @@ class FRCPostProcessor:
 
         # Generate filename with timestamp
         base_name = suggested_filename if suggested_filename else "tube_facing"
-        # Format timestamp for filename: YYYYMMDD_HHMMSS
-        timestamp_for_file = timestamp.replace('-', '').replace(' ', '_').replace(':', '')
+        # Keep timestamp readable: YYYY-MM-DD_HH-MM-SS
+        timestamp_for_file = timestamp.replace(' ', '_').replace(':', '-')
         filename = f"{base_name}_{timestamp_for_file}.nc"
 
         # Return result
@@ -4451,8 +4650,8 @@ class FRCPostProcessor:
 
         # Generate filename with timestamp
         base_name = suggested_filename if suggested_filename else "tube_pattern"
-        # Format timestamp for filename: YYYYMMDD_HHMMSS
-        timestamp_for_file = timestamp.replace('-', '').replace(' ', '_').replace(':', '')
+        # Keep timestamp readable: YYYY-MM-DD_HH-MM-SS
+        timestamp_for_file = timestamp.replace(' ', '_').replace(':', '-')
         filename = f"{base_name}_{timestamp_for_file}.nc"
 
         # Build operation notes based on configuration

@@ -1,8 +1,10 @@
 /* PenguinCAM Documentation Styles */
 
 :root {
-    --primary: #FDB515;
+    --primary: #154733;
     --primary-dark: #D99F12;
+    --link: #6fffb0;
+    --link-hover: #9dffc9;
     --secondary: #2C3E50;
     --bg: #1a1d23;
     --bg-light: #242830;
@@ -76,9 +78,9 @@ body {
 }
 
 .sidebar a.active {
-    color: var(--primary);
+    color: var(--link);
     background: var(--surface);
-    border-left-color: var(--primary);
+    border-left-color: var(--link);
 }
 
 .nav-divider {
@@ -134,12 +136,12 @@ p {
 }
 
 a {
-    color: var(--primary);
+    color: var(--link);
     text-decoration: none;
 }
 
 a:hover {
-    color: var(--primary-dark);
+    color: var(--link-hover);
     text-decoration: underline;
 }
 
@@ -149,7 +151,7 @@ code {
     border-radius: 3px;
     font-family: 'Monaco', 'Courier New', monospace;
     font-size: 0.9em;
-    color: var(--primary);
+    color: var(--link);
 }
 
 pre {

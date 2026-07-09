@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Program Archive — BionicsCAM</title>
+    <link rel="icon" type="image/png" href="/static/bionicslogo.png">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/refresh-ui.css">
+    <script defer src="https://cdn.vercel-insights.com/v1/script.js"></script>
+    <script>window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };</script>
+    <script defer src="/_vercel/speed-insights/script.js"></script>
+</head>
+<body>
+    <header class="shell-top">
+        <a href="/" class="brand-mark" aria-label="BionicsCAM home">
+            <img src="/static/bionicslogo.png" alt="Team 4909 logo">
+            <span class="brand-text">
+                <span class="brand-name"><span>Bionics</span>CAM</span>
+                <span class="brand-kicker">NC program archive</span>
+            </span>
+        </a>
+        <div class="top-meta"><span class="config-chip is-default">Generated file vault</span></div>
+        <nav class="top-actions" aria-label="History navigation">
+            <a href="/" class="back-btn is-hot">Back to CAM</a>
+        </nav>
+    </header>
+
+    <main class="history-main">
+        <section class="history-hero">
+            <div>
+                <div class="eyebrow">Manufacturing memory</div>
+                <h1 class="history-title">Program <span>Archive</span></h1>
+                <p class="history-sub">Every generated NC program, with source, material, operation counts, and download access.</p>
+            </div>
+        </section>
+
+        {% if jobs %}
+        <section class="stats-bar" aria-label="Archive summary">
+            <div class="stat"><div class="stat-value">{{ jobs | length }}</div><div class="stat-label">Total jobs</div></div>
+            <div class="stat"><div class="stat-value">{{ jobs | selectattr('from_onshape') | list | length }}</div><div class="stat-label">Onshape imports</div></div>
+            <div class="stat">
+                <div class="stat-value">
+                    {% set total_seconds = jobs | sum(attribute='cycle_time_seconds') %}
+                    {% set hours = (total_seconds // 3600) | int %}
+                    {% set mins = ((total_seconds % 3600) // 60) | int %}
+                    {% if hours > 0 %}{{ hours }}h {{ mins }}m{% else %}{{ mins }}m{% endif %}
+                </div>
+                <div class="stat-label">Estimated runtime</div>
+            </div>
+            <div class="stat"><div class="stat-value">{{ jobs | sum(attribute='holes') }}</div><div class="stat-label">Total holes</div></div>
+        </section>
+
+        <section class="archive-panel">
+            <div class="job-list">
+                {% for job in jobs %}
+                <article class="job-card">
+                    <div class="job-main">
+                        <div class="job-top">
+                            <span class="job-name">{{ job.part_name or 'Unnamed Part' }}</span>
+                            <span class="job-filename">{{ job.filename }}</span>
+                            {% if job.from_onshape %}<span class="badge badge-onshape">Onshape</span>{% else %}<span class="badge badge-manual">Manual</span>{% endif %}
+                        </div>
+                        <div class="job-meta">
+                            <div class="meta-item"><span class="meta-label">Material</span><span class="meta-value">{{ job.material | title }}</span></div>
+                            <div class="meta-item"><span class="meta-label">Thickness</span><span class="meta-value">{{ job.thickness }}&quot;</span></div>
+                            <div class="meta-item"><span class="meta-label">Time</span><span class="meta-value highlight">{{ job.cycle_time or 'N/A' }}</span></div>
+                            <div class="meta-item"><span class="meta-label">Holes</span><span class="meta-value">{{ job.holes }}</span></div>
+                            <div class="meta-item"><span class="meta-label">Pockets</span><span class="meta-value">{{ job.pockets }}</span></div>
+                            <div class="meta-item"><span class="meta-label">Lines</span><span class="meta-value">{{ job.gcode_lines }}</span></div>
+                            {% if job.machine_id and job.machine_id != 'default' %}
+                            <div class="meta-item"><span class="meta-label">Machine</span><span class="meta-value">{{ job.machine_id }}</span></div>
+                            {% endif %}
+                        </div>
+                        <div class="job-timestamp">{{ job.timestamp }}</div>
+                    </div>
+                    <div class="job-actions">
+                        <a href="/history/download/{{ job.id }}" class="download-btn">Download NC</a>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+        {% else %}
+        <section class="archive-panel empty-state-page">
+            <h2>No generated jobs yet</h2>
+            <p>Once a program is posted, it will appear here for quick re-download.</p>
+            <p style="margin-top: 1rem;"><a class="big-link" href="/">Create first program</a></p>
+        </section>
+        {% endif %}
+    </main>
+
+    <footer>BionicsCAM · FRC Team 4909 Billerica Bionics · Built on PenguinCAM by Team 6238</footer>
+</body>
+</html>

@@ -1,472 +1,408 @@
-# PenguinCAM
+# BionicsCAM 🦝
 
-**Onshape-to-CNC for FRC Teams**
+**Onshape-to-CNC CAM for FRC teams who would rather build robots than wrestle CAM software.**
 
-A web-based tool for FRC robotics teams to automatically generate CNC G-code from Onshape designs. No CAM software required! Built by Team 6238, hosted for all FRC teams.
+BionicsCAM is a browser-based CNC workflow for flat FRC parts. It can import DXFs manually, pull selected faces from Onshape, generate toolpaths, preview G-code, and export ready-to-run NC files.
+
+It started as a fork/rebrand of **PenguinCAM by FRC Team 6238**, then wandered into the trash can and came back with Onshape integration, auto-nesting, Vercel deployment, and a suspicious number of raccoon jokes.
+
+**Live app:** <https://bionicscam.vercel.app>
 
 🔗 **Demo video:**  
 [![Demo video](https://img.youtube.com/vi/gFReFDz-_LI/0.jpg)](https://youtu.be/zPZCTVh2n2Q)
 
+---
 
-🔗 **Live app:** https://penguincam.popcornpenguins.com
+## What is BionicsCAM?
+
+BionicsCAM turns flat CAD geometry into CNC-ready G-code with a workflow that feels closer to a slicer or laser cutter than traditional CAM.
+
+Typical workflow:
+
+1. Design a flat part in Onshape.
+2. Select one large flat face per part.
+3. Send it to BionicsCAM.
+4. Check the setup preview.
+5. Preview the generated G-code.
+6. Download the NC file and make chips.
+
+Manual DXF upload is also supported, including multi-part upload and auto-nesting.
 
 ---
 
-## What is PenguinCAM?
+## Why does this exist?
 
-PenguinCAM streamlines the workflow from CAD design to CNC machining for FRC teams:
+Because sometimes your team needs a bracket **now**, the normal CAM workflow is doing tax paperwork in a trench coat, and the router is just sitting there asking for G-code.
 
-1. **Design in Onshape** → Create flat plates or tubes, with holes and pockets
-2. **Open app → "Send to PenguinCAM"** → One-click export from Onshape
-3. **Orient & Generate** → Rotate part, auto-generate toolpaths
-4. **Download or Save to Drive** → Ready to run on your CNC router
+BionicsCAM is meant for students and mentors who need a practical path from CAD to CNC without making every new student become a feeds-and-speeds wizard overnight.
 
-**No difficult CAM software, no manual exports!** PenguinCAM knows what FRC teams need.
+The raccoon philosophy:
 
-Designed to feel like 3D printer slicers or laser cutter software. Get the design, orient it on the machine, and go. Launching directly from Onshape means no export/import steps, lost files or inconsistent naming. Every part designed by your team members automatically get the same CNC behavior. Students don't have to know feeds & speeds, understand ramp angles, risk machine collisions. Just select the part and go.
+> Make the safe path easy, make the dangerous path obvious, and never let the overlay raccoon back into the G-code preview.
 
-**Multi-team support:** Other teams can use the hosted service at https://penguincam.popcornpenguins.com! Just upload a `PenguinCAM-config.yaml` file to your Onshape documents to customize settings for your CNC machine. See "For Other FRC Teams" below.
+### Origin story
+
+First thing's first: huge thanks to **FRC Team 6238, Popcorn Penguins**, for PenguinCAM.
+
+BionicsCAM started late at night when our team needed a part immediately and the hosted PenguinCAM instance was unavailable. We got a local version running, then the project spiraled into a Vercel-hosted app with Onshape integration, auto-nesting, and enough debugging chaos to accidentally create a raccoon-themed engineering religion.
+
+The goal is simple: make it easier for the whole team to go from CAD to router-ready G-code without forcing every student to become a CAM expert on day one.
 
 ---
 
 ## Features
 
-### 🤖 **Built for FRC**
+### Onshape integration
 
-✅ **Automatic hole detection:**
-- All circular holes (preserves exact CAD dimensions)
-- #10 screw holes, bearing holes, or custom sizes
-- Helical entry + spiral clearing strategy
+- Runs inside the Onshape right panel.
+- Uses OAuth by default so each user imports with their own Onshape permissions.
+- Select one flat face per part and import directly.
+- Supports selected multi-part import.
+- Avoids accidentally exporting the whole Part Studio unless explicitly intended.
 
-✅ **Smart perimeter cutting of plates:**
-- Holding tabs prevent parts from flying away
-- Configurable tab count
+### Manual DXF upload
 
-✅ **Pocket recognition:**
-- Auto-detects inner boundaries
-- Generates clearing toolpaths
+- Single DXF upload.
+- Multi-DXF upload.
+- Quantity support for multi-upload.
+- Works even when the Onshape API raccoon is having a day.
 
-✅ **Aluminum tubing support:**
-- Tube mounts in tubing jig
-- No X/Y zeroing required
-- Flip part halfway through
-- Automatically squares off near end
-- Automatically cuts tube to CAD length
-- Pattern mirrored and cut in both top and bottom faces
+### Built for FRC
 
-### 🔗 **Onshape Integration** ⭐ Preferred Workflow
+- Automatic hole detection.
+- Circular holes are preserved from CAD geometry.
+- Supports common screw holes, bearing holes, and custom sizes.
+- Helical entry and spiral clearing where applicable.
+- Smart perimeter cutting for flat plates.
+- Designed for student-friendly workflow, not enterprise CAM wizardry.
 
-**One-Click Export from Onshape:**
-- Select top face of part in Onshape → "Send to PenguinCAM"
-- Opens PenguinCAM with part already loaded
-- No manual DXF export needed
+### Auto-nesting
 
-**How to Set Up:**
-1. Install PenguinCAM app in your Onshape classroom
-2. Extension appears in right side panel in Parts Studios
-3. Click once to send part directly to PenguinCAM
-4. OAuth authentication (one-time per team member)
+- Places multiple parts onto stock.
+- Uses simple, reliable rectangular packing.
+- Supports quantity expansion.
+- Adds clearance between parts.
+- Generates one combined NC file.
 
-**Alternative:** Manual DXF upload available for offline work
+Auto-nesting V1 is intentionally simple. It does **not** do full polygon nesting, genetic algorithms, simulated annealing, AI magic, or raccoon divination.
 
-### 🔐 **Team Access Control**
+### G-code generation
 
-- Onshape authentication
-- Secure OAuth 2.0 login
+- Hole detection.
+- Perimeter cuts.
+- Tabs.
+- Tool diameter compensation.
+- 2D workflow for flat plates.
+- 2.5D support where applicable.
+- One combined file for nested jobs.
 
-### 💾 **Google Drive Integration (optional) **
+### Preview tools
 
-- Upload G-code directly to team Shared Drive
-- Easily accessible from CNC computer
-- All team members can access files
-- Files persist when students graduate
-
-### 📊 **Visualization & Setup**
-
-**2D Setup View:**
-- Orient your part before generating G-code
-- Rotate in 90° increments to match stock orientation
-- Origin automatically set to bottom-left (X→ Y↑)
-- Familiar workflow for 3D printer slicer / laser cutter users
-
-**3D Toolpath Preview:**
-- Interactive preview with cutting tool animation
-- Scrubber to step through each move
-- See completed vs. upcoming cuts
-- Verify toolpath for holes, pockets, and perimeter
+- DXF setup preview.
+- G-code preview.
+- Stock outline.
+- Multi-part preview.
+- Overlay raccoon suppression when switching to G-code preview.
 
 ---
 
-## Quick Start for Students
+## Quick Start
 
-### Method 1: From Onshape (Recommended) ⭐
+### Option 1: Onshape import
 
-**One-Click Workflow:**
-1. **Design your part** in Onshape (flat plate with holes/pockets)
-2. **Open the PenguinCAM app** in the right panel
-2. **Select the top face** by clicking on it
-3. **Click "Send to PenguinCAM"** in the PenguinCAM panel
-4. **Orient your part** - Rotate if needed in 2D setup view
-5. **Click "Generate Program"** - Review 3D preview
-6. **Download or save to Drive** - Ready for CNC!
+1. Open a Part Studio in Onshape.
+2. Open the BionicsCAM panel.
+3. Select one large flat face per part.
+4. Click import.
+5. Review the setup preview.
+6. Click **Preview G-code**.
+7. If it looks sane, click **Generate Program**.
 
-**First Time Setup:** You'll be asked to authenticate with Onshape (one time per team member)
+If Onshape import fails because of permissions, make sure the logged-in user can access the document. In OAuth mode, BionicsCAM uses that user's Onshape access.
 
-### Method 2: Manual DXF Upload
+### Option 2: Manual DXF upload
 
-**For offline work or non-Onshape files:**
-1. **Export DXF** from your CAD software
-2. **Visit** https://penguincam.popcornpenguins.com
-3. **Upload DXF file** via drag-and-drop
-4. **Orient & generate** - Same as above
-5. **Download or save to Drive**
+1. Export DXFs from Onshape or another CAD program.
+2. Open BionicsCAM.
+3. Upload one or more DXF files.
+4. Set quantity, stock size, gap, and other parameters.
+5. Preview the setup.
+6. Preview G-code.
+7. Generate the NC file.
 
-### Running on the CNC
-
-- Load G-code into your CNC controller
-- Set up material and zero axes (see [Quick Reference](docs/quick-reference-card.md))
-- Run the program!
+Manual upload is the emergency exit when the Onshape raccoon eats the API tokens.
 
 ---
 
-## For Mentors & Setup
+## Recommended Student Workflow
 
-### Team Configuration (5 minutes)
+1. Make the part in CAD.
+2. Keep it flat and machinable.
+3. Select the biggest flat face.
+4. Send it to BionicsCAM.
+5. Look at the preview before generating.
+6. Do not run mystery G-code because “it probably works.”
+7. Ask a mentor before sacrificing aluminum to the router gods.
 
-**For teams using the hosted service:**
+---
 
-Create a `PenguinCAM-config.yaml` file to customize machine settings for your CNC:
-- Download template: [`PenguinCAM-config-template.yaml`](https://github.com/6238/PenguinCAM/blob/main/PenguinCAM-config-template.yaml)
-- Edit for your team (machine park position, controller type, feeds/speeds, etc.)
-- Save as `PenguinCAM-config.yaml` and drag into your Onshape documents folder
-- Done! Your settings load automatically when team members use PenguinCAM
+## Configuration
 
-See "For Other FRC Teams" section below for complete instructions.
+BionicsCAM can use team configuration files for machine defaults, feeds, speeds, tool sizes, and other settings.
 
-### Deployment (Advanced)
+Common local config files:
 
-For teams self-hosting PenguinCAM, it's can be deployed on Railway (server-based) or Vercel (serverless) with automatic GitHub integration, or your own hosting service or server.
-
-**Setup guides:**
-- [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Deploy to Railway, environment variables
-- [Authentication Guide](docs/AUTHENTICATION_GUIDE.md) - Google OAuth and Workspace setup
-- [Integrations Guide](docs/INTEGRATIONS_GUIDE.md) - Onshape and Google Drive configuration
-- [Onshape Extension Setup](docs/ONSHAPE_SETUP.md) - Install one-click export in Onshape ⭐
-
-### Documentation
-
-**For daily use:**
-- [Quick Reference Card](docs/quick-reference-card.md) - Cheat sheet for students and mentors
-
-**Technical references:**
-- [Z-Coordinate System](docs/Z_COORDINATE_SYSTEM.md) - Sacrifice board zeroing explained
-
-**Planning:**
-- [Roadmap](ROADMAP.md) - Future features and improvements
-
-### Requirements
-
-**Runtime dependencies:**
-```
-Flask>=3.0.0
-gunicorn>=21.2.0
-requests>=2.31.0
-ezdxf>=1.0.0
-shapely>=2.0.0
-google-auth>=2.23.0
-google-auth-oauthlib>=1.1.0
-google-api-python-client>=2.100.0
+```text
+machine_config.json
+auth_config.json
+drive_config.json
 ```
 
-See `requirements.txt` for complete list.
+For hosted/team usage, BionicsCAM can also look for a PenguinCAM-style config file in Onshape when enabled.
 
 ---
 
-## How It Works
+## Environment Variables
 
-### The Pipeline
+Common deployment variables:
 
-```
-Onshape Part Studio
-    ↓ (OAuth API)
-DXF Export
-    ↓ (Automatic face detection)
-Geometry Analysis
-    ↓ (Hole detection, path generation)
-G-code Generation
-    ↓ (Tool compensation)
-3D Preview + Download
-    ↓ (Optional)
-Google Drive Upload
+```text
+BASE_URL
+FLASK_SECURITY_KEY
+ONSHAPE_CLIENT_ID
+ONSHAPE_CLIENT_SECRET
 ```
 
-### Key Components
+Optional API-key variables, only if API-key backend mode is intentionally enabled:
 
-**Backend (Python):**
-- `frc_cam_gui_app.py` - Flask web server
-- `frc_cam_postprocessor.py` - G-code generation engine
-- `onshape_integration.py` - Onshape API client
-- `google_drive_integration.py` - Drive uploads
-- `penguincam_auth.py` - Google OAuth authentication
-
-**Frontend:**
-- `templates/index.html` - Web interface with Three.js visualization
-- `static/popcornlogo.png` - Team branding
-
-**Configuration:**
-- `Procfile` - Railway deployment config
-- `requirements.txt` - Python dependencies
-- Environment variables - Secrets and API keys
-
----
-
-## Technical Details
-
-### G-code Operations
-
-PenguinCAM generates optimized toolpaths:
-
-1. **Holes (all sizes):**
-   - Helical entry from center
-   - Spiral clearing to final diameter
-   - Compensated for exact CAD dimensions
-   - Works for #10 screws, bearings, or custom
-
-2. **Pockets:**
-   - Offset inward by tool radius
-   - Helical entry, then clearing passes
-   - Spiral strategy for circular pockets
-
-3. **Perimeter:**
-   - Offset outward by tool radius
-   - Cut with holding tabs
-
-### Z-Axis Coordinate System
-
-**Z=0 is at the SACRIFICE BOARD (bottom), not material top.**
-
-This ensures:
-- ✅ Consistent Z-axis setup across jobs
-- ✅ Guaranteed cut-through (0.02" overcut)
-- ✅ No math required when changing material thickness
-
-See [Z_COORDINATE_SYSTEM.md](docs/Z_COORDINATE_SYSTEM.md) for details.
-
----
-
-## Default Settings
-
-PenguinCAM uses Team 6238 defaults optimized for FRC robotics:
-
-**Material:**
-- Thickness: 0.25" (configurable per job)
-- Sacrifice board overcut: 0.008"
-
-**Tool:**
-- Default diameter: 0.157" (4mm endmill)
-- Common alternatives: 1/8" (0.125"), 1/4" (0.250")
-
-**Feeds & Speeds:**
-- Plywood: 75 IPM cutting, 18,000 RPM
-- Aluminum: 55 IPM cutting, 18,000 RPM
-- Polycarbonate: 75 IPM cutting, 18,000 RPM
-
-**Tabs:**
-- Width: 0.25"
-- Height: 0.1" (material left in tab)
-- Spacing: ~6" (automatic placement)
-
-**Machine:**
-- Park position: X0.5 Y23.5 (machine coordinates)
-- Controller: Mach4
-
-**All settings can be customized** per team using a `PenguinCAM-config.yaml` file in your Onshape documents. See "For Other FRC Teams" section below for setup instructions.
-
-No code changes required - just upload your config file!
-
----
-
-## Repository Structure
-
-```
-penguincam/
-├── README.md                          # This file
-├── ROADMAP.md                         # Future plans
-├── requirements.txt                   # Python dependencies
-├── Procfile                           # Railway deployment
-├── PenguinCAM-config-template.yaml    # Team configuration template
-│
-├── docs/                              # Documentation
-│   ├── DEPLOYMENT_GUIDE.md            # Setup & deployment
-│   ├── AUTHENTICATION_GUIDE.md        # Google OAuth
-│   ├── INTEGRATIONS_GUIDE.md          # Onshape & Drive
-│   ├── quick-reference-card.md        # Quick start
-│   ├── TOOL_COMPENSATION_GUIDE.md     # Technical reference
-│   └── Z_COORDINATE_SYSTEM.md         # Zeroing guide
-│
-├── static/                            # Static assets
-│   └── popcornlogo.png                # Team logo
-│
-├── templates/                         # HTML templates
-│   └── index.html                     # Main web interface
-│
-├── frc_cam_gui_app.py                # Flask web server
-├── frc_cam_postprocessor.py          # G-code generator
-├── team_config.py                     # Team configuration management
-├── onshape_integration.py            # Onshape API
-├── google_drive_integration.py       # Drive uploads
-├── penguincam_auth.py                # OAuth authentication
-│
-└── [config files...]                  # Various JSON configs
+```text
+ONSHAPE_ACCESS_KEY
+ONSHAPE_SECRET_KEY
+ONSHAPE_BACKEND_AUTH_MODE=api_key
 ```
 
----
+Default recommended mode for multi-user classroom/team use:
 
-## Development
+```text
+ONSHAPE_BACKEND_AUTH_MODE=oauth
+```
 
-### Local Testing
-
-We use [uv](https://docs.astral.sh/uv/) for fast Python dependency management. This works well with git worktrees since packages are cached globally.
-
-1. **Clone repository:**
-   ```bash
-   git clone https://github.com/your-team/penguincam.git
-   cd penguincam
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   make install
-   ```
-   This installs `uv` if needed, creates a `.venv`, and installs all dependencies.
-
-3. **Run G-code tests:**
-   ```bash
-   make test
-   ```
-
-4. **Set environment variables** (for running the web app):
-   ```bash
-   export GOOGLE_CLIENT_ID=your-client-id
-   export GOOGLE_CLIENT_SECRET=your-secret
-   export ONSHAPE_CLIENT_ID=your-onshape-id
-   export ONSHAPE_CLIENT_SECRET=your-onshape-secret
-   export BASE_URL=http://localhost:6238
-   export AUTH_ENABLED=false  # Skip auth for local testing
-   ```
-
-5. **Run locally:**
-   ```bash
-   uv run python frc_cam_gui_app.py
-   ```
-
-6. **Visit:** http://localhost:6238
-
-### Deployment
-
-Push to `main` branch → Railway auto-deploys
-
-See [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for complete setup.
+OAuth mode means each user spends their own Onshape API requests and uses their own document permissions. Fewer permission raccoons, more personal responsibility.
 
 ---
 
-## Contributing
+## Local Development
 
-PenguinCAM was built for FRC Team 6238 but is open for other teams to use and improve!
+Install dependencies:
 
-**Ideas welcome:**
-- Multiple parts in a single job
-- More sophisticated pocket clearing
-- Better tab algorithms
+```bash
+python3 -m pip install -r requirements.txt
+```
 
-See [ROADMAP.md](ROADMAP.md) for planned features.
+Run the app:
+
+```bash
+python3 frc_cam_gui_app.py
+```
+
+Or, depending on your setup:
+
+```bash
+python3 app.py
+```
+
+Then open the local URL printed in the terminal.
+
+### Basic checks
+
+Run these before committing changes:
+
+```bash
+python3 -m py_compile app.py frc_cam_gui_app.py frc_cam_postprocessor.py onshape_integration.py
+node --check static/app.js
+node --check static/onshape_panel.js
+```
+
+If the repo has been reorganized into folders, adjust paths accordingly. The raccoon cannot read your mind, but `ls` can help.
 
 ---
 
-## License
+## Testing Checklist
 
-This project is licensed under the [MIT License](LICENSE.txt).
+Before calling a build “good,” test these:
+
+- Single manual DXF upload.
+- Multi-DXF upload.
+- Multi-DXF quantity.
+- Setup DXF preview shows all parts.
+- G-code preview shows all parts.
+- DXF overlay disappears in G-code preview.
+- Generate Program produces one combined NC file.
+- Onshape selected single-part import.
+- Onshape selected multi-part import.
+- 2D runtime is reasonable.
+- 2.5D does not try to cut every line like a spaghetti machine.
+
+If a change touches nesting, preview, Onshape, or post-processing, test twice. That is where the raccoons live.
+
+---
+
+## Repository Map
+
+Core files in the current flat layout:
+
+```text
+app.py                         Vercel/Flask entrypoint
+frc_cam_gui_app.py             Main Flask web app
+frc_cam_postprocessor.py       CAM and G-code generation
+onshape_integration.py         Onshape API/OAuth/export logic
+penguincam_auth.py             Auth helpers
+google_drive_integration.py    Optional Drive integration
+metrics.py                     Metrics/logging helpers
+static/                        Frontend JS/CSS/assets
+templates/                     HTML templates
+docs/                          Documentation
+requirements.txt               Python dependencies
+vercel.json                    Vercel deployment config
+```
+
+If this repo gets reorganized later, please leave a `REORG_MAP.md`, because future-us deserves mercy.
+
+---
+
+## Deployment
+
+BionicsCAM is currently deployed on Vercel.
+
+Typical deploy flow:
+
+```bash
+git add -A
+git commit -m "Describe the change"
+git push origin main
+```
+
+Vercel redeploys from `main`.
+
+Useful production debug endpoints:
+
+```text
+/api/onshape-auth-mode
+/api/onshape-auth-test
+```
+
+These should not expose secrets. They are for confirming whether the app is using OAuth, API keys, and whether the backend can talk to Onshape.
+
+---
+
+## Troubleshooting
+
+### Onshape import says permission denied
+
+The selected user or backend auth mode cannot access the document.
+
+In OAuth mode, make sure the logged-in Onshape user can open the document.
+
+In API-key mode, make sure the API-key account can access the document.
+
+### Onshape says API limit exceeded
+
+Stop clicking import like it owes you money.
+
+Check whether BionicsCAM is using OAuth or API-key mode. Each mode may burn a different account's quota.
+
+### Only one part appears in DXF preview
+
+The preview path is probably only rendering the first DXF. Check multi-DXF setup preview logic.
+
+### G-code shows all parts but DXF preview does not
+
+Backend is probably fine. Frontend preview parser/rendering is the suspicious raccoon.
+
+### Parts overlap after nesting
+
+Check bounding boxes, rotation, clearance, and whether preview and G-code placement use the same math.
+
+### Vercel says 500
+
+Read the function logs. The useful part is usually the line before the traceback or the last Onshape API response.
 
 ---
 
 ## Credits
 
-**Built by FRC Team 6238 Popcorn Penguins**
+BionicsCAM is based on **PenguinCAM by FRC Team 6238, Popcorn Penguins**.
 
-For questions or support:
-- GitHub Issues: https://github.com/6238/PenguinCAM/issues
-- Team mentor: Josh Sirota <josh@popcornpenguins.com>
+Huge thank-you to Team 6238 for releasing PenguinCAM under the MIT License. BionicsCAM/RaccoonCAM would not exist without that foundation.
+
+Additional BionicsCAM work by Srihaas Mynampati, Chris Johnson, and the Big Man Himself, Blake Borque, with extensive assistance from **ahem** AI tools and at least one metaphorical raccoon.
 
 ---
 
-## For Other FRC Teams
+## License
 
-Interested in using PenguinCAM for your team? Great! **You can use the hosted service at https://penguincam.popcornpenguins.com** - no deployment required!
+This project includes code derived from PenguinCAM, which is licensed under the MIT License.
 
-### Recommended Approach: Use the Hosted Service
+BionicsCAM is also distributed under the MIT License unless stated otherwise.
 
-PenguinCAM is designed to support multiple teams using the same hosted instance. Each team can customize machine settings, feeds/speeds, and other preferences using a configuration file stored in your Onshape documents.
+Keep the original copyright and MIT license notices when redistributing or publishing modified versions.
 
-**Setup steps (5 minutes):**
+The license file should be boring. The README may contain raccoons.
 
-1. **Download the configuration template:**
-   - Get [`PenguinCAM-config-template.yaml`](https://github.com/6238/PenguinCAM/blob/main/PenguinCAM-config-template.yaml) from this repository
+---
 
-2. **Edit for your team:**
-   - Update team number and name
-   - Configure your CNC machine settings (park position, controller type)
-   - Customize feeds/speeds if needed (optional - defaults work for most teams)
-   - All values are optional! Only specify what you want to override from Team 6238 defaults
+## Name Notes
 
-3. **Upload to Onshape:**
-   - Save your edited file as `PenguinCAM-config.yaml` (exact name required)
-   - Drag the file into your team's Onshape documents folder (at root level, not in a subfolder)
-   - The file should appear alongside your parts and assemblies
+This project may be referred to as:
 
-4. **Authenticate:**
-   - Visit https://penguincam.popcornpenguins.com
-   - Sign in with Onshape (one-time setup per team member)
-   - Your team's configuration will be automatically loaded!
-
-**What you can customize:**
-- Machine park position (important! - set for your specific CNC)
-- CNC controller type (Mach3, Mach4, LinuxCNC, etc.)
-- Default tool diameter shown in UI
-- Feeds, speeds, and ramp angles per material
-- Tab sizes and spacing
-- Z-axis reference heights
-- Google Drive integration settings
-
-**Example:** If you have an Omio X-8 with Mach3, you only need to override:
-```yaml
-team:
-  number: 1234
-  name: "Your Team Name"
-machine:
-  name: "Omio X-8"
-  controller: "Mach3"
-  park_position:
-    x: 1.0
-    y: 30.0
+```text
+BionicsCAM   current project/app name
+RaccoonCAM   chaotic spiritual successor / possible app-store name
+PenguinCAM   original upstream inspiration by Team 6238
 ```
 
-All other values automatically use proven Team 6238 defaults.
-
-### Advanced: Self-Hosting (Optional)
-
-Want to run your own instance? You can deploy PenguinCAM yourself:
-
-**Setup steps:**
-1. Fork this repository
-2. Follow [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) to deploy on Railway
-3. Configure Google OAuth for your Workspace
-4. Set up Onshape API credentials
-5. Customize branding (logo, domain, etc.)
-
-The setup takes about 1-2 hours but then requires minimal maintenance.
-
-**Most teams should use the hosted service above** - it's simpler and includes automatic updates!
+If publishing publicly, be clear that RaccoonCAM/BionicsCAM is a modified fork and is not officially endorsed by Team 6238 unless they say so.
 
 ---
 
-**Go Popcorn Penguins! 🍿🐧**
+## What's With All The Raccoons?
+
+Raccoons **are not** my favorite animal. This started as a debugging joke.
+
+When BionicsCAM first started working, it was tested by a teammate, Declan Murphy. Manual DXF upload worked, but the Onshape import path returned a painfully vague error:
+
+```json
+{
+  "error": "No parts could be exported from this document",
+  "message": "BionicsCAM could not resolve/export the selected Onshape faces. Try selecting one large flat face per part."
+}
+```
+
+Very helpful. Very polite. Completely useless.
+
+Anyways, I spent about 3 hours of my own time tryna debug it, to no avail. I asked Claude, it did nothing to help. I asked ChangGPT (Deepseek), still nada. I asked ChatGPT, nope. I gave up, accepted damnation, and looked at the Vercel logs. It looked like this:
+
+```json
+{
+  "content_type": "application/json",
+  "face_id": "JPK",
+  "response_preview": "{\n \"message\" : \"API limit exceeded\",\n \"moreInfoUrl\" : \"\",\n \"status\" : 402,\n \"code\" : 402\n}",
+  "route": "workspace",
+  "selector_key": "faceIds",
+  "status_code": 402
+}
+```
+
+Much clearer.
+
+I immediately understood what happened and I pasted the logs to GPT-man. It was like "OH. We finally caught the raccoon on camera." That immediately became a metaphor for us. Since then, “raccoon” has been the official term for any bug, weird API behavior, preview overlay zombie, or mysterious CNC gremlin.
+
+---
+
+## Final Warning
+
+CNC routers are real machines. They do not care that the preview looked cute.
+
+Always verify toolpaths, clamp material, set zeros correctly, and keep hands away from the danger zone.
+
+If something looks wrong, stop. The raccoon can wait.

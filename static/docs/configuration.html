@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Configuration - PenguinCAM Documentation</title>
+    <title>Configuration - BionicsCAM Documentation</title>
+    <link rel="icon" type="image/png" href="../bionicslogo.png">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <nav class="sidebar">
         <div class="logo">
-            <span class="accent">Penguin</span>CAM
+            <span class="accent">Bionics</span>CAM
         </div>
         <div class="nav-section">Documentation</div>
         <a href="index.html">Introduction</a>
@@ -24,15 +25,15 @@
         <h1>Team Configuration</h1>
 
         <p class="lead">
-            Customize PenguinCAM for your team's specific CNC machines by uploading a
-            <code>PenguinCAM-config.yaml</code> file to your Onshape documents.
+            Customize BionicsCAM for your team's specific CNC machines by uploading a
+            <code>BionicsCAM-config.yaml</code> file to your Onshape documents.
         </p>
 
         <div class="info-box">
             <div class="info-icon">ℹ️</div>
             <div>
-                <strong>Without a config file:</strong> PenguinCAM uses Team 6238's default settings
-                (24"×24" machine, conservative feed rates). These work but may not be optimal for your machine.
+                <strong>Without a config file:</strong> BionicsCAM uses Team 4909's default settings
+                (48"×48" machine, conservative feed rates). These work but may not be optimal for your machine.
             </div>
         </div>
 
@@ -74,17 +75,17 @@
             <div class="step">
                 <div class="step-number">4</div>
                 <div class="step-content">
-                    <h3>Share with Your Team and PenguinCAM</h3>
+                    <h3>Share with Your Team and BionicsCAM</h3>
                     <p>
                         Share the Onshape document with:
                     </p>
                     <ul>
                         <li><strong>Your team members or company</strong> - so everyone can access the settings</li>
-                        <li><strong>The PenguinCAM app</strong> - in the Onshape sharing dialog, use the "Share with applications" tab
-                        and grant access to PenguinCAM</li>
+                        <li><strong>The BionicsCAM app</strong> - in the Onshape sharing dialog, use the "Share with applications" tab
+                        and grant access to BionicsCAM</li>
                     </ul>
                     <p>
-                        Everyone who authenticates with PenguinCAM from your organization will use your custom settings.
+                        Everyone who authenticates with BionicsCAM from your organization will use your custom settings.
                     </p>
                 </div>
             </div>
@@ -321,7 +322,7 @@ machines:
 
         <h3>Hole Detection</h3>
         <p>
-            Control how PenguinCAM detects and machines holes:
+            Control how BionicsCAM detects and machines holes:
         </p>
         <pre><code>holes:
   detection_tolerance: 0.0001         # Circularity tolerance
@@ -329,7 +330,7 @@ machines:
 
         <h3>Pocket and Hole Contouring</h3>
         <p>
-            For large through-cut features, PenguinCAM can contour the perimeter instead of fully clearing
+            For large through-cut features, BionicsCAM can contour the perimeter instead of fully clearing
             the interior. This saves significant machining time, with the trade-off that the center material
             must be removed manually afterward (it's held in place by tabs).
         </p>
@@ -369,7 +370,7 @@ machines:
         <h2>Version 1 vs Version 2</h2>
 
         <p>
-            PenguinCAM supports two config formats:
+            BionicsCAM supports two config formats:
         </p>
 
         <h3>Version 1 (Legacy)</h3>
@@ -401,11 +402,11 @@ machines:
         <h2>Validation</h2>
 
         <p>
-            When PenguinCAM loads your config, it will:
+            When BionicsCAM loads your config, it will:
         </p>
         <ul>
             <li>Use your custom values where provided</li>
-            <li>Fall back to Team 6238 defaults for any missing values</li>
+            <li>Fall back to Team 4909 defaults for any missing values</li>
             <li>Display warnings in the UI if materials are incomplete</li>
         </ul>
 
@@ -418,12 +419,12 @@ machines:
 
         <h3>Config not loading</h3>
         <p>
-            If PenguinCAM shows "Using default settings" instead of your config:
+            If BionicsCAM shows "Using default settings" instead of your config:
         </p>
         <ul>
             <li>Verify the filename is exactly <code>PenguinCAM-config.yaml</code> (case sensitive)</li>
             <li>Check that the document is shared with your team/organization in Onshape</li>
-            <li>Verify the document is shared with the PenguinCAM app (use "Share with applications" tab in Onshape sharing dialog)</li>
+            <li>Verify the document is shared with the BionicsCAM app (use "Share with applications" tab in Onshape sharing dialog)</li>
             <li>Ensure you're authenticated with Onshape (click the login button)</li>
             <li>Verify the file is valid YAML (use a YAML validator online)</li>
         </ul>
@@ -437,7 +438,7 @@ machines:
 
         <h3>Multiple teams see the same config</h3>
         <p>
-            This can happen if your config file is shared publicly. PenguinCAM now filters configs by ownership:
+            This can happen if your config file is shared publicly. BionicsCAM now filters configs by ownership:
         </p>
         <ul>
             <li>Only configs owned by your company/organization are used</li>
@@ -509,7 +510,7 @@ machines:
         feed_rate: 40.0</code></pre>
 
         <footer>
-            <p>Need help? Contact: <a href="mailto:penguincam@popcornpenguins.com">penguincam@popcornpenguins.com</a></p>
+            <p>Need help? Contact: <a href="mailto:bpsschool46@gmail.com">srihaas.mynampati@gmail.com</a></p>
         </footer>
     </main>
 </body>

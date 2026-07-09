@@ -3,405 +3,384 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PenguinCAM - Team 6238</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <title>BionicsCAM — Team 4909</title>
+    <link rel="icon" type="image/png" href="/static/bionicslogo.png">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/refresh-ui.css">
+    <script defer src="https://cdn.vercel-insights.com/v1/script.js"></script>
+    <script>window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };</script>
+    <script defer src="/_vercel/speed-insights/script.js"></script>
 </head>
 <body>
-    <!-- Part Selection Modal (shown when multiple parts detected) -->
     {% if part_selection %}
     <div class="modal-overlay" id="partSelectionModal">
         <div class="modal-content">
-            <div class="modal-header">Which part would you like to cut?</div>
+            <div class="modal-header">Choose the body to manufacture</div>
             <div class="part-list" id="partList">
                 {% for part in part_selection.parts %}
                 <label class="part-option {% if loop.first %}selected{% endif %}">
                     <input type="radio" name="partSelection" value="{{ part.body_id }}" {% if loop.first %}checked{% endif %}>
                     <span class="part-name">
                         {{ part.name }}
-                        {% if part.is_largest %}
-                        <span class="part-badge">LARGEST</span>
-                        {% endif %}
+                        {% if part.is_largest %}<span class="part-badge">LARGEST</span>{% endif %}
                     </span>
-                    <span class="part-info">
-                        {{ part.face_count }} faces
-                    </span>
+                    <span class="part-info">{{ part.face_count }} faces</span>
                 </label>
                 {% endfor %}
             </div>
             <div class="modal-actions">
                 <button type="button" class="secondary" onclick="window.history.back()">Cancel</button>
-                <button type="button" class="primary" onclick="selectPart()">Select</button>
+                <button type="button" class="primary" onclick="selectPart()">Use selected part</button>
             </div>
         </div>
     </div>
     {% endif %}
 
-    <header>
-        <div class="logo-container">
-            <img src="/static/popcornlogo.png" alt="Popcorn Penguins Logo">
-        </div>
-        <div class="header-content">
-            <h1><span class="accent">Penguin</span>CAM</h1>
-            <p class="subtitle">FRC Team 6238 • Generate G-code from Onshape for CNC machining</p>
-        </div>
+    <header class="shell-top">
+        <a href="/" class="brand-mark" aria-label="BionicsCAM home">
+            <img src="/static/bionicslogo.png" alt="Team 4909 logo">
+            <span class="brand-text">
+                <span class="brand-name"><span>Bionics</span>CAM</span>
+                <span class="brand-kicker">Team 4909 manufacturing</span>
+            </span>
+        </a>
 
-        <!-- Config status (in the middle) -->
-        <div class="config-info">
+        <div class="top-meta">
             {% if session.get('team_config') and session.get('team_config').get('team_number') %}
             {% set _config_url = session.get('team_config_url') %}
-            <p class="config-status">Team configuration:
+            <div class="config-chip" title="Team configuration">
+                Config
                 {% if _config_url %}
-                <a href="{{ _config_url }}" target="_blank" rel="noopener">{{ session.get('team_config').get('team_number') }} ({{ session.get('team_config').get('team_name', 'Unknown') }})</a>
+                <a href="{{ _config_url }}" target="_blank" rel="noopener">{{ session.get('team_config').get('team_number') }} / {{ session.get('team_config').get('team_name', 'Unknown') }}</a>
                 {% else %}
-                {{ session.get('team_config').get('team_number') }} ({{ session.get('team_config').get('team_name', 'Unknown') }})
+                {{ session.get('team_config').get('team_number') }} / {{ session.get('team_config').get('team_name', 'Unknown') }}
                 {% endif %}
-            </p>
+            </div>
             {% else %}
-            <p class="config-status config-status-default">Using default configuration</p>
+            <div class="config-chip is-default">Default machine configuration</div>
             {% endif %}
         </div>
 
-        <!-- Help button (always visible) -->
-        {% if not session.get('user_name') %}
-        <div class="user-info">
-            <a href="/docs/" class="icon-btn" title="Help & Documentation" target="_blank">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                </svg>
-            </a>
-        </div>
-        {% endif %}
-
-        <!-- User info (only shown when authenticated) -->
-        {% if session.get('user_name') %}
-        <div class="user-info">
-            <div class="user-details">
-                <span class="user-icon">👤</span>
-                <span class="user-name">{{ session.get('user_name') }}</span>
-                <a href="/docs/" class="icon-btn" title="Help & Documentation" target="_blank">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                    </svg>
-                </a>
-            </div>
-            <a href="/auth/logout" class="logout-btn">Logout</a>
-        </div>
-        {% endif %}
+        <nav class="top-actions" aria-label="Primary navigation">
+            <a href="/history" class="nav-chip">History</a>
+            <a href="/docs/" class="nav-chip" target="_blank" rel="noopener">BionicsCAM Docs</a>
+            <a href="https://docs.team4909.org" class="nav-chip" target="_blank" rel="noopener">Team 4909 Docs</a>
+            <a href="https://team4909.org" class="nav-chip" target="_blank" rel="noopener">Team Page</a>
+            {% if session.get('user_name') %}
+            <span class="user-chip">{{ session.get('user_name') }} <a class="logout-link" href="/auth/logout">Logout</a></span>
+            {% endif %}
+        </nav>
     </header>
 
-    <main>
-        <div class="workflow">
-            <!-- Left Panel: Input & Parameters -->
-            <div>
-                <!-- Step 1: File Upload -->
-                <div class="panel">
-                    <div class="panel-header">
-                        <div class="step-number">1</div>
-                        <div class="panel-title">Upload DXF File</div>
-                    </div>
+    <main class="stage">
+        <section class="hero-grid" aria-labelledby="heroTitle">
+            <div class="hero-copy">
+                <h1 id="heroTitle">From Onshape to DXF</h1>
+                <p>Import from Onshape or drop DXFs, tune the settings, orient the setup, and generate machine-ready NC output.</p>
+            </div>
+            <aside class="hero-card" aria-label="Fast actions">
+                <div>
+                    <div class="micro">Launch pad</div>
+                    <p class="quick-note">Recommended flow: import geometry, verify rotation/origin, generate, inspect the toolpath, then download or send to Drive.</p>
+                </div>
+                <div class="quick-row">
+                    <a href="/onshape/launch" id="onshapeConnectBtn" class="big-link">Import one part from Onshape</a>
+                    <a href="/history" class="big-link secondary">Open generated job archive</a>
+                </div>
+            </aside>
+        </section>
 
-                    <!-- Big drop zone (shown when no file loaded) -->
-                    <div class="drop-zone" id="dropZone">
-                        <div class="drop-zone-icon">📄</div>
-                        <div class="drop-zone-text">Drag & drop your DXF file here</div>
-                        <div class="drop-zone-hint">or click to browse</div>
-                        <input type="file" id="fileInput" accept=".dxf" style="display: none;">
+        <section class="command-layout" aria-label="CAM command workspace">
+            <div class="rail">
+                <div class="panel-head">
+                    <div>
+                        <div class="panel-code">01 / Source</div>
+                        <h2 class="panel-title">Geometry intake</h2>
+                        <p class="panel-copy">Drop one or more DXF files, or use the Onshape import above.</p>
                     </div>
+                </div>
 
-                    <!-- File loaded card (shown when file is loaded) -->
-                    <div id="fileLoadedCard" style="display: none;">
-                        <div class="file-info">
-                            <div class="file-info-icon">📄</div>
-                            <div class="file-info-details">
-                                <div class="file-info-name" id="fileName"></div>
-                                <div class="file-info-size" id="fileSize"></div>
+                <div class="drop-zone" id="dropZone">
+                    <div>
+                        <div class="drop-zone-icon"></div>
+                        <div class="drop-zone-text">Drop DXF files here</div>
+                        <div class="drop-zone-subtext">or click to browse your computer</div>
+                    </div>
+                    <input type="file" id="fileInput" accept=".dxf" multiple style="display: none;">
+                </div>
+
+                <div class="file-loaded-card" id="fileLoadedCard" style="display: none; margin-top: 1rem;">
+                    <div class="file-info" id="fileInfo">
+                        <div class="file-info-icon"></div>
+                        <div class="file-info-details">
+                            <div class="file-info-name" id="fileName"></div>
+                            <div class="file-info-size" id="fileSize"></div>
+                        </div>
+                    </div>
+                    <div id="statusMessage" style="display: none; margin-top: .75rem;"></div>
+                    <div class="upload-different" id="uploadDifferent">
+                        <a href="#" id="uploadDifferentLink">Swap geometry source</a>
+                    </div>
+                </div>
+
+                <div class="action-stack">
+                    <div class="generate-card">
+                        <div class="panel-code">03 / Post</div>
+                        <div class="panel-title" style="font-size: 1.05rem; margin-bottom: .7rem;">Generate program</div>
+                        <div class="generate-row">
+                            <button id="generateBtn" disabled>Upload a file to continue</button>
+                        </div>
+                        <div class="loading" id="loading"><span class="spinner"></span>Processing geometry and toolpaths...</div>
+
+                        <div class="alert info" id="configInfoAlert" style="display: none;">
+                            <div class="alert-title">Using default configuration</div>
+                            <div>No team-specific configuration was detected, so default machine settings are active.</div>
+                        </div>
+
+                        <div class="alert error" id="errorAlert">
+                            <div class="alert-title">Generation stopped</div>
+                            <div id="errorMessage"></div>
+                            <div id="debugDxfLinkError" style="margin-top: 0.75rem; display: none;">
+                                <a href="/debug/download-dxf">Download debug DXF for manual testing</a>
                             </div>
                         </div>
-                        <!-- Status message (for Onshape imports) -->
-                        <div id="statusMessage" style="display: none;"></div>
 
-                        <!-- Upload different file option -->
-                        <div class="upload-different" id="uploadDifferent">
-                            <a href="#" id="uploadDifferentLink">Upload a different file</a>
+                        <div class="results" id="results">
+                            <div class="results-header">
+                                <div class="results-title">Program generated</div>
+                            </div>
+                            <div class="stats" id="stats"></div>
+                            <details style="margin-top: 1rem;">
+                                <summary style="cursor: pointer; color: var(--ink-soft); user-select: none;">Console transcript</summary>
+                                <div class="console-output" id="consoleOutput"></div>
+                            </details>
+                            <div id="debugDxfLinkSuccess" style="margin-top: 1rem; display: none;">
+                                <a href="/debug/download-dxf">Download debug DXF</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="viewport-card">
+                <div class="viewport-top">
+                    <div>
+                        <div class="panel-code">04 / Verify</div>
+                        <h2 class="panel-title">Setup viewport</h2>
+                        <p class="panel-copy">Rotate the raw DXF first, then inspect the final G-code toolpath.</p>
+                    </div>
+                    <div class="mode-toggle" id="modeToggle" style="display: none;">
+                        <button class="mode-button active" data-mode="setup">DXF setup</button>
+                        <button class="mode-button" data-mode="preview">G-code preview</button>
+                    </div>
+                </div>
+
+                <div id="stockSizeDisplay" class="stock-size-display" style="display: none;">
+                    <span class="stock-size-label">Stock</span>
+                    <span id="stockSizeValue" class="stock-size-value">—</span>
+                </div>
+
+                <div id="dxf-setup-container" style="display: none;">
+                    <div class="setup-info">
+                        <div class="setup-label">Origin remains lower-left. X increases right, Y increases up.</div>
+                    </div>
+                    <canvas id="dxfSetupCanvas"></canvas>
+                    <div class="setup-controls">
+                        <div class="control-group">
+                            <label>Part rotation</label>
+                            <button class="icon-button" id="rotateBtn">Rotate 90° CW</button>
+                            <span id="rotationDisplay" class="rotation-display">0°</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- Step 2: Parameters -->
-                <div class="panel" style="margin-top: 1.5rem;">
-                    <div class="panel-header">
-                        <div class="step-number">2</div>
-                        <div class="panel-title">Set Parameters</div>
+                <div id="canvas-container">
+                    <div class="empty-state">
+                        <div>
+                            <div class="empty-state-icon"></div>
+                            <div>Preview waits here until a program is generated.</div>
+                        </div>
                     </div>
+                    <canvas id="gcodeCanvas"></canvas>
+                </div>
 
-                    <form id="paramForm">
+                <div class="scrubber-container" id="scrubberContainer" style="display: none;">
+                    <div class="scrubber-header">
+                        <div id="scrubberLabel">Move 1 of 1</div>
+                        <div id="scrubberOperation" class="scrubber-operation">Ready</div>
+                    </div>
+                    <input type="range" id="toolpathScrubber" class="toolpath-scrubber" min="0" max="100" value="0" step="1">
+                </div>
+
+                <div class="playback-controls" id="playbackControls" style="display: none;">
+                    <button class="playback-button" id="playButton" title="Play/Pause">
+                        <span class="play-icon">▶</span>
+                        <span class="pause-icon" style="display: none;">⏸</span>
+                    </button>
+                    <div class="speed-control">
+                        <label for="playbackSpeed">Speed</label>
+                        <select id="playbackSpeed" class="speed-select">
+                            <option value="10">0.25x</option>
+                            <option value="20">0.5x</option>
+                            <option value="40" selected>1x</option>
+                            <option value="80">2x</option>
+                            <option value="160">4x</option>
+                            <option value="320">8x</option>
+                        </select>
+                    </div>
+                    <button class="playback-button" id="restartButton" title="Restart">⏮</button>
+                </div>
+
+                <div class="controls" id="previewControls" style="display: none;">
+                    <div class="controls-label">Origin (0,0,0) is the lower-left sacrifice board corner. Drag to orbit and scroll to zoom.</div>
+                    <button class="icon-button" id="resetView">Reset view</button>
+                </div>
+
+                <div class="gcode-actions" id="gcodeButtons" style="margin-top: 1rem; display: none;">
+                    <button id="downloadBtn" class="secondary" disabled>Download NC</button>
+                    <button id="driveBtn" class="primary" disabled style="display: none;">Save to Google Drive</button>
+                </div>
+                <div id="driveStatus" style="margin-top: 0.5rem; font-size: 0.9rem; display: none;"></div>
+            </div>
+
+            <aside class="recipe-card">
+                <div class="panel-head">
+                    <div>
+                        <div class="panel-code">02 / Recipe</div>
+                        <h2 class="panel-title">Cut settings</h2>
+                        <p class="panel-copy">These values feed the existing backend exactly as before.</p>
+                    </div>
+                </div>
+
+                <form id="paramForm">
+                    <div class="param-grid">
                         {% if machines|length > 1 %}
-                        <div class="param-group">
-                            <label>
-                                Machine
-                                <span class="label-hint">Select which machine to use</span>
-                            </label>
+                        <div class="param-group span-2">
+                            <label for="machineId">Machine <span class="label-hint">Available configured machine profiles</span></label>
                             <select id="machineId" required>
                                 {% for machine_id, machine_info in machines.items() %}
-                                <option value="{{ machine_id }}"
-                                        {% if machine_id == current_machine_id %}selected{% endif %}>
-                                    {{ machine_info.name }}
-                                </option>
+                                <option value="{{ machine_id }}" {% if machine_id == current_machine_id %}selected{% endif %}>{{ machine_info.name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
                         {% endif %}
 
-                        <div class="param-group">
-                            <label>
-                                Material Type
-                                <span class="label-hint">Cutting parameters preset</span>
-                            </label>
+                        <div class="param-group span-2">
+                            <label for="material">Material <span class="label-hint">Controls feeds, speeds, and operation behavior</span></label>
                             <select id="material" required>
                                 {% for material_id, material_info in materials.items() %}
-                                <option value="{{ material_id }}"
-                                        {% if material_id == 'plywood' %}selected{% endif %}
-                                        {% if material_id in incomplete_materials %}data-incomplete="true"{% endif %}>
-                                    {{ material_info.name }}
-                                </option>
+                                <option value="{{ material_id }}" {% if material_id == 'polycarbonate' %}selected{% endif %} {% if material_id in incomplete_materials %}data-incomplete="true"{% endif %}>{{ material_info.name }}</option>
                                 {% endfor %}
                             </select>
-                            <div id="materialWarning" class="warning-message" style="display: none;">
-                                ⚠️ This material has incomplete settings in your config. Using plywood defaults for missing parameters.
-                            </div>
+                            <div id="materialWarning" class="warning-message" style="display: none;">This material has incomplete settings in your config. Missing values fall back to plywood defaults.</div>
                         </div>
 
                         <div class="param-group">
-                            <label>
-                                Material Thickness (inches)
-                                <span class="label-hint">{% if detected_thickness %}Auto-detected from CAD{% else %}1/4" = 0.25{% endif %}</span>
-                            </label>
-                            <input type="number" id="thickness" step="0.001" value="{% if detected_thickness %}{{ '%.3f' | format(detected_thickness) }}{% else %}0.25{% endif %}" min="0.01" required autocomplete="off" {% if detected_thickness %}readonly style="background-color: var(--surface-light); cursor: not-allowed; opacity: 0.7;"{% endif %}>
-                            {% if detected_thickness %}
-                            <div class="info-message" style="margin-top: 0.5rem; padding: 0.75rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; font-size: 0.875rem; line-height: 1.4;">
-                                ℹ️ This thickness was auto-detected from your CAD part. Your stock material must match this thickness for accurate machining.
-                            </div>
-                            {% endif %}
+                            <label for="thickness">Thickness <span class="label-hint">{% if detected_thickness %}Auto-detected from CAD{% else %}Inches from sacrifice board to top{% endif %}</span></label>
+                            <input type="number" id="thickness" step="0.001" value="{% if detected_thickness %}{{ '%.3f' | format(detected_thickness) }}{% else %}0.25{% endif %}" min="0.01" required autocomplete="off" {% if detected_thickness %}readonly{% endif %}>
                         </div>
 
-                        <div class="param-group" style="display: none;">
-                            <label>
-                                Tab Spacing (inches)
-                                <span class="label-hint">Distance between tabs (min 3 tabs)</span>
+                        <div class="param-group" id="quantityGroup">
+                            <label for="quantity">Quantity <span class="label-hint">Copies to auto-nest</span></label>
+                            <input type="number" id="quantity" value="1" min="1" max="50" step="1" required>
+                        </div>
+
+                        <div class="param-group">
+                            <label for="toolDiameter">Tool diameter <span class="label-hint">4 mm is about 0.157 in</span></label>
+                            <input type="number" id="toolDiameter" step="0.001" value="{{ default_tool_diameter }}" min="0.01" required>
+                        </div>
+                    </div>
+                            <br>
+                            <h2 class="panel-title">Advanced</h2>
+
+                    <div class="param-grid">
+                        <div class="param-group">
+                            <label for="tabsEnabled">Holding tabs <span class="label-hint">Leave small bridges so parts stay attached</span></label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="tabsEnabled">
+                                <span class="toggle-slider"></span>
+                                <span class="toggle-text">Enabled</span>
                             </label>
+                        </div>
+
+                        <div class="param-group">
+                            <label for="tabSpacing">Tab spacing <span class="label-hint">Approximate inches between holding tabs</span></label>
                             <input type="number" id="tabSpacing" step="0.5" value="6.0" min="0.5" max="24" required>
                         </div>
 
-                        <!-- Tube-specific parameters (shown only for aluminum tube) -->
-                        <div id="tubeParams" style="display: none;">
-                            <div class="param-group">
-                                <label>
-                                    Tube Z-Height (inches)
-                                    <span class="label-hint">Height of tube in machine</span>
-                                </label>
+                        <div class="param-group">
+                            <label for="optionalStopAfterHoles">Optional stop after holes <span class="label-hint">Insert M01 before pockets/perimeter</span></label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="optionalStopAfterHoles">
+                                <span class="toggle-slider"></span>
+                                <span class="toggle-text">Disabled</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    {% if detected_thickness %}
+                    <div class="info-message">Thickness was detected from the CAD part. Match stock to this value before cutting.</div>
+                    {% endif %}
+                    <br>
+
+                    <h2 class="panel-title">Nesting</h2>
+
+                    <div class="param-group" id="nestRotationGroup">
+                        <label for="nestRotation">Nesting rotation</label>
+                        <select id="nestRotation">
+                            <option value="auto" selected>Auto</option>
+                            <option value="0">0°</option>
+                            <option value="90">90°</option>
+                        </select>
+                    </div>
+
+                    <div id="tubeParams">
+                        <div class="section-rule"></div>
+                        <div class="param-grid">
+                            <div class="param-group span-2">
+                                <label for="tubeHeight">Tube Z-height <span class="label-hint">Used only for aluminum tube operations</span></label>
                                 <input type="number" id="tubeHeight" step="0.001" value="2.0" min="0.1">
                             </div>
-
-                            <div class="param-group">
-                                <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                    <input type="checkbox" id="squareEnd" checked>
-                                    <span>Square the zero end</span>
-                                </label>
+                            <div class="check-card">
+                                <label><input type="checkbox" id="squareEnd" checked><span>Square zero end</span></label>
                             </div>
-
-                            <div class="param-group">
-                                <label style="display: flex; align-items: center; gap: 0.5rem;">
-                                    <input type="checkbox" id="cutToLength" checked>
-                                    <span>Machine far end to length</span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <!-- Divider between material and tool parameters -->
-                        <div style="border-bottom: 1px solid rgba(255, 255, 255, 0.1); margin: 1.5rem 0;"></div>
-
-                        <div class="param-group">
-                            <label>
-                                Tool Diameter (inches)
-                                <span class="label-hint">4mm = 0.157"</span>
-                            </label>
-                            <input type="number" id="toolDiameter" step="0.001" value="{{ default_tool_diameter }}" min="0.01" required>
-                        </div>
-                    </form>
-                </div>
-
-                <!-- Step 3: Generate -->
-                <div class="panel" style="margin-top: 1.5rem;">
-                    <div class="panel-header">
-                        <div class="step-number">3</div>
-                        <div class="panel-title">Generate Program</div>
-                    </div>
-
-                    <button id="generateBtn" disabled>
-                        Upload a file to continue
-                    </button>
-
-                    <div class="loading" id="loading">
-                        <div class="spinner"></div>
-                        <div>Processing your file...</div>
-                    </div>
-
-                    <div class="alert info" id="configInfoAlert" style="display: none;">
-                        <div class="alert-title">ℹ️ Using Default Configuration</div>
-                        <div>No team-specific PenguinCAM-config.yaml found. Using default settings (24"x24" machine). To customize for your CNC, add a PenguinCAM-config.yaml file to your Onshape documents.</div>
-                    </div>
-
-                    <div class="alert error" id="errorAlert">
-                        <div class="alert-title">Error</div>
-                        <div id="errorMessage"></div>
-                        <div id="debugDxfLinkError" style="margin-top: 0.75rem; display: none;">
-                            <a href="/debug/download-dxf" style="color: var(--primary); text-decoration: underline;">
-                                🐛 Download debug DXF for manual testing
-                            </a>
-                        </div>
-                    </div>
-
-                    <div class="results" id="results">
-                        <div class="results-header">
-                            <div class="results-title">✓ Program Generated Successfully</div>
-                        </div>
-                        <div class="stats" id="stats"></div>
-                        <details style="margin-top: 1rem;">
-                            <summary style="cursor: pointer; color: var(--text-dim); user-select: none;">
-                                Show console output
-                            </summary>
-                            <div class="console-output" id="consoleOutput"></div>
-                        </details>
-                        <div id="debugDxfLinkSuccess" style="margin-top: 1rem; display: none;">
-                            <a href="/debug/download-dxf" style="color: var(--text-dim); text-decoration: underline; font-size: 0.875rem;">
-                                🐛 Download debug DXF
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Right Panel: Visualization -->
-            <div class="visualizer">
-                <div class="panel">
-                    <div class="panel-header">
-                        <div class="step-number">4</div>
-                        <div class="panel-title">Setup & Preview</div>
-                        <!-- Mode Toggle -->
-                        <div class="mode-toggle" id="modeToggle" style="display: none;">
-                            <button class="mode-button active" data-mode="setup">Setup DXF</button>
-                            <button class="mode-button" data-mode="preview">Preview G-code</button>
-                        </div>
-                    </div>
-
-                    <!-- Stock Size Display (shown in preview mode) -->
-                    <div id="stockSizeDisplay" class="stock-size-display" style="display: none;">
-                        <span class="stock-size-label">Stock Size:</span>
-                        <span id="stockSizeValue" class="stock-size-value">—</span>
-                    </div>
-
-                    <!-- DXF Setup View (2D) -->
-                    <div id="dxf-setup-container" style="display: none;">
-                        <div class="setup-info">
-                            <div class="setup-label">Rotate to orient your part • Origin is always bottom-left (X→ Y↑)</div>
-                        </div>
-                        <canvas id="dxfSetupCanvas"></canvas>
-
-                        <!-- Origin & Rotation Controls -->
-                        <div class="setup-controls">
-                            <div class="control-group">
-                                <label>Rotation:</label>
-                                <button class="icon-button" id="rotateBtn">↻ Rotate 90° CW</button>
-                                <span id="rotationDisplay" class="rotation-display">0°</span>
+                            <div class="check-card">
+                                <label><input type="checkbox" id="cutToLength" checked><span>Cut far end to length</span></label>
                             </div>
                         </div>
                     </div>
 
-                    <!-- 3D G-code Preview -->
-                    <div id="canvas-container">
-                        <div class="empty-state">
-                            <div class="empty-state-icon">🔧</div>
-                            <div>G-code preview will appear here</div>
-                        </div>
-                        <canvas id="gcodeCanvas"></canvas>
+                    <div class="check-card" style="display: none;">
+                        <label>
+                            <input type="checkbox" id="use25d">
+                            <span>Enable 2.5D mode <span class="label-hint">Kept for existing JavaScript compatibility</span></span>
+                        </label>
                     </div>
-
-                    <!-- Toolpath Scrubber -->
-                    <div class="scrubber-container" id="scrubberContainer" style="display: none;">
-                        <div class="scrubber-header">
-                            <div id="scrubberLabel">Move 1 of 1</div>
-                            <div id="scrubberOperation" class="scrubber-operation">Ready</div>
-                        </div>
-                        <input type="range" id="toolpathScrubber" class="toolpath-scrubber" min="0" max="100" value="0" step="1">
-                    </div>
-
-                    <div class="playback-controls" id="playbackControls" style="display: none;">
-                        <button class="playback-button" id="playButton" title="Play/Pause">
-                            <span class="play-icon">▶</span>
-                            <span class="pause-icon" style="display: none;">⏸</span>
-                        </button>
-                        <div class="speed-control">
-                            <label for="playbackSpeed">Speed:</label>
-                            <select id="playbackSpeed" class="speed-select">
-                                <option value="10">0.25x</option>
-                                <option value="20">0.5x</option>
-                                <option value="40" selected>1x</option>
-                                <option value="80">2x</option>
-                                <option value="160">4x</option>
-                                <option value="320">8x</option>
-                            </select>
-                        </div>
-                        <button class="playback-button" id="restartButton" title="Restart">⏮</button>
-                    </div>
-
-                    <div class="controls" id="previewControls" style="display: none;">
-                        <div class="controls-label">
-                            Origin (0,0,0) = Lower-left corner, sacrifice board • Semi-transparent box = stock material • Use mouse to rotate • Scroll to zoom
-                        </div>
-                        <button class="icon-button" id="resetView">Reset View</button>
-                    </div>
-
-                    <div class="button-group" id="gcodeButtons" style="margin-top: 1rem; display: none; gap: 1rem;">
-                        <button id="downloadBtn" class="secondary" disabled>
-                            📥 Download Program
-                        </button>
-                        <button id="driveBtn" class="primary" disabled style="display: none;">
-                            💾 Save to Google Drive
-                        </button>
-                    </div>
-
-                    <div id="driveStatus" style="margin-top: 0.5rem; font-size: 0.9rem; display: none;"></div>
-                </div>
-            </div>
-        </div>
+                </form>
+            </aside>
+        </section>
     </main>
+
+    <footer>BionicsCAM · FRC Team 4909 Billerica Bionics · Built on PenguinCAM by Team 6238</footer>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-
-    <!-- Pass template variables to JavaScript -->
     <script>
-        // Template variables from Flask
         window.ONSHAPE_DATA = {
             errorMessage: '{{ error_message if error_message else "" }}',
             dxfFile: '{{ dxf_file if dxf_file else "" }}',
+            dxfContentInline: {{ (dxf_content_inline | tojson) if dxf_content_inline else 'null' }},
+            dxfFiles: {{ (dxf_files_inline | tojson) if dxf_files_inline else 'null' }},
             fromOnshape: {{ 'true' if from_onshape else 'false' }},
             suggestedFilename: '{{ suggested_filename if suggested_filename else "" }}',
             usingDefaultConfig: {{ 'true' if using_default_config else 'false' }},
             detectedThickness: {{ detected_thickness if detected_thickness else 'null' }}
         };
-
-        // Machine configuration for bounds checking
         window.MACHINE_CONFIG = {
             xMax: {{ machine_x_max if machine_x_max is defined else 48.0 }},
             yMax: {{ machine_y_max if machine_y_max is defined else 96.0 }}
         };
     </script>
-
     <script src="/static/app.js"></script>
 </body>
 </html>
