@@ -1,30 +1,84 @@
 // FRC Router Feeds & Speeds Explainer - talks to the shared Python calc core.
+//
+// The full preset dict for each of machine/material/tool is kept in state and the
+// editable inputs are overlaid onto it, so the backend always receives a complete
+// dict including fields the UI does not expose.
 'use strict';
 
-// Which editable inputs map onto which fields of the machine/material dicts. The
-// full preset dict is kept in state and these fields are overlaid from the inputs,
-// so the backend receives a complete dict (including fields not exposed in the UI).
+// [input id, path into the preset dict, coercion]. A path may index into an array,
+// e.g. the material's sfm_range is edited as two separate low/high inputs.
 const MACHINE_FIELDS = [
-    ['machine-xy_feed_max', 'xy_feed_max', 'number'],
-    ['machine-rpm_min', 'rpm_min', 'number'],
-    ['machine-rpm_max', 'rpm_max', 'number'],
-    ['machine-rigidity', 'rigidity', 'string'],
+    ['machine-rpm_min', ['rpm_min'], 'number'],
+    ['machine-rpm_max', ['rpm_max'], 'number'],
+    ['machine-max_feed', ['max_feed'], 'number'],
+    ['machine-max_plunge_feed', ['max_plunge_feed'], 'number'],
+    ['machine-spindle_power_hp', ['spindle_power_hp'], 'number'],
+    ['machine-power_base_rpm', ['power_base_rpm'], 'number'],
+    ['machine-rigidity', ['rigidity'], 'string'],
 ];
+
 const MATERIAL_FIELDS = [
-    ['material-preferred_rpm', 'preferred_rpm', 'number'],
-    ['material-chipload_ref', 'chipload_ref', 'number'],
-    ['material-slotting_multiplier', 'slotting_multiplier', 'number'],
-    ['material-stepover_ratio', 'stepover_ratio', 'number'],
+    ['material-sfm_lo', ['sfm_range', 0], 'number'],
+    ['material-sfm_hi', ['sfm_range', 1], 'number'],
+    ['material-fz_lo', ['fz_percent_range', 0], 'number'],
+    ['material-fz_hi', ['fz_percent_range', 1], 'number'],
+    ['material-max_ap_ratio', ['max_ap_ratio'], 'number'],
+    ['material-max_ramp_angle', ['max_ramp_angle'], 'number'],
 ];
+
+const TOOL_FIELDS = [
+    ['tool-diameter', ['diameter'], 'number'],
+    ['tool-flutes', ['flutes'], 'number'],
+    ['tool-loc', ['loc'], 'number'],
+    ['tool-substrate', ['substrate'], 'string'],
+    ['tool-coating', ['coating'], 'string'],
+    ['tool-iso_groups', ['iso_groups'], 'list'],
+    ['tool-datasheet_sfm', ['datasheet_sfm'], 'optional-number'],
+    ['tool-datasheet_fz', ['datasheet_fz'], 'optional-number'],
+];
+
+const OVERRIDE_INPUTS = ['ae_override', 'ap_override', 'bore_diameter'];
 
 const state = {
     presets: null,
-    machine: null,   // full dict currently in effect
+    machine: null,
     material: null,
-    lastResult: null,
+    tool: null,
 };
 
 const $ = (id) => document.getElementById(id);
+
+// --- Path helpers so array-valued preset fields edit like any other ---------------
+function readPath(obj, path) {
+    return path.reduce((acc, key) => (acc == null ? acc : acc[key]), obj);
+}
+
+function writePath(obj, path, value) {
+    let node = obj;
+    for (let i = 0; i < path.length - 1; i += 1) {
+        if (node[path[i]] == null) node[path[i]] = typeof path[i + 1] === 'number' ? [] : {};
+        node = node[path[i]];
+    }
+    node[path[path.length - 1]] = value;
+}
+
+function toInput(value, type) {
+    if (type === 'list') return Array.isArray(value) ? value.join(', ') : (value || '');
+    if (value === null || value === undefined) return '';
+    return value;
+}
+
+function fromInput(raw, type) {
+    if (type === 'string') return raw;
+    if (type === 'list') {
+        return raw.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
+    }
+    if (type === 'optional-number') {
+        return raw === '' ? null : parseFloat(raw);
+    }
+    const n = parseFloat(raw);
+    return Number.isNaN(n) ? 0 : n;
+}
 
 async function init() {
     const resp = await fetch('/api/feeds-speeds/presets');
@@ -33,26 +87,39 @@ async function init() {
     populateSelect('machine-preset', state.presets.machines);
     populateSelect('material-preset', state.presets.materials);
     populateSelect('tool-preset', state.presets.tools);
+    populateSelect('operation', state.presets.operations);
 
-    // Load default presets into state + inputs.
-    loadMachinePreset('omio_x8');
-    loadMaterialPreset('plywood');
-    loadToolPreset('4mm_1f');
+    loadPreset('machine', 'avid_pro2424');
+    loadPreset('material', 'steel_1045');
+    loadPreset('tool', 'seco_c5131_4mm');
+    $('operation').value = 'pocket_adaptive';
 
-    // Wire events.
-    $('machine-preset').addEventListener('change', (e) => { loadMachinePreset(e.target.value); recalc(); });
-    $('material-preset').addEventListener('change', (e) => { loadMaterialPreset(e.target.value); recalc(); });
-    $('tool-preset').addEventListener('change', (e) => { loadToolPreset(e.target.value); recalc(); });
+    $('machine-preset').addEventListener('change', (e) => {
+        loadPreset('machine', e.target.value); recalc();
+    });
+    $('material-preset').addEventListener('change', (e) => {
+        loadPreset('material', e.target.value); recalc();
+    });
+    $('tool-preset').addEventListener('change', (e) => {
+        loadPreset('tool', e.target.value); recalc();
+    });
 
-    MACHINE_FIELDS.forEach(([id]) => $(id).addEventListener('input', () => { syncMachine(); recalc(); }));
-    MATERIAL_FIELDS.forEach(([id]) => $(id).addEventListener('input', () => { syncMaterial(); recalc(); }));
-    ['tool-diameter', 'tool-flutes', 'operation'].forEach((id) =>
-        $(id).addEventListener('input', recalc));
+    bindFields('machine', MACHINE_FIELDS);
+    bindFields('material', MATERIAL_FIELDS);
+    bindFields('tool', TOOL_FIELDS);
 
-    document.querySelectorAll('.copy-buttons button').forEach((btn) =>
-        btn.addEventListener('click', () => copyAs(btn)));
+    $('operation').addEventListener('change', () => { syncOperation(); recalc(); });
+    OVERRIDE_INPUTS.forEach((id) => $(id).addEventListener('input', recalc));
 
+    syncOperation();
     recalc();
+}
+
+function bindFields(kind, fields) {
+    fields.forEach(([id]) => {
+        $(id).addEventListener('input', () => { syncGroup(kind, fields); recalc(); });
+        $(id).addEventListener('change', () => { syncGroup(kind, fields); recalc(); });
+    });
 }
 
 function populateSelect(id, items) {
@@ -66,37 +133,39 @@ function populateSelect(id, items) {
     });
 }
 
-// --- Preset loading: copy preset dict into state, then reflect into inputs. -----
-function loadMachinePreset(key) {
-    state.machine = Object.assign({}, state.presets.machines[key]);
-    $('machine-preset').value = key;
-    MACHINE_FIELDS.forEach(([id, field]) => { $(id).value = state.machine[field]; });
+const FIELD_GROUPS = {
+    machine: MACHINE_FIELDS,
+    material: MATERIAL_FIELDS,
+    tool: TOOL_FIELDS,
+};
+
+function loadPreset(kind, key) {
+    // Deep copy so editing an input never mutates the preset we fetched.
+    state[kind] = JSON.parse(JSON.stringify(state.presets[kind + 's'][key]));
+    $(kind + '-preset').value = key;
+    FIELD_GROUPS[kind].forEach(([id, path, type]) => {
+        $(id).value = toInput(readPath(state[kind], path), type);
+    });
+    if (kind === 'material') renderMaterialMeta();
 }
 
-function loadMaterialPreset(key) {
-    state.material = Object.assign({}, state.presets.materials[key]);
-    $('material-preset').value = key;
-    MATERIAL_FIELDS.forEach(([id, field]) => { $(id).value = state.material[field]; });
-}
-
-function loadToolPreset(key) {
-    const tool = state.presets.tools[key];
-    $('tool-preset').value = key;
-    $('tool-diameter').value = tool.diameter;
-    $('tool-flutes').value = tool.flutes;
-}
-
-// --- Sync edited inputs back into the full state dicts. -------------------------
-function syncMachine() {
-    MACHINE_FIELDS.forEach(([id, field, type]) => {
-        state.machine[field] = type === 'number' ? parseFloat($(id).value) : $(id).value;
+function syncGroup(kind, fields) {
+    fields.forEach(([id, path, type]) => {
+        writePath(state[kind], path, fromInput($(id).value, type));
     });
 }
 
-function syncMaterial() {
-    MATERIAL_FIELDS.forEach(([id, field, type]) => {
-        state.material[field] = type === 'number' ? parseFloat($(id).value) : $(id).value;
-    });
+function renderMaterialMeta() {
+    const mat = state.material;
+    const group = mat.iso_group ? `ISO ${mat.iso_group}` : '';
+    const hardness = mat.hardness ? ` &middot; ${mat.hardness}` : '';
+    $('material-meta').innerHTML = group + hardness;
+}
+
+function syncOperation() {
+    const op = state.presets.operations[$('operation').value];
+    $('operation-blurb').textContent = op ? op.blurb : '';
+    $('bore-row').hidden = $('operation').value !== 'helical_bore';
 }
 
 let recalcTimer = null;
@@ -105,15 +174,20 @@ function recalc() {
     recalcTimer = setTimeout(doRecalc, 150);
 }
 
+function optionalNumber(id) {
+    const raw = $(id).value;
+    return raw === '' ? null : parseFloat(raw);
+}
+
 async function doRecalc() {
     const payload = {
         machine: state.machine,
         material: state.material,
-        tool: {
-            diameter: parseFloat($('tool-diameter').value),
-            flutes: parseInt($('tool-flutes').value, 10),
-        },
+        tool: state.tool,
         operation: $('operation').value,
+        ae_override: optionalNumber('ae_override'),
+        ap_override: optionalNumber('ap_override'),
+        bore_diameter: optionalNumber('bore_diameter'),
     };
 
     let result;
@@ -132,18 +206,35 @@ async function doRecalc() {
         $('explanation').textContent = 'Error: ' + result.error;
         return;
     }
-    state.lastResult = result;
     render(result);
 }
 
 function render(r) {
     $('r-rpm').textContent = r.rpm;
-    $('r-feed').textContent = r.feed_xy;
+    $('r-sfm').textContent = r.sfm_actual + ' SFM';
+    $('r-feed').textContent = r.feed;
+    $('r-ae').textContent = r.ae.toFixed(4);
+    $('r-ae-pct').textContent = Math.round(r.ae_ratio * 100) + '% of D';
+    $('r-ap').textContent = r.ap.toFixed(4);
+    $('r-ap-pct').textContent = r.ap_ratio.toFixed(2) + ' x D';
+    $('r-fz').textContent = r.fz_programmed.toFixed(5);
+    $('r-chip').textContent = r.chip_thickness.toFixed(5);
+    $('r-thinning').textContent = r.chip_thinning_factor > 1
+        ? 'in, after ' + r.chip_thinning_factor.toFixed(2) + 'x comp'
+        : 'in/tooth';
     $('r-ramp').textContent = r.ramp_feed;
-    $('r-peck').textContent = r.peck_feed;
-    $('r-stepover').textContent = r.stepover + ' (' + Math.round(r.stepover_percentage * 100) + '%)';
-    $('r-stepdown').textContent = r.slot_stepdown;
-    $('r-chipload').textContent = r.chipload_achieved;
+    $('r-ramp-unit').textContent = 'IPM at ' + r.ramp_angle + ' deg max ('
+        + r.ramp_z_feed + ' IPM in Z)';
+    $('r-plunge').textContent = r.plunge_feed;
+    $('r-mrr').textContent = r.mrr.toFixed(4);
+    $('r-power').textContent = r.power_required.toFixed(2) + ' HP';
+    $('r-power-avail').textContent = r.power_available
+        ? 'of ~' + r.power_available.toFixed(2) + ' HP available'
+        : '';
+
+    const pitchCard = $('r-pitch-card');
+    pitchCard.hidden = r.helix_pitch === null;
+    if (r.helix_pitch !== null) $('r-pitch').textContent = r.helix_pitch.toFixed(4);
 
     const warns = $('warnings');
     warns.innerHTML = '';
@@ -154,66 +245,38 @@ function render(r) {
         warns.appendChild(div);
     });
 
+    $('material-notes').textContent = r.material_notes || '';
     $('explanation').textContent = r.explanation;
-    $('formulas').textContent = r.formulas.join('\n');
-}
 
-// --- Copy buttons --------------------------------------------------------------
-function copyAs(btn) {
-    const r = state.lastResult;
-    if (!r) return;
-    const kind = btn.dataset.copy;
-    let text = '';
-    if (kind === 'yaml') text = toYaml(r);
-    else if (kind === 'json') text = JSON.stringify(r, null, 2);
-    else if (kind === 'sheet') text = toSheet(r);
+    const steps = $('steps');
+    steps.innerHTML = '';
+    r.steps.forEach((s) => {
+        const li = document.createElement('li');
+        li.className = 'calc-step';
 
-    navigator.clipboard.writeText(text).then(() => {
-        const original = btn.textContent;
-        btn.textContent = 'Copied!';
-        btn.classList.add('copied');
-        setTimeout(() => { btn.textContent = original; btn.classList.remove('copied'); }, 1500);
+        const head = document.createElement('div');
+        head.className = 'calc-step-head';
+        const label = document.createElement('span');
+        label.className = 'calc-step-label';
+        label.textContent = s.label;
+        const value = document.createElement('span');
+        value.className = 'calc-step-value';
+        value.textContent = s.value;
+        head.append(label, value);
+
+        const formula = document.createElement('code');
+        formula.className = 'calc-step-formula';
+        formula.textContent = s.formula;
+
+        const source = document.createElement('div');
+        source.className = 'calc-step-source';
+        source.textContent = s.source;
+
+        li.append(head, formula, source);
+        steps.appendChild(li);
     });
-}
 
-function toYaml(r) {
-    return [
-        '# PenguinCAM material block (feeds/speeds)',
-        'spindle_speed: ' + r.rpm,
-        'feed_rate: ' + r.feed_xy,
-        'ramp_feed_rate: ' + r.ramp_feed,
-        'plunge_rate: ' + r.peck_feed,
-        'stepover_percentage: ' + r.stepover_percentage,
-        'max_slotting_depth: ' + r.slot_stepdown,
-    ].join('\n');
-}
-
-function toSheet(r) {
-    const machineName = state.machine.name || 'machine';
-    const materialName = state.material.name || 'material';
-    const dia = parseFloat($('tool-diameter').value);
-    const flutes = parseInt($('tool-flutes').value, 10);
-    return [
-        'FRC Feeds & Speeds Setup Sheet',
-        '================================',
-        'Machine:   ' + machineName,
-        'Material:  ' + materialName,
-        'Tool:      ' + dia.toFixed(3) + '" ' + flutes + '-flute',
-        'Operation: ' + r.operation,
-        '',
-        'Spindle RPM:          ' + r.rpm,
-        'XY feed:              ' + r.feed_xy + ' IPM',
-        'Ramp feed:            ' + r.ramp_feed + ' IPM',
-        'Peck/plunge feed:     ' + r.peck_feed + ' IPM',
-        'Stepover:             ' + r.stepover + ' in',
-        'Max slotting stepdown:' + r.slot_stepdown + ' in',
-        'Achieved chipload:    ' + r.chipload_achieved + ' in/tooth',
-        '',
-        r.warnings.length ? 'Warnings:' : 'No warnings.',
-        ...r.warnings.map((w) => ' - ' + w),
-        '',
-        'Note: starting points only. Verify workholding, chip evacuation, and tool quality.',
-    ].join('\n');
+    $('formulas').textContent = r.formulas.join('\n');
 }
 
 init();

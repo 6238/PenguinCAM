@@ -25,8 +25,10 @@
     <main class="content">
         <h1>FRC Router Feeds &amp; Speeds Explainer</h1>
         <p class="lead">
-            A simple calculator showing how tool diameter, flute count, material, and machine
-            limits turn into practical CNC router feeds and speeds.
+            Every input here is a number you can look up &mdash; off your tool's datasheet,
+            a machinability table, or your machine's spec sheet. Nothing is expressed
+            relative to some other tool, and nothing is a fudge factor. The calculator
+            shows its work so you can check it.
         </p>
 
         <div class="info-box disclaimer">
@@ -37,100 +39,360 @@
             </div>
         </div>
 
+        <!-- ================= DATASHEET GUIDE ================= -->
+        <details class="ds-guide" open>
+            <summary><h2>Where these numbers come from</h2></summary>
+
+            <p>
+                Tool vendors publish a <strong>cutting data table</strong> for each end mill
+                series. It is usually one row per workpiece material class. Here is what a
+                typical one looks like, for a 4&nbsp;mm 3-flute AlTiN-coated cutter:
+            </p>
+
+            <div class="ds-sheet">
+                <div class="ds-sheet-head">
+                    <div>
+                        <strong>SOLID CARBIDE END MILL &mdash; SERIES C5131</strong>
+                        <span class="ds-sub">AlTiN coating &middot; 30&deg; helix &middot; centre cutting</span>
+                    </div>
+                    <div class="ds-geom">
+                        &#8709;4.00&nbsp;mm &middot; 3 flutes &middot; LOC 8.00&nbsp;mm &middot; OAL 50&nbsp;mm
+                    </div>
+                </div>
+                <div class="ds-table-wrap">
+                <table class="ds-table">
+                    <thead>
+                        <tr>
+                            <th>Workpiece material</th>
+                            <th><span class="ds-tag">ISO</span></th>
+                            <th><span class="ds-tag">v<sub>c</sub> (SFM)</span></th>
+                            <th><span class="ds-tag">f<sub>z</sub> (in/tooth)</span></th>
+                            <th><span class="ds-tag">a<sub>e</sub> max</span></th>
+                            <th><span class="ds-tag">a<sub>p</sub> max</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Carbon steel, &lt;180 HB</td><td>P</td><td>260&ndash;330</td><td>.0010&ndash;.0016</td><td>0.5&times;D</td><td>1.0&times;D</td></tr>
+                        <tr class="ds-row-hl"><td>Carbon steel, 180&ndash;280 HB</td><td>P</td><td>200&ndash;260</td><td>.0008&ndash;.0013</td><td>0.3&times;D</td><td>0.7&times;D</td></tr>
+                        <tr><td>Stainless, austenitic</td><td>M</td><td>150&ndash;200</td><td>.0007&ndash;.0011</td><td>0.3&times;D</td><td>0.5&times;D</td></tr>
+                        <tr><td>Cast iron, grey</td><td>K</td><td>300&ndash;390</td><td>.0012&ndash;.0018</td><td>0.5&times;D</td><td>1.0&times;D</td></tr>
+                        <tr><td>Titanium / superalloy</td><td>S</td><td>80&ndash;130</td><td>.0005&ndash;.0009</td><td>0.2&times;D</td><td>0.4&times;D</td></tr>
+                    </tbody>
+                </table>
+                </div>
+                <p class="ds-caption">
+                    Illustrative table in the standard vendor format. Use your own tool's
+                    published numbers &mdash; do not cut from this one.
+                </p>
+            </div>
+
+            <h3>Reading it into the fields below</h3>
+            <table class="ds-map">
+                <thead>
+                    <tr><th>On the datasheet</th><th>Field here</th><th>Notes</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>&#8709; / Mill diameter</strong></td>
+                        <td>Tool &rarr; Diameter</td>
+                        <td>Convert mm to inches: mm &divide; 25.4. A 4.00&nbsp;mm cutter is 0.1575&Prime;.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Number of flutes</strong></td>
+                        <td>Tool &rarr; Flutes</td>
+                        <td>Multiplies feed directly. It does <em>not</em> change the RPM limit.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>LOC / length of cut</strong></td>
+                        <td>Tool &rarr; Length of cut</td>
+                        <td>Hard cap on depth per setup. Caps a<sub>p</sub> automatically.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ISO codes (P/M/K/N/S/H)</strong></td>
+                        <td>Tool &rarr; Rated ISO groups</td>
+                        <td>Checked against the material. Geometry and coating are matched to
+                            a material class, so a mismatch is more than a speed question.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>v<sub>c</sub> (SFM or m/min)</strong></td>
+                        <td>Tool &rarr; Datasheet SFM</td>
+                        <td>Pick the row matching your material. m/min &times; 3.28 = SFM.
+                            <em>Leave blank</em> to use the material table instead.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>f<sub>z</sub> (in/tooth or mm/tooth)</strong></td>
+                        <td>Tool &rarr; Datasheet f<sub>z</sub></td>
+                        <td>Take the value for <em>your</em> diameter. mm &divide; 25.4 = inches.
+                            <em>Leave blank</em> to use the material table instead.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>a<sub>e</sub> max / a<sub>p</sub> max</strong></td>
+                        <td>Operation &rarr; overrides</td>
+                        <td>Usually given as a multiple of diameter. The operation presets
+                            already pick sane values; override when the sheet disagrees.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Coating</strong> (AlTiN, TiCN, ZrN&hellip;)</td>
+                        <td>Tool &rarr; Coating</td>
+                        <td>Only used when you leave Datasheet SFM blank, to scale the
+                            material table's surface speed.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="info-box ds-note">
+                <div class="info-icon">&#128161;</div>
+                <div>
+                    <strong>No datasheet?</strong> Plenty of tools ship with nothing but a
+                    product listing. Leave <em>Datasheet SFM</em> and <em>Datasheet f<sub>z</sub></em>
+                    blank and the material table fills them in from published machinability
+                    data, scaled to your tool's diameter and adjusted for its substrate and
+                    coating. That is a starting point rather than a guarantee, so start at the
+                    conservative end and listen to the cut.
+                </div>
+            </div>
+
+            <h3>Where the other two groups come from</h3>
+            <ul class="ds-sources">
+                <li>
+                    <strong>Material</strong> &mdash; a machinability table. Machinery's
+                    Handbook, a tooling vendor's material chart, or the supplier's spec for
+                    the exact alloy. You need surface speed, chipload as a percentage of
+                    diameter, and how deep the material tolerates being cut.
+                </li>
+                <li>
+                    <strong>Machine</strong> &mdash; your machine and spindle spec sheets.
+                    RPM range and max feedrate come off the controller or VFD configuration;
+                    spindle power off the nameplate (kW &times; 1.34 = HP). Rigidity is the
+                    one judgement call: light = hobby gantry or extruded aluminum frame,
+                    medium = welded-steel gantry router, heavy = knee mill or VMC.
+                </li>
+            </ul>
+        </details>
+
+        <!-- ================= CALCULATOR ================= -->
         <div class="fs-grid">
-            <!-- ============ INPUTS ============ -->
             <section class="fs-col fs-inputs">
                 <h2>Inputs</h2>
 
                 <fieldset>
                     <legend>Machine</legend>
+                    <p class="fs-src">From your machine and spindle spec sheets.</p>
                     <label>Preset
                         <select id="machine-preset"></select>
                     </label>
-                    <label>Max XY feed (IPM)
-                        <input type="number" id="machine-xy_feed_max" step="1" min="1">
-                    </label>
-                    <label>Spindle RPM min
-                        <input type="number" id="machine-rpm_min" step="100" min="1">
-                    </label>
-                    <label>Spindle RPM max
-                        <input type="number" id="machine-rpm_max" step="100" min="1">
-                    </label>
+                    <div class="fs-pair">
+                        <label>Spindle RPM min
+                            <input type="number" id="machine-rpm_min" step="100" min="1">
+                        </label>
+                        <label>Spindle RPM max
+                            <input type="number" id="machine-rpm_max" step="100" min="1">
+                        </label>
+                    </div>
+                    <div class="fs-pair">
+                        <label>Max feed (IPM)
+                            <input type="number" id="machine-max_feed" step="10" min="1">
+                        </label>
+                        <label>Max plunge (IPM)
+                            <input type="number" id="machine-max_plunge_feed" step="5" min="1">
+                        </label>
+                    </div>
+                    <div class="fs-pair">
+                        <label>Spindle power (HP)
+                            <input type="number" id="machine-spindle_power_hp" step="0.1" min="0">
+                            <span class="hint">kW &times; 1.34</span>
+                        </label>
+                        <label>Rated at RPM
+                            <input type="number" id="machine-power_base_rpm" step="1000" min="1">
+                            <span class="hint">usually max RPM</span>
+                        </label>
+                    </div>
                     <label>Rigidity
                         <select id="machine-rigidity">
-                            <option value="light">Light</option>
-                            <option value="medium">Medium</option>
-                            <option value="heavy">Heavy</option>
+                            <option value="light">Light &mdash; hobby / extrusion frame</option>
+                            <option value="medium">Medium &mdash; welded-steel router</option>
+                            <option value="heavy">Heavy &mdash; knee mill or VMC</option>
                         </select>
                     </label>
                 </fieldset>
 
                 <fieldset>
                     <legend>Material</legend>
+                    <p class="fs-src">From a machinability table for the exact alloy.</p>
                     <label>Preset
                         <select id="material-preset"></select>
                     </label>
-                    <label>Preferred RPM
-                        <input type="number" id="material-preferred_rpm" step="100" min="1">
-                    </label>
-                    <label>Reference chipload (in/tooth)
-                        <input type="number" id="material-chipload_ref" step="0.0001" min="0">
-                    </label>
-                    <label>Slotting multiplier
-                        <input type="number" id="material-slotting_multiplier" step="0.01" min="0" max="1">
-                    </label>
-                    <label>Stepover ratio (x dia)
-                        <input type="number" id="material-stepover_ratio" step="0.01" min="0" max="1">
-                    </label>
+                    <p class="fs-meta" id="material-meta"></p>
+                    <div class="fs-pair">
+                        <label>SFM low
+                            <input type="number" id="material-sfm_lo" step="10" min="1">
+                        </label>
+                        <label>SFM high
+                            <input type="number" id="material-sfm_hi" step="10" min="1">
+                        </label>
+                    </div>
+                    <div class="fs-pair">
+                        <label>f<sub>z</sub> low (% of D)
+                            <input type="number" id="material-fz_lo" step="0.1" min="0">
+                        </label>
+                        <label>f<sub>z</sub> high (% of D)
+                            <input type="number" id="material-fz_hi" step="0.1" min="0">
+                        </label>
+                    </div>
+                    <div class="fs-pair">
+                        <label>Max slot depth (&times;D)
+                            <input type="number" id="material-max_ap_ratio" step="0.05" min="0">
+                        </label>
+                        <label>Max ramp angle (&deg;)
+                            <input type="number" id="material-max_ramp_angle" step="0.5" min="0">
+                        </label>
+                    </div>
                 </fieldset>
 
                 <fieldset>
                     <legend>Tool</legend>
+                    <p class="fs-src">From the tool's datasheet or product listing.</p>
                     <label>Preset
                         <select id="tool-preset"></select>
                     </label>
-                    <label>Diameter (in)
-                        <input type="number" id="tool-diameter" step="0.001" min="0.01">
-                    </label>
-                    <label>Flutes
-                        <input type="number" id="tool-flutes" step="1" min="1" max="6">
-                    </label>
+                    <div class="fs-pair">
+                        <label>Diameter (in)
+                            <input type="number" id="tool-diameter" step="0.001" min="0.01">
+                        </label>
+                        <label>Flutes
+                            <input type="number" id="tool-flutes" step="1" min="1" max="8">
+                        </label>
+                    </div>
+                    <div class="fs-pair">
+                        <label>Length of cut (in)
+                            <input type="number" id="tool-loc" step="0.01" min="0">
+                        </label>
+                        <label>Rated ISO groups
+                            <input type="text" id="tool-iso_groups" placeholder="P, M, K">
+                        </label>
+                    </div>
+                    <div class="fs-pair">
+                        <label>Substrate
+                            <select id="tool-substrate">
+                                <option value="carbide">Solid carbide</option>
+                                <option value="cobalt">Cobalt (HSS-Co)</option>
+                                <option value="hss">HSS</option>
+                            </select>
+                        </label>
+                        <label>Coating
+                            <select id="tool-coating">
+                                <option value="uncoated">Uncoated</option>
+                                <option value="tin">TiN</option>
+                                <option value="ticn">TiCN</option>
+                                <option value="altin_tialn">AlTiN / TiAlN</option>
+                                <option value="zrn_dlc">ZrN / DLC / polished</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="fs-pair fs-override">
+                        <label>Datasheet SFM
+                            <input type="number" id="tool-datasheet_sfm" step="10" min="0" placeholder="optional">
+                        </label>
+                        <label>Datasheet f<sub>z</sub> (in/tooth)
+                            <input type="number" id="tool-datasheet_fz" step="0.0001" min="0" placeholder="optional">
+                        </label>
+                    </div>
+                    <p class="hint hint-block">
+                        Fill these in and they override the material table. Leave them blank
+                        and the material table is used instead.
+                    </p>
+                </fieldset>
+
+                <fieldset>
+                    <legend>Operation</legend>
+                    <p class="fs-src">What the toolpath actually does.</p>
                     <label>Operation
-                        <select id="operation">
-                            <option value="profile">Profile / slot</option>
-                            <option value="pocket">Pocket / clearing</option>
-                            <option value="peck_drill">Peck-drill hole</option>
-                        </select>
+                        <select id="operation"></select>
+                    </label>
+                    <p class="fs-meta" id="operation-blurb"></p>
+                    <div class="fs-pair fs-override">
+                        <label>a<sub>e</sub> override (in)
+                            <input type="number" id="ae_override" step="0.001" min="0" placeholder="auto">
+                        </label>
+                        <label>a<sub>p</sub> override (in)
+                            <input type="number" id="ap_override" step="0.001" min="0" placeholder="auto">
+                        </label>
+                    </div>
+                    <label id="bore-row" hidden>Finished bore diameter (in)
+                        <input type="number" id="bore_diameter" step="0.001" min="0" placeholder="optional">
+                        <span class="hint">gives the helical drop per revolution</span>
                     </label>
                 </fieldset>
             </section>
 
-            <!-- ============ RESULTS ============ -->
             <section class="fs-col fs-results">
                 <h2>Results</h2>
                 <div class="result-grid">
-                    <div class="result-card"><span class="result-label">Spindle RPM</span><span class="result-value" id="r-rpm">&ndash;</span></div>
-                    <div class="result-card primary"><span class="result-label">XY feed</span><span class="result-value" id="r-feed">&ndash;</span><span class="result-unit">IPM</span></div>
-                    <div class="result-card"><span class="result-label">Ramp feed</span><span class="result-value" id="r-ramp">&ndash;</span><span class="result-unit">IPM</span></div>
-                    <div class="result-card"><span class="result-label">Peck / plunge feed</span><span class="result-value" id="r-peck">&ndash;</span><span class="result-unit">IPM</span></div>
-                    <div class="result-card"><span class="result-label">Stepover</span><span class="result-value" id="r-stepover">&ndash;</span><span class="result-unit">in</span></div>
-                    <div class="result-card"><span class="result-label">Max slotting stepdown</span><span class="result-value" id="r-stepdown">&ndash;</span><span class="result-unit">in</span></div>
-                    <div class="result-card"><span class="result-label">Achieved chipload</span><span class="result-value" id="r-chipload">&ndash;</span><span class="result-unit">in/tooth</span></div>
+                    <div class="result-card primary">
+                        <span class="result-label">Spindle RPM</span>
+                        <span class="result-value" id="r-rpm">&ndash;</span>
+                        <span class="result-unit" id="r-sfm"></span>
+                    </div>
+                    <div class="result-card primary">
+                        <span class="result-label">Feed rate</span>
+                        <span class="result-value" id="r-feed">&ndash;</span>
+                        <span class="result-unit">IPM</span>
+                    </div>
+                    <div class="result-card">
+                        <span class="result-label">Radial depth a<sub>e</sub></span>
+                        <span class="result-value" id="r-ae">&ndash;</span>
+                        <span class="result-unit" id="r-ae-pct"></span>
+                    </div>
+                    <div class="result-card">
+                        <span class="result-label">Axial depth a<sub>p</sub></span>
+                        <span class="result-value" id="r-ap">&ndash;</span>
+                        <span class="result-unit" id="r-ap-pct"></span>
+                    </div>
+                    <div class="result-card">
+                        <span class="result-label">Programmed f<sub>z</sub></span>
+                        <span class="result-value" id="r-fz">&ndash;</span>
+                        <span class="result-unit">in/tooth</span>
+                    </div>
+                    <div class="result-card">
+                        <span class="result-label">Actual chip</span>
+                        <span class="result-value" id="r-chip">&ndash;</span>
+                        <span class="result-unit" id="r-thinning"></span>
+                    </div>
+                    <div class="result-card">
+                        <span class="result-label">Ramp</span>
+                        <span class="result-value" id="r-ramp">&ndash;</span>
+                        <span class="result-unit" id="r-ramp-unit"></span>
+                    </div>
+                    <div class="result-card">
+                        <span class="result-label">Straight plunge</span>
+                        <span class="result-value" id="r-plunge">&ndash;</span>
+                        <span class="result-unit">IPM</span>
+                    </div>
+                    <div class="result-card">
+                        <span class="result-label">Removal rate</span>
+                        <span class="result-value" id="r-mrr">&ndash;</span>
+                        <span class="result-unit">in&sup3;/min</span>
+                    </div>
+                    <div class="result-card">
+                        <span class="result-label">Spindle load</span>
+                        <span class="result-value" id="r-power">&ndash;</span>
+                        <span class="result-unit" id="r-power-avail"></span>
+                    </div>
+                    <div class="result-card" id="r-pitch-card" hidden>
+                        <span class="result-label">Helical pitch</span>
+                        <span class="result-value" id="r-pitch">&ndash;</span>
+                        <span class="result-unit">in / rev</span>
+                    </div>
                 </div>
 
                 <div id="warnings" class="warnings"></div>
-
-                <div class="copy-buttons">
-                    <button data-copy="yaml">Copy YAML</button>
-                    <button data-copy="json">Copy JSON</button>
-                    <button data-copy="sheet">Copy setup sheet</button>
-                </div>
+                <p class="fs-meta" id="material-notes"></p>
             </section>
 
-            <!-- ============ EXPLANATION ============ -->
             <section class="fs-col fs-explain">
-                <h2>Explanation</h2>
+                <h2>How this was calculated</h2>
                 <p id="explanation" class="explanation">&ndash;</p>
+                <ol id="steps" class="calc-steps"></ol>
                 <h3>Formulas</h3>
                 <pre id="formulas" class="formulas"></pre>
             </section>

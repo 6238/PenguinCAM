@@ -1984,7 +1984,8 @@ def feeds_speeds_presets():
         'machines': feeds_speeds.MACHINES,
         'materials': feeds_speeds.MATERIALS,
         'tools': feeds_speeds.TOOL_PRESETS,
-        'reference_tool': feeds_speeds.REFERENCE_TOOL,
+        'operations': feeds_speeds.OPERATIONS,
+        'iso_groups': feeds_speeds.ISO_GROUP_NAMES,
     })
 
 @app.route('/api/feeds-speeds', methods=['POST'])
@@ -1992,17 +1993,21 @@ def feeds_speeds_presets():
 def api_feeds_speeds():
     """Compute derived feeds & speeds from machine + material + tool inputs.
 
-    Body: {machine, material, tool: {diameter, flutes}, operation}. The machine and
-    material may each be a preset key or an inline dict of overrides (see
-    feeds_speeds._resolve), so the public calculator works without PenguinCAM presets.
+    Body: {machine, material, tool, operation, ae_override, ap_override,
+    bore_diameter}. Each of machine/material/tool may be a preset key or an inline
+    dict of overrides (see feeds_speeds._resolve), so the public calculator works
+    without PenguinCAM presets.
     """
     data = request.get_json(silent=True) or {}
     try:
         result = feeds_speeds.calculate_feeds(
-            data.get('machine', 'omio_x8'),
-            data.get('material', 'plywood'),
-            data.get('tool') or feeds_speeds.TOOL_PRESETS['4mm_1f'],
-            operation=data.get('operation', 'profile'),
+            data.get('machine') or 'avid_pro2424',
+            data.get('material') or 'plywood',
+            data.get('tool') or '4mm_1f',
+            operation=data.get('operation') or 'profile',
+            ae_override=data.get('ae_override'),
+            ap_override=data.get('ap_override'),
+            bore_diameter=data.get('bore_diameter'),
         )
     except (ValueError, TypeError, KeyError) as exc:
         return jsonify({'error': str(exc)}), 400

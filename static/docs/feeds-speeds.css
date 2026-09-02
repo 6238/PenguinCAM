@@ -128,33 +128,6 @@
     color: var(--text);
 }
 
-.copy-buttons {
-    margin-top: 1.25rem;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-}
-
-.copy-buttons button {
-    background: var(--surface-hover);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.45rem 0.8rem;
-    font-size: 0.85rem;
-    cursor: pointer;
-}
-
-.copy-buttons button:hover {
-    border-color: var(--primary);
-    color: var(--primary);
-}
-
-.copy-buttons button.copied {
-    border-color: var(--primary);
-    background: rgba(253, 181, 21, 0.15);
-}
-
 /* --- Explanation --- */
 .explanation {
     color: var(--text);
@@ -175,6 +148,288 @@
     font-family: "SFMono-Regular", Menlo, Consolas, monospace;
     font-size: 0.8rem;
     color: var(--text);
-    white-space: pre-wrap;
+    /* The formula list aligns a trailing comment per line; wrapping destroys that
+       alignment, so scroll the block horizontally instead. */
+    white-space: pre;
     overflow-x: auto;
+}
+
+[hidden] { display: none !important; }
+
+/* --- Datasheet guide --------------------------------------------------------- */
+.ds-guide {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0 1.25rem;
+    margin: 2rem 0;
+}
+
+.ds-guide summary {
+    cursor: pointer;
+    padding: 0.25rem 0;
+    list-style: none;
+}
+
+.ds-guide summary::-webkit-details-marker { display: none; }
+
+.ds-guide summary h2 {
+    display: inline-block;
+    font-size: 1.15rem;
+    margin: 1rem 0;
+}
+
+.ds-guide summary::before {
+    content: "\25B6";
+    color: var(--primary);
+    font-size: 0.7rem;
+    margin-right: 0.6rem;
+}
+
+.ds-guide[open] summary::before { content: "\25BC"; }
+.ds-guide[open] summary { border-bottom: 1px solid var(--border); }
+
+.ds-guide > *:last-child { margin-bottom: 1.25rem; }
+
+.ds-guide h3 {
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--primary);
+    margin-top: 1.75rem;
+}
+
+/* The mock vendor datasheet */
+.ds-sheet {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+.ds-sheet-head {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding-bottom: 0.75rem;
+    margin-bottom: 0.75rem;
+    border-bottom: 2px solid var(--primary);
+    font-size: 0.85rem;
+}
+
+.ds-sub {
+    display: block;
+    color: var(--text-dim);
+    font-weight: normal;
+    font-size: 0.8rem;
+    margin-top: 0.15rem;
+}
+
+.ds-geom {
+    color: var(--text-dim);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.8rem;
+}
+
+.ds-table-wrap { overflow-x: auto; }
+
+.ds-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.ds-table th {
+    text-align: left;
+    padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+.ds-table td {
+    padding: 0.35rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+
+.ds-table tbody tr:last-child td { border-bottom: none; }
+
+.ds-table .ds-row-hl td {
+    background: rgba(253, 181, 21, 0.08);
+    color: var(--text);
+}
+
+.ds-tag {
+    display: inline-block;
+    background: var(--primary);
+    color: #1a1d23;
+    border-radius: 4px;
+    padding: 0.1rem 0.4rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.ds-caption {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    font-style: italic;
+    margin: 0.75rem 0 0;
+}
+
+/* Datasheet -> field mapping */
+.ds-map {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    margin: 1rem 0;
+}
+
+.ds-map th {
+    text-align: left;
+    padding: 0.5rem 0.6rem;
+    border-bottom: 2px solid var(--border);
+    color: var(--primary);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.ds-map td {
+    padding: 0.55rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+
+.ds-map td:nth-child(2) {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.8rem;
+    color: var(--accent);
+    white-space: nowrap;
+}
+
+.ds-map td:nth-child(3) { color: var(--text-dim); }
+
+.ds-note { margin: 1.25rem 0; }
+
+.ds-sources {
+    font-size: 0.88rem;
+    line-height: 1.6;
+    padding-left: 1.1rem;
+}
+
+.ds-sources li { margin-bottom: 0.6rem; }
+
+/* --- Input provenance hints -------------------------------------------------- */
+.fs-src {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    font-style: italic;
+    margin: 0 0 0.75rem;
+}
+
+.fs-meta {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    margin: 0.25rem 0 0.75rem;
+    line-height: 1.5;
+}
+
+.fs-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+    align-items: end;
+}
+
+.fs-override label { color: var(--accent); }
+
+.hint {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    font-style: italic;
+    margin-top: 0.15rem;
+}
+
+.hint-block {
+    margin-top: 0.5rem;
+    line-height: 1.5;
+}
+
+/* --- Calculation steps ------------------------------------------------------- */
+.calc-steps {
+    list-style: none;
+    counter-reset: step;
+    padding: 0;
+    margin: 1.25rem 0;
+}
+
+.calc-step {
+    counter-increment: step;
+    position: relative;
+    padding: 0 0 0.9rem 2rem;
+    margin-bottom: 0.9rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.calc-steps .calc-step:last-child { border-bottom: none; margin-bottom: 0; }
+
+.calc-step::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 0.05rem;
+    width: 1.4rem;
+    height: 1.4rem;
+    line-height: 1.4rem;
+    text-align: center;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #1a1d23;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.calc-step-head {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.5rem;
+}
+
+.calc-step-label {
+    font-weight: 600;
+    font-size: 0.88rem;
+}
+
+.calc-step-value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.88rem;
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.calc-step-formula {
+    display: block;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.76rem;
+    color: var(--text-dim);
+    background: var(--bg);
+    border-radius: 4px;
+    padding: 0.35rem 0.5rem;
+    margin: 0.35rem 0;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.calc-step-source {
+    font-size: 0.76rem;
+    color: var(--text-dim);
+    line-height: 1.45;
 }
