@@ -2586,6 +2586,40 @@ class FRCPostProcessor:
             }
         )
 
+    def _clamped_helix_radius(self, travel_region, entry_x: float, entry_y: float) -> float:
+        """Preset helix entry radius, clamped so the helix cannot cut outside the feature.
+
+        `travel_region` is the tool-CENTER travel area (the tool-compensated pocket), so a
+        helix of radius r about the entry point stays inside the finished feature exactly
+        when r <= distance(entry, travel_region.boundary).
+
+        The preset radius (tool_radius * helix_radius_multiplier) is sized for open pockets
+        and is not bounded by the feature. On any feature narrower than
+        2 * tool_radius * (1 + helix_radius_multiplier) the unclamped helix sweeps a circle
+        wider than the pocket itself and gouges the wall - the finished feature then comes
+        out at the helix diameter, not the programmed one.
+
+        No lower floor is applied. A floor expressed as a fraction of tool_radius can itself
+        exceed the geometric limit on a small feature, which is the very gouge being
+        prevented; the caller is responsible for rejecting a radius too small to be useful.
+
+        Returns:
+            Helix radius in the caller's units, always <= 90% of the geometric limit.
+        """
+        preset = self.tool_radius * self.helix_radius_multiplier
+        max_radius = travel_region.boundary.distance(Point(entry_x, entry_y))
+        if max_radius <= 0:
+            return preset
+        return min(preset, max_radius * 0.9)
+
+    def _helix_too_small(self, helix_radius: float) -> bool:
+        """True if a helix of this radius is too tight to be a meaningful entry move.
+
+        Below this the helix degenerates toward a straight plunge and the pass count
+        explodes, so the caller should reject the feature instead of emitting it.
+        """
+        return helix_radius < self.tool_radius * 0.05
+
     def _calculate_helical_passes(self, toolpath_radius: float, target_angle_deg: float = None, ramp_start_height: float = None) -> Tuple[int, float]:
         """
         Calculate number of helical passes needed for a safe plunge angle.
@@ -3183,12 +3217,25 @@ class FRCPostProcessor:
         entry_x = entry_point.x
         entry_y = entry_point.y
 
-        # Calculate helical entry parameters
-        helix_radius = self.tool_radius * self.helix_radius_multiplier  # Helix radius from material preset
+        # Calculate helical entry parameters. The preset radius must be clamped to the
+        # pocket: unclamped, a small pocket is bored out to the helix diameter instead of
+        # its own.
+        preset_helix_radius = self.tool_radius * self.helix_radius_multiplier
+        helix_radius = self._clamped_helix_radius(offset_poly, entry_x, entry_y)
+        if self._helix_too_small(helix_radius):
+            center_x, center_y = self._get_polygon_center(pocket_poly)
+            self._add_error(
+                f"Pocket at approximately ({center_x:.3f}, {center_y:.3f}) is too small for a "
+                f"helical entry with the {self.tool_diameter:.4f}\" tool - use a smaller tool "
+                f"or a peck-drilled entry")
+            return gcode
         ramp_start_height = self.material_top + self.ramp_start_clearance
         num_helical_passes, depth_per_pass = self._calculate_helical_passes(helix_radius, ramp_start_height=ramp_start_height)
 
         gcode.append(f"(Pocket with helical entry at center: {num_helical_passes} passes at {self.ramp_angle} deg)")
+        if helix_radius < preset_helix_radius - 1e-9:
+            gcode.append(f"(Helix entry radius reduced from {preset_helix_radius:.4f} to "
+                         f"{helix_radius:.4f} to stay inside this pocket)")
 
         # Position at pocket center
         gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.traverse_rate}  ; Position at pocket center")
@@ -3307,9 +3354,28 @@ class FRCPostProcessor:
         if circularity < 0.95:
             return None
 
+        # Circularity alone does NOT separate a circle from a near-round obround. A 4.0 mm
+        # wide slot with only 0.69 mm of straight section scores 0.988 - comfortably inside
+        # the 0.95 gate - and would then be cleared as a circle of entirely the wrong size.
+        # Vertex distance from the centroid does separate them cleanly: every vertex of a
+        # polygon inscribed in a circle lies at exactly R for ANY tessellation density, so a
+        # true circle scores 1.000 no matter how coarsely the DXF arc was sampled, while that
+        # slot spans 1.97-2.34 mm (ratio 1.19). Tightening the circularity threshold instead
+        # would not work - it would have to exceed 0.99 to reject the slot, which starts
+        # rejecting coarsely tessellated real circles.
         centroid = polygon.centroid
-        radius = math.sqrt(area / math.pi)
-        return (centroid.x, centroid.y, radius)
+        distances = [math.hypot(x - centroid.x, y - centroid.y)
+                     for x, y in polygon.exterior.coords[:-1]]
+        if not distances:
+            return None
+        r_min = min(distances)
+        r_max = max(distances)
+        if r_min <= 0 or (r_max / r_min) > 1.02:
+            return None
+
+        # Measured radius, not sqrt(area/pi): the equal-area radius is only correct for a
+        # genuine circle, and reporting it invites reuse on shapes that are not one.
+        return (centroid.x, centroid.y, (r_min + r_max) / 2)
 
     def _detect_circular_ring(self, polygon: Polygon) -> Optional[Tuple[float, float, float, float]]:
         """Check if a polygon with interiors is approximately a circular ring.
@@ -3573,19 +3639,25 @@ class FRCPostProcessor:
             entry_x = offset_poly.centroid.x
             entry_y = offset_poly.centroid.y
 
-        # Calculate helical entry parameters
-        helix_radius = self.tool_radius * self.helix_radius_multiplier
-
-        # Adapt helix radius to fit within available space
-        # The max helix radius at the entry point is the distance from entry to nearest boundary
-        max_helix_radius = offset_poly.boundary.distance(Point(entry_x, entry_y))
-        if helix_radius > max_helix_radius * 0.9:  # 90% safety factor
-            helix_radius = max(max_helix_radius * 0.9, self.tool_radius * 0.25)  # Floor at 25% of tool_radius
+        # Calculate helical entry parameters. This previously clamped to the boundary but
+        # then re-floored at 25% of tool_radius, and that floor can exceed the boundary
+        # distance on a small pocket - reintroducing the gouge the clamp exists to prevent.
+        preset_helix_radius = self.tool_radius * self.helix_radius_multiplier
+        helix_radius = self._clamped_helix_radius(offset_poly, entry_x, entry_y)
+        if self._helix_too_small(helix_radius):
+            self._add_error(
+                f"Pocket at approximately ({entry_x:.3f}, {entry_y:.3f}) is too small for a "
+                f"helical entry with the {self.tool_diameter:.4f}\" tool - use a smaller tool "
+                f"or a peck-drilled entry")
+            return gcode
 
         ramp_start_height = self.material_top + self.ramp_start_clearance
         num_helical_passes, depth_per_pass = self._calculate_helical_passes(helix_radius, ramp_start_height=ramp_start_height)
 
         gcode.append(f"(Island-aware pocket with helical entry: {num_helical_passes} passes at {self.ramp_angle} deg)")
+        if helix_radius < preset_helix_radius - 1e-9:
+            gcode.append(f"(Helix entry radius reduced from {preset_helix_radius:.4f} to "
+                         f"{helix_radius:.4f} to stay inside this pocket)")
 
         # Position at entry point
         gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.traverse_rate}  ; Position at entry point")

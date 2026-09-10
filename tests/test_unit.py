@@ -20,6 +20,8 @@ from frc_cam_postprocessor import (
 )
 from team_config import TeamConfig, parse_length, DEFAULT_TOOL_DIAMETER_IN
 from onshape_integration import OnshapeClient
+from shapely.geometry import Point
+from shapely.ops import unary_union
 
 
 class TestControllerPortability(unittest.TestCase):
@@ -412,6 +414,108 @@ class TestMaterialPresets(unittest.TestCase):
         pp.apply_material_preset('plywood')
         # 75 IPM * 25.4 = 1905 mm/min
         self.assertEqual(pp.feed_rate, 75.0 * 25.4)
+
+
+class TestSolidCircleDetection(unittest.TestCase):
+    """Circle detection must not accept a near-round obround slot.
+
+    Regression: a 4.0 mm wide slot with 0.69 mm of straight section scores 0.988 on the
+    isoperimetric quotient, passing the 0.95 gate. It was then cleared as a circle sized
+    by sqrt(area/pi), producing a round hole ~0.35 mm oversize instead of a slot.
+    """
+
+    MM = 25.4
+
+    def setUp(self):
+        self.pp = FRCPostProcessor(0.25, 0.125)
+        self.pp.apply_material_preset('plywood')
+
+    def _obround(self, width_mm, straight_mm, quad_segs=64):
+        r = (width_mm / 2) / self.MM
+        half = (straight_mm / 2) / self.MM
+        return unary_union([Point(-half, 0).buffer(r, quad_segs=quad_segs),
+                            Point(half, 0).buffer(r, quad_segs=quad_segs)])
+
+    def _circle(self, diameter_mm, quad_segs):
+        return Point(0, 0).buffer((diameter_mm / 2) / self.MM, quad_segs=quad_segs)
+
+    def test_rejects_near_round_obround_slot(self):
+        # The exact geometry that shipped as 5.08 mm round holes.
+        self.assertIsNone(self.pp._detect_solid_circle(self._obround(4.0, 0.6863)))
+
+    def test_rejects_longer_obround_slot(self):
+        self.assertIsNone(self.pp._detect_solid_circle(self._obround(4.0, 1.3726)))
+
+    def test_accepts_circle_at_any_tessellation_density(self):
+        # Every vertex of a polygon inscribed in a circle sits at exactly R, so a coarse
+        # DXF arc must still be recognised. This is why the fix is a radial test and not
+        # a tighter circularity threshold.
+        for quad_segs in (4, 8, 16, 64):
+            with self.subTest(quad_segs=quad_segs):
+                self.assertIsNotNone(self.pp._detect_solid_circle(self._circle(4.0, quad_segs)))
+
+    def test_reports_measured_radius_not_equal_area_radius(self):
+        result = self.pp._detect_solid_circle(self._circle(14.0, 64))
+        self.assertIsNotNone(result)
+        self.assertAlmostEqual(result[2] * self.MM, 7.0, places=3)
+
+
+class TestHelixRadiusClamp(unittest.TestCase):
+    """The helix entry must never sweep outside the feature it is entering.
+
+    Regression: helix_radius = tool_radius * helix_radius_multiplier was unbounded, so any
+    pocket narrower than 2 * tool_radius * (1 + multiplier) was bored out to the helix
+    diameter. With a 1/8" tool at multiplier 0.60 that is every feature under 5.08 mm.
+    """
+
+    MM = 25.4
+
+    def setUp(self):
+        self.pp = FRCPostProcessor(0.25, 0.125)
+        self.pp.apply_material_preset('plywood')
+        self.pp.helix_radius_multiplier = 0.60
+
+    def _entry(self, travel_region):
+        point = travel_region.centroid
+        if not travel_region.contains(point):
+            point = travel_region.representative_point()
+        return point
+
+    def _assert_inside(self, feature_poly):
+        travel = feature_poly.buffer(-self.pp.tool_radius)
+        entry = self._entry(travel)
+        radius = self.pp._clamped_helix_radius(travel, entry.x, entry.y)
+        limit = travel.boundary.distance(Point(entry.x, entry.y))
+        self.assertLessEqual(radius, limit,
+                             "helix would cut outside the finished feature")
+        return radius, limit
+
+    def test_helix_stays_inside_small_circular_pocket(self):
+        for diameter_mm in (3.5, 4.0, 4.5, 5.0, 5.08, 6.0, 14.0):
+            with self.subTest(diameter_mm=diameter_mm):
+                self._assert_inside(Point(0, 0).buffer((diameter_mm / 2) / self.MM, quad_segs=64))
+
+    def test_small_pocket_is_clamped_below_preset(self):
+        radius, _ = self._assert_inside(Point(0, 0).buffer((4.0 / 2) / self.MM, quad_segs=64))
+        self.assertLess(radius, self.pp.tool_radius * self.pp.helix_radius_multiplier)
+
+    def test_large_pocket_keeps_the_preset_radius(self):
+        radius, _ = self._assert_inside(Point(0, 0).buffer((14.0 / 2) / self.MM, quad_segs=64))
+        self.assertAlmostEqual(radius, self.pp.tool_radius * self.pp.helix_radius_multiplier)
+
+    def test_no_floor_is_applied_above_the_geometric_limit(self):
+        # The previous clamp re-floored at 0.25 * tool_radius, which on these two slots
+        # exceeds the boundary distance and so gouged despite the clamp being present.
+        for straight_mm in (0.6863, 1.3726):
+            with self.subTest(straight_mm=straight_mm):
+                r = (4.0 / 2) / self.MM
+                half = (straight_mm / 2) / self.MM
+                slot = unary_union([Point(-half, 0).buffer(r, quad_segs=64),
+                                    Point(half, 0).buffer(r, quad_segs=64)])
+                radius, limit = self._assert_inside(slot)
+                self.assertLess(limit, self.pp.tool_radius * 0.25,
+                                "test geometry no longer exercises the floor bug")
+                self.assertLess(radius, self.pp.tool_radius * 0.25)
 
 
 class TestHelicalPassCalculation(unittest.TestCase):
