@@ -10,6 +10,7 @@ import os
 import tempfile
 
 import ezdxf
+from shapely.geometry import Polygon
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -20,6 +21,7 @@ from frc_cam_postprocessor import (
 )
 from team_config import TeamConfig, parse_length, DEFAULT_TOOL_DIAMETER_IN
 from onshape_integration import OnshapeClient
+from dxf_geometry import entities_to_closed_paths, polygon_from_path
 
 
 class TestControllerPortability(unittest.TestCase):
@@ -136,7 +138,6 @@ class TestSharedDxfStitcher(unittest.TestCase):
         return ezdxf.new().modelspace()
 
     def test_lines_and_ellipse_arc_close(self):
-        from dxf_geometry import entities_to_closed_paths
         msp = self._msp()
         msp.add_line((0, 0), (10, 0)); msp.add_line((10, 0), (10, 5)); msp.add_line((0, 5), (0, 0))
         msp.add_ellipse(center=(5, 5), major_axis=(5, 0), ratio=0.4, start_param=0, end_param=math.pi)
@@ -147,14 +148,12 @@ class TestSharedDxfStitcher(unittest.TestCase):
         self.assertGreater(len(paths[0]), 4)
 
     def test_full_ellipse_is_a_closed_path(self):
-        from dxf_geometry import entities_to_closed_paths
         msp = self._msp()
         msp.add_ellipse(center=(0, 0), major_axis=(4, 0), ratio=0.5, start_param=0, end_param=2 * math.pi)
         paths = entities_to_closed_paths(ellipses=list(msp.query('ELLIPSE')))
         self.assertEqual(len(paths), 1)
 
     def test_open_loop_reported_not_dropped_silently(self):
-        from dxf_geometry import entities_to_closed_paths
         msp = self._msp()
         # 3 sides of a square (missing the 4th) -> an open chain, not a closed path.
         msp.add_line((0, 0), (10, 0)); msp.add_line((10, 0), (10, 10)); msp.add_line((10, 10), (0, 10))
@@ -164,6 +163,46 @@ class TestSharedDxfStitcher(unittest.TestCase):
         self.assertEqual(paths, [])
         self.assertEqual(len(seen), 1)
         self.assertAlmostEqual(seen[0], 10.0, places=3)   # end-to-end gap of the open chain
+
+    def test_half_grid_vertex_does_not_split_a_ring(self):
+        """A shared vertex sitting exactly on a snap-grid HALF step used to snap UP from
+        one entity and DOWN from the neighbour that meets it (float noise decides which),
+        splitting the junction by a full grid step. The ring then closed only within
+        tolerance, so Polygon() sealed it with a hair-length segment doubling back along
+        the first edge - a zero-area spike that makes the polygon invalid. Every consumer
+        tests is_valid, so the whole feature vanished from the part with no error.
+        (Real case: a 7.5 x 3.25 rounded-rect cutout tangent at y=9.6875 went missing.)"""
+        msp = self._msp()
+        # y = 0.6875 is exactly 687.5 snap steps; the two spellings below are the same
+        # CAD vertex as an exporter emits it into two different entities.
+        exact, noisy = 0.6875, 0.687499999999998
+        msp.add_line((0, 0), (1, 0))
+        msp.add_line((1, 0), (1, exact))
+        msp.add_line((1, noisy), (0, noisy))
+        msp.add_line((0, exact), (0, 0))
+        paths = entities_to_closed_paths(lines=list(msp.query('LINE')))
+        self.assertEqual(len(paths), 1)
+        poly = Polygon(paths[0])
+        self.assertTrue(poly.is_valid, 'half-grid vertex split the ring into a spike')
+        # Snapping quantizes 0.6875 to the 0.001" grid, so allow one grid step of slack.
+        self.assertAlmostEqual(poly.area, 0.6875, delta=0.001)
+
+    def test_polygon_from_path_repairs_a_spiked_ring(self):
+        """Defence in depth for the same failure: a ring whose closing point doubles back
+        must be repaired, never silently discarded - a dropped ring is a missing cutout."""
+        # The closing point lands ON the first edge, so sealing the ring retraces it.
+        spiked = [(0, 0), (0, 1), (1, 1), (1, 0), (0, 0.001)]
+        self.assertFalse(Polygon(spiked).is_valid)
+        poly, coords = polygon_from_path(spiked)
+        self.assertIsNotNone(poly)
+        self.assertTrue(poly.is_valid)
+        self.assertAlmostEqual(poly.area, 1.0, delta=0.002)   # spike carries no area
+        self.assertGreaterEqual(len(coords), 3)
+
+    def test_polygon_from_path_rejects_zero_area_path(self):
+        poly, coords = polygon_from_path([(0, 0), (1, 1), (2, 2)])  # collinear, no area
+        self.assertIsNone(poly)
+        self.assertIsNone(coords)
 
 
 class TestEllipsePerimeterStitching(unittest.TestCase):

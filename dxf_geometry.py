@@ -14,8 +14,9 @@ Both call entities_to_closed_paths() so the sampling and stitching live in ONE p
 
 import math
 
-from shapely.geometry import LineString
+from shapely.geometry import LineString, Polygon
 from shapely.ops import linemerge
+from shapely.validation import make_valid
 
 
 # Max deviation (sagitta) allowed when flattening a curve to line segments, in drawing
@@ -23,6 +24,15 @@ from shapely.ops import linemerge
 # tessellated to the SAME fidelity. Well under machining tolerance, so the linearized
 # cut is visually and dimensionally indistinguishable from the true curve.
 CHORD_TOLERANCE = 0.001
+
+# Decimals to quantize a raw CAD coordinate to before snapping it to the grid.
+# CAD exports carry float-representation noise: the SAME shared vertex arrives as
+# 9.6875 from an ARC and 9.687499999999998 from the LINE that meets it. Grid snapping
+# alone does not fuse them - a value sitting exactly on a grid half-step rounds UP from
+# one entity and DOWN from the other, splitting a coincident junction into two points a
+# full grid step apart. Quantizing first collapses the noise so both snap identically.
+# 1e-9" is ~5 orders of magnitude below the snap grid and far below any real geometry.
+COORD_DECIMALS = 9
 
 
 def sample_arc(arc, distance=CHORD_TOLERANCE):
@@ -106,7 +116,10 @@ def entities_to_closed_paths(lines=(), arcs=(), ellipses=(), splines=(), polylin
         List of closed paths, each a list of (x, y) points (no duplicated closing point).
     """
     def snap_point(x, y):
-        return (round(x / snap) * snap, round(y / snap) * snap)
+        # Quantize float noise away FIRST (see COORD_DECIMALS) so coincident endpoints
+        # never straddle a grid half-step and land on different grid cells.
+        return (round(round(x, COORD_DECIMALS) / snap) * snap,
+                round(round(y, COORD_DECIMALS) / snap) * snap)
 
     segments = []
     for line in lines:
@@ -141,10 +154,55 @@ def entities_to_closed_paths(lines=(), arcs=(), ellipses=(), splines=(), polylin
         if len(coords) < 3:
             continue
         gap = math.hypot(coords[0][0] - coords[-1][0], coords[0][1] - coords[-1][1])
-        if gap < close_tolerance:
-            if coords[0] == coords[-1]:
-                coords = coords[:-1]
-            closed_paths.append(coords)
-        elif on_open_loop is not None:
-            on_open_loop(coords, gap)
+        if gap >= close_tolerance:
+            if on_open_loop is not None:
+                on_open_loop(coords, gap)
+            continue
+        # A last point that lands on - or within a snap step of - the first is the
+        # CLOSING point, not a distinct vertex, and must be dropped. Left in place it
+        # makes Polygon() close the ring with a hair-length segment that doubles back
+        # along the first edge: a zero-area spike that renders the polygon INVALID, and
+        # invalid polygons get discarded downstream, so an entire cutout silently
+        # vanishes from the part. Exact equality is not a sufficient test - snapping can
+        # itself leave the two ends one grid step apart (diagonally, up to snap*sqrt(2)).
+        if gap <= snap * 1.5:
+            coords = coords[:-1]
+            if len(coords) < 3:
+                continue
+        closed_paths.append(coords)
     return closed_paths
+
+
+def polygon_from_path(points):
+    """Build a Shapely Polygon from a closed boundary path, repairing an invalid ring.
+
+    Every consumer of these paths tests `is_valid`, so a ring that self-touches - a
+    zero-area spike from a near-duplicate closing point, a figure-eight from a
+    mis-stitched loop - is dropped. That drop is silent and lands on real hardware: the
+    feature just disappears and the machine cuts a plate with a missing cutout. So
+    repair first, and only report failure when repair yields no enclosed area at all.
+
+    Returns (polygon, coords), coords being the (possibly repaired) ring's points with
+    no duplicated closing point, or (None, None) if the path is unusable as a polygon.
+    """
+    if not points or len(points) < 3:
+        return None, None
+    try:
+        poly = Polygon(points)
+    except Exception:
+        return None, None
+    if poly.is_valid and not poly.is_empty:
+        return poly, list(points)
+    try:
+        repaired = make_valid(poly)
+    except Exception:
+        return None, None
+    # make_valid can hand back a collection: a figure-eight becomes two polygons, a
+    # fully collapsed sliver becomes a line. Keep the largest polygon; anything else
+    # means there was no real area to machine.
+    candidates = [g for g in getattr(repaired, 'geoms', [repaired])
+                  if g.geom_type == 'Polygon' and not g.is_empty and g.area > 0]
+    if not candidates:
+        return None, None
+    best = max(candidates, key=lambda g: g.area)
+    return best, list(best.exterior.coords)[:-1]

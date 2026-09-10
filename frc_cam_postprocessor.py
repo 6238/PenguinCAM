@@ -25,7 +25,7 @@ from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
 # Local modules
-from dxf_geometry import entities_to_closed_paths, sample_spline
+from dxf_geometry import entities_to_closed_paths, polygon_from_path, sample_spline
 from team_config import TeamConfig
 
 
@@ -1232,15 +1232,17 @@ class FRCPostProcessor:
             self.pockets = []
             return
 
-        # Convert to Shapely polygons, tracking path index
+        # Convert to Shapely polygons, tracking path index. Repair rather than discard:
+        # a silently dropped path is a cutout missing from the finished part, with no
+        # error anywhere upstream of the machine.
         polygons = []
         for path_idx, points in enumerate(all_paths):
-            try:
-                poly = Polygon(points)
-                if poly.is_valid:
-                    polygons.append((poly, points, path_idx))
-            except Exception:
-                pass
+            poly, coords = polygon_from_path(points)
+            if poly is None:
+                print(f"  WARNING: closed path with {len(points)} points encloses no "
+                      f"machinable area - a feature may be missing from this part")
+                continue
+            polygons.append((poly, coords, path_idx))
 
         if not polygons:
             self.perimeter = None
@@ -1912,15 +1914,17 @@ class FRCPostProcessor:
                     polygons.append(ring_poly)
                     print(f"      Detected concentric circles: outer r={outer_circle['radius']:.3f}\", {len(holes)} inner hole(s)")
 
-        # Add polyline loops to the simple-shape pool.
+        # Add polyline loops to the simple-shape pool. These are raw CAD boundary
+        # loops, so repair rather than discard - see polygon_from_path. A dropped loop
+        # here is a 2.5D pocket/window missing from the cut part, with no error.
         for polyline in polylines:
-            if len(polyline) >= 3:
-                try:
-                    poly = Polygon(polyline)
-                    if poly.is_valid and not poly.is_empty:
-                        simple_polys.append(poly)
-                except Exception:
-                    pass
+            poly, _ = polygon_from_path(polyline)
+            if poly is None:
+                if len(polyline) >= 3:
+                    print(f"      WARNING: boundary loop with {len(polyline)} points "
+                          f"encloses no machinable area - a feature may be missing")
+                continue
+            simple_polys.append(poly)
 
         # Resolve containment across all simple loops at once: an enclosed loop
         # becomes an interior hole of its parent, and a loop enclosed by a hole
@@ -2060,8 +2064,10 @@ class FRCPostProcessor:
                 continue
 
             try:
-                poly = Polygon(polyline)
-                if not poly.is_valid:
+                poly, _ = polygon_from_path(polyline)
+                if poly is None:
+                    print(f"    WARNING: boundary loop with {len(polyline)} points "
+                          f"encloses no machinable area - a feature may be missing")
                     continue
 
                 # Subtract already cut areas

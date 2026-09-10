@@ -23,7 +23,7 @@ from flask import session
 from shapely.geometry import Point, Polygon
 from shapely.ops import unary_union
 
-from dxf_geometry import entities_to_closed_paths
+from dxf_geometry import entities_to_closed_paths, polygon_from_path
 from logging_config import log  # shared log() + logging setup (was duplicated per module)
 
 
@@ -1326,14 +1326,16 @@ class OnshapeClient:
                     log(f"      Detected concentric circles: outer r={concentric_group[0]['radius']:.3f}\", "
                         f"{len(concentric_group)-1} inner hole(s) - created ring")
 
-        # Add polylines as filled polygons
+        # Add polylines as filled polygons. Repair rather than discard: these are raw
+        # CAD boundary loops, and in this negative-space representation a lost loop is a
+        # window that never gets cut (see polygon_from_path).
         for polyline in polylines:
-            try:
-                poly = Polygon(polyline)
-                if poly.is_valid:
-                    geoms.append(poly)
-            except Exception:
-                pass
+            poly, _ = polygon_from_path(polyline)
+            if poly is None:
+                log(f"    WARNING: boundary loop with {len(polyline)} points encloses "
+                    f"no area - a feature may be missing from this part")
+                continue
+            geoms.append(poly)
 
         # Containment-aware union: if a smaller polygon is fully inside a larger one,
         # it represents a hole boundary (e.g., a circle inside a rectangle), not a
