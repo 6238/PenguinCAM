@@ -130,15 +130,32 @@ Z-AXIS SETUP:
 
 ## Tab Height Calculation
 
-Tabs are calculated correctly in the new system:
+`tab_height` is the material LEFT under the tab. The stock bottom sits at Z=0 (the
+sacrifice board surface), so the tab's top face is simply `tab_height` above Z=0 —
+independent of how far the cut overcuts into the board:
 
 ```
-Cut depth: Z=-0.02" (into sacrifice board)
-Tab height: 0.03" (material left in tab)
-Tab Z position: -0.02" + 0.03" = 0.01"
+Cut depth:      Z=-0.02"   (0.02" into the sacrifice board)
+Tab height:      0.03"     (material left in tab)
+Tab Z position: Z= 0.03"   (= tab_height, measured from the stock bottom)
 ```
 
-So tabs are at Z=0.01", which leaves 0.03" of material connecting the part.
+So the tab is at Z=0.03", leaving exactly 0.03" of material connecting the part.
+
+> **Historical note.** This used to be computed as `cut_depth + tab_height`
+> (`-0.02 + 0.03 = 0.01`), which leaves only 0.01" of material — every tab came out
+> thinner than configured by the whole sacrifice-board overcut. The prose in this
+> document always described the intended behavior; the arithmetic did not match it.
+
+Two related rules:
+
+- **Multi-pass:** every pass whose floor would fall below the tab's top face lifts over
+  the tab zones, not just the final pass. Otherwise the intermediate passes cut the tab
+  away before the final pass ever skips it, capping the real tab at roughly
+  `max_slotting_depth` regardless of `tab_height`.
+- **Width:** `tab_width` is the width of the finished tab. The tool has its full radius
+  engaged when it lifts at the start of a zone and when it drops at the end, so the
+  skipped stretch of toolpath is `tab_width + tool_diameter`.
 
 ## Migration from Old System
 

@@ -2503,9 +2503,14 @@ class TestSimplePartFundamentals(unittest.TestCase):
         self.assertLessEqual(max(zs), pp.retract_height + 1e-6,
                              "No Z move should exceed the retract/safe height")
 
-    def test_perimeter_tabs_left_at_tab_height(self):
-        """With tabs enabled, the perimeter cut lifts to cut_depth + tab_height to
-        leave holding tabs."""
+    def test_perimeter_tabs_leave_exactly_tab_height_of_material(self):
+        """`tab_height` is the material LEFT under the tab, measured from the stock bottom
+        at Z=0 (the sacrifice board) - see docs/Z_COORDINATE_SYSTEM.md.
+
+        This used to lift to `cut_depth + tab_height`, but cut_depth is BELOW the stock
+        (it overcuts into the sacrifice board), so every tab came out thinner than
+        configured by exactly that overcut - a 0.150" tab with a 0.008" overcut held the
+        part by 0.142" of material, and with a deeper overcut the shortfall grew."""
         pp = self._square_pp(thickness=0.25)
         pp.tabs_enabled = True
         pp.transform_coordinates('bottom-left', 0)
@@ -2514,11 +2519,14 @@ class TestSimplePartFundamentals(unittest.TestCase):
         result = pp.generate_gcode()
         self.assertTrue(result.success, f"Generation should succeed: {result.errors}")
 
-        expected_tab_z = pp.cut_depth + pp.tab_height
         zs = self._z_values(result.gcode)
         self.assertTrue(
-            any(abs(z - expected_tab_z) < 1e-3 for z in zs),
-            f"Expected a tab-height Z near {expected_tab_z:.4f} in the perimeter cut")
+            any(abs(z - pp.tab_height) < 1e-3 for z in zs),
+            f"Expected a tab Z near {pp.tab_height:.4f} leaving that much material")
+        self.assertLess(pp.cut_depth, 0.0, "cut_depth should overcut below the stock")
+        self.assertFalse(
+            any(abs(z - (pp.cut_depth + pp.tab_height)) < 1e-3 for z in zs),
+            "Tab Z should not be referenced to cut_depth - that under-delivers the tab")
 
     def test_origin_corner_translation(self):
         """Selecting the bottom-right corner maps that corner to (0,0): all X<=0, Y>=0."""

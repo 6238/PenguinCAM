@@ -1509,6 +1509,20 @@ class FRCPostProcessor:
         if include_header_footer:
             gcode.extend(self._generate_gcode_footer())
 
+        # Errors raised DURING generation (a perimeter that failed tool compensation, tabs
+        # that cannot fit the contour) have to fail the job too. Only pre-generation errors
+        # were checked here, so a feature that blew up mid-generation returned success with
+        # that feature quietly missing from the output. The multilayer path already
+        # re-checked; this keeps single-layer parts honest the same way.
+        if self.errors:
+            print(f"\n❌ Cannot generate G-code: {len(self.errors)} error(s) during generation")
+            for error in self.errors:
+                print(f"   - {error}")
+            return PostProcessorResult(
+                success=False,
+                errors=self.errors.copy()
+            )
+
         # Calculate estimated cycle time
         time_estimate = self._estimate_cycle_time(gcode)
 
@@ -3719,6 +3733,83 @@ class FRCPostProcessor:
 
         return gcode
 
+    def _plan_tab_zones(self, contour_length: float, ramp_keepout: float, gcode):
+        """Plan where the holding tabs go on one closed contour, and how tall they are.
+
+        Returns (tab_z, tab_zones) where tab_z is the Z the cutter lifts to over a tab and
+        tab_zones is a list of (start_dist, end_dist) along the contour. Empty zones mean
+        "no tabs on this contour". The layout is computed ONCE per contour and reused by
+        every pass, so the tabs stack into a single column of uncut material instead of
+        drifting between passes.
+
+        Two things here are deliberately not what the code did before:
+
+        * `tab_height` is the material LEFT under the tab, measured from the stock bottom
+          (Z=0, the sacrifice board) - exactly as documented. It used to be added to
+          `cut_depth`, which sits BELOW the stock, so every tab came out thinner than asked
+          by the whole sacrifice-board overcut (a 0.080" tab with a 0.020" overcut became
+          0.060" of real material).
+
+        * Tabs are spaced evenly around the WHOLE loop and then rotated clear of the
+          ramp-in, rather than being spread over only the post-ramp stretch. The old layout
+          left the wrap-around gap one full ramp longer than every other gap; on a short
+          contour that reads as "all the tabs bunched on one side".
+        """
+        if not self.tabs_enabled:
+            return None, []
+
+        # Material spans Z=0 (sacrifice board / stock bottom) to Z=material_top.
+        tab_z = min(self.tab_height, self.material_top)
+        if tab_z >= self.material_top - 1e-9:
+            self._add_error(
+                f"Tab height {self.tab_height:.4f}\" is not less than the material thickness "
+                f"{self.material_top:.4f}\" - the contour would never be cut through. "
+                f"Reduce machining.tabs.height.")
+            return None, []
+        if tab_z <= self.cut_depth:
+            return None, []
+
+        # `tab_width` is the width of the TAB, so the zone the tool centre skips has to be a
+        # full tool diameter wider. The cutter still has its whole radius engaged when it
+        # lifts at the start of a zone and again when it drops at the end, so it clears a
+        # tool-radius bite off each end: a zone of exactly `tab_width` leaves
+        # `tab_width - tool_diameter` of material, which for any tab narrower than the cutter
+        # is nothing at all - the lifts are emitted, the toolpath looks right in a viewer,
+        # and the part is held by air.
+        zone_width = self.tab_width + self.tool_diameter
+
+        num_tabs = max(3, int(math.ceil(contour_length / self.tab_spacing)))
+        tab_pitch = contour_length / num_tabs
+        if zone_width >= tab_pitch:
+            self._add_error(
+                f"Tab width {self.tab_width:.4f}\" plus the {self.tool_diameter:.4f}\" tool needs "
+                f"{zone_width:.4f}\" of contour per tab, but {num_tabs} tabs on this "
+                f"{contour_length:.3f}\" contour leaves only {tab_pitch:.4f}\" each, so they would "
+                f"run together. Reduce machining.tabs.width or use a smaller tool.")
+            return None, []
+        half_w = zone_width / 2
+        keepout = max(0.0, min(ramp_keepout, contour_length))
+
+        if keepout + 2 * half_w <= tab_pitch:
+            # Even spacing all the way around, rotated so tab 0 starts just past the ramp.
+            first_center = keepout + half_w
+            centers = [first_center + i * tab_pitch for i in range(num_tabs)]
+            gcode.append(f"(Tabs: {num_tabs} evenly spaced every {tab_pitch:.2f}\", each "
+                         f"{self.tab_width:.4f}\" wide x {tab_z:.4f}\" tall)")
+        else:
+            # The ramp eats too much of this contour to fit an even ring around it; keep the
+            # tabs out of the ramp (where the cutter is still descending) and say so, rather
+            # than silently placing one where it will be ramped straight through.
+            cutting_length = max(contour_length - keepout, tab_pitch)
+            spacing = cutting_length / num_tabs
+            centers = [keepout + spacing * (i + 0.5) for i in range(num_tabs)]
+            gcode.append(f"(Tabs: {num_tabs} at {spacing:.2f}\", each {self.tab_width:.4f}\" wide "
+                         f"x {tab_z:.4f}\" tall - contour is short relative to the "
+                         f"{keepout:.2f}\" ramp-in, so they sit after the ramp rather than "
+                         f"evenly around the loop)")
+
+        return tab_z, [(c - half_w, c + half_w) for c in centers]
+
     def _generate_contour_gcode(self,
                                contour_points: List[Tuple[float, float]],
                                contour_type: str,
@@ -3799,6 +3890,14 @@ class FRCPostProcessor:
         # Calculate equal depth per pass for consistent tool loading
         depth_per_pass = total_cut_depth / num_passes
 
+        # Ramp-in geometry is now the SAME on every pass (each pass ramps from just above the
+        # previous pass's floor, not from the material top - see the pass loop), so the
+        # keep-out zone the tab layout has to dodge can be computed once, up front.
+        ramp_distance_uniform = ((depth_per_pass + self.ramp_start_clearance)
+                                 / math.tan(math.radians(self.ramp_angle)))
+
+        tab_z, tab_zones = self._plan_tab_zones(contour_length, ramp_distance_uniform, gcode)
+
         # Multi-pass cutting loop
         for pass_num in range(1, num_passes + 1):
             is_final_pass = (pass_num == num_passes)
@@ -3815,33 +3914,29 @@ class FRCPostProcessor:
                 gcode.append(f"")
                 gcode.append(f"(===== PASS {pass_num}/{num_passes} - cutting to {pass_cut_depth:.3f}\" =====)")
 
-            # Calculate ramp start height (close to material surface)
-            ramp_start_height = self.material_top + self.ramp_start_clearance
+            # Ramp from just above THIS pass's starting surface, not from the material
+            # top. On pass 2+ everything above the previous pass's floor is already gone, so
+            # a top-referenced ramp just descends through air - and that phantom descent used
+            # to dominate the tab keep-out zone (a 4 deg aluminum ramp measured from the
+            # surface is ~2.8" of contour on the last pass, vs ~1.1" from the real surface),
+            # which is what squeezed every tab into one stretch of a small pocket.
+            pass_start_surface = (self.material_top if pass_num == 1
+                                  else self.material_top - (pass_num - 1) * depth_per_pass)
+            ramp_start_height = pass_start_surface + self.ramp_start_clearance
 
             # Calculate ramp-in distance using material-specific ramp angle
             ramp_depth = ramp_start_height - pass_cut_depth
             ramp_distance = ramp_depth / math.tan(math.radians(self.ramp_angle))
             gcode.append(f"(Ramp-in: {ramp_distance:.4f}\" at {self.ramp_angle} deg)")
 
-            # Calculate tab zones ONLY on final pass (if tabs are enabled)
-            tab_zones = []  # List of (start_dist, end_dist) tuples
-            if is_final_pass and self.tabs_enabled:
-                # We cut from ramp_distance to contour_length, so tabs should only be in that range
-                cutting_length = contour_length - ramp_distance
-
-                # Calculate number of tabs based on desired spacing, with minimum of 3
-                num_tabs = max(3, int(math.ceil(cutting_length / self.tab_spacing)))
-                actual_tab_spacing = cutting_length / num_tabs
-
-                # Place tabs starting after the ramp, centered in each section
-                half_tab_width = self.tab_width / 2
-                for i in range(num_tabs):
-                    tab_center = ramp_distance + actual_tab_spacing * (i + 0.5)
-                    tab_start = tab_center - half_tab_width
-                    tab_end = tab_center + half_tab_width
-                    tab_zones.append((tab_start, tab_end))
-
-                gcode.append(f"(Tabs: {num_tabs} tabs - desired spacing: {self.tab_spacing:.2f}\", actual: {actual_tab_spacing:.2f}\" - width: {self.tab_width:.4f}\")")
+            # Lift over the tabs on EVERY pass that would otherwise cut below the tab's top
+            # face - not just the last one. Cutting the full contour on the intermediate
+            # passes destroys the tab before the final pass ever gets to skip over it, so the
+            # surviving stub was only ever as tall as ONE pass could leave (max_slotting_depth
+            # minus the sacrifice-board overcut), no matter what tab_height asked for.
+            pass_has_tabs = bool(tab_zones) and pass_cut_depth < tab_z - 1e-9
+            if pass_has_tabs:
+                gcode.append(f"(Tabs: lifting to Z{tab_z:.4f} over {len(tab_zones)} tabs on this pass)")
             elif is_final_pass and not self.tabs_enabled:
                 gcode.append(f"(Tabs disabled - perimeter will be cut through completely)")
 
@@ -3926,8 +4021,6 @@ class FRCPostProcessor:
             # Cut around perimeter with tabs (on final pass only), starting from where ramp ended
             # Use segment-centric approach: check each segment against tab zones
             current_distance = current_ramp_dist
-            tab_z = pass_cut_depth + self.tab_height
-            tab_number = 0
             current_z = pass_cut_depth  # Track current Z height to avoid unnecessary moves
 
             # Store tab positions for the tab removal pass (only on final pass).
@@ -3946,7 +4039,7 @@ class FRCPostProcessor:
 
             # Helper function to process a segment with tab checking
             def process_segment(p1, p2, seg_start_dist, seg_length):
-                nonlocal tab_number, current_z, tab_waypoints_by_idx
+                nonlocal current_z, tab_waypoints_by_idx
 
                 if seg_length == 0:
                     return
@@ -3955,7 +4048,7 @@ class FRCPostProcessor:
 
                 # Find all tab zones that intersect this segment (only if tabs enabled for this pass)
                 intersecting_tabs = []
-                if is_final_pass:  # Only process tabs on final pass
+                if pass_has_tabs:
                     for tab_idx, (tab_start, tab_end) in enumerate(tab_zones):
                         # Check if tab zone overlaps with segment
                         if tab_start < seg_end_dist and tab_end > seg_start_dist:
@@ -4009,18 +4102,20 @@ class FRCPostProcessor:
                         # Record this sub-segment for the removal pass. Contiguous
                         # pieces of the same tab share an endpoint geometrically,
                         # so we only append the new endpoint on continuations.
-                        if tab_idx not in tab_waypoints_by_idx:
-                            tab_waypoints_by_idx[tab_idx] = [(start_x, start_y), (end_x, end_y)]
-                        else:
-                            tab_waypoints_by_idx[tab_idx].append((end_x, end_y))
+                        # Final pass only: earlier passes trace the same zones and would
+                        # otherwise duplicate every waypoint.
+                        if is_final_pass:
+                            if tab_idx not in tab_waypoints_by_idx:
+                                tab_waypoints_by_idx[tab_idx] = [(start_x, start_y), (end_x, end_y)]
+                            else:
+                                tab_waypoints_by_idx[tab_idx].append((end_x, end_y))
 
                         # Move to tab start in XY
                         gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.feed_rate}")
 
                         # Raise Z only if not already at tab height
                         if current_z != tab_z:
-                            tab_number += 1
-                            gcode.append(f"G1 Z{tab_z:.4f} F{self.plunge_rate}  ; Tab {tab_number} start")
+                            gcode.append(f"G1 Z{tab_z:.4f} F{self.plunge_rate}  ; Tab {tab_idx + 1} start")
                             current_z = tab_z
 
                         # Move across tab (at tab height)

@@ -409,8 +409,9 @@
         </p>
         <pre><code>tabs:
   enabled: true     # Use automatic tabs (they're removed at the end)
-  width: 0.25       # Tab width (inches)
-  height: 0.15      # How much material left in tab
+  width: 0.25       # Width of the finished tab (inches)
+  height: 0.15      # How much material is left under the tab (inches)
+  spacing: 6.0      # Desired distance between tabs; minimum of 3 tabs per contour
 
 fixturing:
   pause_before_perimeter: false  # If true, skip tabs and pause for manual fixturing</code></pre>
@@ -419,6 +420,20 @@ fixturing:
         </p>
         <ul>
             <li><strong>Automatic tabs (<code>enabled: true</code>):</strong> Tabs are placed automatically and removed as the final step. No manual intervention needed.</li>
+            <li><strong>Both dimensions are the finished tab, not the toolpath.</strong>
+                <code>height</code> is the material left under the tab measured up from the
+                sacrifice board, so it is unaffected by how far you overcut into the board.
+                <code>width</code> is the width of the remaining tab; PenguinCAM automatically
+                skips a wider stretch of the toolpath to account for the cutter's radius at
+                each end, so <code>width: 0.06</code> with a 4&nbsp;mm tool really does leave a
+                0.06&quot; tab.</li>
+            <li><strong>Tabs survive multi-pass cuts.</strong> When the material is thicker than
+                <code>max_slotting_depth</code>, every pass that would reach below the tab lifts
+                over it, so the tab ends up its full configured height rather than whatever one
+                pass happened to leave.</li>
+            <li><strong>Placement:</strong> tabs are spread evenly around each closed contour
+                &mdash; perimeters and large through-pockets alike &mdash; positioned to avoid
+                the ramp-in, where the cutter is still descending.</li>
             <li><strong>Pause for fixturing (<code>pause_before_perimeter: true</code>):</strong> No tabs are placed. Program pauses (M0) before perimeter cut to allow fixturing through milled holes.</li>
         </ul>
 
