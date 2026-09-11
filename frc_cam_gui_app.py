@@ -401,6 +401,7 @@ def _load_team_config_into_session(client):
         session['team_number'] = team_config.team_number
         session['team_config_url'] = getattr(client, 'last_config_url', None)
         session['using_default_config'] = False
+        session.pop('team_config_error', None)
     else:
         log("⚠️  No team config found - using defaults")
         team_config = TeamConfig()
@@ -409,6 +410,9 @@ def _load_team_config_into_session(client):
         session['team_number'] = team_config.team_number
         session.pop('team_config_url', None)
         session['using_default_config'] = True
+        # Why the lookup came up empty, in plain language, so /config/refresh can tell the
+        # user instead of silently re-rendering an identical page (see fetch_config_file).
+        session['team_config_error'] = getattr(client, 'last_config_error', None) if client else None
     session['team_config_fetched_at'] = time.time()
     # Persist any token refresh triggered by the Onshape API calls above.
     if client:
@@ -474,7 +478,10 @@ def _app_template_context(force_defaults=False):
         using_default = not bool(team_config_data)
     else:
         team_config_data = session.get('team_config_data', {})
-        using_default = session.get('using_default_config', False)
+        # Derive from the data rather than the stored flag: the two are always written
+        # together by _load_team_config_into_session, and deriving means a session that
+        # never completed a lookup reports "defaults" instead of claiming a real config.
+        using_default = not bool(team_config_data)
     # Bind to the session's machine so this context reflects the same machine the compute
     # endpoints will use. active_machine_id resolves a stale/unknown session id back to the
     # default machine, so a config edit that renames machines can't leave the page pointing
@@ -538,6 +545,9 @@ def _app_template_context(force_defaults=False):
         'config_team_name': team_config.team_name,
         'config_url': (session.get('upload_config_url') if force_defaults
                        else session.get('team_config_url')),
+        # One-shot result of an explicit /config/refresh click, consumed on this render so
+        # it doesn't stick around on the next page load.
+        'config_refresh_result': None if force_defaults else session.pop('config_refresh_result', None),
         'machines': machines,
         'machines_info': machines_info,
         'current_machine_id': current_machine_id,
@@ -754,16 +764,39 @@ def index():
 
 @app.route('/config/refresh')
 def refresh_config():
-    """Force an immediate re-fetch of the team config from Onshape (the subtle reload glyph
-    next to the config link). Same fetch-and-store as login and the TTL refresh; returns
-    the user to wherever they were."""
-    if ONSHAPE_AVAILABLE:
-        client = session_manager.get_client(get_current_user_id())
-        if client:
-            try:
-                _load_team_config_into_session(client)
-            except Exception as e:
-                log(f"⚠️  Manual team config refresh failed: {e}")
+    """Force an immediate re-search for the team config in Onshape (the subtle reload glyph
+    next to the config banner). Same fetch-and-store as login and the TTL refresh.
+
+    Offered whether or not a config is currently loaded: a team that starts on defaults and
+    only later adds PenguinCAM-config.yaml needs exactly this button, and before it was
+    rendered only once a config had ALREADY been found - so the one case that needed it
+    most had no way to trigger it.
+
+    Stashes a one-shot outcome message (consumed by the next render) because the failure
+    mode is otherwise invisible: without it, a click that finds nothing returns a
+    byte-identical page and looks like a broken button."""
+    if not ONSHAPE_AVAILABLE:
+        session['config_refresh_result'] = {'ok': False, 'message': 'Onshape integration is not enabled.'}
+        return redirect(request.referrer or '/')
+    client = session_manager.get_client(get_current_user_id())
+    if not client:
+        session['config_refresh_result'] = {
+            'ok': False, 'message': 'You are not signed in to Onshape, so there is nowhere to look.'}
+        return redirect(request.referrer or '/')
+    try:
+        team_config = _load_team_config_into_session(client)
+    except Exception as e:
+        log(f"⚠️  Manual team config refresh failed: {e}")
+        session['config_refresh_result'] = {
+            'ok': False, 'message': f'The lookup failed: {e}'}
+        return redirect(request.referrer or '/')
+    if session.get('using_default_config'):
+        reason = session.get('team_config_error') or 'No PenguinCAM-config.yaml was found.'
+        session['config_refresh_result'] = {'ok': False, 'message': f'Still using defaults. {reason}'}
+    else:
+        session['config_refresh_result'] = {
+            'ok': True,
+            'message': f'Loaded config for {team_config.team_number} ({team_config.team_name}).'}
     return redirect(request.referrer or '/')
 
 

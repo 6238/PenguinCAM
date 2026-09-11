@@ -594,10 +594,22 @@ machines:
 
         <h3>Config not loading</h3>
         <p>
-            If PenguinCAM shows "Using default settings" instead of your config:
+            If PenguinCAM shows "Using default configuration" instead of your config, first click
+            the small <strong>&#8635;</strong> reload glyph next to that message. PenguinCAM caches
+            the result of its config search for 10 minutes, so a config you just added won't appear
+            until the cache expires &mdash; the glyph searches again immediately and then tells you
+            what it found, or why it found nothing. It is available whether or not a config is
+            currently loaded.
         </p>
+        <p>If it still reports nothing:</p>
         <ul>
-            <li>Verify the filename is exactly <code>PenguinCAM-config.yaml</code> (case sensitive)</li>
+            <li>Verify the filename is exactly <code>PenguinCAM-config.yaml</code> (case sensitive).
+                The <em>tab</em> holding the YAML must carry that name, not just the document.</li>
+            <li>The document must be owned by an Onshape <strong>classroom or company you belong
+                to</strong> &mdash; a config in a personal document is never picked up.</li>
+            <li>Onshape's search index can take a few minutes to notice a brand-new file, so a
+                config created seconds ago may simply not be findable yet. Wait a moment and click
+                the reload glyph again.</li>
             <li>Check that the document is shared with your team/organization in Onshape</li>
             <li>Verify the document is shared with the PenguinCAM app (use "Share with applications" tab in Onshape sharing dialog)</li>
             <li>Ensure you're authenticated with Onshape (click the login button)</li>

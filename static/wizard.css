@@ -310,6 +310,11 @@ fieldset.field { border: 1px solid var(--line); border-radius: 6px; padding: 8px
    call-to-action. Nearly invisible until hovered. */
 .config-status a.config-refresh { color: var(--muted); opacity: 0.35; margin-left: 5px; font-size: 0.9em; text-decoration: none; transition: opacity 0.15s ease; }
 .config-status a.config-refresh:hover { opacity: 0.85; text-decoration: none; }
+/* Outcome of an explicit refresh click. Shown once, then gone - its whole job is to stop a
+   search that found nothing from looking like a dead button. */
+.config-refresh-result { margin: 3px 0 0; font-size: 11px; max-width: 46ch; line-height: 1.35; }
+.config-refresh-result.is-ok { color: var(--ok); }
+.config-refresh-result.is-warn { color: #d29922; }
 
 /* Team-config source (upload flow, Setup step). */
 .config-source .field-label { display: block; color: var(--muted); margin-bottom: 4px; font-size: 12px; }

@@ -1903,12 +1903,21 @@ class OnshapeClient:
         try:
             log("\n🔍 Searching for PenguinCAM-config.yaml...")
             self.last_config_url = None
+            # Plain-language reason for the most recent failed lookup. Every `return None`
+            # below sets one. Without it a failed search is invisible to the user: the page
+            # just keeps saying "Using default configuration" with no hint of why, which is
+            # the single biggest source of "PenguinCAM won't pick up our config" reports.
+            self.last_config_error = None
 
             user_companies = self.get_companies() or []
             user_classroom_ids = {c.get('id') for c in user_companies if c.get('id')}
 
             if not user_classroom_ids:
                 log("   ❌ User belongs to no classrooms — PenguinCAM expects the config to live in a company/team-owned document")
+                self.last_config_error = (
+                    "Your Onshape account isn't a member of any classroom or company. "
+                    "PenguinCAM-config.yaml has to live in a document owned by a "
+                    "classroom/company you belong to, not in a personal document.")
                 return None
 
             log(f"   User belongs to {len(user_classroom_ids)} classroom(s)")
@@ -1953,6 +1962,10 @@ class OnshapeClient:
 
             if not candidates:
                 log("   ℹ️  No PenguinCAM-config.yaml found in your classrooms")
+                self.last_config_error = (
+                    "No document named PenguinCAM-config.yaml turned up in your "
+                    "classrooms. Check the file name, and note that Onshape's search "
+                    "index can take a few minutes to notice a brand-new file.")
                 return None
 
             # Belt-and-suspenders: re-verify each candidate's owner via document
@@ -1976,6 +1989,9 @@ class OnshapeClient:
 
             if not verified:
                 log("   ❌ No PenguinCAM-config.yaml found in your classrooms after verification")
+                self.last_config_error = (
+                    "A matching document was found, but it isn't owned by a classroom "
+                    "you belong to, so PenguinCAM ignored it.")
                 return None
 
             def sort_key(entry):
@@ -2003,10 +2019,12 @@ class OnshapeClient:
                 doc_info = self.get_document_info(doc_id)
                 if not doc_info:
                     log("   ❌ Could not get document info")
+                    self.last_config_error = "Onshape would not return information about the config document."
                     return None
                 workspace_id = doc_info.get('defaultWorkspace', {}).get('id')
                 if not workspace_id:
                     log("   ❌ No default workspace found")
+                    self.last_config_error = "The config document has no default workspace."
                     return None
 
             log(f"   ✅ Using workspace: {workspace_id[:8]}...")
@@ -2021,6 +2039,9 @@ class OnshapeClient:
             if response.status_code != 200:
                 log(f"   ❌ Could not list elements: HTTP {response.status_code}")
                 log(f"   Response: {response.text[:500]}")
+                self.last_config_error = (
+                    f"Onshape refused to list the config document's tabs (HTTP "
+                    f"{response.status_code}). You may not have permission to open it.")
                 return None
 
             elements = response.json()
@@ -2042,6 +2063,10 @@ class OnshapeClient:
             if not config_element:
                 log("   ❌ No YAML element found in document")
                 log(f"   Available elements: {[e.get('name') for e in elements]}")
+                self.last_config_error = (
+                    "The document was found, but none of its tabs is a file named "
+                    "PenguinCAM-config.yaml. Upload the YAML as a blob tab, and make "
+                    "sure the TAB (not just the document) carries that name.")
                 return None
 
             element_id = config_element.get('id')
@@ -2060,6 +2085,9 @@ class OnshapeClient:
             if response.status_code != 200:
                 log(f"   ❌ Could not download blob: HTTP {response.status_code}")
                 log(f"   Response: {response.text[:500]}")
+                self.last_config_error = (
+                    f"Found PenguinCAM-config.yaml but could not download it "
+                    f"(HTTP {response.status_code}).")
                 return None
 
             # Return raw text content
@@ -2073,6 +2101,7 @@ class OnshapeClient:
         except Exception as e:
             log(f"   ❌ EXCEPTION in fetch_config_file: {e}")
             log(f"   Full traceback:\n{traceback.format_exc()}")
+            self.last_config_error = f"The config lookup failed unexpectedly: {e}"
             return None
 
 

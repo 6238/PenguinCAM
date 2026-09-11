@@ -25,7 +25,17 @@
                     {% endif %}
                 </p>
                 {% else %}
-                <p class="config-status config-status-default">Using default configuration</p>
+                {# The reload affordance belongs here MORE than above: a team that starts on
+                   defaults and later adds PenguinCAM-config.yaml has to be able to say "go
+                   look again" without waiting out the 10-minute TTL or re-authenticating. #}
+                <p class="config-status config-status-default">Using default configuration
+                    {% if source != 'upload' %}
+                    <a href="/config/refresh" class="config-refresh" title="Search Onshape again for your team configuration" aria-label="Search Onshape again for your team configuration">&#8635;</a>
+                    {% endif %}
+                </p>
+                {% endif %}
+                {% if config_refresh_result %}
+                <p class="config-refresh-result {{ 'is-ok' if config_refresh_result.ok else 'is-warn' }}">{{ config_refresh_result.message }}</p>
                 {% endif %}
             </div>
             <ol id="stepbar" aria-label="Steps">
