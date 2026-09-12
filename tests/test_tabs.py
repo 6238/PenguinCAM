@@ -200,12 +200,51 @@ class TestTabWidth(_TabCase):
             self.assertGreaterEqual(start, 2.5 - 1e-9)
         self.assertTrue(any('short relative to' in n for n in notes), notes)
 
-    def test_tabs_too_wide_for_the_contour_are_rejected_not_merged(self):
+    def test_tabs_too_wide_for_the_contour_are_narrowed_not_refused(self):
+        """Tab settings come from the team config, set once by a mentor, and apply to every
+        part the team cuts. An operator who happens to run a part the config did not
+        anticipate can do nothing useful with a hard error, so PenguinCAM adapts the tab to
+        what the part allows and says what it did."""
         import tempfile
         with tempfile.TemporaryDirectory() as td:
-            _, result, _ = self._run(td, tab_width=6.0, scale=1.0)
-            self.assertFalse(result.success)
-            self.assertTrue(any('run together' in e for e in result.errors), result.errors)
+            _, result, gcode = self._run(td, tab_width=6.0)
+            self.assertTrue(result.success, f"should still produce G-code: {result.errors}")
+            self.assertTrue(any('too wide' in w for w in result.warnings), result.warnings)
+            self.assertIn('(===== NOTES =====)', gcode)
+
+class TestTabHeightClampedToStock(_TabCase):
+    """A mentor-set tab height that is taller than the stock the student is actually cutting
+    must not stop the job - the person at the machine cannot fix the team config."""
+
+    def test_tab_taller_than_the_stock_is_clamped_not_refused(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            pp, result, gcode = self._run(td, thickness=0.125, tab_height=0.15)
+            self.assertTrue(result.success, f"should still produce G-code: {result.errors}")
+            zs = set(round(z, 4) for z in self._tab_lift_zs(self._pocket_block(gcode)))
+            self.assertEqual(zs, {round(0.125 * 2 / 3, 4)})
+            self.assertTrue(any('too tall' in w for w in result.warnings), result.warnings)
+            self.assertEqual(len(result.warnings), 1, 'one job fact, not one per contour')
+
+    def test_a_tab_that_already_fits_is_left_exactly_alone(self):
+        """The stock 0.150" tab on 0.250" stock must keep cutting the way it always has."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            _, result, gcode = self._run(td, thickness=0.25, tab_height=0.15)
+            zs = set(round(z, 4) for z in self._tab_lift_zs(self._pocket_block(gcode)))
+            self.assertEqual(zs, {0.15})
+            self.assertEqual(result.warnings, [])
+
+    def test_the_note_travels_in_the_gcode_itself(self):
+        """The operator at the machine may never see the browser that made the file."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            _, _, gcode = self._run(td, thickness=0.125, tab_height=0.15)
+            notes = gcode[gcode.index('(===== NOTES ====='):]
+            self.assertIn('too tall', notes)
+            for line in notes.splitlines():
+                self.assertLessEqual(line.count('('), 1, f"nested comment: {line}")
+                line.encode('ascii')   # raises if any non-ASCII slipped in
 
 
 class TestTabPlacement(_TabCase):

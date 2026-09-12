@@ -51,6 +51,16 @@ class PostProcessorResult:
         }
 
 
+# Ceiling on tab height as a fraction of stock thickness. Above this the tab is most of
+# the part rather than a breakaway connection, so a configured value that exceeds it is
+# clamped (with a warning) instead of rejected - see _plan_tab_zones.
+TAB_HEIGHT_MAX_FRACTION = 2.0 / 3.0
+
+# Ceiling on the skipped toolpath per tab as a fraction of that tab's share of the contour,
+# so the cut between two tabs is never shorter than a tab itself.
+TAB_WIDTH_MAX_PITCH_FRACTION = 0.5
+
+
 # Material presets based on team 6238 feeds/speeds document
 MATERIAL_PRESETS = {
     'plywood': {
@@ -102,6 +112,17 @@ MATERIAL_PRESETS = {
         'description': 'Polycarbonate - same as plywood settings'
     }
 }
+
+
+def sanitize_gcode_comment(text: str) -> str:
+    """Make arbitrary text safe to drop inside a G-code comment.
+
+    Two hard controller requirements (see CLAUDE.md): comments must not nest, and the file
+    must be pure ASCII. Warning text is assembled from config values and material names, so
+    it cannot be assumed to satisfy either.
+    """
+    flattened = text.replace('(', '-').replace(')', '-')
+    return flattened.encode('ascii', 'replace').decode('ascii')
 
 
 def sanitize_filename_base(name: str, fallback: str = "output") -> str:
@@ -243,6 +264,7 @@ class FRCPostProcessor:
 
         # Error tracking
         self.errors = []  # Collect validation errors during processing
+        self.warnings = []  # Non-fatal notes about settings adapted to fit this part
 
     def apply_material_preset(self, material: str, machine_id: Optional[str] = None):
         """
@@ -351,6 +373,36 @@ class FRCPostProcessor:
         """
         print(f"  ❌ ERROR: {error_msg}")
         self.errors.append(error_msg)
+
+    def _append_warning_comments(self, gcode: List[str]):
+        """Copy any adaptation notes into the G-code as comments.
+
+        The operator at the machine may never see the browser that generated the file, so
+        anything we silently changed about their settings has to travel with the program.
+        Parentheses are stripped: nested comments break the controllers we target.
+        """
+        if not self.warnings:
+            return
+        gcode.append("")
+        gcode.append("(===== NOTES =====)")
+        for warning in self.warnings:
+            gcode.append(f"({sanitize_gcode_comment(warning)})")
+
+    def _add_warning(self, warning_msg: str):
+        """Record a non-fatal note about how this job was adjusted, and print it.
+
+        The difference from `_add_error` matters: errors abort generation. A setting that
+        simply does not suit THIS part - a mentor-set tab height taller than the stock the
+        student happens to be cutting - is not the operator's problem to solve at the
+        machine, and refusing to produce G-code just leaves them stuck. So we adapt, and
+        say what we did, both here and as a comment in the G-code itself.
+        """
+        # Deduped: the same adaptation is reached once per contour, but it is one fact about
+        # the job, and repeating it per pocket buries the signal.
+        if warning_msg in self.warnings:
+            return
+        print(f"  ⚠️  NOTE: {warning_msg}")
+        self.warnings.append(warning_msg)
 
     def _generate_pause_and_park_gcode(self, title: str, instructions: List[str],
                                        safe_z: float = None) -> List[str]:
@@ -1529,6 +1581,8 @@ class FRCPostProcessor:
         # Add cycle time to header (insert after the operations section)
         self._insert_cycle_time_comment(gcode, time_estimate)
 
+        self._append_warning_comments(gcode)
+
         # Generate filename with timestamp (name sanitized for safe disk write + download)
         filename = build_output_filename(suggested_filename, timestamp, "output")
 
@@ -1537,7 +1591,7 @@ class FRCPostProcessor:
             success=True,
             gcode='\n'.join(gcode),
             filename=filename,
-            warnings=warnings,
+            warnings=warnings + self.warnings,
             stats={
                 'num_holes': len(self.holes) if hasattr(self, 'holes') else 0,
                 'num_pockets': len(self.pockets) if hasattr(self, 'pockets') else 0,
@@ -2577,6 +2631,8 @@ class FRCPostProcessor:
         # Add cycle time to header (insert after the operations section)
         self._insert_cycle_time_comment(gcode, time_estimate)
 
+        self._append_warning_comments(gcode)
+
         # Check for errors that occurred during generation
         if self.errors:
             return PostProcessorResult(
@@ -2591,7 +2647,7 @@ class FRCPostProcessor:
             success=True,
             gcode='\n'.join(gcode),
             filename=filename,
-            warnings=warnings,
+            warnings=warnings + self.warnings,
             stats={
                 'num_holes': total_holes,
                 'num_pockets': total_pockets,
@@ -3758,14 +3814,22 @@ class FRCPostProcessor:
         if not self.tabs_enabled:
             return None, []
 
-        # Material spans Z=0 (sacrifice board / stock bottom) to Z=material_top.
-        tab_z = min(self.tab_height, self.material_top)
-        if tab_z >= self.material_top - 1e-9:
-            self._add_error(
-                f"Tab height {self.tab_height:.4f}\" is not less than the material thickness "
-                f"{self.material_top:.4f}\" - the contour would never be cut through. "
-                f"Reduce machining.tabs.height.")
-            return None, []
+        # Material spans Z=0 (sacrifice board / stock bottom) to Z=material_top. A tab has to
+        # leave a real kerf above it, so cap it at two thirds of the stock: past that the
+        # "tab" is most of the part and the contour is barely cut. Configured values that
+        # already fit are used untouched (the stock 0.150" tab on 0.250" stock is unchanged).
+        max_tab_z = self.material_top * TAB_HEIGHT_MAX_FRACTION
+        tab_z = min(self.tab_height, max_tab_z)
+        if tab_z < self.tab_height - 1e-9:
+            # Clamp rather than refuse. Tab settings are configured once by a mentor and then
+            # apply to every part the team cuts; the student running a thinner part than the
+            # config anticipated can do nothing useful with an error, and blocking them is
+            # worse than quietly cutting a shorter - still perfectly serviceable - tab.
+            self._add_warning(
+                f"The team config asks for {self.tab_height:.4f}\" tabs, which is too tall for "
+                f"{self.material_top:.4f}\" stock, so this job uses {tab_z:.4f}\" tabs instead. "
+                f"Nothing to do - the part is held fine. Worth passing on to whoever maintains "
+                f"the config if you hit it often.")
         if tab_z <= self.cut_depth:
             return None, []
 
@@ -3776,17 +3840,29 @@ class FRCPostProcessor:
         # `tab_width - tool_diameter` of material, which for any tab narrower than the cutter
         # is nothing at all - the lifts are emitted, the toolpath looks right in a viewer,
         # and the part is held by air.
-        zone_width = self.tab_width + self.tool_diameter
+        requested_zone = self.tab_width + self.tool_diameter
 
         num_tabs = max(3, int(math.ceil(contour_length / self.tab_spacing)))
         tab_pitch = contour_length / num_tabs
-        if zone_width >= tab_pitch:
-            self._add_error(
-                f"Tab width {self.tab_width:.4f}\" plus the {self.tool_diameter:.4f}\" tool needs "
-                f"{zone_width:.4f}\" of contour per tab, but {num_tabs} tabs on this "
-                f"{contour_length:.3f}\" contour leaves only {tab_pitch:.4f}\" each, so they would "
-                f"run together. Reduce machining.tabs.width or use a smaller tool.")
+        # Keep at most half of each tab's share of the contour as tab, so the cut between
+        # two tabs is always at least as long as a tab. Same reasoning as the height clamp:
+        # narrow the tab to fit rather than hand the operator a dead end.
+        zone_width = min(requested_zone, tab_pitch * TAB_WIDTH_MAX_PITCH_FRACTION)
+        if zone_width <= self.tool_diameter + 1e-9:
+            # The cutter alone is wider than the room available; no width of toolpath can
+            # leave material behind here. Say so plainly and cut the contour through.
+            self._add_warning(
+                f"A {contour_length:.2f}\" contour is too small to hold a tab with a "
+                f"{self.tool_diameter:.4f}\" tool, so it is cut all the way through and the "
+                f"cut-out piece will come loose. Check it is safe to let go, or hold it down "
+                f"before this cut.")
             return None, []
+        if zone_width < requested_zone - 1e-9:
+            self._add_warning(
+                f"The team config asks for {self.tab_width:.4f}\" tabs, which is too wide to "
+                f"space around a {contour_length:.2f}\" contour with a {self.tool_diameter:.4f}\" "
+                f"tool, so this job uses {zone_width - self.tool_diameter:.4f}\" tabs there "
+                f"instead. Nothing to do - the part is held fine.")
         half_w = zone_width / 2
         keepout = max(0.0, min(ramp_keepout, contour_length))
 
@@ -3795,7 +3871,7 @@ class FRCPostProcessor:
             first_center = keepout + half_w
             centers = [first_center + i * tab_pitch for i in range(num_tabs)]
             gcode.append(f"(Tabs: {num_tabs} evenly spaced every {tab_pitch:.2f}\", each "
-                         f"{self.tab_width:.4f}\" wide x {tab_z:.4f}\" tall)")
+                         f"{zone_width - self.tool_diameter:.4f}\" wide x {tab_z:.4f}\" tall)")
         else:
             # The ramp eats too much of this contour to fit an even ring around it; keep the
             # tabs out of the ramp (where the cutter is still descending) and say so, rather
@@ -3803,7 +3879,7 @@ class FRCPostProcessor:
             cutting_length = max(contour_length - keepout, tab_pitch)
             spacing = cutting_length / num_tabs
             centers = [keepout + spacing * (i + 0.5) for i in range(num_tabs)]
-            gcode.append(f"(Tabs: {num_tabs} at {spacing:.2f}\", each {self.tab_width:.4f}\" wide "
+            gcode.append(f"(Tabs: {num_tabs} at {spacing:.2f}\", each {zone_width - self.tool_diameter:.4f}\" wide "
                          f"x {tab_z:.4f}\" tall - contour is short relative to the "
                          f"{keepout:.2f}\" ramp-in, so they sit after the ramp rather than "
                          f"evenly around the loop)")

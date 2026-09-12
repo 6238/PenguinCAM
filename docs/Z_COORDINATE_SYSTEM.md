@@ -153,6 +153,11 @@ Two related rules:
   the tab zones, not just the final pass. Otherwise the intermediate passes cut the tab
   away before the final pass ever skips it, capping the real tab at roughly
   `max_slotting_depth` regardless of `tab_height`.
+- **Too tall for the stock:** tab height is capped at two thirds of the material
+  thickness so there is always a real kerf above the tab. A configured value above that is
+  clamped and reported as a note on the job — never an error. Tab settings live in the team
+  config, set once by a mentor, while the person running a given part is usually a student
+  who cannot change them; refusing to generate G-code just strands them.
 - **Width:** `tab_width` is the width of the finished tab. The tool has its full radius
   engaged when it lifts at the start of a zone and when it drops at the end, so the
   skipped stretch of toolpath is `tab_width + tool_diameter`.

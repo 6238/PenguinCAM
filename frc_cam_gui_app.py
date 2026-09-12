@@ -1124,6 +1124,10 @@ def process_file():
             'filename': output_token,  # Return secure token (not actual filename)
             'gcode': result.gcode,
             'console': console_output,
+            # Settings PenguinCAM adapted to suit this part (e.g. a team-config tab height
+            # taller than the stock being cut). Not failures - the operator just needs to
+            # know what changed, since they usually cannot edit the team config themselves.
+            'warnings': result.warnings,
             'parameters': parameters
         }
 
@@ -1226,6 +1230,7 @@ def process_job():
         prepared = []
         placed = []
         gen_errors = []
+        job_warnings = []  # per-part settings adapted to fit; surfaced, never fatal
         for i, part in enumerate(parts_spec):
             fidx = part.get('file_index', i)
             if fidx not in saved_paths:
@@ -1288,6 +1293,8 @@ def process_job():
                 'interior': phases['interior'], 'perimeter': phases['perimeter'],
                 'tab_removal': phases['tab_removal'],
             })
+            for note in getattr(item['pp'], 'warnings', []):
+                job_warnings.append(f"{item['name']}: {note}")
             minx, miny, maxx, maxy = item['bbox']
             response_parts.append({
                 'index': i, 'name': item['name'],
@@ -1325,6 +1332,7 @@ def process_job():
             'cycle_time_seconds': result.stats.get('cycle_time_seconds'),
             'stock': {'width': round(stock_w, 4), 'height': round(stock_h, 4)},
             'parts': response_parts,
+            'warnings': job_warnings,
         })
 
     except ValueError as e:

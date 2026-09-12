@@ -248,6 +248,8 @@ fieldset.field { border: 1px solid var(--line); border-radius: 6px; padding: 8px
 }
 
 .errors { color: var(--danger); font-size: 13px; margin-top: 8px; white-space: pre-wrap; }
+/* Advisory, not a failure - amber rather than red, and it must not read as an error. */
+.notes { color: #d29922; font-size: 13px; margin-top: 8px; white-space: pre-wrap; }
 
 #wiz-nav {
   display: flex;

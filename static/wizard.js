@@ -996,6 +996,8 @@
 
   /* ------------------------------------------------------------- preview */
   function resetPreview() {
+    var notesEl = $('#preview-notes');
+    if (notesEl) { notesEl.textContent = ''; notesEl.hidden = true; }
     $('#preview-result').hidden = true;
     $('#preview-errors').textContent = '';
     $('#gen-status').textContent = '';
@@ -1349,9 +1351,20 @@
     }
   }
 
+  function showNotes(resp) {
+    // Settings that were adapted to suit this part. Shown every run, because the operator
+    // usually can't change the team config and needs to know what they're actually cutting.
+    var el = $('#preview-notes');
+    if (!el) return;
+    var notes = (resp && resp.warnings) || [];
+    el.textContent = notes.map(function (n) { return '\u26a0 ' + n; }).join('\n');
+    el.hidden = !notes.length;
+  }
+
   function showResult(resp) {
     $('#gen-status').textContent = '';
     $('#preview-result').hidden = false;
+    showNotes(resp);
     var t = resp.cycle_time ? ('Estimated cycle time: ' + resp.cycle_time) : '';
     var n;
     if (state.mode === 'tubing') { n = state.parts.length + ' face' + (state.parts.length === 1 ? '' : 's'); }

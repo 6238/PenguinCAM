@@ -434,6 +434,12 @@ fixturing:
             <li><strong>Placement:</strong> tabs are spread evenly around each closed contour
                 &mdash; perimeters and large through-pockets alike &mdash; positioned to avoid
                 the ramp-in, where the cutter is still descending.</li>
+            <li><strong>Settings that don't suit a particular part are adapted, not rejected.</strong>
+                A tab taller than two thirds of the stock, or so wide it can't be spaced around a
+                small contour, is trimmed to fit and the job still runs. PenguinCAM says what it
+                changed &mdash; under the 3D preview, and as a <code>NOTES</code> block near the
+                end of the <code>.nc</code> file. Nobody standing at the machine has to go and
+                edit the team config to cut a part.</li>
             <li><strong>Pause for fixturing (<code>pause_before_perimeter: true</code>):</strong> No tabs are placed. Program pauses (M0) before perimeter cut to allow fixturing through milled holes.</li>
         </ul>
 
