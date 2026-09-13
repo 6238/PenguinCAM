@@ -145,6 +145,8 @@ class JobPool:
         self._update(job_id, state="running")
         try:
             result = self._worker(job_id)
+            fields = {"token": result.get("token"), "summary": result.get("summary"),
+                      "part": result.get("part")}
         except JobFailure as exc:
             self._log(f"print job {job_id[:8]} failed: {exc.message}\n{exc.details}")
             self._update(job_id, state="failed", error=exc.message)
@@ -152,5 +154,4 @@ class JobPool:
             self._log(f"print job {job_id[:8]} crashed:\n{traceback.format_exc()}")
             self._update(job_id, state="failed", error=GENERIC_FAILURE)
         else:
-            self._update(job_id, state="done", token=result.get("token"),
-                         summary=result.get("summary"), part=result.get("part"))
+            self._update(job_id, state="done", **fields)

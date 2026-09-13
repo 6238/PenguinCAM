@@ -107,6 +107,15 @@ class FailureTest(unittest.TestCase):
         self.assertEqual(rec["error"], "The slicer failed unexpectedly.")
         self.assertNotIn("/tmp/x", str(rec))
 
+    def test_worker_returning_a_non_dict_ends_failed_without_raising(self):
+        def worker(job_id):
+            return None
+        pool = JobPool(worker, executor=ImmediateExecutor())
+        job_id = pool.submit()          # a synchronous executor must not raise out of submit
+        rec = pool.get(job_id)
+        self.assertEqual(rec["state"], "failed")
+        self.assertEqual(rec["error"], "The slicer failed unexpectedly.")
+
 
 class QueueCapTest(unittest.TestCase):
     def test_third_waiting_job_is_refused(self):
@@ -130,6 +139,8 @@ class QueueCapTest(unittest.TestCase):
             return good_worker(job_id)
 
         pool = JobPool(slow_worker, max_running=1, max_queued=1)   # real thread pool
+        self.addCleanup(pool._executor.shutdown, wait=True)
+        self.addCleanup(release.set)   # never leave a worker parked, even on a failed assert
         first = pool.submit()
         self.assertTrue(started.wait(2))
         self.assertEqual(pool.get(first)["state"], "running")
