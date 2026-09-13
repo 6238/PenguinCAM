@@ -85,8 +85,6 @@ When generating G-code comments:
 
 **DO NOT run any git commands** (git add, git commit, git push, etc.). The user prefers to handle all git operations themselves. Focus on making code changes and let the user manage version control.
 
-Exception: an agent lane working from an explicit task instruction that tells it to commit does commit, on a feature branch and never on `main`, and still leaves merges and pushes to the user.
-
 ## Architecture
 
 ```
