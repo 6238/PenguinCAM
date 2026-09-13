@@ -13,8 +13,9 @@ A ground-up rework, delivered as a **step wizard** (Setup → Parts → Layout �
 - **Onshape embedding:** popup OAuth with `SameSite=None; Secure` cookies, continuous face-selection, light/dark theme tied to Onshape's `?theme=`.
 - **Save:** split "Download Program / Send to Google Drive" button (Drive gated by config, remembers last choice).
 - The wizard is the whole app: `/` (and `/app`) serve it full-screen in DXF-upload mode; the Onshape panel serves the same wizard with face-selection as the source.
+- **3D Printing (stage 1):** a "3D Printing" mode on Setup opens a print wizard that slices a fixed sample part with Orca Slicer for the team's Bambu Lab printer, shows print time, filament and layers, and delivers a .gcode.3mf through the same Download / Drive button. See [docs/3D_PRINTING.md](docs/3D_PRINTING.md).
 
-Key files: `templates/wizard.html`, `static/wizard.js`, `static/gcode_viewer.js`, `static/source_onshape.js`; engine in `frc_cam_postprocessor.py`, routes in `frc_cam_gui_app.py`. Planned next: **V3 config / computed feeds-&-speeds** model (`docs/FEEDSandSPEEDS.md`). Run `make test` after changes.
+Key files: `templates/wizard.html`, `static/wizard.js`, `static/gcode_viewer.js`, `static/source_onshape.js`; engine in `frc_cam_postprocessor.py`, routes in `frc_cam_gui_app.py`; the print path in `print_routes.py`, `print_jobs.py`, `print_slicer.py`, `templates/print_wizard.html`, `static/print_wizard.js`, `static/print_viewer.js` and the fixed assets in `print/`. Planned next: **V3 config / computed feeds-&-speeds** model (`docs/FEEDSandSPEEDS.md`). `make install` also installs Orca Slicer, which the print path needs. Run `make test` after changes, and `make test-quick` while iterating.
 
 🔗 **Demo video:**  
 [![Demo video](https://img.youtube.com/vi/gFReFDz-_LI/0.jpg)](https://youtu.be/zPZCTVh2n2Q)
@@ -157,7 +158,7 @@ See "For Other FRC Teams" section below for complete instructions.
 
 ### Deployment (Advanced)
 
-For teams self-hosting PenguinCAM, it's can be deployed on Railway (server-based) or Vercel (serverless) with automatic GitHub integration, or your own hosting service or server.
+For teams self-hosting PenguinCAM, it's can be deployed on Railway (server-based) or Vercel (serverless) with automatic GitHub integration, or your own hosting service or server. Vercel is unsupported from the 3D print stage on: the serverless build has no Orca Slicer binary, so Railway, built from the `Dockerfile`, is the target.
 
 **Setup guides:**
 - [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Deploy to Railway, environment variables
@@ -221,9 +222,16 @@ Google Drive Upload
 - `google_drive_integration.py` - Drive uploads
 - `penguincam_auth.py` - Google OAuth authentication
 
+**3D printing (stage 1):**
+- `print_routes.py` - Flask blueprint for the print wizard
+- `print_jobs.py` - Job pool and job table for slices
+- `print_slicer.py` - Orca Slicer command line wrapper
+- `print/` - Sample part and the Bambu Lab profiles
+
 **Frontend:**
 - `templates/wizard.html` - Multi-part wizard UI (the whole app; served at `/`, `/app`, and the Onshape panel)
 - `static/wizard.js` - Wizard logic; `static/gcode_viewer.js` - Three.js toolpath viewer
+- `templates/print_wizard.html` - Print wizard UI, with `static/print_wizard.js` and `static/print_viewer.js`
 - `static/popcornlogo.png` - Team branding
 
 **Configuration:**
@@ -351,12 +359,13 @@ We use [uv](https://docs.astral.sh/uv/) for fast Python dependency management. T
    ```bash
    make install
    ```
-   This installs `uv` if needed, creates a `.venv`, and installs all dependencies.
+   This installs `uv` if needed, creates a `.venv`, installs all dependencies, and installs Orca Slicer into `tools/orca/` for the print path.
 
-3. **Run G-code tests:**
+3. **Run the tests:**
    ```bash
    make test
    ```
+   `make test` runs everything, including a real Orca slice. Use `make test-quick` while iterating: same tests without the slicer.
 
 4. **Set environment variables** (for running the web app):
    ```bash

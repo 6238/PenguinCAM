@@ -13,13 +13,17 @@ PenguinCAM is a web-based CAM post-processor that generates CNC G-code from DXF 
 **Important**: This project uses `uv` for Python environment management locally. All Python commands should be run with `uv run`:
 
 ```bash
-# Install dependencies
+# Install dependencies, and Orca Slicer into tools/orca/
+# (the Orca version is pinned in scripts/install-orca.sh)
 make install
 
 # Run development server (opens http://localhost:6238)
 uv run python frc_cam_gui_app.py
 
-# Run G-code comparison tests
+# Run the fast tests: unit, system and node tests, no slicer
+make test-quick
+
+# Run everything, including the real Orca slice (the gate before a change is done)
 make test
 
 # Run postprocessor directly (CLI)
@@ -51,6 +55,8 @@ uv pip install -r requirements.txt
 
 **Always run `make test` after making any code changes.** If tests fail, fix the errors before proceeding with other work. Do not commit or consider a change complete until all tests pass.
 
+`make test` is the gate. Use `make test-quick` while iterating: it runs the unit, system and node tests and skips the real Orca slice.
+
 ## G-code Generation Rules
 
 **CRITICAL**: The CNC machines that run our G-code have strict requirements. Violating these rules will cause machine failures:
@@ -79,6 +85,8 @@ When generating G-code comments:
 
 **DO NOT run any git commands** (git add, git commit, git push, etc.). The user prefers to handle all git operations themselves. Focus on making code changes and let the user manage version control.
 
+Exception: an agent lane working from an explicit task instruction that tells it to commit does commit, on a feature branch and never on `main`, and still leaves merges and pushes to the user.
+
 ## Architecture
 
 ```
@@ -98,6 +106,13 @@ G-code Generator (frc_cam_postprocessor.py)
 - `onshape_integration.py` - Onshape API client for one-click export
 - `penguincam_auth.py` - Google Workspace OAuth (optional)
 - `google_drive_integration.py` - Drive upload (optional)
+- `print_routes.py` - Flask blueprint for the print wizard: page, part info, slice jobs, event stream
+- `print_jobs.py` - In-process job pool and job table for slices (imports no Flask)
+- `print_slicer.py` - Orca Slicer command line wrapper (imports no Flask)
+- `templates/print_wizard.html` - Print wizard UI, served at `/print`
+- `static/print_wizard.js` - Print wizard logic (fetches the part, submits the job, reads the event stream)
+- `static/print_viewer.js` - Three.js mesh-on-bed viewer for the print wizard
+- `print/` - Fixed print assets: `sample_part.stl` and the flattened Bambu Lab profiles
 
 ## Documentation
 
@@ -105,15 +120,16 @@ Detailed documentation lives in the `docs/` directory. **Read these before modif
 
 | File | When to Read |
 |------|--------------|
-| `Z_COORDINATE_SYSTEM.md` | Modifying Z-axis calculations, safe heights, cut depths, or plunge moves |
-| `TOOL_COMPENSATION_GUIDE.md` | Changing offset logic for perimeters, pockets, or holes |
-| `ASSUMPTIONS.md` | Adding/changing G-code output; lists controller compatibility requirements |
-| `MACHINE_CHECKLIST.md` | Updating G-code header comments or safety checks |
-| `DEPLOYMENT_GUIDE.md` | Changing environment variables, Railway config, or OAuth redirect URIs |
-| `AUTHENTICATION_GUIDE.md` | Modifying Google OAuth flow, session handling, or domain restrictions |
-| `INTEGRATIONS_GUIDE.md` | Changing Onshape API calls or Google Drive upload logic |
-| `ONSHAPE_SETUP.md` | Updating the Onshape browser extension or import URL format |
-| `quick-reference-card.md` | Changing UI workflows or default settings that affect end users |
+| [Z_COORDINATE_SYSTEM.md](docs/Z_COORDINATE_SYSTEM.md) | Modifying Z-axis calculations, safe heights, cut depths, or plunge moves |
+| `TOOL_COMPENSATION_GUIDE.md` (not written yet) | Changing offset logic for perimeters, pockets, or holes |
+| [ASSUMPTIONS.md](docs/ASSUMPTIONS.md) | Adding/changing G-code output; lists controller compatibility requirements |
+| [MACHINE_CHECKLIST.md](docs/MACHINE_CHECKLIST.md) | Updating G-code header comments or safety checks |
+| [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) | Changing environment variables, Railway config, or OAuth redirect URIs |
+| [AUTHENTICATION_GUIDE.md](docs/AUTHENTICATION_GUIDE.md) | Modifying Google OAuth flow, session handling, or domain restrictions |
+| [INTEGRATIONS_GUIDE.md](docs/INTEGRATIONS_GUIDE.md) | Changing Onshape API calls or Google Drive upload logic |
+| [ONSHAPE_SETUP.md](docs/ONSHAPE_SETUP.md) | Updating the Onshape browser extension or import URL format |
+| [quick-reference-card.md](docs/quick-reference-card.md) | Changing UI workflows or default settings that affect end users |
+| [3D_PRINTING.md](docs/3D_PRINTING.md) | Changing the print wizard, the slicer wrapper, the job pool, or the Orca install |
 
 ## Testing
 

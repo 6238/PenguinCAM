@@ -10,8 +10,9 @@
 2. [Railway Deployment](#railway-deployment)
 3. [Environment Variables](#environment-variables)
 4. [Custom Domain Setup](#custom-domain-setup)
-5. [Troubleshooting](#troubleshooting)
-6. [Updating the Deployment](#updating-the-deployment)
+5. [Orca Slicer and the Docker build](#orca-slicer-and-the-docker-build)
+6. [Troubleshooting](#troubleshooting)
+7. [Updating the Deployment](#updating-the-deployment)
 
 ---
 
@@ -41,27 +42,31 @@ Before deploying, you need:
 2. Select **"Deploy from GitHub repo"**
 3. Choose your **PenguinCAM repository**
 4. Railway will automatically:
-   - Detect it's a Python app
-   - Read `Procfile` for startup command
-   - Install dependencies from `requirements.txt`
+   - Detect the `Dockerfile` in the repository root
+   - Build the image from it
+   - Run the image's `CMD`
 
 ### Step 3: Configure Build
 
-Railway auto-detects the configuration from your repo:
+The repository has a `Dockerfile`, so Railway builds from it and ignores the `Procfile`. The
+`Procfile` is kept identical to the Dockerfile's `CMD` for tools that read it, but nothing in
+production does. See [Orca Slicer and the Docker build](#orca-slicer-and-the-docker-build) for
+what the image contains.
 
-**Procfile:**
+**Startup command (the Dockerfile's `CMD`, and the `Procfile`):**
 ```
-web: gunicorn frc_cam_gui_app:app --bind 0.0.0.0:$PORT
+gunicorn frc_cam_gui_app:app --bind 0.0.0.0:$PORT --workers 1 --worker-class gthread --threads 16
 ```
 
 **Requirements:**
 - Flask, gunicorn, requests
 - Onshape/Google API libraries
 - DXF processing (ezdxf, shapely)
+- Orca Slicer, downloaded during the image build
 
 ### Step 4: Wait for Build
 
-- Initial build takes 2-3 minutes
+- The image build takes several minutes; the Orca download is about 130 MB
 - Watch the build logs for any errors
 - Once complete, you'll see "Deployment successful"
 
@@ -185,6 +190,77 @@ This works but is less memorable for students. Use `BASE_URL` with this URL if n
 
 ---
 
+## Orca Slicer and the Docker build
+
+The 3D print path runs Orca Slicer as a subprocess, so the deployed image has to carry the
+slicer and every library it links against. Developer detail lives in
+[3D_PRINTING.md](3D_PRINTING.md); this section covers what that means for the deployment.
+
+### Railway builds from the Dockerfile
+
+Railway uses the `Dockerfile` whenever one is present. The image's `CMD` is what production
+runs. The `Procfile` holds the same line so tools that read a Procfile see the right command,
+and the two must be changed together.
+
+### What the build does
+
+1. Starts from `python:3.11-slim-trixie`. The pin matters: Debian 13 (trixie) ships glibc 2.41,
+   and Orca's Ubuntu 24.04 AppImage needs glibc 2.38 or newer. A pinned tag keeps a future tag
+   move from changing the C library under the slicer.
+2. Installs the runtime packages listed in the `Dockerfile`. The AppImage bundles only a few
+   private libraries, so GTK, Cairo, Pango, WebKit, GStreamer, Wayland and X11 packages come
+   from the Debian index.
+3. Runs `scripts/install-orca.sh`, which downloads Orca **2.4.2** (version and SHA-256
+   checksums pinned in the script) and unpacks it into `tools/orca/`. This happens before the
+   application code is copied, so a code change does not re-download the release.
+4. Checks the result with `ldd`. If the Orca binary has an unresolved library, the build fails
+   there instead of at the first slice in production.
+
+### Web process and worker count
+
+```
+gunicorn frc_cam_gui_app:app --bind 0.0.0.0:$PORT --workers 1 --worker-class gthread --threads 16
+```
+
+Sixteen threads let several open event streams sit beside ordinary requests. Workers stay at
+one, and `--workers 1` is explicit because gunicorn otherwise reads `WEB_CONCURRENCY`. The job
+table, the file token map and the rate limiter's storage are all per process: a second worker
+would see none of the first worker's jobs, tokens or counters.
+
+### Slice pool sizing
+
+`print_jobs.py` allows one Orca process at a time (`MAX_RUNNING = 1`) and queues two more
+(`MAX_QUEUED = 2`). Beyond that, a request is refused rather than queued for someone who has
+stopped waiting.
+
+Measured on 2026-09-13, on an aarch64 container:
+
+| Part | Wall clock | Peak resident |
+|------|-----------|---------------|
+| `print/sample_part.stl` | 0.23 s | 93 MB |
+| 120 x 120 x 40 mm box | 0.6 s | 250 MB |
+
+The rule for raising `MAX_RUNNING` is `min(vCPU count, memory / peak resident memory of one
+slice)`, never below one. The Railway plan's vCPU and memory allotment could not be read from
+the build container, so the constants stay where they are until someone reads the plan's
+allotment from the Railway dashboard and revisits them with that rule.
+
+### Rate limit on slices
+
+`POST /print-job` is capped at 3 per minute. That cap is deployment-wide, not per user:
+`ProxyFix` is configured without `x_for`, so every browser behind Railway's proxy is seen as
+the same address and shares one counter. Raise the limit with the pool constants, not on its
+own.
+
+### Vercel is unsupported
+
+From the 3D print stage on, the serverless deployment in `vercel.json` cannot run this app:
+there is no Orca binary in that build and no room for one. `app.py` and `vercel.json` are
+untouched but no longer a supported target. Deploy on Railway, or on any host that builds the
+`Dockerfile`.
+
+---
+
 ## Troubleshooting
 
 ### Build Failures
@@ -193,9 +269,11 @@ This works but is less memorable for students. Use `BASE_URL` with this URL if n
 
 **Solutions:**
 1. Check `requirements.txt` for invalid package names
-2. Ensure Python version compatibility (Railway uses 3.11+)
-3. Review build logs for specific errors
-4. Verify `Procfile` syntax
+2. Review build logs for specific errors
+3. If the build fails on the `ldd` check, a runtime library is missing from the `Dockerfile`'s
+   `apt-get install` list; the failing line names it
+4. If the build fails in `scripts/install-orca.sh`, the download or its checksum failed; see
+   [3D_PRINTING.md](3D_PRINTING.md)
 
 ### OAuth Errors: "insecure_transport"
 
