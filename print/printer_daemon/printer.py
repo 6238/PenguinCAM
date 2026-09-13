@@ -42,6 +42,12 @@ STG_PAUSED = frozenset({5, 6, 16, 17, 20, 21, 23, 26, 27, 28, 30, 32, 33, 34, 35
 # The compound extensions a sliced file can carry, longest first.
 _EXTENSIONS = ('.gcode.3mf', '.3mf', '.gcode')
 
+#: The plate inside the archive to print. PenguinCAM slices one plate and Orca numbers it
+#: 1, which print/slicer.py reads back as Metadata/plate_1.gcode. Named rather than written
+#: into the start call, so print/tests/test_slice_daemon_contract.py can pin the two
+#: together: the daemon never imports the backend, so a test is the only place they meet.
+PLATE_NUMBER = 1
+
 # A job id is 'j' + hex: the relay builds it as "j" + secrets.token_hex(4), and a leading
 # zero can be dropped, so 7 or 8 hex digits -- the same rule the relay applies. Deliberately
 # tight: a wider pattern would strip suffixes this daemon never wrote, turning a user's
@@ -254,11 +260,22 @@ class PrinterLink:
     def start(self, remote_name):
         """Start the uploaded file. Plate 1 is what the slicer writes.
 
-        use_ams is False: the stage-1 slice is single-material, and an AMS mapping the team
-        has not asked for would be a surprising default. Revisit with the owner if the
-        shop prints from an AMS."""
+        use_ams is False: the slice is single-material, and an AMS mapping the team has not
+        asked for would be a surprising default. Revisit with the owner if the shop prints
+        from an AMS.
+
+        That choice puts the EXTERNAL SPOOL in charge of the material, and the printer
+        checks the spool it has against the filament the slice asks for. The fixed profile
+        set slices Generic PETG for a 0.6 mm High Flow nozzle on the Textured PEI Plate
+        (print/profiles/, docs/3D_PRINTING.md), so an external spool the printer still
+        believes is PLA makes the start fail or the print come out wrong. Nothing here can
+        detect that: the daemon reports whatever the printer reports.
+
+        Nothing in this call names the plate or the material. Both travel inside the 3MF,
+        which is why a profile change upstream needs no change here."""
         return self._require_printer().start_print(
-            remote_name, 1, use_ams=False, ams_mapping=[0], flow_calibration=True)
+            remote_name, PLATE_NUMBER, use_ams=False, ams_mapping=[0],
+            flow_calibration=True)
 
 
 def discover(timeout=5.0, *, sock_factory=None):

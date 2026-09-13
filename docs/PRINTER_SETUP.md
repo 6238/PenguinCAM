@@ -223,6 +223,14 @@ and the external spool selected. Supporting an AMS is a one-line change in
 `print/printer_daemon/printer.py`, in `PrinterLink.start`. Ask before making it, because the
 right mapping depends on how the shop loads its filament.
 
+Because the external spool is what prints, **the spool on the printer has to be the
+material the slice asks for**. PenguinCAM slices one fixed profile set, listed in
+[3D_PRINTING.md](3D_PRINTING.md): **Generic PETG**, a **0.6 mm High Flow** nozzle and the
+**Textured PEI Plate**. If the printer still has PLA on the external spool, or the smooth
+plate on the bed, the start either fails or the part does. The daemon cannot tell: the
+plate and the material live inside the sliced file, and it only reports what the printer
+reports.
+
 **Where the logs are**
 
 ```
