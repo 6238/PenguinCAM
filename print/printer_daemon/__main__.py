@@ -25,7 +25,8 @@ from printer_daemon.printer import PrinterLink, discover
 from printer_daemon.relay_client import ChallengeDetected, RelayClient, RelayError
 from printer_daemon.run_loop import RunLoop
 
-# Crockford base32 without I, L, O and U. Deliberately duplicated from printer_relay.py:
+# Crockford base32 without I, L, O and U. Deliberately duplicated from
+# print/printer_relay.py:
 # the backend is not installed on the Pi and the daemon never imports it. A test pins the
 # two literals together, so a change to one is caught.
 ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"

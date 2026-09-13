@@ -54,7 +54,7 @@ echo "new-package>=1.0.0" >> requirements.txt
 uv pip install -r requirements.txt
 ```
 
-**The Pi daemon's dependencies are separate.** `printer_daemon/` has its own
+**The Pi daemon's dependencies are separate.** `print/printer_daemon/` has its own
 `requirements.txt` (`bambulabs_api`, `requests`, `tomli-w`) that is installed on the
 Raspberry Pi and, by `make test-daemon`, into the development venv. None of it belongs in
 the repository's own `requirements.txt` or in the Docker image. The daemon is run as a

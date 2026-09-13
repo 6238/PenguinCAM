@@ -22,7 +22,7 @@ import math
 
 import yaml
 
-from printer_relay import normalize_code
+from print.printer_relay import normalize_code
 from team_config import LENGTH_KEYS, parse_length
 
 

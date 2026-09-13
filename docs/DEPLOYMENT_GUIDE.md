@@ -176,13 +176,13 @@ opened in Onshape. It is read **only** in development mode and ignored on Railwa
 
 ### The installer route and the documented URL
 
-`GET /install-printer.sh` serves `printer_daemon/install.sh` from this app. It is a
+`GET /install-printer.sh` serves `print/printer_daemon/install.sh` from this app. It is a
 convenience alias.
 
 The **documented** install command fetches the same script from GitHub, pinned to a commit:
 
 ```
-curl -fsSL https://raw.githubusercontent.com/6238/PenguinCAM/<sha>/printer_daemon/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/6238/PenguinCAM/<sha>/print/printer_daemon/install.sh | sudo bash
 ```
 
 That is deliberate. The site is behind Cloudflare, and a challenge page piped into `bash`
@@ -244,7 +244,7 @@ service-wide one, once verification 8 says what address production actually sees
 
 - Verification 5 (2026-09-13): a token signed with `FLASK_SECRET_KEY` verifies under the
   same key and is rejected under another; pinned by
-  `tests/test_printer_relay.py::TestVerificationFiveTokenDurability`, which mints a token in
+  `print/tests/test_printer_relay.py::TestVerificationFiveTokenDurability`, which mints a token in
   a separate interpreter so a restart is what is actually being tested.
 - Verification 6 (2026-09-13): every daemon dependency has an aarch64 wheel; about 7 MB of
   downloads, about 23 MB installed; 64-bit Raspberry Pi OS is required because Pillow
@@ -255,7 +255,7 @@ service-wide one, once verification 8 says what address production actually sees
 - Verification 8, partial (2026-09-13): `ProxyFix` honours one forwarded hop (`x_for=1`);
   `override_defaults=True` is set on every printer route and pinned by a test. Both, and the
   `X-Forwarded-Proto: https` that opens the HTTPS gate, are pinned by
-  `tests/test_printer_routes.py::TestVerificationEightLimiterAndProxy`. Note that `ProxyFix`
+  `print/tests/test_printer_routes.py::TestVerificationEightLimiterAndProxy`. Note that `ProxyFix`
   counts hops from the **right**: with `x_for=1` an `X-Forwarded-For` that already carries a
   chain gives the app the address the nearest proxy reported, not the browser's. Nothing in
   this feature keys a real limit on the address -- the printer routes key on the pairing
@@ -263,19 +263,19 @@ service-wide one, once verification 8 says what address production actually sees
   production for a browser and for a Pi. Needs a live probe against Railway; **ask the
   owner** before running one.
 - Verifications 1 to 4: **open**, need the shop H2S.
-  `printer_daemon/tests/fixtures/h2s_status.json` is provisional until
-  `printer_daemon/tests/smoke_test.py` has been run against it.
+  `print/printer_daemon/tests/fixtures/h2s_status.json` is provisional until
+  `print/printer_daemon/tests/smoke_test.py` has been run against it.
 
 ### Updating the daemon
 
-`printer_daemon/install.sh` pins `PENGUINCAM_SHA`. That SHA is the one place the daemon's
+`print/print/printer_daemon/install.sh` pins `PENGUINCAM_SHA`. That SHA is the one place the daemon's
 version is written.
 
-**Every pull request that changes anything under `printer_daemon/` updates it to that pull
+**Every pull request that changes anything under `print/printer_daemon/` updates it to that pull
 request's merge commit.** Until the owner sets it when opening the pull request it reads
 `REPLACE_BEFORE_MERGE`, and the installer refuses to run.
 
-**It is two edits, one commit.** `PENGUINCAM_SHA` in `printer_daemon/install.sh` and the
+**It is two edits, one commit.** `PENGUINCAM_SHA` in `print/printer_daemon/install.sh` and the
 `<sha>` in the documented install command in [PRINTER_SETUP.md](PRINTER_SETUP.md) section 4
 must name the same commit, and both are set when the pull request is opened. They are what a
 mentor's install is made of: the URL says which script is fetched, the SHA inside it says

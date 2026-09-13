@@ -2,7 +2,7 @@
 #
 # PenguinCAM printer daemon installer for Raspberry Pi OS Bookworm (64-bit).
 #
-#   curl -fsSL https://raw.githubusercontent.com/6238/PenguinCAM/<sha>/printer_daemon/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/6238/PenguinCAM/<sha>/print/printer_daemon/install.sh | sudo bash
 #
 # The -f matters: curl then exits non-zero and prints nothing on any 4xx or 5xx, so a
 # blocked or moved URL can never be piped into bash. (https://penguincam.popcornpenguins.com/install-printer.sh
@@ -17,7 +17,7 @@
 set -euo pipefail
 
 # The one place the daemon's version is written. The pull request that changes anything in
-# printer_daemon/ updates it to that pull request's merge commit.
+# print/printer_daemon/ updates it to that pull request's merge commit.
 PENGUINCAM_SHA="REPLACE_BEFORE_MERGE"
 
 INSTALL_DIR="/opt/penguincam-printer"
@@ -26,7 +26,7 @@ VENV_DIR="$INSTALL_DIR/venv"
 CONFIG_DIR="/etc/penguincam-printer"
 # Where `run` downloads a sliced file before sending it to the printer. The daemon creates
 # it if it is missing; the installer creates it once, as root, with the ownership and mode
-# it should have. Kept in step with DOWNLOAD_DIR in printer_daemon/__main__.py.
+# it should have. Kept in step with DOWNLOAD_DIR in print/printer_daemon/__main__.py.
 DOWNLOAD_DIR="/var/tmp/penguincam-printer"
 SERVICE_USER="penguincam"
 SERVICE_NAME="penguincam-printer"
@@ -36,7 +36,7 @@ die() { echo "error: $*" >&2; exit 1; }
 
 if [ "$PENGUINCAM_SHA" = "REPLACE_BEFORE_MERGE" ]; then
   die "this installer has no pinned commit yet.
-Set PENGUINCAM_SHA in printer_daemon/install.sh to the commit you want to install before
+Set PENGUINCAM_SHA in print/printer_daemon/install.sh to the commit you want to install before
 opening the pull request."
 fi
 
@@ -92,8 +92,10 @@ curl -fsSL "https://github.com/6238/PenguinCAM/archive/$PENGUINCAM_SHA.tar.gz" -
 
 echo "==> extracting printer_daemon"
 rm -rf "${APP_DIR:?}/printer_daemon"
-# The archive's top directory is PenguinCAM-<sha>; strip it and keep only the daemon.
-tar -xzf "$TARBALL" -C "$APP_DIR" --strip-components=1 '*/printer_daemon/*'
+# The archive holds PenguinCAM-<sha>/print/printer_daemon/...; strip both of those leading
+# directories so the package lands at $APP_DIR/printer_daemon and `python -m printer_daemon`
+# finds it, exactly as it did before the print/ package existed.
+tar -xzf "$TARBALL" -C "$APP_DIR" --strip-components=2 '*/print/printer_daemon/*'
 
 echo "==> creating the virtual environment"
 python3 -m venv "$VENV_DIR"

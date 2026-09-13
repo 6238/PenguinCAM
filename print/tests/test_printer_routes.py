@@ -8,10 +8,11 @@ import time
 import unittest
 from unittest import mock
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))))
 
-import printer_relay
-import printer_routes
+from print import printer_relay
+from print import printer_routes
 import frc_cam_gui_app as gui
 from frc_cam_gui_app import app
 

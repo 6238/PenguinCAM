@@ -32,8 +32,8 @@ class FakeClock:
 
 class TestCodeGeneration(unittest.TestCase):
     def test_the_alphabet_matches_the_backend_exactly(self):
-        """The daemon must not import printer_relay (it is not installed on the Pi), so the
-        alphabet lives in two places. Pin them together by literal."""
+        """The daemon must not import print.printer_relay (the backend is not installed on
+        the Pi), so the alphabet lives in two places. Pin them together by literal."""
         self.assertEqual(main_mod.ALPHABET, '0123456789ABCDEFGHJKMNPQRSTVWXYZ')
 
     def test_codes_are_eight_symbols_and_never_all_digits(self):

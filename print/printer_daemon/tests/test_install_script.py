@@ -69,8 +69,10 @@ class TestInstallScript(unittest.TestCase):
         self.assertIn('$PENGUINCAM_SHA', self.text)
 
     def test_it_extracts_only_the_daemon_directory(self):
-        self.assertIn('--strip-components=1', self.text)
-        self.assertIn('printer_daemon', self.text)
+        # Two levels: the archive's PenguinCAM-<sha> and the print/ package, so the
+        # daemon lands at $APP_DIR/printer_daemon and `python -m printer_daemon` works.
+        self.assertIn('--strip-components=2', self.text)
+        self.assertIn("'*/print/printer_daemon/*'", self.text)
 
     def test_it_creates_the_service_user_and_enables_without_starting(self):
         self.assertIn('useradd', self.text)

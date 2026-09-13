@@ -17,8 +17,9 @@ import time
 from flask import Blueprint, current_app, jsonify, request, send_from_directory, session
 from flask_limiter.util import get_remote_address
 
-import printer_relay
 from team_config import TeamConfig
+
+from . import printer_relay
 
 # A sliced file is deleted an hour after it is registered. Refuse a send once it is forty
 # minutes old, which keeps both job deadlines (3 min to pick up, 15 to confirm) clear of
@@ -355,7 +356,11 @@ def init_printer_routes(app, *, limiter, has_onshape_session, refresh_team_confi
         refusal = _require_https(plain_text=True)
         if refusal:
             return refusal
-        return send_from_directory(os.path.join(app.root_path, 'printer_daemon'),
+        # Beside this module inside the print package, not under app.root_path: the
+        # daemon moved with the rest of the print path and the app's root is the
+        # repository.
+        return send_from_directory(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                'printer_daemon'),
                                    'install.sh', mimetype='text/x-shellscript')
 
     app.register_blueprint(bp)

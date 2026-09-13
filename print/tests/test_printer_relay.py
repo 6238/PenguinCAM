@@ -8,10 +8,11 @@ import subprocess
 import sys
 import unittest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))))
 
-import printer_relay
-from printer_relay import PrinterRelay
+from print import printer_relay
+from print.printer_relay import PrinterRelay
 
 
 class FakeClock:
@@ -597,10 +598,12 @@ class TestVerificationFiveTokenDurability(unittest.TestCase):
         a separate process can carry nothing over in memory, so this is the assertion that
         actually stands behind the deployment guide's FLASK_SECRET_KEY requirement."""
         key = 'a-persistent-flask-secret-key'
-        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))))
         minted = subprocess.run(
             [sys.executable, '-c',
-             'import sys; sys.path.insert(0, sys.argv[1]); import printer_relay; '
+             'import sys; sys.path.insert(0, sys.argv[1]); '
+             'from print import printer_relay; '
              'sys.stdout.write(printer_relay.issue_token(sys.argv[2], sys.argv[3]))',
              repo_root, '7K3MQ9XW', key],
             capture_output=True, text=True, check=True, cwd=repo_root).stdout.strip()

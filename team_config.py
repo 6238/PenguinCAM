@@ -11,7 +11,7 @@ import re
 import yaml
 from typing import Optional, Dict, Any
 
-from printer_relay import normalize_code as _normalize_pairing_code
+from print.printer_relay import normalize_code as _normalize_pairing_code
 
 
 # =============================================================================

@@ -68,7 +68,7 @@ On the printer's own screen:
 Log in to the Pi and run one command:
 
 ```
-curl -fsSL https://raw.githubusercontent.com/6238/PenguinCAM/<sha>/printer_daemon/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/6238/PenguinCAM/<sha>/print/printer_daemon/install.sh | sudo bash
 ```
 
 Replace `<sha>` with the commit you want to install. The current one is the tip of the
@@ -220,7 +220,7 @@ in [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md).
 
 Printing from an AMS is not supported yet. The daemon starts every print with the AMS off
 and the external spool selected. Supporting an AMS is a one-line change in
-`printer_daemon/printer.py`, in `PrinterLink.start`. Ask before making it, because the
+`print/printer_daemon/printer.py`, in `PrinterLink.start`. Ask before making it, because the
 right mapping depends on how the shop loads its filament.
 
 **Where the logs are**
@@ -240,26 +240,26 @@ reason.
 
 ```mermaid
 flowchart TB
-    W["Print wizard, Preview step<br/>Send to Printer, status line"] -->|"POST /printer/jobs<br/>GET /printer/status"| R["printer_routes.py<br/>printer_relay.py"]
+    W["Print wizard, Preview step<br/>Send to Printer, status line"] -->|"POST /printer/jobs<br/>GET /printer/status"| R["print/printer_routes.py<br/>print/printer_relay.py"]
     D["Pi daemon<br/>penguincam-printer run"] -->|"POST /printer/daemon/sync<br/>every 5 s"| R
     D -->|"GET /download/token"| R
     D -->|"FTPS upload, MQTT start"| P["Bambu printer<br/>LAN only, Developer Mode"]
 ```
 
-**The relay** is `printer_relay.py`. One record per normalised pairing code, held in memory
+**The relay** is `print/printer_relay.py`. One record per normalised pairing code, held in memory
 only. Nothing is written to disk and nothing goes in a database. A record is created when a
 session presents the code or a valid token names it, and dropped when the process exits or
 when nothing has touched it for twenty-four hours. The daemon's credential is a token signed
 with `FLASK_SECRET_KEY`, so the relay recognises a daemon by signature and needs no storage.
 
-**The daemon** is `printer_daemon/`. It is not a pip package and there is no
+**The daemon** is `print/printer_daemon/`. It is not a pip package and there is no
 `pyproject.toml` anywhere in this project, so it is run as a module,
 `python -m printer_daemon`, behind the `penguincam-printer` wrapper the installer writes. Its own
 `requirements.txt` (`bambulabs_api`, `requests`, `tomli-w`) is installed on the Pi and into
 the development venv by `make test-daemon`. None of it belongs in the repository's
 `requirements.txt` or in the Docker image.
 
-**The routes** are in `printer_routes.py`:
+**The routes** are in `print/printer_routes.py`:
 
 | Route | Who calls it |
 |-------|--------------|
@@ -300,7 +300,7 @@ backend in the agent container, and sending a real print through it, is
 
 ### The wizard panel
 
-`static/printer_panel.js` is the printer half of the print wizard's Preview step:
+`print/static/printer_panel.js` is the printer half of the print wizard's Preview step:
 the status line under the slice summary and the Send to Printer item in the split button's
 menu. `print/templates/print_wizard.html` loads it after `print_wizard.js`, from the app's
 own static folder rather than the print blueprint's. The contract between
@@ -328,13 +328,13 @@ carries on without it. `.printer-status` and `.printer-error` are styled in
 make test-daemon   # the daemon's own suite; make test runs it too
 ```
 
-The printer and the network are mocked throughout. `printer_daemon/tests/smoke_test.py` is
+The printer and the network are mocked throughout. `print/printer_daemon/tests/smoke_test.py` is
 the one that talks to real hardware, and it is not part of `make test`.
 
 ### When you change the daemon
 
-`printer_daemon/install.sh` pins `PENGUINCAM_SHA`. That SHA is the one place the daemon's
-version is written. **Every pull request that changes anything under `printer_daemon/`
+`print/print/printer_daemon/install.sh` pins `PENGUINCAM_SHA`. That SHA is the one place the daemon's
+version is written. **Every pull request that changes anything under `print/printer_daemon/`
 updates it to that pull request's merge commit.** Until a pull request is opened it reads
 `REPLACE_BEFORE_MERGE`, and the installer refuses to run.
 

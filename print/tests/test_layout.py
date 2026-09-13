@@ -44,12 +44,19 @@ class LayoutTest(unittest.TestCase):
     def test_the_package_holds_the_whole_print_path(self):
         for name in ("__init__.py", "routes.py", "jobs.py", "slicer.py", "sample_part.stl",
                      "profiles", "templates/print_wizard.html", "static/print_wizard.js",
-                     "static/print_viewer.js", "scripts/install-orca.sh", "tests/js"):
+                     "static/print_viewer.js", "scripts/install-orca.sh", "tests/js",
+                     # The printer relay and the Pi daemon are part of the print path too.
+                     "printer_relay.py", "printer_routes.py", "static/printer_panel.js",
+                     "printer_daemon/__main__.py", "printer_daemon/install.sh",
+                     "printer_daemon/requirements.txt", "tests/printer_panel"):
             self.assertTrue((PKG / name).exists(), f"print/{name} is missing")
 
     def test_nothing_print_shaped_is_left_at_the_top_level(self):
         strays = sorted(p.name for p in REPO.glob("print_*.py"))
-        self.assertEqual(strays, [], "print modules belong in print/")
+        strays += sorted(p.name for p in REPO.glob("printer_*.py"))
+        strays += [p.name for p in (REPO / "static").glob("printer_*.js")]
+        strays += [p.name for p in (REPO / "tests").glob("test_printer_*.py")]
+        self.assertEqual(strays, [], "print and printer modules belong in print/")
 
 
 if __name__ == "__main__":

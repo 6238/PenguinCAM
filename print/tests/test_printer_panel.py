@@ -12,10 +12,10 @@ import subprocess
 import unittest
 from unittest import mock
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # A glob, not the directory: this node build treats a directory argument as a module to
 # import rather than a tree to search, and fails with MODULE_NOT_FOUND.
-TEST_GLOB = os.path.join('tests', 'printer_panel', '*.test.mjs')
+TEST_GLOB = os.path.join('print', 'tests', 'printer_panel', '*.test.mjs')
 # Set this to 1 to turn the missing-node skip into a failure.
 REQUIRE_NODE = 'PENGUINCAM_REQUIRE_NODE'
 
