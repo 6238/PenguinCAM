@@ -253,12 +253,219 @@
   }
 
   /* --------------------------------------------------------------- preview */
-  // Filled in by the Preview flow (Task 2): enterPreview, stopFollowing, bindPreview,
-  // bindFinalAction. Task 1 ships these minimal versions so the page runs.
-  function enterPreview() {}
-  function stopFollowing() {}
-  function bindPreview() {}
-  function bindFinalAction() {}
+  function errorForStatus(status, body) {
+    if (status === 429) return RATE_MESSAGE;
+    if (status === 404) return EXPIRED_MESSAGE;
+    if (body && body.error) return body.error;
+    return 'Slicing failed (HTTP ' + status + ').';
+  }
+
+  function resetPreview() {
+    $('#gen-status').textContent = '';
+    $('#preview-errors').textContent = '';
+    $('#preview-notes').textContent = '';
+    $('#preview-notes').hidden = true;
+    $('#preview-stats').textContent = '';
+    $('#preview-result').hidden = true;
+    $('#btn-do').disabled = true;
+    state.token = null;
+    state.record = null;
+  }
+
+  // Entering Preview submits a new slice. A previous job's stream is closed first.
+  function enterPreview() {
+    stopFollowing();
+    state.saveAction = preferredAction();
+    setupFinalAction();
+    resetPreview();
+    $('#gen-status').textContent = 'Queued';
+    fetch('/print-job', { method: 'POST', credentials: 'same-origin' })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, j: j }; });
+      })
+      .then(function (res) {
+        if (res.status !== 202) { showError(errorForStatus(res.status, res.j)); return; }
+        state.jobId = res.j.job_id;
+        followEvents();
+      })
+      .catch(function (e) { showError('Could not reach the server: ' + e.message); });
+  }
+
+  function followEvents() {
+    var es = new EventSource('/print-job/' + encodeURIComponent(state.jobId) + '/events');
+    state.events = es;
+    es.addEventListener('state', function (e) { showState(JSON.parse(e.data)); });
+    es.addEventListener('done', function (e) { stopFollowing(); showDone(JSON.parse(e.data)); });
+    es.addEventListener('failed', function (e) { stopFollowing(); showFailed(JSON.parse(e.data)); });
+    // A proxy that cannot stream errors out before the terminal event: fall back to
+    // polling the JSON record every two seconds so the job still finishes.
+    es.onerror = function () {
+      if (state.events !== es) return;    // already closed on purpose
+      stopFollowing();
+      startPolling();
+    };
+  }
+
+  function startPolling() {
+    state.poll = setInterval(function () {
+      fetch('/print-job/' + encodeURIComponent(state.jobId), { credentials: 'same-origin' })
+        .then(function (r) {
+          if (r.status === 404) { stopFollowing(); showError(EXPIRED_MESSAGE); return null; }
+          if (!r.ok) { stopFollowing(); showError(errorForStatus(r.status, {})); return null; }
+          return r.json();
+        })
+        .then(function (rec) {
+          if (!rec) return;
+          if (rec.state === 'done') { stopFollowing(); showDone(rec); }
+          else if (rec.state === 'failed') { stopFollowing(); showFailed(rec); }
+          else showState(rec);
+        })
+        .catch(function () { /* transient; try again next tick */ });
+    }, 2000);
+  }
+
+  function stopFollowing() {
+    if (state.events) { var es = state.events; state.events = null; es.close(); }
+    if (state.poll) { clearInterval(state.poll); state.poll = null; }
+  }
+
+  function showState(rec) {
+    state.record = rec;
+    $('#gen-status').textContent = statusText(rec);
+  }
+
+  function showError(message) {
+    $('#gen-status').textContent = '';
+    $('#preview-errors').textContent = message;
+    $('#btn-do').disabled = true;
+  }
+
+  function showFailed(rec) {
+    state.record = rec;
+    showError(rec.error || 'Slicing failed.');
+  }
+
+  function showDone(rec) {
+    state.record = rec;
+    state.token = rec.token;
+    var s = rec.summary || {};
+    $('#gen-status').textContent = 'Sliced.';
+    $('#preview-stats').textContent = summaryLine(s);
+    $('#preview-result').hidden = false;
+    if (s.warnings && s.warnings.length) {
+      $('#preview-notes').textContent = s.warnings.map(function (w) { return '⚠ ' + w; }).join('\n');
+      $('#preview-notes').hidden = false;
+    }
+    $('#btn-do').disabled = false;
+    updateSummary();
+    showMesh();
+  }
+
+  function showMesh() {
+    if (typeof PrintViewer === 'undefined' || !state.info) return;
+    if (!viewer) {
+      viewer = new PrintViewer({ canvas: $('#print-canvas'), container: $('#viewer-container'),
+                                 resetButton: $('#btn-reset-view'), emptyState: $('#viewer-empty') });
+    }
+    fetch('/print/part?stl=1', { credentials: 'same-origin' })
+      .then(function (r) { return r.arrayBuffer(); })
+      .then(function (buf) { viewer.load(buf, state.info.printer); })
+      .catch(function (e) { $('#preview-notes').textContent = 'Could not load the 3D view: ' + e.message; $('#preview-notes').hidden = false; });
+  }
+
+  function bindPreview() {
+    if (typeof window !== 'undefined') {
+      window.PenguinCAM.getJobState = function () { return state.record ? state.record.state : null; };
+    }
+  }
+
+  /* ------------------------------------------------- final action (save) */
+  // Same behaviour as the CNC wizard's split button (remembered choice, Drive only
+  // when configured), but the code lives here on purpose.
+  var SAVE_PREF_KEY = 'penguincam_save_action';
+  function readSavePref() { try { return localStorage.getItem(SAVE_PREF_KEY); } catch (e) { return null; } }
+  function writeSavePref(a) { try { localStorage.setItem(SAVE_PREF_KEY, a); } catch (e) {} }
+  function actionLabel(a) { return a === 'drive' ? 'Send to Google Drive' : 'Download Program'; }
+
+  function preferredAction() {
+    var pref = readSavePref();
+    return (pref === 'drive' && CFG.driveEnabled) ? 'drive' : 'download';
+  }
+
+  function setupFinalAction() {
+    var driveOk = !!CFG.driveEnabled;
+    if (state.saveAction === 'drive' && !driveOk) state.saveAction = 'download';
+    $('#btn-do-caret').hidden = !driveOk;
+    $('#final-action').classList.toggle('has-caret', driveOk);
+    var driveItem = document.querySelector('#do-menu li[data-action="drive"]');
+    if (driveItem) driveItem.hidden = !driveOk;
+    $('#btn-do').textContent = actionLabel(state.saveAction);
+  }
+
+  function chooseAction(a) {
+    state.saveAction = a;
+    writeSavePref(a);
+    $('#btn-do').textContent = actionLabel(a);
+    $('#do-menu').hidden = true;
+    performAction(a);
+  }
+
+  function performAction(a) {
+    if (!state.token) return;
+    if (a === 'drive') driveSave(state.token);
+    else doDownload(state.token);
+  }
+
+  function doDownload(token) {
+    window.open('/download/' + token, '_blank');
+    $('#gen-status').textContent = 'Download started.';
+  }
+
+  function driveSave(token) {
+    var status = $('#gen-status'), errs = $('#preview-errors');
+    errs.textContent = '';
+    status.textContent = 'Checking Google Drive…';
+    fetch('/drive/status', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (st) {
+        if (!st.enabled) { errs.textContent = 'Google Drive is not configured for your team.'; status.textContent = ''; return; }
+        if (!st.authenticated) {
+          status.textContent = 'Complete Google sign-in in the popup…';
+          var popup = window.open('/auth/login', 'penguincam_gauth', 'width=600,height=700');
+          if (!popup) { errs.textContent = 'Popup blocked — allow popups, then try again.'; status.textContent = ''; return; }
+          var iv = setInterval(function () { if (popup.closed) { clearInterval(iv); driveUpload(token); } }, 500);
+          setTimeout(function () { clearInterval(iv); }, 180000);
+          return;
+        }
+        driveUpload(token);
+      })
+      .catch(function (e) { errs.textContent = 'Drive check failed: ' + e; status.textContent = ''; });
+  }
+
+  function driveUpload(token) {
+    var status = $('#gen-status'), errs = $('#preview-errors'), btn = $('#btn-do');
+    status.textContent = 'Uploading to Google Drive…';
+    btn.disabled = true;
+    fetch('/drive/upload/' + token, { method: 'POST', credentials: 'same-origin',
+                                      headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        btn.disabled = false;
+        if (res.ok && res.j.success) status.textContent = res.j.message || 'Saved to Google Drive.';
+        else { errs.textContent = (res.j && res.j.message) || 'Drive upload failed.'; status.textContent = ''; }
+      })
+      .catch(function (e) { btn.disabled = false; errs.textContent = 'Drive upload failed: ' + e; status.textContent = ''; });
+  }
+
+  function bindFinalAction() {
+    $('#btn-do').addEventListener('click', function () { if (!this.disabled) performAction(state.saveAction); });
+    $('#btn-do-caret').addEventListener('click', function (e) { e.stopPropagation(); var m = $('#do-menu'); m.hidden = !m.hidden; });
+    $('#do-menu').addEventListener('click', function (e) {
+      var li = e.target.closest('li[data-action]');
+      if (li) chooseAction(li.getAttribute('data-action'));
+    });
+    document.addEventListener('click', function (e) { if (!e.target.closest('#final-action')) $('#do-menu').hidden = true; });
+  }
 
   /* ------------------------------------------------------------------ init */
   function init() {
@@ -282,6 +489,7 @@
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { formatDuration: formatDuration, fitsBed: fitsBed, summaryLine: summaryLine,
-                       printPageUrl: printPageUrl, statusText: statusText, tooBigMessage: tooBigMessage };
+                       printPageUrl: printPageUrl, statusText: statusText, tooBigMessage: tooBigMessage,
+                       errorForStatus: errorForStatus };
   }
 })();

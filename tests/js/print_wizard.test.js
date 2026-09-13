@@ -48,3 +48,12 @@ test('tooBigMessage names both sizes', () => {
   assert.equal(w.tooBigMessage({ x: 300, y: 30, z: 12 }, { x: 256, y: 256 }, 250),
     'Part is larger than the bed: 300 x 30 x 12 mm on 256 x 256 x 250 mm.');
 });
+
+test('errorForStatus picks the student message', () => {
+  assert.equal(w.errorForStatus(429, {}), 'Too many slices in a minute, try again shortly.');
+  assert.equal(w.errorForStatus(503, { error: 'The slicer is busy, try again in a minute.' }),
+    'The slicer is busy, try again in a minute.');
+  assert.equal(w.errorForStatus(404, {}), 'This slice has expired, go back and slice again.');
+  assert.equal(w.errorForStatus(401, { error: 'Session verification required.' }), 'Session verification required.');
+  assert.equal(w.errorForStatus(500, {}), 'Slicing failed (HTTP 500).');
+});
