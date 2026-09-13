@@ -33,7 +33,8 @@ RUN scripts/install-orca.sh
 COPY . .
 
 # The build fails if the Orca binary has an unresolved library.
-RUN ! (LD_LIBRARY_PATH=/app/tools/orca/squashfs-root/lib/orca-runtime:/app/tools/orca/squashfs-root/bin \
+RUN test -x /app/tools/orca/squashfs-root/bin/orca-slicer \
+    && ! (LD_LIBRARY_PATH=/app/tools/orca/squashfs-root/lib/orca-runtime:/app/tools/orca/squashfs-root/bin \
         ldd /app/tools/orca/squashfs-root/bin/orca-slicer | grep 'not found')
 
 # Expose port (Railway sets PORT env var)
