@@ -95,7 +95,7 @@ test('load maps STL coordinates, centres the footprint and sits the part on the 
     const { viewer } = stubViewer();
     // One triangle spanning x 0..40, y 0..30, z 4..12.
     const buf = binaryStl([[[0, 0, 4], [40, 0, 12], [0, 30, 4]]]);
-    viewer.load(buf, { name: 'X1C', bed_mm: { x: 256, y: 256 }, height_mm: 250 });
+    viewer.load(buf, { name: 'Test printer', bed_mm: { x: 256, y: 256 }, height_mm: 250 });
 
     const p = Array.from(viewer.mesh.geometry.attributes.position.array);
     assert.deepEqual(p, [
