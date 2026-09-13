@@ -118,15 +118,15 @@ Detailed documentation lives in the `docs/` directory. **Read these before modif
 
 | File | When to Read |
 |------|--------------|
-| [Z_COORDINATE_SYSTEM.md](docs/Z_COORDINATE_SYSTEM.md) | Modifying Z-axis calculations, safe heights, cut depths, or plunge moves |
-| `TOOL_COMPENSATION_GUIDE.md` (not written yet) | Changing offset logic for perimeters, pockets, or holes |
-| [ASSUMPTIONS.md](docs/ASSUMPTIONS.md) | Adding/changing G-code output; lists controller compatibility requirements |
-| [MACHINE_CHECKLIST.md](docs/MACHINE_CHECKLIST.md) | Updating G-code header comments or safety checks |
-| [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) | Changing environment variables, Railway config, or OAuth redirect URIs |
-| [AUTHENTICATION_GUIDE.md](docs/AUTHENTICATION_GUIDE.md) | Modifying Google OAuth flow, session handling, or domain restrictions |
-| [INTEGRATIONS_GUIDE.md](docs/INTEGRATIONS_GUIDE.md) | Changing Onshape API calls or Google Drive upload logic |
-| [ONSHAPE_SETUP.md](docs/ONSHAPE_SETUP.md) | Updating the Onshape browser extension or import URL format |
-| [quick-reference-card.md](docs/quick-reference-card.md) | Changing UI workflows or default settings that affect end users |
+| `Z_COORDINATE_SYSTEM.md` | Modifying Z-axis calculations, safe heights, cut depths, or plunge moves |
+| `TOOL_COMPENSATION_GUIDE.md` | Changing offset logic for perimeters, pockets, or holes |
+| `ASSUMPTIONS.md` | Adding/changing G-code output; lists controller compatibility requirements |
+| `MACHINE_CHECKLIST.md` | Updating G-code header comments or safety checks |
+| `DEPLOYMENT_GUIDE.md` | Changing environment variables, Railway config, or OAuth redirect URIs |
+| `AUTHENTICATION_GUIDE.md` | Modifying Google OAuth flow, session handling, or domain restrictions |
+| `INTEGRATIONS_GUIDE.md` | Changing Onshape API calls or Google Drive upload logic |
+| `ONSHAPE_SETUP.md` | Updating the Onshape browser extension or import URL format |
+| `quick-reference-card.md` | Changing UI workflows or default settings that affect end users |
 | [3D_PRINTING.md](docs/3D_PRINTING.md) | Changing the print wizard, the slicer wrapper, the job pool, or the Orca install |
 
 ## Testing
