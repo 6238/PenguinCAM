@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libwebkit2gtk-4.1-0 libjavascriptcoregtk-4.1-0 libsoup-3.0-0 libsecret-1-0 \
         libwayland-client0 libwayland-egl1 libwayland-server0 libxkbcommon0 \
         libx11-6 libxext6 libsm6 libice6 \
-        libexpat1 liblzma5 libmspack0t64 zlib1g \
+        libstdc++6 libexpat1 liblzma5 libmspack0t64 zlib1g \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching

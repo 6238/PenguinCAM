@@ -26,11 +26,17 @@ jobs:
           uv venv --python 3.11
           uv pip install -r requirements.txt
 
+      - name: Runner image identity for the Orca cache key
+        id: img
+        run: echo "id=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
+
       - name: Cache Orca Slicer
         uses: actions/cache@v4
         with:
           path: tools/orca
-          key: orca-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/install-orca.sh') }}
+          # hostlibs holds only what the image lacked at install time, so a new
+          # runner image must miss the cache and reinstall.
+          key: orca-${{ runner.os }}-${{ runner.arch }}-${{ steps.img.outputs.id }}-${{ hashFiles('scripts/install-orca.sh') }}
 
       - name: Install Orca Slicer
         run: scripts/install-orca.sh
