@@ -3,7 +3,7 @@
         "0"
     ],
     "additional_cooling_fan_speed": [
-        "75"
+        "0"
     ],
     "additional_fan_full_speed_layer": [
         "0"
@@ -18,19 +18,21 @@
         "3"
     ],
     "close_fan_the_first_x_layers": [
-        "1"
+        "3"
     ],
     "compatible_printers": [
-        "Bambu Lab H2S 0.4 nozzle"
+        "Bambu Lab H2S 0.4 nozzle",
+        "Bambu Lab H2S 0.6 nozzle",
+        "Bambu Lab H2S 0.8 nozzle"
     ],
     "complete_print_exhaust_fan_speed": [
         "70"
     ],
     "cool_plate_temp": [
-        "35"
+        "0"
     ],
     "cool_plate_temp_initial_layer": [
-        "35"
+        "0"
     ],
     "counter_coef_1": [
         "0"
@@ -54,35 +56,32 @@
         "70"
     ],
     "eng_plate_temp": [
-        "55"
+        "70"
     ],
     "eng_plate_temp_initial_layer": [
-        "55"
+        "70"
     ],
     "fan_cooling_layer_time": [
-        "100"
+        "30"
     ],
     "fan_max_speed": [
-        "100"
+        "90"
     ],
     "fan_min_speed": [
-        "60"
+        "40"
     ],
     "filament_adaptive_volumetric_speed": [
         "0",
         "0"
     ],
     "filament_adhesiveness_category": [
-        "100"
-    ],
-    "filament_change_length": [
-        "5"
+        "300"
     ],
     "filament_cost": [
-        "24.99"
+        "30"
     ],
     "filament_density": [
-        "1.26"
+        "1.27"
     ],
     "filament_deretraction_speed": [
         "nil",
@@ -99,8 +98,8 @@
         "Direct Drive High Flow"
     ],
     "filament_flow_ratio": [
-        "0.98",
-        "0.98"
+        "0.95",
+        "0.95"
     ],
     "filament_flush_temp": [
         "0",
@@ -110,7 +109,7 @@
         "0",
         "0"
     ],
-    "filament_id": "GFA00",
+    "filament_id": "GFG99",
     "filament_is_support": [
         "0"
     ],
@@ -122,8 +121,8 @@
         "nil"
     ],
     "filament_max_volumetric_speed": [
-        "25",
-        "40"
+        "12",
+        "12"
     ],
     "filament_minimal_purge_on_wipe_tower": [
         "15"
@@ -133,7 +132,7 @@
         "0"
     ],
     "filament_prime_volume": [
-        "30"
+        "45"
     ],
     "filament_printable": [
         "3"
@@ -217,13 +216,13 @@
         "4"
     ],
     "filament_type": [
-        "PLA"
+        "PETG"
     ],
     "filament_velocity_adaptation_factor": [
         "1"
     ],
     "filament_vendor": [
-        "Bambu Lab"
+        "Generic"
     ],
     "filament_wipe": [
         "1",
@@ -261,42 +260,39 @@
         "0.088"
     ],
     "hot_plate_temp": [
-        "55"
+        "70"
     ],
     "hot_plate_temp_initial_layer": [
-        "55"
+        "70"
     ],
     "impact_strength_z": [
-        "13.8"
+        "10"
     ],
     "inherits": "",
     "long_retractions_when_ec": [
         "0",
         "0"
     ],
-    "name": "Bambu PLA Basic @BBL H2S",
+    "name": "Generic PETG @BBL H2S",
     "nozzle_temperature": [
-        "220",
-        "220"
+        "255",
+        "255"
     ],
     "nozzle_temperature_initial_layer": [
-        "220",
-        "220"
+        "255",
+        "255"
     ],
     "nozzle_temperature_range_high": [
-        "240"
+        "270"
     ],
     "nozzle_temperature_range_low": [
-        "190"
+        "220"
     ],
     "overhang_fan_speed": [
-        "100"
+        "90"
     ],
     "overhang_fan_threshold": [
-        "50%"
-    ],
-    "pre_start_fan_time": [
-        "2"
+        "10%"
     ],
     "reduce_fan_stop_start_freq": [
         "1"
@@ -312,25 +308,25 @@
         "1"
     ],
     "slow_down_layer_time": [
-        "4"
+        "12"
     ],
     "slow_down_min_speed": [
         "20"
     ],
     "supertack_plate_temp": [
-        "45"
+        "70"
     ],
     "supertack_plate_temp_initial_layer": [
-        "45"
+        "70"
     ],
     "temperature_vitrification": [
-        "45"
+        "70"
     ],
     "textured_plate_temp": [
-        "55"
+        "70"
     ],
     "textured_plate_temp_initial_layer": [
-        "55"
+        "70"
     ],
     "type": "filament",
     "volumetric_speed_coefficients": [

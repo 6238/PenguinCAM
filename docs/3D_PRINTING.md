@@ -220,9 +220,13 @@ The script reads the `BBL` vendor tree inside the installed Orca:
 
 | Output | Vendor subdirectory and profile |
 |--------|---------------------------------|
-| `print/profiles/printer.json` | `machine/Bambu Lab H2S 0.4 nozzle` |
-| `print/profiles/filament.json` | `filament/Bambu PLA Basic @BBL H2S` |
-| `print/profiles/process.json` | `process/0.20mm Standard @BBL H2S` |
+| `print/profiles/printer.json` | `machine/Bambu Lab H2S 0.6 nozzle` |
+| `print/profiles/filament.json` | `filament/Generic PETG @BBL H2S` |
+| `print/profiles/process.json` | `process/0.24mm Balanced Quality @BBL H2S 0.6 nozzle` |
+
+The printer is a **Bambu Lab H2S** with the **0.6 mm High Flow hardened steel** nozzle on a
+**Textured PEI Plate**. The nozzle diameter and the hardened steel come from the vendor
+machine profile; the High Flow variant and the plate do not, and are covered next.
 
 Regenerate after an Orca upgrade, from the repository root:
 
@@ -233,6 +237,65 @@ uv run python print/scripts/flatten_orca_profiles.py
 Orca's `version` key is a vendor profile version, not the application version, and is
 not used.
 
+### Nozzle variants: selecting High Flow
+
+The H2S offers two nozzle variants, and the vendor profiles carry both. Every
+variant-aware value is an array parallel to the profile's variant array:
+
+```
+printer_extruder_variant  = ["Direct Drive Standard", "Direct Drive High Flow"]
+nozzle_volume             = ["145",                   "148"]
+```
+
+`filament_extruder_variant` and `print_extruder_variant` do the same for the filament and
+the process. Orca resolves these at slice time, in `Print::apply`, which calls
+`DynamicPrintConfig::update_values_to_printer_extruders`. That asks
+`get_index_for_extruder` for the index whose variant string equals
+`"<extruder_type> <nozzle_volume_type>"` - here `"Direct Drive High Flow"` - and reduces
+every array to that element. `get_index_for_extruder_parameter` in `ParameterUtils.cpp`
+is the same lookup for single values.
+
+Nothing in the vendor profiles makes that choice. The machine profile records
+`default_nozzle_volume_type: ["Standard"]`, which only the desktop app reads when it
+synchronises with a device. The command line reads `nozzle_volume_type`, and when it is
+absent falls back to `nvtStandard`, which is index 0. So `flatten_orca_profiles.py`
+writes the selection into the machine profile explicitly:
+
+```json
+"nozzle_volume_type": ["High Flow"]
+```
+
+The arrays are left intact. Collapsing them to their first element would both hide the
+choice and hard-code Standard.
+
+For this particular combination only two values actually differ between the variants -
+`nozzle_volume` (145 -> 148) and `nozzle_flush_dataset` (1 -> 2), both in the machine
+profile. Generic PETG defines the same numbers for both nozzles, so the High Flow
+selection does **not** raise the maximum volumetric speed: it stays at the profile's
+12 mm3/s, with nozzle temperature 255 C and flow ratio 0.95. A High Flow nozzle does not
+by itself license a higher MVS, and the script never invents one. `nozzle_volume` is the
+value to watch in the output: it is the one place the resolved index is visible.
+
+### The plate: `curr_bed_type`, not `default_bed_type`
+
+The command line reads `curr_bed_type`, a `coEnum` parsed through `s_keys_map_BedType`,
+so the profile carries the plate by name:
+
+```json
+"curr_bed_type": "Textured PEI Plate"
+```
+
+`GCode.cpp` turns that into the filament's bed temperature key - `btPTE` maps to
+`textured_plate_temp` - which is how the 70 C in `M190 S70` is chosen for this PETG.
+
+`default_bed_type` is not a substitute, for two reasons. It is GUI-only: no command line
+path reads it. And `Preset::get_default_bed_type` is advertised as accepting "both
+numeric and string format" but runs `atoi()` on the value, so a plate *name* parses as 0,
+fails the `> 0` test, logs `invalid bed type` and returns `btPEI` - the smooth High Temp
+Plate, not the textured one. The script therefore writes `default_bed_type` numerically
+(`"4"`, which is `btPTE`), purely so the value is right if a generated 3mf is opened in
+the desktop app.
+
 ### The two guarding tests
 
 - `print/tests/test_slicer.py` asserts each checked-in profile has an empty `inherits`
@@ -241,7 +304,21 @@ not used.
   the process and the filament.
 - `print/tests/orca_integration_test.py` re-runs the flattening script against the installed
   Orca and fails if the output differs from the checked-in files, so an Orca upgrade
-  forces a regeneration.
+  forces a regeneration. It also slices the sample part and reads the configuration Orca
+  writes back into the G-code, asserting that all three `*_extruder_variant` lines read
+  `Direct Drive High Flow`, that `nozzle_volume` is 148 rather than the Standard 145,
+  that `curr_bed_type` is the textured plate and that the G-code contains `M190 S70`.
+  That is the only check that proves the selection reached Orca rather than only our JSON.
+- `print/tests/test_slicer.py` additionally pins the selection in the checked-in files:
+  the High Flow variant sits at index 1 in all three profiles, the dual-valued keys are
+  not collapsed, and the PETG numbers are the profile's own.
+
+Run the script with `--audit-only` to print the resolved values and the profile each one
+came from without writing anything:
+
+```bash
+uv run python print/scripts/flatten_orca_profiles.py --audit-only
+```
 
 ## 5. Sample part
 

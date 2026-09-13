@@ -17,9 +17,15 @@ tree inside the installed Orca build (version pinned in
 
 | File | Source profile |
 |------|----------------|
-| `printer.json` | `machine/Bambu Lab H2S 0.4 nozzle` |
-| `filament.json` | `filament/Bambu PLA Basic @BBL H2S` |
-| `process.json` | `process/0.20mm Standard @BBL H2S` |
+| `printer.json` | `machine/Bambu Lab H2S 0.6 nozzle` |
+| `filament.json` | `filament/Generic PETG @BBL H2S` |
+| `process.json` | `process/0.24mm Balanced Quality @BBL H2S 0.6 nozzle` |
+
+A Bambu Lab H2S with the 0.6 mm High Flow hardened steel nozzle, Generic PETG, and a
+Textured PEI Plate. Two of those are not in any vendor profile: the script writes
+`nozzle_volume_type` and `curr_bed_type` into `printer.json` itself, because Orca's
+command line otherwise defaults to the Standard nozzle variant and the wrong plate. See
+[3D_PRINTING.md](../docs/3D_PRINTING.md) section 4.
 
 Orca's command line does not resolve `inherits`, and the desktop app's export
 writes only a preset's differences from its parent, so neither can produce
@@ -28,4 +34,10 @@ these files. Regenerate them after an Orca upgrade with:
     uv run python print/scripts/flatten_orca_profiles.py
 
 `print/tests/orca_integration_test.py` fails when the checked-in files differ from
-what the script produces from the installed Orca.
+what the script produces from the installed Orca, and again if a real slice does not
+resolve to the High Flow nozzle and the textured plate.
+
+    uv run python print/scripts/flatten_orca_profiles.py --audit-only
+
+prints the resolved nozzle, plate, temperatures and speeds with the source profile each
+value came from.

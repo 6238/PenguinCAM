@@ -1,6 +1,7 @@
 """Slow tests that run the real Orca Slicer binary. Not matched by discover's
 test_*.py pattern; `make test` runs this module explicitly."""
 import filecmp
+import json
 import shutil
 import subprocess
 import sys
@@ -57,8 +58,47 @@ class RealSliceTest(unittest.TestCase):
         self.assertGreater(result.filament_g, 0)
         self.assertGreater(result.filament_m, 0)
         self.assertGreater(result.layer_count, 0)
-        self.assertEqual(result.layer_count, 60)   # 12 mm at 0.2 mm layers
+        # 12 mm: a 0.3 mm initial layer then ceil(11.7 / 0.24) = 49 more.
+        self.assertEqual(result.layer_count, 50)
         self.assertIsInstance(result.warnings, list)
+
+    def test_sliced_output_resolved_the_high_flow_nozzle_and_textured_plate(self):
+        """The proof that the variant selection reached Orca, not just our JSON.
+
+        Orca writes the resolved configuration into the G-code as comments. The
+        *_extruder_variant lines and nozzle_volume are the tell: with no
+        nozzle_volume_type Orca falls back to Standard, and nozzle_volume would
+        read 145 rather than 148.
+        """
+        out = Path(tempfile.mkdtemp(prefix="orca-variant-"))
+        self.addCleanup(shutil.rmtree, out, ignore_errors=True)
+        result = slice_stl(SAMPLE_STL, out)
+        with zipfile.ZipFile(result.output_path) as zf:
+            gcode = zf.read("Metadata/plate_1.gcode").decode("utf-8", "replace")
+            plate = json.loads(zf.read("Metadata/plate_1.json").decode("utf-8"))
+
+        def setting(key):
+            for line in gcode.splitlines():
+                if line.startswith(f"; {key} = "):
+                    return line.split(" = ", 1)[1].strip()
+            self.fail(f"{key} not found in the sliced G-code")
+
+        self.assertEqual(setting("nozzle_volume_type"), "High Flow")
+        for key in ("printer_extruder_variant", "filament_extruder_variant", "print_extruder_variant"):
+            self.assertEqual(setting(key), '"Direct Drive High Flow"', key)
+        self.assertEqual(setting("nozzle_volume"), "148")          # index 1; Standard is 145
+        self.assertEqual(setting("nozzle_flush_dataset"), "2")     # index 1; Standard is 1
+        self.assertEqual(setting("nozzle_diameter"), "0.6")
+        self.assertEqual(setting("nozzle_type"), "hardened_steel")
+        self.assertEqual(setting("layer_height"), "0.24")
+        self.assertEqual(setting("filament_type"), "PETG")
+        self.assertEqual(setting("filament_max_volumetric_speed"), "12")
+        self.assertEqual(setting("nozzle_temperature"), "255")
+        self.assertEqual(setting("curr_bed_type"), "Textured PEI Plate")
+        self.assertEqual(setting("textured_plate_temp"), "70")
+        self.assertEqual(plate["bed_type"], "textured_plate")
+        # The textured-plate temperature is what actually reaches the machine.
+        self.assertIn("M190 S70", gcode)
 
 
 class ProfileDriftTest(unittest.TestCase):

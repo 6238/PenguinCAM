@@ -42,6 +42,9 @@ test_output_*.nc
 # ...but never ignore test fixtures/goldens under either test tree
 !tests/**
 !print/tests/**
+# ...except compiled bytecode, which the negations above would otherwise re-admit
+__pycache__/
+*.pyc
 
 # Orca Slicer, installed by print/scripts/install-orca.sh (never committed)
 tools/

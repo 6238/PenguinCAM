@@ -257,12 +257,12 @@ class PartInfoTest(unittest.TestCase):
         self.assertEqual(info["part"]["file"], "sample_part.stl")
         self.assertEqual(info["part"]["size_mm"], {"x": 40.0, "y": 30.0, "z": 12.0})
         self.assertEqual(info["part"]["triangles"], 20)
-        self.assertEqual(info["printer"]["name"], "Bambu Lab H2S 0.4 nozzle")
+        self.assertEqual(info["printer"]["name"], "Bambu Lab H2S 0.6 nozzle")
         self.assertEqual(info["printer"]["bed_mm"], {"x": 340.0, "y": 320.0})
         self.assertEqual(info["printer"]["height_mm"], 340.0)
-        self.assertEqual(info["filament"]["name"], "Bambu PLA Basic @BBL H2S")
-        self.assertEqual(info["process"]["name"], "0.20mm Standard @BBL H2S")
-        self.assertEqual(info["process"]["layer_height_mm"], 0.2)
+        self.assertEqual(info["filament"]["name"], "Generic PETG @BBL H2S")
+        self.assertEqual(info["process"]["name"], "0.24mm Balanced Quality @BBL H2S 0.6 nozzle")
+        self.assertEqual(info["process"]["layer_height_mm"], 0.24)
 
 
 class ProfileFilesTest(unittest.TestCase):
@@ -285,6 +285,59 @@ class ProfileFilesTest(unittest.TestCase):
         for fname in ("filament.json", "process.json"):
             data = json.loads((print_slicer.PROFILE_DIR / fname).read_text())
             self.assertIn(printer, data["compatible_printers"], fname)
+
+
+class NozzleVariantTest(unittest.TestCase):
+    """The checked-in profiles must select the High Flow nozzle and the textured plate.
+
+    Orca resolves every variant-aware value by matching
+    "<extruder_type> <nozzle_volume_type>" against each profile's
+    *_extruder_variant array. With no nozzle_volume_type the command line falls
+    back to Standard, which is index 0, silently.
+    """
+    VARIANT = "Direct Drive High Flow"
+
+    def setUp(self):
+        self.machine = json.loads((print_slicer.PROFILE_DIR / "printer.json").read_text())
+        self.filament = json.loads((print_slicer.PROFILE_DIR / "filament.json").read_text())
+        self.process = json.loads((print_slicer.PROFILE_DIR / "process.json").read_text())
+
+    def test_machine_selects_high_flow(self):
+        self.assertEqual(self.machine["nozzle_volume_type"], ["High Flow"])
+        self.assertEqual(self.machine["extruder_type"], ["Direct Drive"])
+        self.assertEqual(self.machine["nozzle_diameter"], ["0.6"])
+        self.assertEqual(self.machine["nozzle_type"], ["hardened_steel", "hardened_steel"])
+
+    def test_every_profile_offers_the_variant_at_the_same_index(self):
+        indexes = {
+            "printer": self.machine["printer_extruder_variant"].index(self.VARIANT),
+            "filament": self.filament["filament_extruder_variant"].index(self.VARIANT),
+            "process": self.process["print_extruder_variant"].index(self.VARIANT),
+        }
+        self.assertEqual(set(indexes.values()), {1}, indexes)
+
+    def test_dual_valued_keys_are_not_collapsed_to_one_element(self):
+        # Collapsing would hide the choice and hard-code index 0.
+        self.assertEqual(self.machine["nozzle_volume"], ["145", "148"])
+        self.assertEqual(self.machine["nozzle_flush_dataset"], ["1", "2"])
+        self.assertEqual(len(self.filament["filament_extruder_variant"]), 2)
+
+    def test_petg_values_are_the_profile_values_not_invented_ones(self):
+        # Generic PETG defines the same numbers for both nozzles; High Flow must
+        # not silently raise them.
+        self.assertEqual(self.filament["filament_max_volumetric_speed"], ["12", "12"])
+        self.assertEqual(self.filament["nozzle_temperature"], ["255", "255"])
+        self.assertEqual(self.filament["nozzle_temperature_initial_layer"], ["255", "255"])
+        self.assertEqual(self.filament["filament_flow_ratio"], ["0.95", "0.95"])
+        self.assertEqual(self.filament["filament_type"], ["PETG"])
+
+    def test_textured_plate_is_selected_by_name_and_number(self):
+        self.assertEqual(self.machine["curr_bed_type"], "Textured PEI Plate")
+        # Preset::get_default_bed_type runs atoi() on this, so a name would
+        # parse as 0 and fall back to the smooth High Temp Plate.
+        self.assertEqual(self.machine["default_bed_type"], "4")
+        self.assertEqual(self.filament["textured_plate_temp"], ["70"])
+        self.assertEqual(self.filament["textured_plate_temp_initial_layer"], ["70"])
 
 
 class ImportGuardTest(unittest.TestCase):
