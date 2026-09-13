@@ -39,8 +39,9 @@ test_output_*.nc
 *.bak
 *.backup
 
-# ...but never ignore test fixtures/goldens under tests/
+# ...but never ignore test fixtures/goldens under either test tree
 !tests/**
+!print/tests/**
 
 # Orca Slicer, installed by print/scripts/install-orca.sh (never committed)
 tools/
