@@ -10,8 +10,8 @@ import struct
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-OUTPUT = REPO / "print" / "sample_part.stl"
+PKG = Path(__file__).resolve().parent.parent     # the print/ directory
+OUTPUT = PKG / "sample_part.stl"
 
 FOOTPRINT = [(0.0, 0.0), (40.0, 0.0), (40.0, 10.0), (10.0, 10.0), (10.0, 30.0), (0.0, 30.0)]
 HEIGHT = 12.0

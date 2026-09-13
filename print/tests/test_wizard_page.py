@@ -3,7 +3,7 @@ import sys
 import unittest
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]        # the repository root
 sys.path.insert(0, str(REPO))
 
 from frc_cam_gui_app import app, limiter  # noqa: E402

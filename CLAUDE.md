@@ -14,7 +14,7 @@ PenguinCAM is a web-based CAM post-processor that generates CNC G-code from DXF 
 
 ```bash
 # Install dependencies, and Orca Slicer into tools/orca/
-# (the Orca version is pinned in scripts/install-orca.sh)
+# (the Orca version is pinned in print/scripts/install-orca.sh)
 make install
 
 # Run development server (opens http://localhost:6238)
@@ -104,13 +104,17 @@ G-code Generator (frc_cam_postprocessor.py)
 - `onshape_integration.py` - Onshape API client for one-click export
 - `penguincam_auth.py` - Google Workspace OAuth (optional)
 - `google_drive_integration.py` - Drive upload (optional)
-- `print_routes.py` - Flask blueprint for the print wizard: page, part info, slice jobs, event stream
-- `print_jobs.py` - In-process job pool and job table for slices (imports no Flask)
-- `print_slicer.py` - Orca Slicer command line wrapper (imports no Flask)
-- `templates/print_wizard.html` - Print wizard UI, served at `/print`
-- `static/print_wizard.js` - Print wizard logic (fetches the part, submits the job, reads the event stream)
-- `static/print_viewer.js` - Three.js mesh-on-bed viewer for the print wizard
-- `print/` - Fixed print assets: `sample_part.stl` and the flattened Bambu Lab profiles
+- `print/` - The whole 3D print path, self-contained so another fabrication technology can
+  take its own top-level directory. Never `import print` (it shadows the builtin); use
+  `from print import jobs`.
+  - `print/routes.py` - Flask blueprint for the print wizard: page, part info, slice jobs, event stream
+  - `print/jobs.py` - In-process job pool and job table for slices (imports no Flask)
+  - `print/slicer.py` - Orca Slicer command line wrapper (imports no Flask)
+  - `print/templates/print_wizard.html` - Print wizard UI, served at `/print`
+  - `print/static/` - `print_wizard.js` (page logic) and `print_viewer.js` (Three.js mesh-on-bed viewer)
+  - `print/scripts/` - `install-orca.sh`, `make_sample_part.py`, `flatten_orca_profiles.py`
+  - `print/tests/` - The print tests, including `tests/js/` for the node tests
+  - `print/sample_part.stl`, `print/profiles/` - The fixed part and Bambu Lab profiles
 
 ## Documentation
 

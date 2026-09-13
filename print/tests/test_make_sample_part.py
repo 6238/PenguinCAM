@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO / "scripts"))
+REPO = Path(__file__).resolve().parents[2]        # the repository root
+sys.path.insert(0, str(REPO / "print" / "scripts"))
 
 from make_sample_part import write_l_bracket  # noqa: E402
 

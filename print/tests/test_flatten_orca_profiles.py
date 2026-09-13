@@ -1,4 +1,4 @@
-"""Tests for scripts/flatten_orca_profiles.py against a tiny fake profile tree."""
+"""Tests for print/scripts/flatten_orca_profiles.py against a tiny fake profile tree."""
 import json
 import shutil
 import sys
@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO / "scripts"))
+REPO = Path(__file__).resolve().parents[2]        # the repository root
+sys.path.insert(0, str(REPO / "print" / "scripts"))
 
 from flatten_orca_profiles import flatten_profile, write_profiles, PROFILE_SOURCES  # noqa: E402
 

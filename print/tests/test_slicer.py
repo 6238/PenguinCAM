@@ -1,4 +1,4 @@
-"""Fast tests for print_slicer.py. Orca is never run: subprocess.run is replaced."""
+"""Fast tests for print/slicer.py. Orca is never run: subprocess.run is replaced."""
 import json
 import os
 import shutil
@@ -11,12 +11,12 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]        # the repository root
 sys.path.insert(0, str(REPO))
-FIXTURES = REPO / "tests" / "fixtures" / "print"
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
-import print_slicer  # noqa: E402
-from print_slicer import SliceError, build_command, part_info, read_summary, slice_stl, stl_bounds  # noqa: E402
+from print import slicer as print_slicer  # noqa: E402
+from print.slicer import SliceError, build_command, part_info, read_summary, slice_stl, stl_bounds  # noqa: E402
 
 
 def make_archive(path, gcode_header=True, slice_info=True):

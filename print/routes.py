@@ -14,15 +14,19 @@ import types
 
 from flask import Blueprint, Response, jsonify, make_response, redirect, render_template, request, send_file
 
-from print_jobs import JobFailure, JobPool, QueueFull
-from print_slicer import SAMPLE_STL, SliceError, part_info, slice_stl
+from .jobs import JobFailure, JobPool, QueueFull
+from .slicer import SAMPLE_STL, SliceError, part_info, slice_stl
 
 DELIVERED_NAME = "sample_part.gcode.3mf"
 BUSY_MESSAGE = "The slicer is busy, try again in a minute."
 EXPIRED_MESSAGE = "This slice has expired, go back and slice again."
 FRAME_ANCESTORS = "frame-ancestors https://*.onshape.com"
 
-print_bp = Blueprint("print", __name__)
+# The blueprint carries its own templates and static files, so everything the print
+# path needs lives under print/. static_url_path must not be the default "/static":
+# that would collide with the application's own static endpoint.
+print_bp = Blueprint("print", __name__, template_folder="templates",
+                     static_folder="static", static_url_path="/print/static")
 
 # Filled by init_print_routes; routes read it at request time (tests swap ctx.pool).
 ctx = types.SimpleNamespace(pool=None, token_manager=None, upload_folder=None, output_folder=None,

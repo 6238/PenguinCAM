@@ -31,9 +31,9 @@ flowchart TB
     B --> C["GET /print/part<br/>names, bed, STL"]
     B --> D["POST /print-job"]
     B --> S["GET /print-job/id/events"]
-    D --> P["print_jobs.py<br/>pool and job table"]
+    D --> P["print/jobs.py<br/>pool and job table"]
     S --> P
-    P --> E["print_slicer.py"]
+    P --> E["print/slicer.py"]
     E --> F["tools/orca/orca-slicer"]
     F --> G[("sample_part.gcode.3mf")]
     G --> H["file token manager"]
@@ -41,12 +41,43 @@ flowchart TB
     H --> J["/drive/upload/token"]
 ```
 
-`print_routes.py` holds the blueprint. `print_jobs.py` holds the pool and the job table
-and imports no Flask. `print_slicer.py` runs Orca and imports no Flask.
+### Where the files live
+
+Everything the print path owns sits under the top-level `print/` directory, so a future
+fabrication technology can take its own directory beside it. Only three things outside it
+know the print path exists: the `init_print_routes(...)` call in `frc_cam_gui_app.py`, the
+"3D Printing" radio in `templates/wizard.html`, and its handler in `static/wizard.js`.
+
+```
+print/
+  __init__.py          the package docstring and the import caveat below
+  routes.py            the Flask blueprint
+  jobs.py              the pool and the job table, no Flask
+  slicer.py            the Orca wrapper, no Flask
+  templates/           print_wizard.html
+  static/              print_wizard.js, print_viewer.js
+  scripts/             install-orca.sh, make_sample_part.py, flatten_orca_profiles.py
+  tests/               the Python tests, tests/js/ for the node tests, tests/fixtures/
+  profiles/            the flattened Bambu Lab profiles
+  sample_part.stl      the fixed part
+```
+
+Orca itself still installs to `tools/orca/` at the repository root, not under `print/`:
+it is a large untracked build artifact, `.gitignore` and `.dockerignore` name that path,
+and the Dockerfile's layer caching depends on it.
+
+`print` is a valid package name in Python 3 but it is also the name of a builtin, so
+**never write a bare `import print`** - that binds `print` in the importing module and
+shadows the builtin function there. `from print import jobs` and
+`from print.routes import init_print_routes` are safe and are what the code uses.
+`print/tests/test_layout.py` fails the build if a bare import appears.
+
+`print/routes.py` holds the blueprint. `print/jobs.py` holds the pool and the job table
+and imports no Flask. `print/slicer.py` runs Orca and imports no Flask.
 `frc_cam_gui_app.py` calls `init_print_routes(...)` once near the end of the file, after
 the limiter and the temp folders exist, and hands over the session gate, the token
 manager, the limiter, the upload and output folders, the template context, metrics and
-the log function. `print_routes.py` never imports `frc_cam_gui_app`, so there is no
+the log function. `print/routes.py` never imports `frc_cam_gui_app`, so there is no
 import cycle.
 
 ## 3. Orca Slicer, the fixed location
@@ -57,12 +88,12 @@ configurable.
 ### The fixed path
 
 The entry point is always `tools/orca/orca-slicer`, relative to the repository root.
-`print_slicer.py` computes that path from its own file location. There is no environment
+`print/slicer.py` computes that path from its own file location. There is no environment
 variable and no lookup on `PATH`.
 
 ### The install script
 
-`scripts/install-orca.sh` is the only place the version and the checksums live. It pins
+`print/scripts/install-orca.sh` is the only place the version and the checksums live. It pins
 `ORCA_VERSION=2.4.2` and one SHA-256 per platform, and downloads from
 `github.com/OrcaSlicer/OrcaSlicer`.
 
@@ -154,7 +185,7 @@ the `COPY . .`. The build ends with an `ldd` check on
 
 ```bash
 make install        # Python dependencies and Orca
-make install-orca   # Orca only; runs scripts/install-orca.sh
+make install-orca   # Orca only; runs print/scripts/install-orca.sh
 ```
 
 ## 4. Profiles
@@ -173,7 +204,7 @@ parent's name, not a resolved file. A printer profile marked `from: User` with n
 `inherits` also fails Orca's printer-to-process compatibility check with return code -17.
 That is why the flattened files set `from` to `system`.
 
-### `scripts/flatten_orca_profiles.py`
+### `print/scripts/flatten_orca_profiles.py`
 
 The script reads the `BBL` vendor tree inside the installed Orca:
 `tools/orca/squashfs-root/resources/profiles/BBL/` on Linux, or the equivalent under
@@ -196,7 +227,7 @@ The script reads the `BBL` vendor tree inside the installed Orca:
 Regenerate after an Orca upgrade, from the repository root:
 
 ```bash
-uv run python scripts/flatten_orca_profiles.py
+uv run python print/scripts/flatten_orca_profiles.py
 ```
 
 Orca's `version` key is a vendor profile version, not the application version, and is
@@ -204,26 +235,26 @@ not used.
 
 ### The two guarding tests
 
-- `tests/test_print_slicer.py` asserts each checked-in profile has an empty `inherits`
+- `print/tests/test_slicer.py` asserts each checked-in profile has an empty `inherits`
   and carries the keys the pipeline depends on: `name`, `printable_area`,
   `printable_height`, `filament_density`, `layer_height`, and `compatible_printers` on
   the process and the filament.
-- `tests/orca_integration_test.py` re-runs the flattening script against the installed
+- `print/tests/orca_integration_test.py` re-runs the flattening script against the installed
   Orca and fails if the output differs from the checked-in files, so an Orca upgrade
   forces a regeneration.
 
 ## 5. Sample part
 
 `print/sample_part.stl` is an L bracket, 40 x 30 x 12 mm, a binary STL in millimetres.
-`scripts/make_sample_part.py` generates it: the polygon (0,0) (40,0) (40,10) (10,10)
+`print/scripts/make_sample_part.py` generates it: the polygon (0,0) (40,0) (40,10) (10,10)
 (10,30) (0,30) extruded 12 mm in Z, twenty triangles, one closed shell, outward normals.
 
 Each cap is fanned from the reflex vertex (10,10) using only real polygon vertices. That
 keeps every cap boundary edge equal to one footprint edge and leaves no T-junction, so
-the shell is closed. The generator is deterministic and `tests/test_make_sample_part.py`
+the shell is closed. The generator is deterministic and `print/tests/test_make_sample_part.py`
 asserts the checked-in file equals its output byte for byte.
 
-## 6. `print_slicer.py`
+## 6. `print/slicer.py`
 
 Flask-free. Importing the module calls `_require_binary()`, which raises `RuntimeError`
 naming `make install` when `tools/orca/orca-slicer` is absent. That import guard is why
@@ -318,7 +349,7 @@ length, never by a leading `solid`, because some tools write that word into bina
 
 ## 7. Job pool
 
-`print_jobs.py` owns a job table in process memory and a `ThreadPoolExecutor`. No Flask,
+`print/jobs.py` owns a job table in process memory and a `ThreadPoolExecutor`. No Flask,
 no app imports.
 
 | Constant | Value | Basis |
@@ -360,7 +391,7 @@ disappears. `expire()` pops the condition and deletes the record, then calls
 
 ### The worker
 
-`make_worker(...)` in `print_routes.py` builds the function the pool runs. It creates a
+`make_worker(...)` in `print/routes.py` builds the function the pool runs. It creates a
 scratch directory under the upload folder, calls `slice_stl`, moves the archive to
 `<output_folder>/print_<job_id>.gcode.3mf`, registers that path with the token manager
 under the delivered name `sample_part.gcode.3mf`, and returns the token, the summary and
@@ -373,7 +404,7 @@ which is why the worker removes its own scratch space.
 
 ## 8. Routes
 
-All five live in `print_routes.py` and are registered by `init_print_routes`.
+All five live in `print/routes.py` and are registered by `init_print_routes`.
 
 | Route | Method | Gate | Rate limit | Responses |
 |-------|--------|------|------------|-----------|
@@ -385,7 +416,7 @@ All five live in `print_routes.py` and are registered by `init_print_routes`.
 
 The app's limiter is built with `default_limits=["200 per hour"]`, so every route carries
 that budget. Nothing on the print path is exempt. Two error bodies are written for the
-student, as the constants `BUSY_MESSAGE` and `EXPIRED_MESSAGE` in `print_routes.py`:
+student, as the constants `BUSY_MESSAGE` and `EXPIRED_MESSAGE` in `print/routes.py`:
 
 | Status | Body | Constant |
 |--------|------|----------|
@@ -470,7 +501,7 @@ counters.
 
 ### The two layouts
 
-`templates/print_wizard.html` copies the CNC wizard's header, step bar and navigation
+`print/templates/print_wizard.html` copies the CNC wizard's header, step bar and navigation
 footer rather than sharing them, so the two pages can diverge. In the Onshape panel
 (`source=onshape`) the steps show one at a time with a Next button and a row of summary
 chips. In full-page mode (`source=upload`) `print_wizard.js` adds the `grid` class, all
@@ -481,7 +512,7 @@ The page carries `window.PenguinCAM` with four fields: `source`, `theme`, `retur
 `driveEnabled`. `print_wizard.js` adds a fifth at run time, `getJobState()`, which returns
 the last state seen and exists for the acceptance run.
 
-### `static/print_wizard.js`
+### `print/static/print_wizard.js`
 
 Owns step navigation, the summary chips and the three data calls. Named parts worth
 knowing:
@@ -515,7 +546,7 @@ with a token, `enterPreview()` shows it again; if it is still running, it re-att
 the stream. The result is good for an hour and re-slicing would spend the three-a-minute
 budget.
 
-### `static/print_viewer.js`
+### `print/static/print_viewer.js`
 
 `parseSTL()` reads binary and ASCII STLs and returns positions, triangle count and
 bounds. Like three.js's loader it allows trailing bytes: an exact length fit is binary
@@ -579,25 +610,25 @@ make test         # test-quick plus the Orca integration run; the gate before a 
 
 `make test-quick` runs `unittest discover -s tests --buffer` and then
 `gcode_test.py --quiet`. `make test` runs `test-quick` and then
-`tests.orca_integration_test` explicitly. The integration module is excluded by its name,
+`print.tests.orca_integration_test` explicitly. The integration module is excluded by its name,
 not by an environment variable: `orca_integration_test.py` does not match the `test_*.py`
-discovery pattern. Orca missing is a failure, not a skip: `print_slicer.py` raises at
+discovery pattern. Orca missing is a failure, not a skip: `print/slicer.py` raises at
 import, so every test module that imports the app fails without it.
 
 | Test file | Runs Orca | Covers |
 |-----------|-----------|--------|
-| `tests/test_install_orca.py` | No | `scripts/install-orca.sh` with `uname` and `curl` faked on `PATH`: refusing an unknown platform, the idempotent exit, replacing another architecture's install, the checksum mismatch, and the asset chosen per platform |
-| `tests/test_flatten_orca_profiles.py` | No | The flattening algorithm against a tiny fake profile tree: child over parent, self-contained output, a missing profile named in the error, the output format, and the three default sources |
-| `tests/test_make_sample_part.py` | No | Twenty triangles, a closed mesh, and the checked-in STL equal to the generator's output |
-| `tests/test_print_slicer.py` | No | `subprocess.run` replaced: the command line and flags, the created output directory and the XDG environment, absolute paths, summary parsing from fixtures, warnings from `result.json`, the header read without decompressing the whole entry, missing fields as `None`, timeout, non-zero exit, missing or corrupt archive, `stl_bounds()`, `part_info()`, the import guard, and the profile key checks |
-| `tests/test_print_jobs.py` | No | A synchronous stand-in for the executor: ids and state order, the queue cap, failure paths, subscriber wake-up on change and on cadence, `follow()`, expiry, and the documented constants |
-| `tests/test_print_routes.py` | No | Through the Flask test client: the page with `source`, `theme` and `return`, a foreign `return`, the `verify=1` redirect, the Onshape frame header, part JSON and STL bytes, 202 and 503 on submit, the record route and its 404, the event stream to its `done`, the 429 on the fourth submit, the worker's move, register and cleanup, and the download MIME type for `.gcode.3mf` |
-| `tests/test_print_wizard_page.py` | No | The rendered page carries the header, step bar, radios, print fields and no machine dropdown, the theme and source reach the document, and the CNC Setup offers 3D Printing |
-| `tests/test_js_units.py` | No | Runs `node --test` over `tests/js/*.test.js`, which unit-test the pure helpers of `print_wizard.js` and `print_viewer.js` (`formatDuration`, `fitsBed`, `summaryLine`, `printPageUrl`, `statusText`, `tooBigMessage`, `errorForStatus`, `appendNote`, `parseSTL`, `fitDistance`, and the viewer's `load` and `setTheme`). Skipped when node is absent |
-| `tests/orca_integration_test.py` | Yes | The wrapper runs, the `VERSION` stamp matches the pinned release, the sample part slices to a valid archive with positive time, filament and layer count, the checked-in profiles still match the installed Orca, and a job runs to `done` with a downloadable zip |
+| `print/tests/test_install_orca.py` | No | `print/scripts/install-orca.sh` with `uname` and `curl` faked on `PATH`: refusing an unknown platform, the idempotent exit, replacing another architecture's install, the checksum mismatch, and the asset chosen per platform |
+| `print/tests/test_flatten_orca_profiles.py` | No | The flattening algorithm against a tiny fake profile tree: child over parent, self-contained output, a missing profile named in the error, the output format, and the three default sources |
+| `print/tests/test_make_sample_part.py` | No | Twenty triangles, a closed mesh, and the checked-in STL equal to the generator's output |
+| `print/tests/test_slicer.py` | No | `subprocess.run` replaced: the command line and flags, the created output directory and the XDG environment, absolute paths, summary parsing from fixtures, warnings from `result.json`, the header read without decompressing the whole entry, missing fields as `None`, timeout, non-zero exit, missing or corrupt archive, `stl_bounds()`, `part_info()`, the import guard, and the profile key checks |
+| `print/tests/test_jobs.py` | No | A synchronous stand-in for the executor: ids and state order, the queue cap, failure paths, subscriber wake-up on change and on cadence, `follow()`, expiry, and the documented constants |
+| `print/tests/test_routes.py` | No | Through the Flask test client: the page with `source`, `theme` and `return`, a foreign `return`, the `verify=1` redirect, the Onshape frame header, part JSON and STL bytes, 202 and 503 on submit, the record route and its 404, the event stream to its `done`, the 429 on the fourth submit, the worker's move, register and cleanup, and the download MIME type for `.gcode.3mf` |
+| `print/tests/test_wizard_page.py` | No | The rendered page carries the header, step bar, radios, print fields and no machine dropdown, the theme and source reach the document, and the CNC Setup offers 3D Printing |
+| `print/tests/test_js_units.py` | No | Runs `node --test` over `print/tests/js/*.test.js`, which unit-test the pure helpers of `print_wizard.js` and `print_viewer.js` (`formatDuration`, `fitsBed`, `summaryLine`, `printPageUrl`, `statusText`, `tooBigMessage`, `errorForStatus`, `appendNote`, `parseSTL`, `fitDistance`, and the viewer's `load` and `setTheme`). Skipped when node is absent |
+| `print/tests/orca_integration_test.py` | Yes | The wrapper runs, the `VERSION` stamp matches the pinned release, the sample part slices to a valid archive with positive time, filament and layer count, the checked-in profiles still match the installed Orca, and a job runs to `done` with a downloadable zip |
 
 `.github/workflows/integration.yaml` provisions uv and a 3.11 venv, caches `tools/orca`
-keyed on the runner image and a hash of `scripts/install-orca.sh`, runs the install
+keyed on the runner image and a hash of `print/scripts/install-orca.sh`, runs the install
 script, then runs `make test`. The cache key includes the image identity because
 `hostlibs` holds only what that image lacked at install time.
 

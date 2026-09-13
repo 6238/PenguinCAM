@@ -36,10 +36,10 @@ jobs:
           path: tools/orca
           # hostlibs holds only what the image lacked at install time, so a new
           # runner image must miss the cache and reinstall.
-          key: orca-${{ runner.os }}-${{ runner.arch }}-${{ steps.img.outputs.id }}-${{ hashFiles('scripts/install-orca.sh') }}
+          key: orca-${{ runner.os }}-${{ runner.arch }}-${{ steps.img.outputs.id }}-${{ hashFiles('print/scripts/install-orca.sh') }}
 
       - name: Install Orca Slicer
-        run: scripts/install-orca.sh
+        run: print/scripts/install-orca.sh
 
       - name: Run all tests (unit, system, Orca slice)
         run: make test

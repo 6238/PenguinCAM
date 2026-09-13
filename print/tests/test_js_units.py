@@ -4,8 +4,7 @@ import subprocess
 import unittest
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-JS_TESTS = REPO / "tests" / "js"
+JS_TESTS = Path(__file__).resolve().parent / "js"
 
 
 class NodeUnitTests(unittest.TestCase):

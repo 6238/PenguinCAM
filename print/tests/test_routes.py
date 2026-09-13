@@ -6,12 +6,12 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]        # the repository root
 sys.path.insert(0, str(REPO))
 
 from frc_cam_gui_app import app, limiter, file_token_manager  # noqa: E402
-import print_routes  # noqa: E402
-from print_jobs import JobFailure, JobPool, QueueFull  # noqa: E402
+from print import routes as print_routes  # noqa: E402
+from print.jobs import JobFailure, JobPool, QueueFull  # noqa: E402
 
 
 class ImmediateExecutor:
@@ -191,7 +191,7 @@ class RateLimitTest(unittest.TestCase):
 class WorkerTest(unittest.TestCase):
     def test_worker_moves_archive_registers_token_and_cleans_scratch(self):
         import tempfile
-        from print_slicer import SliceResult
+        from print.slicer import SliceResult
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
         upload, output = tmp / "uploads", tmp / "outputs"
@@ -234,7 +234,7 @@ class WorkerTest(unittest.TestCase):
 
     def test_worker_turns_slice_error_into_job_failure_and_cleans_scratch(self):
         import tempfile
-        from print_slicer import SliceError
+        from print.slicer import SliceError
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
         upload, output = tmp / "uploads", tmp / "outputs"

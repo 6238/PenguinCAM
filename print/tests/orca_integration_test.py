@@ -10,13 +10,13 @@ import unittest
 import zipfile
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]        # the repository root
 ORCA = REPO / "tools" / "orca" / "orca-slicer"
 
 sys.path.insert(0, str(REPO))
-sys.path.insert(0, str(REPO / "scripts"))
+sys.path.insert(0, str(REPO / "print" / "scripts"))
 
-from print_slicer import SAMPLE_STL, PROFILE_DIR, slice_stl  # noqa: E402
+from print.slicer import SAMPLE_STL, PROFILE_DIR, slice_stl  # noqa: E402
 from flatten_orca_profiles import bbl_profile_dir, write_profiles  # noqa: E402
 
 
@@ -72,7 +72,7 @@ class ProfileDriftTest(unittest.TestCase):
         for name in ("printer.json", "filament.json", "process.json"):
             self.assertTrue(filecmp.cmp(out / name, PROFILE_DIR / name, shallow=False),
                             f"{name} differs from the installed Orca's profile tree; "
-                            f"run `uv run python scripts/flatten_orca_profiles.py`")
+                            f"run `uv run python print/scripts/flatten_orca_profiles.py`")
 
 
 class RealJobRouteTest(unittest.TestCase):

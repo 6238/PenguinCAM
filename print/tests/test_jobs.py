@@ -5,11 +5,11 @@ import time
 import unittest
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]        # the repository root
 sys.path.insert(0, str(REPO))
 
-import print_jobs  # noqa: E402
-from print_jobs import JobFailure, JobPool, QueueFull  # noqa: E402
+from print import jobs as print_jobs  # noqa: E402
+from print.jobs import JobFailure, JobPool, QueueFull  # noqa: E402
 
 
 class ImmediateExecutor:

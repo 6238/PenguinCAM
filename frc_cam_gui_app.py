@@ -2257,7 +2257,7 @@ def admin_metrics_events():
     })
 
 # 3D print wizard: separate blueprint, shares the gate, token manager, limiter and folders.
-from print_routes import init_print_routes  # noqa: E402  (after the app globals it needs)
+from print.routes import init_print_routes  # noqa: E402  (after the app globals it needs)
 init_print_routes(app, limiter=limiter, require_session=_require_app_session,
                   token_manager=file_token_manager, upload_folder=UPLOAD_FOLDER,
                   output_folder=OUTPUT_FOLDER, template_context=_app_template_context,

@@ -32,7 +32,7 @@ test('parseSTL reads ASCII', () => {
 });
 
 test('parseSTL handles the checked-in sample part', () => {
-  const data = fs.readFileSync(path.join(__dirname, '..', '..', 'print', 'sample_part.stl'));
+  const data = fs.readFileSync(path.join(__dirname, '..', '..', 'sample_part.stl'));
   const r = v.parseSTL(data.buffer.slice(data.byteOffset, data.byteOffset + data.length));
   assert.equal(r.count, 20);
   assert.deepEqual(r.min, [0, 0, 0]);

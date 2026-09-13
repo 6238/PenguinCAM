@@ -16,7 +16,7 @@ A ground-up rework, delivered as a **step wizard** (Setup → Parts → Layout �
 - **3D Printing (stage 1):** a "3D Printing" mode on Setup opens a print wizard that slices a fixed sample part with Orca Slicer for the team's Bambu Lab printer, shows print time, filament and layers, and delivers a .gcode.3mf through the same Download / Drive button. See [docs/3D_PRINTING.md](docs/3D_PRINTING.md).
 
 Key files: `templates/wizard.html`, `static/wizard.js`, `static/gcode_viewer.js`, `static/source_onshape.js`; engine in `frc_cam_postprocessor.py`, routes in `frc_cam_gui_app.py`. Planned next: **V3 config / computed feeds-&-speeds** model (`docs/FEEDSandSPEEDS.md`). Run `make test` after changes.
-The print path adds `print_routes.py`, `print_jobs.py`, `print_slicer.py`, `templates/print_wizard.html`, `static/print_wizard.js`, `static/print_viewer.js` and the fixed assets in `print/`. `make install` also installs Orca Slicer; use `make test-quick` while iterating.
+The print path lives entirely in `print/` (blueprint, job pool, Orca wrapper, its own templates, static files, scripts, tests and fixed assets), so another fabrication technology can take its own top-level directory. `make install` also installs Orca Slicer; use `make test-quick` while iterating.
 
 🔗 **Demo video:**  
 [![Demo video](https://img.youtube.com/vi/gFReFDz-_LI/0.jpg)](https://youtu.be/zPZCTVh2n2Q)
@@ -224,15 +224,13 @@ Google Drive Upload
 - `penguincam_auth.py` - Google OAuth authentication
 
 **3D printing (stage 1):**
-- `print_routes.py` - Flask blueprint for the print wizard
-- `print_jobs.py` - Job pool and job table for slices
-- `print_slicer.py` - Orca Slicer command line wrapper
-- `print/` - Sample part and the Bambu Lab profiles
+- `print/` - The whole print path: `routes.py` (blueprint), `jobs.py` (job pool),
+  `slicer.py` (Orca wrapper), its own `templates/`, `static/`, `scripts/` and `tests/`,
+  plus the sample part and Bambu Lab profiles
 
 **Frontend:**
 - `templates/wizard.html` - Multi-part wizard UI (the whole app; served at `/`, `/app`, and the Onshape panel)
 - `static/wizard.js` - Wizard logic; `static/gcode_viewer.js` - Three.js toolpath viewer
-- `templates/print_wizard.html` - Print wizard UI, with `static/print_wizard.js` and `static/print_viewer.js`
 - `static/popcornlogo.png` - Team branding
 
 **Configuration:**
@@ -328,6 +326,17 @@ penguincam/
 │   ├── quick-reference-card.md        # Quick start
 │   ├── TOOL_COMPENSATION_GUIDE.md     # Technical reference
 │   └── Z_COORDINATE_SYSTEM.md         # Zeroing guide
+│
+├── print/                             # The 3D print path, self-contained
+│   ├── routes.py                      # Flask blueprint
+│   ├── jobs.py                        # Slice job pool
+│   ├── slicer.py                      # Orca Slicer wrapper
+│   ├── templates/                     # print_wizard.html
+│   ├── static/                        # print_wizard.js, print_viewer.js
+│   ├── scripts/                       # Orca install, sample part, profiles
+│   ├── tests/                         # Print tests
+│   ├── profiles/                      # Bambu Lab profiles
+│   └── sample_part.stl                # The fixed sample part
 │
 ├── static/                            # Static assets
 │   └── popcornlogo.png                # Team logo

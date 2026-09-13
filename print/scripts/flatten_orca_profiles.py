@@ -12,7 +12,7 @@ installed Orca build, and an integration test fails when they drift.
 
 Usage (from the repository root, after `make install`):
 
-    uv run python scripts/flatten_orca_profiles.py
+    uv run python print/scripts/flatten_orca_profiles.py
 
 Options:
     --profile-dir DIR   Orca's BBL vendor tree (default: inside tools/orca)
@@ -23,7 +23,8 @@ import json
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+PKG = Path(__file__).resolve().parent.parent     # the print/ directory
+REPO = PKG.parent
 
 # Output file stem -> (subdirectory of the vendor tree, profile name).
 PROFILE_SOURCES = {
@@ -89,7 +90,7 @@ def write_profiles(profile_dir, out_dir, sources=PROFILE_SOURCES):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--profile-dir", type=Path, default=None)
-    parser.add_argument("--out", type=Path, default=REPO / "print" / "profiles")
+    parser.add_argument("--out", type=Path, default=PKG / "profiles")
     args = parser.parse_args(argv)
     profile_dir = args.profile_dir or bbl_profile_dir()
     write_profiles(profile_dir, args.out)

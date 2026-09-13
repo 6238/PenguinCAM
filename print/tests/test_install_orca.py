@@ -1,4 +1,4 @@
-"""Tests for scripts/install-orca.sh. No network: uname and curl are faked on PATH."""
+"""Tests for print/scripts/install-orca.sh. No network: uname and curl are faked on PATH."""
 import os
 import shutil
 import subprocess
@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-SCRIPT = REPO / "scripts" / "install-orca.sh"
+REPO = Path(__file__).resolve().parents[2]        # the repository root
+SCRIPT = REPO / "print" / "scripts" / "install-orca.sh"
 
 
 class InstallOrcaScriptTest(unittest.TestCase):

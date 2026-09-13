@@ -26,8 +26,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Orca Slicer at the fixed path tools/orca (the version is pinned in the script).
 # Done before copying the app so code changes do not re-download 130 MB.
-COPY scripts/install-orca.sh scripts/install-orca.sh
-RUN scripts/install-orca.sh
+COPY print/scripts/install-orca.sh print/scripts/install-orca.sh
+RUN print/scripts/install-orca.sh
 
 # Copy application code (tools/ is in .dockerignore, so the install above stays)
 COPY . .

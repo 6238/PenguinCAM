@@ -210,7 +210,7 @@ and the two must be changed together.
 2. Installs the runtime packages listed in the `Dockerfile`. The AppImage bundles only a few
    private libraries, so GTK, Cairo, Pango, WebKit, GStreamer, Wayland and X11 packages come
    from the Debian index.
-3. Runs `scripts/install-orca.sh`, which downloads Orca **2.4.2** (version and SHA-256
+3. Runs `print/scripts/install-orca.sh`, which downloads Orca **2.4.2** (version and SHA-256
    checksums pinned in the script) and unpacks it into `tools/orca/`. This happens before the
    application code is copied, so a code change does not re-download the release.
 4. Checks the result with `ldd`. If the Orca binary has an unresolved library, the build fails
@@ -229,7 +229,7 @@ would see none of the first worker's jobs, tokens or counters.
 
 ### Slice pool sizing
 
-`print_jobs.py` allows one Orca process at a time (`MAX_RUNNING = 1`) and queues two more
+`print/jobs.py` allows one Orca process at a time (`MAX_RUNNING = 1`) and queues two more
 (`MAX_QUEUED = 2`). Beyond that, a request is refused rather than queued for someone who has
 stopped waiting.
 
@@ -272,7 +272,7 @@ untouched but no longer a supported target. Deploy on Railway, or on any host th
 2. Review build logs for specific errors
 3. If the build fails on the `ldd` check, a runtime library is missing from the `Dockerfile`'s
    `apt-get install` list; the failing line names it
-4. If the build fails in `scripts/install-orca.sh`, the download or its checksum failed; see
+4. If the build fails in `print/scripts/install-orca.sh`, the download or its checksum failed; see
    [3D_PRINTING.md](3D_PRINTING.md)
 
 ### OAuth Errors: "insecure_transport"

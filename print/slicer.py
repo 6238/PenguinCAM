@@ -1,7 +1,7 @@
 """Run Orca Slicer's command line on an STL and read back a slice summary.
 
 Flask-free. Orca lives at the fixed path tools/orca/orca-slicer (installed by
-scripts/install-orca.sh); there is no environment variable and no PATH lookup.
+print/scripts/install-orca.sh); there is no environment variable and no PATH lookup.
 The profiles are the fixed set in print/profiles/. See docs/3D_PRINTING.md.
 """
 import json
@@ -13,10 +13,11 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent
+PKG = Path(__file__).resolve().parent      # the print/ directory
+REPO = PKG.parent
 ORCA_BIN = REPO / "tools" / "orca" / "orca-slicer"
-PROFILE_DIR = REPO / "print" / "profiles"
-SAMPLE_STL = REPO / "print" / "sample_part.stl"
+PROFILE_DIR = PKG / "profiles"
+SAMPLE_STL = PKG / "sample_part.stl"
 DEFAULT_TIMEOUT_S = 120
 ARCHIVE_SUFFIX = ".gcode.3mf"
 GCODE_ENTRY = "Metadata/plate_1.gcode"
