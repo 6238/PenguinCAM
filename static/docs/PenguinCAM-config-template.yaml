@@ -24,6 +24,17 @@ team:
   name: "Popcorn Penguins"
 
 # =============================================================================
+# 3D PRINTING (optional)
+# =============================================================================
+# Uncomment and paste the pairing code that `penguincam-printer pair` printed on
+# your shop's Raspberry Pi. That one line is all that connects PenguinCAM to your
+# printer -- no password, no port forwarding, nothing to open on your network.
+# See docs/PRINTER_SETUP.md. To retire a Pi, delete the line.
+#
+# printing:
+#   pairing_code: "7K3M-Q9XW"
+
+# =============================================================================
 # MACHINES
 # =============================================================================
 # Define each machine your team uses. Each can have different:

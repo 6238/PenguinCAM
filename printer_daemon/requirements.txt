@@ -1,0 +1,10 @@
+# Installed on the Raspberry Pi by install.sh, and into the development venv by
+# `make test-daemon`. NEVER added to the repository's own requirements.txt: bambulabs_api
+# has no place in the Docker image or on Railway.
+#
+# Every package here has an aarch64 wheel, so nothing compiles on the Pi (about 7 MB of
+# downloads, about 23 MB installed). Reading TOML needs no dependency -- tomllib is in the
+# standard library from Python 3.11, which is what Raspberry Pi OS Bookworm ships.
+bambulabs_api==2.6.6
+requests==2.31.0
+tomli-w==1.2.0

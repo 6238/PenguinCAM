@@ -413,6 +413,11 @@ def _load_team_config_into_session(client):
         # Why the lookup came up empty, in plain language, so /config/refresh can tell the
         # user instead of silently re-rendering an identical page (see fetch_config_file).
         session['team_config_error'] = getattr(client, 'last_config_error', None) if client else None
+    # Tell the in-memory printer relay this team's pairing code exists. This function runs
+    # on login, on the ten-minute TTL refresh and on the header's refresh link, so every
+    # way a YAML reaches a session also tells the relay its code -- which is why pairing
+    # needs no wizard step. A config with no code passes None and changes nothing.
+    printer_relay.note_code(team_config.pairing_code)
     session['team_config_fetched_at'] = time.time()
     # Persist any token refresh triggered by the Onshape API calls above.
     if client:
@@ -2263,6 +2268,21 @@ init_print_routes(app, limiter=limiter, require_session=_require_app_session,
                   output_folder=OUTPUT_FOLDER, template_context=_app_template_context,
                   metrics=metrics, log=log)
 
+# ============================================================================
+# 3D printer relay (Bambu LAN daemon)
+# ============================================================================
+# Sits beside the future init_print_routes(...) call from the 3D-print slicing branch;
+# both hand their blueprint this module's globals instead of importing them.
+import printer_relay  # noqa: E402 - registered here, beside the call that needs it
+from printer_routes import init_printer_routes  # noqa: E402
+
+init_printer_routes(app,
+                    limiter=limiter,
+                    has_onshape_session=_has_onshape_session,
+                    refresh_team_config=_maybe_refresh_team_config,
+                    token_manager=file_token_manager,
+                    metrics=metrics,
+                    log=log)
 
 def cleanup():
     """Clean up temporary files on shutdown"""

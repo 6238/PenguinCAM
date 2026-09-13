@@ -48,3 +48,8 @@ __pycache__/
 
 # Orca Slicer, installed by print/scripts/install-orca.sh (never committed)
 tools/
+# Linked git worktrees (lanes)
+.worktrees/
+
+# Daemon archives built by `make daemon-tarball`
+dist/

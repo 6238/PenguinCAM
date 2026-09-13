@@ -9,10 +9,11 @@
 1. [Prerequisites](#prerequisites)
 2. [Railway Deployment](#railway-deployment)
 3. [Environment Variables](#environment-variables)
-4. [Custom Domain Setup](#custom-domain-setup)
-5. [Orca Slicer and the Docker build](#orca-slicer-and-the-docker-build)
-6. [Troubleshooting](#troubleshooting)
-7. [Updating the Deployment](#updating-the-deployment)
+4. [Printer Relay](#printer-relay)
+5. [Custom Domain Setup](#custom-domain-setup)
+6. [Orca Slicer and the Docker build](#orca-slicer-and-the-docker-build)
+7. [Troubleshooting](#troubleshooting)
+8. [Updating the Deployment](#updating-the-deployment)
 
 ---
 
@@ -135,6 +136,150 @@ FLASK_ENV=production
 6. Railway will automatically redeploy
 
 **Important:** Variables must be added to your **service**, not just created in the project!
+
+---
+
+## Printer Relay
+
+The Bambu printer relay adds a Raspberry Pi in a team's shop that polls this backend and
+sends prints to a LAN printer. The mentor-facing guide is
+[PRINTER_SETUP.md](PRINTER_SETUP.md). What follows is what deployment has to get right.
+
+### `FLASK_SECRET_KEY` is required, not merely recommended
+
+The daemon's token is signed with `FLASK_SECRET_KEY`. Without it the app makes a random key
+on every start. Every token then dies on every deploy, and the Pi cannot re-pair on its own,
+because the exchange needs a session to have loaded the team's YAML first.
+
+**Symptom:** after every deploy, every printer shows "has not reported since the service
+started" until somebody opens PenguinCAM from Onshape.
+
+Set it once, keep it. It is listed under Optional Variables above for sessions. For the
+printer relay it is required.
+
+### Development mode and the HTTPS rule
+
+Development mode is Flask's debug flag on **and** `RAILWAY_ENVIRONMENT` absent. The
+development server started as the project's [CLAUDE.md](../CLAUDE.md) describes meets both
+conditions. Gunicorn on Railway meets neither.
+
+Outside development mode, `/printer/daemon/*` and `/install-printer.sh` answer 403 to any
+request that did not arrive over HTTPS, judged after `ProxyFix`. On Railway, therefore,
+nothing in this feature is ever served over plain HTTP, whatever a proxy forwards.
+
+### `PRINTER_DEV_PAIRING_CODE`
+
+Seeds a relay record for that pairing code, so a daemon can pair against a server nobody has
+opened in Onshape. It is read **only** in development mode and ignored on Railway.
+
+**Never set it in production.**
+
+### The installer route and the documented URL
+
+`GET /install-printer.sh` serves `printer_daemon/install.sh` from this app. It is a
+convenience alias.
+
+The **documented** install command fetches the same script from GitHub, pinned to a commit:
+
+```
+curl -fsSL https://raw.githubusercontent.com/6238/PenguinCAM/<sha>/printer_daemon/install.sh | sudo bash
+```
+
+That is deliberate. The site is behind Cloudflare, and a challenge page piped into `bash`
+fails confusingly.
+
+### Cloudflare
+
+On a **Pro plan or better**, add a WAF custom rule with action **Skip**, skipping the phases
+`http_request_sbfm` and `http_ratelimit` and the products `uaBlock`, `bic` and
+`securityLevel`, with this expression:
+
+```
+(starts_with(http.request.uri.path, "/printer/daemon/")) or
+(starts_with(http.request.uri.path, "/download/")) or
+(http.request.uri.path eq "/install-printer.sh")
+```
+
+On the **free plan**, Bot Fight Mode cannot be skipped per path. Cloudflare's own
+documentation says so, and the rule above does nothing for bots there. **Keep Bot Fight Mode
+off**, or the daemon's five-second syncs may be challenged.
+
+The daemon recognises a challenge page, an HTML body on a JSON route, and names it in
+`penguincam-printer status` instead of reporting a parse error.
+
+**Not yet confirmed:** as of 2026-09-13 the zone's plan and its Bot Fight Mode setting had
+not been checked in the dashboard, and nothing had been challenged. The owner should look:
+**Websites -> popcornpenguins.com** for the plan badge, and **Security -> Bots** for the
+toggle.
+
+### Rate limits
+
+Every printer route sets its own limit with `override_defaults=True`. A five-second sync is
+720 requests an hour, against the app-wide default of 200 per hour.
+
+`storage_uri="memory://"` means the counters live in each gunicorn worker. With one worker
+the limits are what they say. If the worker count ever rises above one, the effective limits
+multiply by the number of workers.
+
+### Accepted risk: the pairing exchange budget is service-wide
+
+`POST /printer/daemon/pair` is limited to 60 requests a minute on a constant key, so every
+team shares one budget. That is the spec's choice (section 6): a pairing code is forty bits,
+which is out of reach at sixty guesses a minute, and keying the limit on the address would
+let a guesser spread the attempts over a botnet instead.
+
+The cost is that flask-limiter counts a request **before** the view runs, so a request the
+HTTPS gate would have refused has already spent one of the sixty. An anonymous client can
+therefore keep the budget empty and stop every team's Pi from exchanging its pairing code,
+including right after a deploy that lost `FLASK_SECRET_KEY`.
+
+**This is accepted, not overlooked.** A Pi retries every thirty seconds and honours
+`Retry-After`, so the effect is a pairing that takes longer, not one that fails, and it
+clears as soon as the pressure stops. Nothing is exposed: the attacker cannot pair either,
+and a Pi that already holds a token keeps syncing, because only the exchange is on this
+budget. If it ever happens in practice, the fix is a per-address limit alongside the
+service-wide one, once verification 8 says what address production actually sees.
+
+### What was verified, and when
+
+- Verification 5 (2026-09-13): a token signed with `FLASK_SECRET_KEY` verifies under the
+  same key and is rejected under another; pinned by
+  `tests/test_printer_relay.py::TestVerificationFiveTokenDurability`, which mints a token in
+  a separate interpreter so a restart is what is actually being tested.
+- Verification 6 (2026-09-13): every daemon dependency has an aarch64 wheel; about 7 MB of
+  downloads, about 23 MB installed; 64-bit Raspberry Pi OS is required because Pillow
+  publishes no 32-bit wheel.
+- Verification 7 (2026-09-13): the zone is proxied by Cloudflare, nothing was challenged on
+  the day, the plan was not confirmed, and free-plan Bot Fight Mode cannot be skipped per
+  path -- hence the GitHub raw installer URL.
+- Verification 8, partial (2026-09-13): `ProxyFix` honours one forwarded hop (`x_for=1`);
+  `override_defaults=True` is set on every printer route and pinned by a test. Both, and the
+  `X-Forwarded-Proto: https` that opens the HTTPS gate, are pinned by
+  `tests/test_printer_routes.py::TestVerificationEightLimiterAndProxy`. Note that `ProxyFix`
+  counts hops from the **right**: with `x_for=1` an `X-Forwarded-For` that already carries a
+  chain gives the app the address the nearest proxy reported, not the browser's. Nothing in
+  this feature keys a real limit on the address -- the printer routes key on the pairing
+  code -- but the app-wide default does. **Open:** what address the app actually sees in
+  production for a browser and for a Pi. Needs a live probe against Railway; **ask the
+  owner** before running one.
+- Verifications 1 to 4: **open**, need the shop H2S.
+  `printer_daemon/tests/fixtures/h2s_status.json` is provisional until
+  `printer_daemon/tests/smoke_test.py` has been run against it.
+
+### Updating the daemon
+
+`printer_daemon/install.sh` pins `PENGUINCAM_SHA`. That SHA is the one place the daemon's
+version is written.
+
+**Every pull request that changes anything under `printer_daemon/` updates it to that pull
+request's merge commit.** Until the owner sets it when opening the pull request it reads
+`REPLACE_BEFORE_MERGE`, and the installer refuses to run.
+
+**It is two edits, one commit.** `PENGUINCAM_SHA` in `printer_daemon/install.sh` and the
+`<sha>` in the documented install command in [PRINTER_SETUP.md](PRINTER_SETUP.md) section 4
+must name the same commit, and both are set when the pull request is opened. They are what a
+mentor's install is made of: the URL says which script is fetched, the SHA inside it says
+which daemon that script downloads. Two different commits mean a pairing nobody tested.
 
 ---
 

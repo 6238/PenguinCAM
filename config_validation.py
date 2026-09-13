@@ -22,6 +22,7 @@ import math
 
 import yaml
 
+from printer_relay import normalize_code
 from team_config import LENGTH_KEYS, parse_length
 
 
@@ -228,5 +229,37 @@ def validate_and_sanitize_config(yaml_text, strict=True):
                 warnings.append(f"'default_machine' refers to an undefined machine "
                                 f"'{default_machine}'; using '{first}' instead.")
             data['default_machine'] = first
+
+    # Runs AFTER _walk for the same reason the default_machine repair does: it must see the
+    # sanitized value. The pairing code is the printer relay's whole identity, so normalise
+    # it once here rather than at every read site. (The string sanitizer never touches a
+    # code -- it only strips parentheses and non-ASCII, and the alphabet has neither.)
+    printing = data.get('printing')
+    if printing is not None:
+        if not isinstance(printing, dict):
+            if strict:
+                raise ConfigValidationError(
+                    "The 'printing:' section must be a set of settings, not a single value.")
+            del data['printing']
+            warnings.append("Ignored the 'printing' section: it must be a set of settings.")
+        elif 'pairing_code' in printing:
+            raw_code = printing['pairing_code']
+            if raw_code is None or (isinstance(raw_code, str) and not raw_code.strip()):
+                # An explicit `pairing_code:` with nothing after it (YAML null) or an empty
+                # string is how a mentor retires a Pi -- it means "no printer paired", not a
+                # mistake -- so drop the key silently in both modes.
+                del printing['pairing_code']
+            else:
+                code = normalize_code(raw_code)
+                if code is None:
+                    if strict:
+                        raise ConfigValidationError(
+                            "printing.pairing_code must be the 8-character code shown by "
+                            "the Pi.")
+                    del printing['pairing_code']
+                    warnings.append("Ignored printing.pairing_code: it is not the 8-character "
+                                    "code shown by the Pi; no printer will be paired.")
+                else:
+                    printing['pairing_code'] = code
 
     return data, warnings

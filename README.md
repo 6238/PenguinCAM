@@ -471,6 +471,7 @@ PenguinCAM is designed to support multiple teams using the same hosted instance.
 - Tab sizes and spacing
 - Z-axis reference heights
 - Google Drive integration settings
+- Sending prints straight to a Bambu Lab printer on your shop network (see [Printer Setup](docs/PRINTER_SETUP.md))
 
 **Example:** If you have an Omio X-8 with Mach3, you only need to override:
 ```yaml
@@ -486,6 +487,18 @@ machine:
 ```
 
 All other values automatically use proven Team 6238 defaults.
+
+**Sending prints to your printer:** if your team has a Bambu Lab printer and a Raspberry Pi
+in the shop, add a `printing` block with the pairing code the Pi prints during setup:
+
+```yaml
+printing:
+  pairing_code: "7K3M-Q9XW"
+```
+
+That one line is all that connects PenguinCAM to your printer. No password leaves your
+network and nothing on your network has to be reachable from outside. See
+[Printer Setup](docs/PRINTER_SETUP.md).
 
 ### Advanced: Self-Hosting (Optional)
 

@@ -26,6 +26,9 @@ make test-quick
 # Run everything, including the real Orca slice (the gate before a change is done)
 make test
 
+# Run the Raspberry Pi printer daemon's tests (make test includes this)
+make test-daemon
+
 # Run postprocessor directly (CLI)
 uv run python frc_cam_postprocessor.py INPUT.dxf OUTPUT.nc \
   --material plywood \
@@ -50,6 +53,13 @@ uv run python -c "from frc_cam_gui_app import app; print('OK')"
 echo "new-package>=1.0.0" >> requirements.txt
 uv pip install -r requirements.txt
 ```
+
+**The Pi daemon's dependencies are separate.** `printer_daemon/` has its own
+`requirements.txt` (`bambulabs_api`, `requests`, `tomli-w`) that is installed on the
+Raspberry Pi and, by `make test-daemon`, into the development venv. None of it belongs in
+the repository's own `requirements.txt` or in the Docker image. The daemon is run as a
+module (`python -m printer_daemon`) rather than installed as a package precisely because
+this project does not use `pyproject.toml`.
 
 ## Development Rules
 
@@ -132,6 +142,8 @@ Detailed documentation lives in the `docs/` directory. **Read these before modif
 | `ONSHAPE_SETUP.md` | Updating the Onshape browser extension or import URL format |
 | `quick-reference-card.md` | Changing UI workflows or default settings that affect end users |
 | [3D_PRINTING.md](docs/3D_PRINTING.md) | Changing the print wizard, the slicer wrapper, the job pool, or the Orca install |
+| [PRINTER_SETUP.md](docs/PRINTER_SETUP.md) | Changing the printer relay, the Pi daemon, the pairing flow, or the printer routes |
+| [PRINTER_DEV_TESTING.md](docs/PRINTER_DEV_TESTING.md) | Testing the relay end to end: backend in the agent container, daemon on the Mac, a real printer |
 
 ## Testing
 
