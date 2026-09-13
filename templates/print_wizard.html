@@ -1,14 +1,122 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="{{ theme }}">
+<html lang="en" data-theme="{{ theme|default('dark') }}">
 <head>
-    <meta charset="utf-8">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PenguinCAM — 3D Printing</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='wizard.css') }}">
 </head>
 <body data-source="{{ source }}" data-return="{{ return_url }}">
-<div id="wizard">
-    <header id="wiz-header"><div class="brand">PenguinCAM · 3D Printing</div></header>
-    <p>Print wizard placeholder. Drive enabled: {{ 'yes' if drive_enabled else 'no' }}.</p>
-</div>
+    <div id="wizard">
+        <!-- Header and step bar copied from wizard.html (not shared) so the two pages can diverge. -->
+        <header id="wiz-header">
+            <div class="brand">PenguinCAM</div>
+            <div class="config-info">
+                {% if not using_default_config and config_team_number %}
+                <p class="config-status">Config:
+                    {% if config_url %}
+                    <a href="{{ config_url }}" target="_blank" rel="noopener">{{ config_team_number }} ({{ config_team_name or 'Unknown' }})</a>
+                    {% else %}
+                    {{ config_team_number }} ({{ config_team_name or 'Unknown' }})
+                    {% endif %}
+                </p>
+                {% else %}
+                <p class="config-status config-status-default">Using default configuration</p>
+                {% endif %}
+            </div>
+            <ol id="stepbar" aria-label="Steps">
+                <li data-step="setup" data-num="1" class="active" role="button" tabindex="0">Setup</li>
+                <li data-step="parts" data-num="2" role="button" tabindex="0">Parts</li>
+                <li data-step="layout" data-num="3" role="button" tabindex="0">Layout</li>
+                <li data-step="preview" data-num="4" role="button" tabindex="0">Preview</li>
+            </ol>
+        </header>
+
+        <main id="wiz-body">
+            <div id="wiz-summary" hidden aria-label="Job summary"></div>
+
+            <!-- ===== SETUP ===== -->
+            <section class="step" data-step="setup">
+                <h2>Setup</h2>
+                <fieldset class="field">
+                    <legend>Mode</legend>
+                    <label class="radio"><input type="radio" name="mode" value="2d"> 2D — flat plate (one or more parts)</label>
+                    <label class="radio" id="opt-mode-25d"><input type="radio" name="mode" value="2.5d"> 2.5D — derive thickness from CAD (single part)</label>
+                    <label class="radio"><input type="radio" name="mode" value="tubing"> Tubing — machine both faces of a tube</label>
+                    <label class="radio"><input type="radio" name="mode" value="print" checked> 3D Printing — slice a part for the Bambu Lab printer</label>
+                </fieldset>
+                <!-- Stage 1: one fixed printer, filament and process. Read-only; later stages
+                     take these from the team configuration. -->
+                <div class="field"><span>Printer</span><output id="p-printer" class="print-value">…</output></div>
+                <div class="field"><span>Filament</span><output id="p-filament" class="print-value">…</output></div>
+                <div class="field"><span>Process</span><output id="p-process" class="print-value">…</output></div>
+                <p class="hint">These come from the team's fixed Bambu Lab profile set in this release.</p>
+            </section>
+
+            <!-- ===== PARTS ===== -->
+            <section class="step" data-step="parts" hidden>
+                <h2>Parts</h2>
+                <p class="hint">This release prints the built-in sample part. Exporting from Onshape comes next.</p>
+                <ul id="parts-list" aria-live="polite"></ul>
+            </section>
+
+            <!-- ===== LAYOUT ===== -->
+            <section class="step" data-step="layout" hidden>
+                <h2>Layout</h2>
+                <p class="hint">The part is centred on the bed. Moving and rotating parts comes in a later release.</p>
+                <div id="layout-info">
+                    <span><strong id="info-printer-name"></strong></span>
+                    <span>Bed: <span id="info-bed-size"></span></span>
+                </div>
+                <canvas id="layout-canvas" width="600" height="400"></canvas>
+                <div id="layout-errors" class="errors" aria-live="polite"></div>
+            </section>
+
+            <!-- ===== PREVIEW ===== -->
+            <section class="step" data-step="preview" hidden>
+                <h2>Preview &amp; Save</h2>
+                <div id="gen-status" class="hint" aria-live="polite"></div>
+                <div id="preview-result" hidden>
+                    <div id="preview-stats"></div>
+                    <div id="viewer-container">
+                        <div class="empty-state" id="viewer-empty">The sliced part will appear here</div>
+                        <canvas id="print-canvas"></canvas>
+                    </div>
+                    <div class="playback-controls">
+                        <button type="button" class="btn small" id="btn-reset-view">Reset view</button>
+                    </div>
+                    <p class="hint">Drag to orbit, scroll to zoom.</p>
+                </div>
+                <div id="preview-errors" class="errors" aria-live="polite"></div>
+                <div id="preview-notes" class="notes" aria-live="polite" hidden></div>
+            </section>
+        </main>
+
+        <footer id="wiz-nav">
+            <button type="button" id="btn-back" class="btn" disabled>Back</button>
+            <button type="button" id="btn-next" class="btn primary">Next</button>
+            <div id="final-action" class="split-btn" hidden>
+                <button type="button" id="btn-do" class="btn primary" disabled>Download Program</button>
+                <button type="button" id="btn-do-caret" class="btn primary split-caret" aria-label="Choose action" hidden>&#9662;</button>
+                <ul id="do-menu" class="do-menu" role="menu" hidden>
+                    <li role="menuitem" data-action="download">Download Program</li>
+                    <li role="menuitem" data-action="drive">Send to Google Drive</li>
+                </ul>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+      window.PenguinCAM = {
+        source: {{ source|tojson }},
+        theme: {{ theme|tojson }},
+        returnUrl: {{ return_url|tojson }},
+        driveEnabled: {{ (drive_enabled if drive_enabled is defined else False)|tojson }},
+      };
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="{{ url_for('static', filename='print_viewer.js') }}"></script>
+    <script src="{{ url_for('static', filename='print_wizard.js') }}"></script>
 </body>
 </html>

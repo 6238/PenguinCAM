@@ -405,3 +405,7 @@ fieldset.field { border: 1px solid var(--line); border-radius: 6px; padding: 8px
   z-index: 9999;
 }
 #debug-overlay pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; }
+
+/* ---- 3D print wizard (templates/print_wizard.html) ---- */
+.print-value { display: block; color: var(--ink); font-size: 14px; }
+#print-canvas { display: block; width: 100%; height: 100%; }
