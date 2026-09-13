@@ -1412,11 +1412,12 @@ def download_file(token):
                          user_email=user_email,
                          metadata={'filename': real_filename})
 
+        mimetype = 'application/octet-stream' if real_filename.lower().endswith('.3mf') else 'text/plain'
         return send_file(
             file_path,
             as_attachment=True,
             download_name=real_filename,  # User sees the real filename
-            mimetype='text/plain'
+            mimetype=mimetype
         )
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -2254,6 +2255,14 @@ def admin_metrics_events():
         'limit': limit,
         'offset': offset
     })
+
+# 3D print wizard: separate blueprint, shares the gate, token manager, limiter and folders.
+from print_routes import init_print_routes  # noqa: E402  (after the app globals it needs)
+init_print_routes(app, limiter=limiter, require_session=_require_app_session,
+                  token_manager=file_token_manager, upload_folder=UPLOAD_FOLDER,
+                  output_folder=OUTPUT_FOLDER, template_context=_app_template_context,
+                  metrics=metrics, log=log)
+
 
 def cleanup():
     """Clean up temporary files on shutdown"""

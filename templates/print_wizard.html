@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="{{ theme }}">
+<head>
+    <meta charset="utf-8">
+    <title>PenguinCAM — 3D Printing</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='wizard.css') }}">
+</head>
+<body data-source="{{ source }}" data-return="{{ return_url }}">
+<div id="wizard">
+    <header id="wiz-header"><div class="brand">PenguinCAM · 3D Printing</div></header>
+    <p>Print wizard placeholder. Drive enabled: {{ 'yes' if drive_enabled else 'no' }}.</p>
+</div>
+</body>
+</html>
