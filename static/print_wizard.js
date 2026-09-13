@@ -32,6 +32,11 @@
 
   function $(sel) { return document.querySelector(sel); }
   function $all(sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); }
+  // The stylesheet's single-column fallback for the full-page grid (wizard.css).
+  function narrowGrid() {
+    return typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(max-width: 900px)').matches : false;
+  }
 
   /* ----------------------------------------------------------- pure helpers */
   function formatDuration(seconds) {
@@ -145,7 +150,12 @@
     if (!HAS_DOM) return;
     var wizard = $('#wizard'), canvas = $('#layout-canvas');
     if (!wizard || !canvas) return;
-    if (!wizard.classList.contains('grid')) {
+    // Below the stylesheet's 900 px breakpoint the grid is a single column of
+    // `grid-auto-rows: minmax(220px, auto)` rows, so the section's height follows its
+    // content, which includes the canvas. Measuring there would feed the fit back into
+    // itself and ratchet the canvas down to the floor, one resize tick at a time. That
+    // layout is not height-constrained, so treat it like single-step mode.
+    if (!wizard.classList.contains('grid') || narrowGrid()) {
       canvas.style.removeProperty('width');
       canvas.style.removeProperty('height');
       return;
@@ -154,12 +164,22 @@
     if (!section) return;
     var cs = getComputedStyle(section);
     var padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
-    var padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-    var above = canvas.offsetTop - section.offsetTop;      // heading, hint, info line
     var errors = $('#layout-errors');
-    var below = errors ? errors.offsetHeight : 0;          // the too-big message, when shown
-    var availW = section.clientWidth - padX;
-    var availH = section.clientHeight - padY - above - below - 8;   // 8 px slack
+    // The too-big message, when shown, plus its own margin-top: offsetHeight stops at the
+    // border box, and that 8 px margin would otherwise eat the slack below the canvas.
+    var below = 0;
+    if (errors && errors.offsetHeight) {
+      below = errors.offsetHeight + (parseFloat(getComputedStyle(errors).marginTop) || 0);
+    }
+    // Rects, not offsetTop: the section is not positioned, so an offset difference spans
+    // its border and padding-top and would subtract the top padding a second time.
+    // sr.bottom is the border box, so the bottom border comes off as well as the padding,
+    // and the limits are floored: a fractional layout plus a rounded-up size overflows the
+    // quadrant by a pixel, which is enough for the browser to report an inner scroll.
+    var sr = section.getBoundingClientRect(), cr = canvas.getBoundingClientRect();
+    var edgeB = (parseFloat(cs.paddingBottom) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+    var availW = Math.floor(section.clientWidth - padX);
+    var availH = Math.floor((sr.bottom - edgeB) - cr.top - below - 8);   // 8 px slack
     var fit = fitCanvasSize(availW, availH, canvas.width, canvas.height);
     canvas.style.width = fit.w + 'px';
     canvas.style.height = fit.h + 'px';
