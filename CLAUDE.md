@@ -41,7 +41,7 @@ uv run python -c "from frc_cam_gui_app import app; print('OK')"
 **CRITICAL**: This project uses `requirements.txt` for dependency specification (NOT `pyproject.toml`).
 
 - **Local development**: Uses `uv` with `requirements.txt` (run `make install` or `uv pip install -r requirements.txt`)
-- **Deployment**: Railway reads `requirements.txt` to install dependencies
+- **Deployment**: Railway builds the `Dockerfile`, and the Docker build installs from `requirements.txt`
 - **Adding dependencies**: Edit `requirements.txt` directly, then run `uv pip install -r requirements.txt`
 - **DO NOT** create or use `pyproject.toml` - it will cause confusion with Railway deployment
 
@@ -136,5 +136,6 @@ Detailed documentation lives in the `docs/` directory. **Read these before modif
 Tests compare PenguinCAM output against Fusion 360 CAM output using the `pygcode` library. Test fixtures are DXF files with known expected G-code.
 
 ```bash
-make test  # Runs all comparison tests
+make test-quick  # The fast tests, for iteration: no Orca slice
+make test        # Everything, including the real Orca slice
 ```

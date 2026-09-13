@@ -15,7 +15,7 @@ A ground-up rework, delivered as a **step wizard** (Setup → Parts → Layout �
 - The wizard is the whole app: `/` (and `/app`) serve it full-screen in DXF-upload mode; the Onshape panel serves the same wizard with face-selection as the source.
 - **3D Printing (stage 1):** a "3D Printing" mode on Setup opens a print wizard that slices a fixed sample part with Orca Slicer for the team's Bambu Lab printer, shows print time, filament and layers, and delivers a .gcode.3mf through the same Download / Drive button. See [docs/3D_PRINTING.md](docs/3D_PRINTING.md).
 
-Key files: `templates/wizard.html`, `static/wizard.js`, `static/gcode_viewer.js`, `static/source_onshape.js`; engine in `frc_cam_postprocessor.py`, routes in `frc_cam_gui_app.py`; the print path in `print_routes.py`, `print_jobs.py`, `print_slicer.py`, `templates/print_wizard.html`, `static/print_wizard.js`, `static/print_viewer.js` and the fixed assets in `print/`. Planned next: **V3 config / computed feeds-&-speeds** model (`docs/FEEDSandSPEEDS.md`). `make install` also installs Orca Slicer, which the print path needs. Run `make test` after changes, and `make test-quick` while iterating.
+Key files for the CNC path: `templates/wizard.html`, `static/wizard.js`, `static/gcode_viewer.js` and `static/source_onshape.js`, with the engine in `frc_cam_postprocessor.py` and the routes in `frc_cam_gui_app.py`. The print path is `print_routes.py`, `print_jobs.py`, `print_slicer.py`, `templates/print_wizard.html`, `static/print_wizard.js`, `static/print_viewer.js` and the fixed assets in `print/`. `make install` also installs Orca Slicer, run `make test` after changes, and use `make test-quick` while iterating. Planned next: the **V3 config / computed feeds-&-speeds** model, `docs/FEEDSandSPEEDS.md` (not written yet).
 
 🔗 **Demo video:**  
 [![Demo video](https://img.youtube.com/vi/gFReFDz-_LI/0.jpg)](https://youtu.be/zPZCTVh2n2Q)
@@ -158,7 +158,7 @@ See "For Other FRC Teams" section below for complete instructions.
 
 ### Deployment (Advanced)
 
-For teams self-hosting PenguinCAM, it's can be deployed on Railway (server-based) or Vercel (serverless) with automatic GitHub integration, or your own hosting service or server. Vercel is unsupported from the 3D print stage on: the serverless build has no Orca Slicer binary, so Railway, built from the `Dockerfile`, is the target.
+Teams self-hosting PenguinCAM can deploy it on Railway (server-based) or Vercel (serverless) with automatic GitHub integration, or on their own hosting service or server. Vercel is unsupported from the 3D print stage on: the serverless build has no Orca Slicer binary, so Railway, built from the `Dockerfile`, is the target.
 
 **Setup guides:**
 - [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Deploy to Railway, environment variables
@@ -235,7 +235,8 @@ Google Drive Upload
 - `static/popcornlogo.png` - Team branding
 
 **Configuration:**
-- `Procfile` - Railway deployment config
+- `Dockerfile` - The image Railway builds and runs
+- `Procfile` - Kept identical to the Dockerfile's start command for tools that read it
 - `requirements.txt` - Python dependencies
 - Environment variables - Secrets and API keys
 
@@ -314,13 +315,15 @@ penguincam/
 ├── README.md                          # This file
 ├── ROADMAP.md                         # Future plans
 ├── requirements.txt                   # Python dependencies
-├── Procfile                           # Railway deployment
+├── Dockerfile                         # The image Railway builds and runs
+├── Procfile                           # Same start command, for tools that read it
 ├── PenguinCAM-config-template.yaml    # Team configuration template
 │
 ├── docs/                              # Documentation
 │   ├── DEPLOYMENT_GUIDE.md            # Setup & deployment
 │   ├── AUTHENTICATION_GUIDE.md        # Google OAuth
 │   ├── INTEGRATIONS_GUIDE.md          # Onshape & Drive
+│   ├── 3D_PRINTING.md                 # The print path
 │   ├── quick-reference-card.md        # Quick start
 │   ├── TOOL_COMPENSATION_GUIDE.md     # Technical reference
 │   └── Z_COORDINATE_SYSTEM.md         # Zeroing guide

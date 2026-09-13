@@ -83,9 +83,10 @@ Anything already at `tools/orca` that does not match is deleted before the downl
 
 On Linux the AppImage is extracted with `--appimage-extract`, so no FUSE is needed, and
 the script writes `tools/orca/orca-slicer` as a shell wrapper. The wrapper does not use
-the AppImage's `AppRun`: the launcher `AppRun` execs probes `ldconfig -p` and `/usr/lib`
-for the host's OpenGL and WebKit libraries, which fails in a container without those
-packages. The wrapper sets what `AppRun` would set and execs the binary directly:
+the AppImage's `AppRun`. AppRun execs `libexec/orca-slicer-env`, and that launcher probes
+`ldconfig -p` and `/usr/lib` for the host's OpenGL and WebKit libraries, which fails in a
+container without those packages. The wrapper sets what `AppRun` would set and execs the
+binary directly:
 
 - `APPDIR` pointing at `squashfs-root`.
 - `LC_ALL=C`.
@@ -233,10 +234,11 @@ before `make test`.
 
 `build_command(stl_path, output_dir)` resolves both paths to absolute ones first, because
 Orca runs with `cwd=output_dir` and would read a relative path against the wrong
-directory. It returns, verbatim:
+directory. The first element is the absolute path of `tools/orca/orca-slicer`, the module
+constant `ORCA_BIN`. It returns, verbatim:
 
 ```
-tools/orca/orca-slicer
+<repo>/tools/orca/orca-slicer
     --datadir <output_dir>/datadir
     --load-settings "<repo>/print/profiles/printer.json;<repo>/print/profiles/process.json"
     --load-filaments <repo>/print/profiles/filament.json
@@ -248,9 +250,12 @@ tools/orca/orca-slicer
 ```
 
 `--arrange 1` centres the part on the plate, which matches the Layout drawing. `--slice 0`
-slices every plate; the sample has one. `slice_stl` creates `output_dir` first, because
-the command line does not create a missing `--outputdir` and exits with code 156 if it is
-absent.
+slices every plate; the sample has one.
+
+The pinned binary creates one missing level of `--outputdir` itself. It fails when the
+parent is missing too: exit code 156, with a `boost::filesystem::create_directory` error.
+`slice_stl` creates the directory anyway, because it also runs Orca with `cwd=output_dir`
+and the working directory has to exist before the process starts.
 
 ### Isolation
 
@@ -318,11 +323,17 @@ no app imports.
 
 | Constant | Value | Basis |
 |----------|-------|-------|
-| `MAX_RUNNING` | 1 | Orca processes at once. The rule is `min(vCPU count, memory / peak resident memory of one slice)`, never below one. One slice of the sample part peaked at 93 MB resident and took 0.23 s on the aarch64 agent container; a 120 x 120 x 40 mm box took 0.6 s at 250 MB peak. The production Railway plan's vCPU and memory allotment could not be read from the build container, so the value stays at one until it is measured. |
+| `MAX_RUNNING` | 1 | Orca processes at once. |
 | `MAX_QUEUED` | 2 | Jobs waiting beyond the running ones. Beyond that, `submit()` raises `QueueFull` and the route answers 503, because queued work nobody will wait for is worse than an honest refusal. |
 | `RECORD_TTL_S` | 3600 | A record expires one hour after its last update, read or not. |
 | `WAIT_S` | 5.0 | Subscriber wake-up cadence when nothing changes. |
 | `SWEEP_INTERVAL_S` | 600 | Expiry sweep cadence, the same as the token manager's. |
+
+`MAX_RUNNING` is sized by the rule `min(vCPU count, memory / peak resident memory of one
+slice)`, never below one. One slice of the sample part peaked at 93 MB resident and took
+0.23 s on the aarch64 agent container. A 120 x 120 x 40 mm box took 0.6 s at 250 MB peak.
+The production Railway plan's vCPU and memory allotment could not be read from the build
+container, so the value stays at one until it is measured.
 
 The job TTL and the token manager's file retention are independent clocks. Both are one
 hour today, but nothing links them: the token manager's cleanup thread unlinks registered
@@ -344,7 +355,8 @@ returns at once if the record has moved on, otherwise waits up to five seconds. 
 change notifies every subscriber. `follow(job_id)` is the generator behind the event
 route: it yields `("state", record)` now, then on every change or five-second wake, then
 one terminal `("done"|"failed", record)`, and returns. It also returns when the record
-disappears, because `expire()` notifies the condition before dropping it.
+disappears. `expire()` pops the condition and deletes the record, then calls
+`notify_all()` on the condition it still holds, so every waiter wakes up.
 
 ### The worker
 
@@ -365,11 +377,23 @@ All five live in `print_routes.py` and are registered by `init_print_routes`.
 
 | Route | Method | Gate | Rate limit | Responses |
 |-------|--------|------|------------|-----------|
-| `/print` | GET | app session | none | 200 with the page; redirect to the validated `return` with `verify=1` when the gate fails |
-| `/print/part` | GET | none | none | 200 JSON from `part_info()`; with `?stl=1`, 200 with the STL bytes as `model/stl` |
+| `/print` | GET | app session | 200 per hour (app default) | 200 with the page; redirect to the validated `return` with `verify=1` when the gate fails |
+| `/print/part` | GET | none | 200 per hour (app default) | 200 JSON from `part_info()`; with `?stl=1`, 200 with the STL bytes as `model/stl` |
 | `/print-job` | POST | app session | 3 per minute | 202 `{job_id}`; 503 `{error}` when the queue is full; 401 from the gate; 429 over the limit |
-| `/print-job/<id>` | GET | app session | none | 200 with the record; 404 `{error}` for an unknown or expired id |
-| `/print-job/<id>/events` | GET | app session | none | 200 `text/event-stream`; 404 `{error}` for an unknown id |
+| `/print-job/<id>` | GET | app session | 200 per hour (app default) | 200 with the record; 404 `{error}` for an unknown or expired id |
+| `/print-job/<id>/events` | GET | app session | 200 per hour (app default) | 200 `text/event-stream`; 404 `{error}` for an unknown id |
+
+The app's limiter is built with `default_limits=["200 per hour"]`, so every route carries
+that budget. Nothing on the print path is exempt. Two error bodies are written for the
+student, as the constants `BUSY_MESSAGE` and `EXPIRED_MESSAGE` in `print_routes.py`:
+
+| Status | Body | Constant |
+|--------|------|----------|
+| 503 | `The slicer is busy, try again in a minute.` | `BUSY_MESSAGE` |
+| 404 | `This slice has expired, go back and slice again.` | `EXPIRED_MESSAGE` |
+
+`/print/part` is deliberately ungated: it serves only the sample part's metadata and STL,
+neither of which is a secret.
 
 `/print` reads `source` (`upload` or `onshape`, default `upload`) and `theme` (`dark` or
 `light`, default `dark`), falling back to the default on anything else. When
@@ -385,6 +409,11 @@ The limit keys on the remote address, like every existing limit. `ProxyFix` is c
 with `x_proto` and `x_host` but no `x_for`, so behind Railway's proxy every browser shares
 one address and three per minute is a deployment-wide cap. The fourth slice in a minute
 sees a 429 on Preview. Trusting the forwarded-for header is a separate change.
+
+The 200 per hour default is deployment-wide for the same reason. The polling fallback
+hits `/print-job/<id>` every 2 s, or 30 requests a minute, and every one of them spends
+that budget. The fallback only runs when the event stream fails, so a normal slice uses a
+handful of requests.
 
 ### The `return` parameter and `verify=1`
 
@@ -503,16 +532,22 @@ because a `GridHelper` bakes its colours into vertex colours.
 ### The two touches to the CNC wizard
 
 - `templates/wizard.html` gains one radio in the mode fieldset:
-  `3D Printing - slice a part for the Bambu Lab printer`.
+  `3D Printing — slice a part for the Bambu Lab printer`.
 - `static/wizard.js` navigates to
   `/print?source=…&theme=…&return=<current path and query>` when that radio is chosen,
   and does not change the CNC mode state.
+- `static/wizard.css` gains two rules for the print page, `.print-value` and
+  `#print-canvas`.
 
-Both pages re-assert their own radio at init, because a back-navigation or a browser form
-restore can leave another radio checked without firing a change event. The CNC page checks
-the radio for its current mode; the print page checks the `print` radio. On the print
-page, choosing any CNC radio navigates to `returnUrl`, and that page reloads with its
-default mode selected.
+Both pages re-assert their own radio at init, because a browser form restore can leave
+another radio checked without firing a change event. The CNC page checks the radio for its
+current mode; the print page checks the `print` radio. That covers a fresh load, a reload
+and a form restore, because each of those runs the page's scripts.
+
+A bfcache Back from `/print` to `/app` does not run them. The browser restores the page as
+it was, so the 3D Printing radio can stay checked until the student picks another mode. A
+`pageshow` listener would close that gap. On the print page, choosing any CNC radio
+navigates to `returnUrl`, and that page reloads with its default mode selected.
 
 ## 10. macOS differences
 
@@ -573,6 +608,13 @@ Open items in stage 1:
   plan's vCPU and memory allotment are measured on production. See
   [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md).
 - **macOS install untested.** See section 10.
+- **bfcache Back leaves the radio checked.** A Back from `/print` to `/app` that comes
+  from the back/forward cache does not re-run the page's scripts, so the 3D Printing radio
+  can stay checked until the student picks another mode. A `pageshow` listener on the CNC
+  page would close it. See section 9.
+- **The 3D view needs WebGL.** The container's headless Chrome has none, so the mesh
+  cannot be checked there. A browser without WebGL still shows the summary numbers and a
+  note, but no mesh.
 - **Vercel is unsupported** from this stage on: the serverless build has no Orca binary
   and a 60-second function limit. `app.py` and `vercel.json` are untouched but no longer
   describe a working deployment.
