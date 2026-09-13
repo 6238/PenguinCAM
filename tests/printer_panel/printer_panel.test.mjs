@@ -867,3 +867,45 @@ test('no #stepbar and no Preview section: the step cannot be read, and it is sai
   assert.equal(about.length, 1, 'named once, not once per mutation');
   assert.equal(p.fetchCalls.length, 0, 'and no polling is started on a guess');
 });
+
+test('an enabled click is handed to the wizard through choosePrinterAction, which owns '
+     + 'the remembered choice and calls back into send()', async () => {
+  const chosen = [];
+  const bootstrap = { source: 'onshape', getDownloadToken: () => 'tok',
+                      choosePrinterAction: () => { chosen.push('printer'); } };
+  const p = previewPanel(bootstrap);
+  p.panel.start();
+  await flush();
+  const event = p.menu.click(p.item());
+  await flush();
+  assert.equal(event.stopped, true, "the wizard's generic chooseAction never sees it");
+  assert.equal(p.menu.hidden, true, 'the menu closes');
+  assert.deepEqual(chosen, ['printer']);
+  assert.deepEqual(p.fetchCalls.filter((c) => c[0] === '/printer/jobs'), [],
+                   'the POST is left to send(), which the wizard calls');
+  p.panel.stop();
+});
+
+test('without choosePrinterAction an enabled click still sends from here', async () => {
+  const p = previewPanel();
+  p.panel.start();
+  await flush();
+  p.menu.click(p.item());
+  await flush();
+  assert.equal(p.fetchCalls.filter((c) => c[0] === '/printer/jobs').length, 1);
+  p.panel.stop();
+});
+
+test('adding the item reveals the split button caret the wizard hides by default',
+     async () => {
+  const p = previewPanel();
+  const caret = p.doc.add('btn-do-caret', 'button');
+  caret.hidden = true;
+  const holder = p.doc.add('final-action');
+  p.panel.start();
+  await flush();
+  assert.ok(p.item());
+  assert.equal(caret.hidden, false);
+  assert.equal(holder.classList.contains('has-caret'), true);
+  p.panel.stop();
+});

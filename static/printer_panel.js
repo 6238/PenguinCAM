@@ -3,45 +3,24 @@
  * Spec: docs/superpowers/specs/2026-09-13-bambu-printer-relay-design.md, sections 4 (the
  * status-line table), 7 (the /printer/status and /printer/jobs routes) and 10.
  *
- * This file is deliberately standalone: it adds the printer half of the print wizard's
- * Preview step without editing templates/print_wizard.html or static/print_wizard.js,
- * which belong to the slicing branch. It attaches to that page's existing DOM (#stepbar,
- * #preview-stats, #preview-errors, #do-menu) and never assumes any of it is present: a
- * selector that misses is logged once, by name, and the panel carries on without it.
+ * This file is the printer half of the print wizard's Preview step. print_wizard.html
+ * loads it after print_wizard.js; it attaches to that page's DOM (#stepbar,
+ * #preview-stats, #preview-errors, #do-menu, #btn-do-caret, #final-action) and never
+ * assumes any of it is present: a selector that misses is logged once, by name, and the
+ * panel carries on without it.
  *
- * FIVE EDITS ARE STILL NEEDED, after the printer and slicing branches are rebased:
- *
- *   1. templates/print_wizard.html: load this file, after print_wizard.js --
- *        <script src="/static/printer_panel.js" defer></script>
- *   2. static/print_wizard.js: expose the slice's download token on the bootstrap object --
- *        window.PenguinCAM.getDownloadToken = function () { return state.token; };
- *      (the same token /print-job hands the Download and Drive actions).
- *   3. static/print_wizard.js: let 'printer' be a remembered and primary action, which is
- *      the last bullet of spec section 10 ("Remembers Send to Printer as the last
- *      split-button choice, as the CNC wizard remembers Drive"). Its preferredAction
- *      downgrades any action it does not know, so 'printer' has to be accepted there, and
- *      performAction must delegate it back here, e.g.
- *        if (action === 'printer') { window.PenguinCAMPrinterPanel.send(); return; }
- *      Until then this file writes nothing to localStorage and handles its own clicks, so
- *      the main button never becomes Send to Printer.
- *   4. Check every selector below against the real templates/print_wizard.html, and fix
- *      the ones that do not match. They were written against the ids the slicing session
- *      reported, and only those marked (confirmed) were in that list:
- *        #preview-stats            (confirmed)  the status line is inserted after it
- *        #preview-errors           (confirmed)  the error box a refused send writes to
- *        #do-menu                  (confirmed)  the split button's menu, and inside it
- *        #do-menu li[data-action]  (confirmed)  the shape of one menu item
- *        #stepbar li.active[data-step]          how the panel reads the current step
- *        section.step[data-step="preview"]      the fallback, with .current or [hidden]
- *      Nothing here throws when a selector misses: the panel logs the selector once and
- *      carries on, so a wrong guess is a line in the console rather than a broken wizard.
- *   5. Add CSS for .printer-status and .printer-error to the stylesheet print_wizard.html
- *      loads (static/wizard.css today), which belongs to the slicing branch. Without it the
- *      status line and the refusal message inherit whatever the surrounding block gives
- *      them: they still read, they just do not look like the rest of the step.
- *
- * Until edit 2 lands, the status line still renders; the "Send to Printer" item is simply
- * not added, because there would be nothing to send. With neither edit, nothing runs.
+ * The contract with print_wizard.js, which owns the split button and the remembered
+ * choice:
+ *   - window.PenguinCAM.getDownloadToken() returns the slice's download token, the same
+ *     one Download and Drive use. Without it the status line still renders and the
+ *     "Send to Printer" item is not offered, because there would be nothing to send.
+ *   - window.PenguinCAM.choosePrinterAction() is what an enabled click on the item calls:
+ *     the wizard records 'printer' as the remembered choice, relabels the main button,
+ *     closes the menu and calls performAction('printer'), which delegates to send() below.
+ *   - window.PenguinCAM.printerEnabled says whether this session's team config carries a
+ *     pairing code; the wizard uses it to show the caret at load and to accept 'printer'
+ *     as the remembered choice.
+ * With neither getter present nothing runs.
  *
  * Plain ES2017, one IIFE, no dependencies, no build step. The pure parts are exported on
  * window.PenguinCAMPrinterPanel for tests/printer_panel/printer_panel.test.mjs.
@@ -296,9 +275,13 @@
     li.setAttribute('role', 'menuitem');
     li.textContent = 'Send to Printer';
     menu.appendChild(li);
+    revealCaret();
     // Capture phase, and stopImmediatePropagation: the wizard's own delegated handler
-    // calls chooseAction(li.dataset.action) and knows nothing about 'printer', so it must
-    // never see this click at all -- including the clicks on the disabled item.
+    // calls chooseAction(li.dataset.action) for every item, and it must not see a click
+    // on the DISABLED item at all. An enabled click is handed to the wizard through
+    // choosePrinterAction, which records 'printer' as the remembered choice, relabels the
+    // main button, closes the menu and calls back into send(). A wizard without that hook
+    // (an older print_wizard.js) gets the send done here instead.
     menu.addEventListener('click', function (event) {
       var target = event.target;
       while (target && target !== menu) {
@@ -306,11 +289,12 @@
           event.preventDefault();
           event.stopImmediatePropagation();
           if (target.getAttribute('aria-disabled') !== 'true') {
-            // Closing the menu is ours to do as well: the click never reaches the page's
-            // chooseAction, which is what hides #do-menu for Download and Drive, nor the
-            // document-level closer behind it.
             menu.hidden = true;
-            send();
+            if (bootstrap && typeof bootstrap.choosePrinterAction === 'function') {
+              bootstrap.choosePrinterAction();
+            } else {
+              send();
+            }
           }
           return;
         }
@@ -318,6 +302,15 @@
       }
     }, true);
     return li;
+  }
+
+  /** The split button's caret is hidden by the wizard unless the menu has a second
+   *  entry; once Send to Printer is in it, the caret has to be there to reach it. */
+  function revealCaret() {
+    var caret = $('#btn-do-caret');
+    if (caret) caret.hidden = false;
+    var holder = $('#final-action');
+    if (holder && holder.classList) holder.classList.add('has-caret');
   }
 
   function paintMenuItem(payload) {

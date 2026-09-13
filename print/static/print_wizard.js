@@ -494,6 +494,12 @@
   function bindPreview() {
     if (typeof window !== 'undefined') {
       window.PenguinCAM.getJobState = function () { return state.record ? state.record.state : null; };
+      // For static/printer_panel.js: the slice's download token (the same one Download
+      // and Drive use), and the way its menu item records itself as the remembered
+      // choice. The panel owns the item, its enabled state and the POST; this file owns
+      // the split button's label and the localStorage preference.
+      window.PenguinCAM.getDownloadToken = function () { return state.token; };
+      window.PenguinCAM.choosePrinterAction = function () { chooseAction('printer'); };
     }
   }
 
@@ -503,18 +509,30 @@
   var SAVE_PREF_KEY = 'penguincam_save_action';
   function readSavePref() { try { return localStorage.getItem(SAVE_PREF_KEY); } catch (e) { return null; } }
   function writeSavePref(a) { try { localStorage.setItem(SAVE_PREF_KEY, a); } catch (e) {} }
-  function actionLabel(a) { return a === 'drive' ? 'Send to Google Drive' : 'Download Program'; }
+  function actionLabel(a) {
+    if (a === 'drive') return 'Send to Google Drive';
+    if (a === 'printer') return 'Send to Printer';
+    return 'Download Program';
+  }
 
   function preferredAction() {
     var pref = readSavePref();
-    return (pref === 'drive' && CFG.driveEnabled) ? 'drive' : 'download';
+    if (pref === 'drive' && CFG.driveEnabled) return 'drive';
+    if (pref === 'printer' && CFG.printerEnabled) return 'printer';
+    return 'download';
   }
 
   function setupFinalAction() {
     var driveOk = !!CFG.driveEnabled;
+    var printerOk = !!CFG.printerEnabled;
     if (state.saveAction === 'drive' && !driveOk) state.saveAction = 'download';
-    $('#btn-do-caret').hidden = !driveOk;
-    $('#final-action').classList.toggle('has-caret', driveOk);
+    if (state.saveAction === 'printer' && !printerOk) state.saveAction = 'download';
+    // The caret opens the menu, which only has something to offer beyond Download when
+    // Drive is configured or a printer is paired. printer_panel.js adds its own item to
+    // the menu once the wizard is on Preview.
+    var hasCaret = driveOk || printerOk;
+    $('#btn-do-caret').hidden = !hasCaret;
+    $('#final-action').classList.toggle('has-caret', hasCaret);
     var driveItem = document.querySelector('#do-menu li[data-action="drive"]');
     if (driveItem) driveItem.hidden = !driveOk;
     $('#btn-do').textContent = actionLabel(state.saveAction);
@@ -530,6 +548,12 @@
 
   function performAction(a) {
     if (!state.token) return;
+    if (a === 'printer') {
+      // The panel checks the printer's state and posts the token itself.
+      var panel = typeof window !== 'undefined' && window.PenguinCAMPrinterPanel;
+      if (panel && typeof panel.send === 'function') panel.send();
+      return;
+    }
     if (a === 'drive') driveSave(state.token);
     else doDownload(state.token);
   }

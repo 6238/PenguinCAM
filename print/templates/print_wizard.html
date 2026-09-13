@@ -112,11 +112,13 @@
         theme: {{ theme|tojson }},
         returnUrl: {{ return_url|tojson }},
         driveEnabled: {{ (drive_enabled if drive_enabled is defined else False)|tojson }},
+        printerEnabled: {{ (printer_enabled if printer_enabled is defined else False)|tojson }},
       };
     </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="{{ url_for('print.static', filename='print_viewer.js') }}"></script>
     <script src="{{ url_for('print.static', filename='print_wizard.js') }}"></script>
+    <script src="{{ url_for('static', filename='printer_panel.js') }}"></script>
 </body>
 </html>

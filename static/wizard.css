@@ -302,6 +302,14 @@ fieldset.field { border: 1px solid var(--line); border-radius: 6px; padding: 8px
 .do-menu li:hover { background: var(--panel-2); }
 
 #preview-stats { margin: 10px 0; color: var(--muted); font-size: 13px; }
+/* The printer status line printer_panel.js inserts right after the slice summary, and
+   the reason a refused send writes into #preview-errors. */
+.printer-status { margin: 10px 0; color: var(--muted); font-size: 13px; }
+.printer-status a { color: var(--accent); text-decoration: none; }
+.printer-status a:hover { text-decoration: underline; }
+.printer-error { color: var(--danger); }
+.do-menu li[aria-disabled="true"] { color: var(--muted); cursor: default; }
+.do-menu li[aria-disabled="true"]:hover { background: transparent; }
 
 .config-info { margin-top: 6px; }
 .config-status { margin: 0; font-size: 12px; color: var(--muted); }

@@ -298,32 +298,28 @@ The daemon does not have to be on a Pi. The full recipe for running it on a Mac 
 backend in the agent container, and sending a real print through it, is
 [PRINTER_DEV_TESTING.md](PRINTER_DEV_TESTING.md).
 
-### The wizard panel, after the rebase
+### The wizard panel
 
-`static/printer_panel.js` is the printer half of the print wizard's Preview step. It ships
-standalone, because the wizard itself belongs to `feature/3d-print-stage1`, so nothing loads
-it yet. Five edits wire it in once both branches are on `main`. The same list is in the
-file's own header comment, which is the copy to trust if the two ever drift.
+`static/printer_panel.js` is the printer half of the print wizard's Preview step:
+the status line under the slice summary and the Send to Printer item in the split button's
+menu. `templates/print_wizard.html` loads it after `print_wizard.js`. The contract between
+the two scripts is small, and the panel's header comment is the copy to trust:
 
-1. `templates/print_wizard.html`: load the script, after `print_wizard.js`.
-2. `static/print_wizard.js`: expose the slice's download token as
-   `window.PenguinCAM.getDownloadToken`. Until this lands the status line renders and the
-   Send to Printer item does not, because there would be nothing to send.
-3. `static/print_wizard.js`: accept `printer` as a remembered and primary action, and let
-   `performAction('printer')` call `window.PenguinCAMPrinterPanel.send()`.
-4. Check every selector the script uses against the real `print_wizard.html`:
-   `#preview-stats`, `#preview-errors`, `#do-menu` and `#do-menu li[data-action]`,
-   `#stepbar li.active[data-step]`, and `section.step[data-step="preview"]`. The last two
-   were never confirmed against the wizard. A selector that misses is logged once by name
-   and the panel carries on without it, so a wrong guess shows up in the browser console
-   rather than as a step that does nothing.
-5. Add CSS for `.printer-status` and `.printer-error` to the stylesheet
-   `print_wizard.html` loads. Without it the status line and a refused send's reason still
-   read, they just do not look like the rest of the step.
+- `window.PenguinCAM.getDownloadToken()` returns the slice's download token, the one
+  Download and Drive use. Until a slice succeeds it is null, and the item is not offered.
+- `window.PenguinCAM.choosePrinterAction()` is what an enabled click on the item calls. The
+  wizard records `printer` as the remembered split-button choice, relabels the main button,
+  closes the menu and calls `performAction('printer')`, which delegates to the panel's
+  `send()`.
+- `window.PenguinCAM.printerEnabled` is true when the session's Onshape config carries a
+  pairing code, and always false in the upload flow. The wizard uses it to show the caret at
+  load and to accept `printer` as the remembered choice.
 
-Then open the wizard in the Onshape panel on port 6238 and watch the status line once by
-hand. Until that happens the panel is the one part of this feature whose contract with the
-page it lives on is unverified.
+The panel adds its own item to `#do-menu`, reveals `#btn-do-caret`, and paints the item
+enabled or disabled (with the status line's text as its tooltip) on every five-second poll.
+A selector that misses is logged once, by name, in the browser console, and the panel
+carries on without it. `.printer-status` and `.printer-error` are styled in
+`static/wizard.css`.
 
 ### Tests
 
@@ -341,5 +337,5 @@ version is written. **Every pull request that changes anything under `printer_da
 updates it to that pull request's merge commit.** Until a pull request is opened it reads
 `REPLACE_BEFORE_MERGE`, and the installer refuses to run.
 
-A short pointer to this guide will be added to [3D_PRINTING.md](3D_PRINTING.md) once
-`feature/3d-print-stage1` merges.
+[3D_PRINTING.md](3D_PRINTING.md) is the print wizard's own guide; it points here for the
+printer half of the Preview step.

@@ -584,9 +584,14 @@ chips. In full-page mode (`source=upload`) `print_wizard.js` adds the `grid` cla
 four steps show at once with the current one highlighted, the chips stay hidden, and the
 2.5D radio is hidden and disabled, as on the CNC page.
 
-The page carries `window.PenguinCAM` with four fields: `source`, `theme`, `returnUrl` and
-`driveEnabled`. `print_wizard.js` adds a fifth at run time, `getJobState()`, which returns
-the last state seen and exists for the acceptance run.
+The page carries `window.PenguinCAM` with five fields: `source`, `theme`, `returnUrl`,
+`driveEnabled` and `printerEnabled`. `print_wizard.js` adds three at run time:
+`getJobState()`, which returns the last state seen and exists for the acceptance run, and
+`getDownloadToken()` and `choosePrinterAction()`, which are the contract with
+`static/printer_panel.js`, the printer half of the Preview step. That script, the
+`/printer/*` routes and the Raspberry Pi daemon behind them are documented in
+[PRINTER_SETUP.md](PRINTER_SETUP.md); testing them from a Mac against the container's
+server is [PRINTER_DEV_TESTING.md](PRINTER_DEV_TESTING.md).
 
 ### `print/static/print_wizard.js`
 
@@ -739,4 +744,5 @@ Later stages:
 - More than one printer or printer brand.
 - Layer-by-layer toolpath preview from the sliced G-code.
 - Moving, rotating or duplicating parts on the bed.
-- Sending the job to the printer over the network.
+- Sending the job to the printer over the network: done by the printer relay, see
+  [PRINTER_SETUP.md](PRINTER_SETUP.md).

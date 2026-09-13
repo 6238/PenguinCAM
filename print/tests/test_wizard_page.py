@@ -71,3 +71,34 @@ class CncSetupRadioTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PrinterPanelWiringTest(PrintWizardPageTest):
+    """The printer half of the Preview step: the panel script is loaded, and the bootstrap
+    says whether this session's Onshape config carries a pairing code."""
+
+    def test_the_panel_script_is_loaded_after_the_wizard_script(self):
+        html = self.client.get("/print?source=onshape").get_data(as_text=True)
+        self.assertIn("printer_panel.js", html)
+        self.assertLess(html.index("print_wizard.js"), html.index("printer_panel.js"))
+
+    def test_printer_enabled_follows_the_onshape_config(self):
+        with self.client.session_transaction() as sess:
+            sess["team_config_data"] = {"team": {"number": 6238},
+                                        "printing": {"pairing_code": "7K3M-Q9XW"}}
+        html = self.client.get("/print?source=onshape").get_data(as_text=True)
+        self.assertIn("printerEnabled: true", html)
+
+    def test_printer_enabled_is_false_without_a_code(self):
+        html = self.client.get("/print?source=onshape").get_data(as_text=True)
+        self.assertIn("printerEnabled: false", html)
+
+    def test_the_upload_flow_never_reports_a_printer(self):
+        """force_defaults must not read the Onshape config, even when the browser has one."""
+        with self.client.session_transaction() as sess:
+            sess["team_config_data"] = {"team": {"number": 6238},
+                                        "printing": {"pairing_code": "7K3M-Q9XW"}}
+            sess["upload_config_data"] = {"team": {"number": 6238},
+                                          "printing": {"pairing_code": "7K3M-Q9XW"}}
+        html = self.client.get("/print?source=upload").get_data(as_text=True)
+        self.assertIn("printerEnabled: false", html)

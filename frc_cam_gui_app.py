@@ -538,6 +538,10 @@ def _app_template_context(force_defaults=False):
         'user_name': user_name,
         'team_name': team_name,
         'drive_enabled': drive_enabled,
+        # The print wizard offers Send to Printer only when this session's ONSHAPE config
+        # carries a pairing code. Never for the upload flow: force_defaults reads the
+        # upload flow's own config, which is not allowed to reach any team's printer.
+        'printer_enabled': (not force_defaults) and bool(team_config.pairing_code),
         'default_tool_diameter': default_tool_diameter,
         'default_tool_diameter_text': default_tool_diameter_text,
         'machine_x_max': machine_x_max,
