@@ -30,12 +30,12 @@ case "$OS/$CPU" in
         ASSET="OrcaSlicer_Linux_AppImage_Ubuntu2404_V${ORCA_VERSION}.AppImage"
         SHA="$SHA_LINUX_X86_64"; ARCH="linux-x86_64"
         TRIPLET="x86_64-linux-gnu"; UBUNTU_ARCH="amd64"
-        MIRROR="http://archive.ubuntu.com/ubuntu" ;;
+        MIRROR="https://archive.ubuntu.com/ubuntu" ;;
     Linux/aarch64)
         ASSET="OrcaSlicer_Linux_AppImage_Ubuntu2404_aarch64_V${ORCA_VERSION}.AppImage"
         SHA="$SHA_LINUX_AARCH64"; ARCH="linux-aarch64"
         TRIPLET="aarch64-linux-gnu"; UBUNTU_ARCH="arm64"
-        MIRROR="http://ports.ubuntu.com/ubuntu-ports" ;;
+        MIRROR="https://ports.ubuntu.com/ubuntu-ports" ;;
     Darwin/arm64)
         ASSET="OrcaSlicer_Mac_universal_V${ORCA_VERSION}.dmg"
         SHA="$SHA_MACOS"; ARCH="darwin-arm64"
@@ -132,10 +132,13 @@ bootstrap_hostlibs() {
         echo >> "$idx/Packages"
     done
 
-    # Package that ships usr/lib/<triplet>/<soname>; empty when unknown.
+    # Package that ships usr/lib/<triplet>/<soname>; empty when unknown. The
+    # path is compared as a whole field, not as a pattern: sonames contain "+"
+    # and ".", and the index separates the path from the package column with a
+    # mix of tabs and spaces.
     package_for_lib() {
-        grep -m1 -E "^usr/lib/$TRIPLET/$1[[:space:]]" "$idx/libs.idx" \
-            | awk '{print $NF}' | tr ',' '\n' | sed 's#.*/##' \
+        awk -v want="usr/lib/$TRIPLET/$1" '$1 == want {print $NF; exit}' "$idx/libs.idx" \
+            | tr ',' '\n' | sed 's#.*/##' \
             | grep -vE -- '-dev$|dbg' | head -1
     }
     # "Filename SHA256" for a package from the Packages index; empty when unknown.
@@ -151,10 +154,11 @@ bootstrap_hostlibs() {
         echo "install-orca: round $round, $(printf '%s\n' "$missing" | grep -c .) libraries missing"
         progressed=0
         for lib in $missing; do
-            pkg="$(package_for_lib "$lib")"
+            # Both helpers are allowed to find nothing; the guards below report it.
+            pkg="$(package_for_lib "$lib" || true)"
             [ -n "$pkg" ] || die "no Ubuntu noble package ships $lib for $UBUNTU_ARCH"
             [ -f "$debs/.$pkg" ] && continue   # already unpacked this round or earlier
-            entry="$(pool_entry_for "$pkg")"
+            entry="$(pool_entry_for "$pkg" || true)"
             file="${entry% *}"; sha="${entry#* }"
             [ -n "$file" ] && [ -n "$sha" ] || die "package $pkg (for $lib) not in the noble index"
             deb="$debs/$(basename "$file")"
