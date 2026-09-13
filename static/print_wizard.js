@@ -19,6 +19,7 @@
     info: null,          // /print/part response
     fits: true,          // part fits the bed
     jobId: null,
+    gen: 0,              // submit generation; a late response from an older one is dropped
     record: null,        // last job record seen
     token: null,         // download token once done
     events: null,        // EventSource
@@ -64,6 +65,11 @@
     var label = record.state === 'queued' ? 'Queued' : 'Slicing';
     if (record.elapsed_s == null) return label;
     return label + ', ' + Math.round(record.elapsed_s) + ' s';
+  }
+
+  // The viewer's own trouble is added to the slicer's warnings, never over them.
+  function appendNote(existing, message) {
+    return existing ? existing + '\n' + message : message;
   }
 
   function tooBigMessage(size, bed, height) {
@@ -281,26 +287,38 @@
     state.record = null;
   }
 
-  // Entering Preview submits a new slice. A previous job's stream is closed first.
+  // Entering Preview submits a new slice. A previous job's stream is closed first,
+  // and the generation counter drops a response from a submit we have moved on from.
+  // Coming back to Preview on the same page load re-uses the job already in hand: the
+  // result is good for an hour, and re-slicing would spend the three-a-minute budget.
   function enterPreview() {
+    var gen = ++state.gen;
     stopFollowing();
     state.saveAction = preferredAction();
     setupFinalAction();
+    var prev = state.record, prevId = state.jobId, prevToken = state.token;
     resetPreview();
+    if (prev && prev.state === 'done' && prevToken) { showDone(prev); return; }
+    if (prev && prevId && prev.state !== 'failed') { showState(prev); followEvents(); return; }
     $('#gen-status').textContent = 'Queued';
     fetch('/print-job', { method: 'POST', credentials: 'same-origin' })
       .then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, j: j }; });
       })
       .then(function (res) {
+        if (gen !== state.gen || state.step !== 'preview') return;
         if (res.status !== 202) { showError(errorForStatus(res.status, res.j)); return; }
         state.jobId = res.j.job_id;
         followEvents();
       })
-      .catch(function (e) { showError('Could not reach the server: ' + e.message); });
+      .catch(function (e) {
+        if (gen !== state.gen || state.step !== 'preview') return;
+        showError('Could not reach the server: ' + e.message);
+      });
   }
 
   function followEvents() {
+    stopFollowing();    // two streams for one panel would fight over the status line
     var es = new EventSource('/print-job/' + encodeURIComponent(state.jobId) + '/events');
     state.events = es;
     es.addEventListener('state', function (e) { showState(JSON.parse(e.data)); });
@@ -373,13 +391,26 @@
   function showMesh() {
     if (typeof PrintViewer === 'undefined' || !state.info) return;
     if (!viewer) {
-      viewer = new PrintViewer({ canvas: $('#print-canvas'), container: $('#viewer-container'),
-                                 resetButton: $('#btn-reset-view'), emptyState: $('#viewer-empty') });
+      // A browser with no WebGL throws here. The slice is still good, so the panel
+      // keeps its numbers and says why the picture is missing.
+      try {
+        viewer = new PrintViewer({ canvas: $('#print-canvas'), container: $('#viewer-container'),
+                                   resetButton: $('#btn-reset-view'), emptyState: $('#viewer-empty') });
+      } catch (e) {
+        var box = $('#preview-notes');
+        box.textContent = appendNote(box.textContent, 'Could not start the 3D view: ' + e.message);
+        box.hidden = false;
+        return;
+      }
     }
     fetch('/print/part?stl=1', { credentials: 'same-origin' })
-      .then(function (r) { return r.arrayBuffer(); })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
       .then(function (buf) { viewer.load(buf, state.info.printer); })
-      .catch(function (e) { $('#preview-notes').textContent = 'Could not load the 3D view: ' + e.message; $('#preview-notes').hidden = false; });
+      .catch(function (e) {
+        var notes = $('#preview-notes');
+        notes.textContent = appendNote(notes.textContent, 'Could not load the 3D view: ' + e.message);
+        notes.hidden = false;
+      });
   }
 
   function bindPreview() {
@@ -499,6 +530,6 @@
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { formatDuration: formatDuration, fitsBed: fitsBed, summaryLine: summaryLine,
                        printPageUrl: printPageUrl, statusText: statusText, tooBigMessage: tooBigMessage,
-                       errorForStatus: errorForStatus };
+                       errorForStatus: errorForStatus, appendNote: appendNote };
   }
 })();

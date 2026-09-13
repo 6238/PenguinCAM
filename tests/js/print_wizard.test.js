@@ -57,3 +57,11 @@ test('errorForStatus picks the student message', () => {
   assert.equal(w.errorForStatus(401, { error: 'Session verification required.' }), 'Session verification required.');
   assert.equal(w.errorForStatus(500, {}), 'Slicing failed (HTTP 500).');
 });
+
+test('appendNote keeps a note already on the panel', () => {
+  assert.equal(w.appendNote('', 'Could not load the 3D view: HTTP 500'),
+    'Could not load the 3D view: HTTP 500');
+  assert.equal(w.appendNote('⚠ Thin walls', 'Could not load the 3D view: HTTP 500'),
+    '⚠ Thin walls\nCould not load the 3D view: HTTP 500');
+  assert.equal(w.appendNote('⚠ One\n⚠ Two', 'Three'), '⚠ One\n⚠ Two\nThree');
+});
