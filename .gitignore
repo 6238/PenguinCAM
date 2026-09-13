@@ -41,3 +41,8 @@ test_output_*.nc
 
 # ...but never ignore test fixtures/goldens under tests/
 !tests/**
+
+# Orca Slicer, installed by scripts/install-orca.sh (never committed)
+tools/
+# SDD scratch workspace
+.superpowers/

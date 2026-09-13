@@ -1,0 +1,12 @@
+tools/
+.venv/
+venv/
+.git/
+.worktrees/
+__pycache__/
+*.pyc
+.env
+*-creds.txt
+google-creds.txt
+onshape_config.json
+PenguinCAM-config.yaml
