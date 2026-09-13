@@ -25,6 +25,10 @@ DETAIL_LINES = 20
 GCODE_HEAD_BYTES = 4096       # enough for Orca's header block
 BINARY_HEADER_BYTES = 84      # 80-byte comment plus a uint32 triangle count
 BINARY_TRIANGLE_BYTES = 50    # 12 floats plus a uint16 attribute word
+# Orca gets only these variables from the server's environment; anything else
+# (tokens, client secrets) stays out of the subprocess. The wrapper
+# tools/orca/orca-slicer sets APPDIR and LD_LIBRARY_PATH itself.
+ENV_ALLOWLIST = ("PATH", "HOME", "TMPDIR", "LANG", "USER", "LOGNAME")
 
 
 def _require_binary():
@@ -64,8 +68,10 @@ class SliceResult:
 
 
 def build_command(stl_path, output_dir):
-    stl_path = Path(stl_path)
-    output_dir = Path(output_dir)
+    # Orca runs with cwd=output_dir, so every path handed to it must be
+    # absolute: a relative one would be read against the wrong directory.
+    stl_path = Path(stl_path).resolve()
+    output_dir = Path(output_dir).resolve()
     archive_name = stl_path.stem + ARCHIVE_SUFFIX
     return [
         str(ORCA_BIN),
@@ -86,20 +92,23 @@ def _tail(text, n=DETAIL_LINES):
 
 def slice_stl(stl_path, output_dir, timeout_s=DEFAULT_TIMEOUT_S):
     """Slice `stl_path` into `output_dir/<stem>.gcode.3mf` and return a SliceResult."""
-    stl_path = Path(stl_path)
-    output_dir = Path(output_dir)
+    stl_path = Path(stl_path).resolve()
+    output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     config_home = output_dir / "xdg-config"
     runtime_dir = output_dir / "xdg-runtime"
     config_home.mkdir(exist_ok=True)
     runtime_dir.mkdir(exist_ok=True)
     os.chmod(runtime_dir, 0o700)
-    env = dict(os.environ)
+    env = {name: os.environ[name] for name in ENV_ALLOWLIST if name in os.environ}
     env.update({"XDG_CONFIG_HOME": str(config_home), "XDG_RUNTIME_DIR": str(runtime_dir), "LC_ALL": "C"})
     cmd = build_command(stl_path, output_dir)
     try:
         proc = subprocess.run(cmd, env=env, cwd=str(output_dir), capture_output=True, text=True,
                               timeout=timeout_s, stdin=subprocess.DEVNULL)
+    except OSError as exc:
+        # The wrapper is missing, not executable, or not this architecture.
+        raise SliceError("The slicer could not be started.", str(exc)) from None
     except subprocess.TimeoutExpired as exc:
         captured = exc.stdout or ""
         if isinstance(captured, bytes):
@@ -107,10 +116,10 @@ def slice_stl(stl_path, output_dir, timeout_s=DEFAULT_TIMEOUT_S):
         raise SliceError("The slicer took too long on this part.", _tail(captured))
     output = (proc.stdout or "") + (proc.stderr or "")
     if proc.returncode != 0:
-        # The exit code is tailed with the output so `details` is never more
-        # than DETAIL_LINES lines; it survives whenever Orca said little.
+        # The exit code leads, then the last DETAIL_LINES - 1 lines of output:
+        # `details` stays at DETAIL_LINES lines and the code is always visible.
         raise SliceError("The slicer could not process this part.",
-                         _tail(f"exit code {proc.returncode}\n{output}"))
+                         f"exit code {proc.returncode}\n" + _tail(output, DETAIL_LINES - 1))
     archive = output_dir / (stl_path.stem + ARCHIVE_SUFFIX)
     if not archive.is_file():
         raise SliceError("The slicer produced no output file.", _tail(output))
@@ -132,7 +141,7 @@ def read_summary(archive_path, output_dir):
         zf = zipfile.ZipFile(archive_path)
     except zipfile.BadZipFile:
         raise SliceError("The slicer output could not be read.",
-                         f"{archive_path.name} is not a zip archive")
+                         f"{archive_path.name} is not a zip archive") from None
     with zf:
         names = zf.namelist()
         if GCODE_ENTRY not in names:

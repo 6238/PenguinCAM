@@ -50,7 +50,9 @@ def fake_run_factory(returncode=0, write_archive=True, write_result_json=True, s
 
 class CommandTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp(prefix="print-slicer-"))
+        # .resolve(): slice_stl resolves its arguments, and on macOS /tmp is a
+        # symlink, so an unresolved mkdtemp path would not compare equal.
+        self.tmp = Path(tempfile.mkdtemp(prefix="print-slicer-")).resolve()
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         self.out = self.tmp / "out"
 
@@ -71,11 +73,15 @@ class CommandTest(unittest.TestCase):
 
     def test_slice_creates_output_dir_and_isolated_xdg_environment(self):
         fake = fake_run_factory()
-        with mock.patch.object(print_slicer.subprocess, "run", fake):
-            result = slice_stl(print_slicer.SAMPLE_STL, self.out)
+        with mock.patch.dict(os.environ, {"PENGUINCAM_SECRET_MARKER": "x"}):
+            with mock.patch.object(print_slicer.subprocess, "run", fake):
+                result = slice_stl(print_slicer.SAMPLE_STL, self.out)
         self.assertTrue(self.out.is_dir())
         cmd, kwargs = fake.calls[0]
         env = kwargs["env"]
+        # The server's environment holds OAuth secrets; Orca sees an allowlist.
+        self.assertNotIn("PENGUINCAM_SECRET_MARKER", env)
+        self.assertEqual(env["PATH"], os.environ["PATH"])
         self.assertEqual(env["XDG_CONFIG_HOME"], str(self.out / "xdg-config"))
         self.assertEqual(env["XDG_RUNTIME_DIR"], str(self.out / "xdg-runtime"))
         self.assertEqual(env["LC_ALL"], "C")
@@ -115,12 +121,57 @@ class CommandTest(unittest.TestCase):
         with mock.patch.object(print_slicer.subprocess, "run", fake):
             with self.assertRaises(SliceError) as ctx:
                 slice_stl(print_slicer.SAMPLE_STL, self.out)
+        # The exit code takes the first of the twenty lines, so the tail of
+        # the output starts one line later than the output alone would.
+        self.assertEqual(ctx.exception.details.splitlines()[0], "exit code 255")
         self.assertNotIn("line 9\n", ctx.exception.details + "\n")
-        self.assertIn("line 10", ctx.exception.details)
+        self.assertNotIn("line 10\n", ctx.exception.details + "\n")
+        self.assertIn("line 11", ctx.exception.details)
         self.assertIn("line 29", ctx.exception.details)
         self.assertEqual(len(ctx.exception.details.splitlines()), 20)
         self.assertTrue(ctx.exception.message.endswith("."))
         self.assertNotIn("line 29", ctx.exception.message)
+
+    def test_relative_arguments_reach_orca_as_absolute_paths(self):
+        # Orca runs with cwd=output_dir, so a relative argument would be read
+        # against the wrong directory; slice_stl resolves before it builds.
+        shutil.copy(print_slicer.SAMPLE_STL, self.tmp / "sample_part.stl")
+        cwd = os.getcwd()
+        self.addCleanup(os.chdir, cwd)
+        os.chdir(self.tmp)
+        fake = fake_run_factory()
+        with mock.patch.object(print_slicer.subprocess, "run", fake):
+            result = slice_stl("sample_part.stl", "out")
+        cmd, kwargs = fake.calls[0]
+        for token in cmd:
+            for piece in token.split(";"):
+                if "/" in piece:
+                    self.assertTrue(Path(piece).is_absolute(), piece)
+        self.assertTrue(Path(cmd[cmd.index("--outputdir") + 1]).is_absolute())
+        self.assertTrue(Path(cmd[cmd.index("--datadir") + 1]).is_absolute())
+        self.assertTrue(Path(cmd[-1]).is_absolute())
+        self.assertTrue(Path(kwargs["cwd"]).is_absolute())
+        # --export-3mf is a bare name on purpose: Orca writes it into --outputdir.
+        self.assertEqual(cmd[cmd.index("--export-3mf") + 1], "sample_part.gcode.3mf")
+        self.assertEqual(result.output_path, (self.tmp / "out" / "sample_part.gcode.3mf").resolve())
+
+    def test_build_command_resolves_relative_paths(self):
+        cwd = os.getcwd()
+        self.addCleanup(os.chdir, cwd)
+        os.chdir(REPO)
+        cmd = build_command(Path("print/sample_part.stl"), Path("out"))
+        self.assertEqual(cmd[-1], str(print_slicer.SAMPLE_STL))
+        self.assertEqual(cmd[cmd.index("--outputdir") + 1], str(REPO / "out"))
+
+    def test_unstartable_slicer_raises_student_message(self):
+        def boom(cmd, **kwargs):
+            raise OSError(8, "Exec format error", cmd[0])
+
+        with mock.patch.object(print_slicer.subprocess, "run", boom):
+            with self.assertRaises(SliceError) as ctx:
+                slice_stl(print_slicer.SAMPLE_STL, self.out)
+        self.assertEqual(ctx.exception.message, "The slicer could not be started.")
+        self.assertIn("Exec format error", ctx.exception.details)
 
     def test_timeout_raises_student_message(self):
         fake = fake_run_factory(raise_timeout=True)
