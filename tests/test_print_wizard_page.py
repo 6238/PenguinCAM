@@ -1,5 +1,4 @@
 """The rendered print wizard page carries the elements the JS and the acceptance steps rely on."""
-import re
 import sys
 import unittest
 from pathlib import Path

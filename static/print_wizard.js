@@ -263,6 +263,10 @@
         updateSummary();
       })
       .catch(function (e) {
+        // Without part info there is nothing to slice, so Layout's gate stays shut
+        // rather than letting the student walk on to Preview on stale defaults.
+        state.fits = false;
+        if (state.step === 'layout') $('#btn-next').disabled = true;
         $('#layout-errors').textContent = 'Could not load the part: ' + e.message;
       });
   }
@@ -388,8 +392,24 @@
     showMesh();
   }
 
+  // The viewer's trouble belongs on the panel next to the numbers, never instead of them.
+  function noteViewerTrouble(message) {
+    var box = $('#preview-notes');
+    box.textContent = appendNote(box.textContent, message);
+    box.hidden = false;
+  }
+
   function showMesh() {
-    if (typeof PrintViewer === 'undefined' || !state.info) return;
+    // A blocked or failed CDN leaves the viewer's globals undefined. Say so here rather
+    // than letting a ReferenceError land in the console with a silent panel.
+    if (typeof PrintViewer === 'undefined' || typeof THREE === 'undefined') {
+      noteViewerTrouble('3D preview unavailable (three.js failed to load).');
+      return;
+    }
+    if (!state.info) {
+      noteViewerTrouble('Part information did not load; no 3D view.');
+      return;
+    }
     if (!viewer) {
       // A browser with no WebGL throws here. The slice is still good, so the panel
       // keeps its numbers and says why the picture is missing.
@@ -397,9 +417,7 @@
         viewer = new PrintViewer({ canvas: $('#print-canvas'), container: $('#viewer-container'),
                                    resetButton: $('#btn-reset-view'), emptyState: $('#viewer-empty') });
       } catch (e) {
-        var box = $('#preview-notes');
-        box.textContent = appendNote(box.textContent, 'Could not start the 3D view: ' + e.message);
-        box.hidden = false;
+        noteViewerTrouble('Could not start the 3D view: ' + e.message);
         return;
       }
     }
@@ -407,9 +425,7 @@
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
       .then(function (buf) { viewer.load(buf, state.info.printer); })
       .catch(function (e) {
-        var notes = $('#preview-notes');
-        notes.textContent = appendNote(notes.textContent, 'Could not load the 3D view: ' + e.message);
-        notes.hidden = false;
+        noteViewerTrouble('Could not load the 3D view: ' + e.message);
       });
   }
 
@@ -522,6 +538,13 @@
     // never fires a change event, so re-assert that this page is the 3D print one.
     var cur = $('input[name="mode"][value="print"]');
     if (cur) cur.checked = true;
+    // A page restored from the back/forward cache does not run init again and keeps the
+    // radio the student clicked on the way out, so re-assert it on restore as well.
+    window.addEventListener('pageshow', function (e) {
+      if (!e.persisted) return;
+      var back = $('input[name="mode"][value="print"]');
+      if (back) back.checked = true;
+    });
     gotoStep('setup');
     loadPart();
   }

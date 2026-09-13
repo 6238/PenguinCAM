@@ -1623,6 +1623,13 @@
     // fires a change event, so re-assert the mode the page is actually in.
     var cur = $('input[name="mode"][value="' + state.mode + '"]');
     if (cur) cur.checked = true;
+    // A page restored from the back/forward cache does not run init again and keeps the
+    // radio the user clicked on the way out, so re-assert the mode on restore as well.
+    window.addEventListener('pageshow', function (e) {
+      if (!e.persisted) return;
+      var back = $('input[name="mode"][value="' + state.mode + '"]');
+      if (back) back.checked = true;
+    });
     gotoStep('setup');
     dbg('init', { source: state.source, authed: CFG.authenticated, theme: CFG.theme });
     if (state.source === 'onshape' && !CFG.authenticated) {
