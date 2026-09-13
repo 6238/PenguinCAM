@@ -75,5 +75,32 @@ class ProfileDriftTest(unittest.TestCase):
                             f"run `uv run python scripts/flatten_orca_profiles.py`")
 
 
+class RealJobRouteTest(unittest.TestCase):
+    """POST /print-job with the real pool and Orca, then read the result and download it."""
+
+    def test_job_runs_to_done_and_download_is_a_zip(self):
+        from frc_cam_gui_app import app, limiter
+        app.config["TESTING"] = True
+        limiter.reset()
+        client = app.test_client()
+        with client.session_transaction() as sess:
+            sess["app_verified"] = True
+        job_id = client.post("/print-job").get_json()["job_id"]
+        deadline = time.monotonic() + 130
+        while True:
+            data = client.get(f"/print-job/{job_id}").get_json()
+            if data["state"] in ("done", "failed"):
+                break
+            self.assertLess(time.monotonic(), deadline, "job did not finish")
+            time.sleep(0.2)
+        self.assertEqual(data["state"], "done", data)
+        self.assertGreater(data["summary"]["layer_count"], 0)
+        resp = client.get(f"/download/{data['token']}")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.mimetype, "application/octet-stream")
+        self.assertIn("sample_part.gcode.3mf", resp.headers["Content-Disposition"])
+        self.assertTrue(resp.data.startswith(b"PK"))
+
+
 if __name__ == "__main__":
     unittest.main()
