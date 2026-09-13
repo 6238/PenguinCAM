@@ -145,6 +145,37 @@ class CommandTest(unittest.TestCase):
         self.assertIn("Metadata/slice_info.config", ctx.exception.details)
         self.assertIn("[Content_Types].xml", ctx.exception.details)
 
+    def test_gcode_header_is_read_without_decompressing_the_whole_entry(self):
+        self.out.mkdir()
+        archive = self.out / "big.gcode.3mf"
+        filler = "".join(f"G1 X{i % 100}.0 Y{i % 97}.0 E0.01\n" for i in range(110000))
+        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("Metadata/plate_1.gcode", (FIXTURES / "plate_1_header.gcode").read_text() + filler)
+            zf.writestr("Metadata/slice_info.config", (FIXTURES / "slice_info.config").read_text())
+        self.assertGreater(zipfile.ZipFile(archive).getinfo("Metadata/plate_1.gcode").file_size, 2_000_000)
+
+        real_read = zipfile.ZipFile.read
+
+        def guarded_read(zf_self, name, *args, **kwargs):
+            entry = name.filename if isinstance(name, zipfile.ZipInfo) else name
+            if entry == "Metadata/plate_1.gcode":
+                raise AssertionError("read_summary decompressed the whole G-code entry")
+            return real_read(zf_self, name, *args, **kwargs)
+
+        with mock.patch.object(zipfile.ZipFile, "read", guarded_read):
+            summary = read_summary(archive, self.out)
+        self.assertEqual(summary["layer_count"], 50)
+        self.assertEqual(summary["print_time_s"], 790.0)
+
+    def test_corrupt_archive_raises_slice_error(self):
+        self.out.mkdir()
+        archive = self.out / "x.gcode.3mf"
+        archive.write_bytes(b"not a zip at all\x00\x01\x02")
+        with self.assertRaises(SliceError) as ctx:
+            read_summary(archive, self.out)
+        self.assertEqual(ctx.exception.message, "The slicer output could not be read.")
+        self.assertIn("x.gcode.3mf", ctx.exception.details)
+
     def test_missing_summary_fields_are_none(self):
         self.out.mkdir()
         make_archive(self.out / "p.gcode.3mf", slice_info=False)

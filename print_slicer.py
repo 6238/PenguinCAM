@@ -22,6 +22,7 @@ ARCHIVE_SUFFIX = ".gcode.3mf"
 GCODE_ENTRY = "Metadata/plate_1.gcode"
 SLICE_INFO_ENTRY = "Metadata/slice_info.config"
 DETAIL_LINES = 20
+GCODE_HEAD_BYTES = 4096       # enough for Orca's header block
 BINARY_HEADER_BYTES = 84      # 80-byte comment plus a uint32 triangle count
 BINARY_TRIANGLE_BYTES = 50    # 12 floats plus a uint16 attribute word
 
@@ -126,12 +127,21 @@ def _float(value):
 
 def read_summary(archive_path, output_dir):
     """Read print time, filament and layer count from the archive and result.json."""
-    with zipfile.ZipFile(archive_path) as zf:
+    archive_path = Path(archive_path)
+    try:
+        zf = zipfile.ZipFile(archive_path)
+    except zipfile.BadZipFile:
+        raise SliceError("The slicer output could not be read.",
+                         f"{archive_path.name} is not a zip archive")
+    with zf:
         names = zf.namelist()
         if GCODE_ENTRY not in names:
             raise SliceError("The slicer output is missing its G-code.",
                              "archive entries:\n" + "\n".join(names))
-        gcode_head = zf.read(GCODE_ENTRY)[:4096].decode("utf-8", errors="replace")
+        # A real plate's G-code runs to hundreds of megabytes; the header we
+        # want is the first few lines, so decompress only that much of it.
+        with zf.open(GCODE_ENTRY) as fh:
+            gcode_head = fh.read(GCODE_HEAD_BYTES).decode("utf-8", errors="replace")
         info = zf.read(SLICE_INFO_ENTRY).decode("utf-8", errors="replace") if SLICE_INFO_ENTRY in names else ""
 
     def meta(key):
