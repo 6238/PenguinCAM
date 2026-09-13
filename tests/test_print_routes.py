@@ -1,5 +1,6 @@
 """Route tests for the print blueprint through the Flask test client. No Orca runs."""
 import os
+import shutil
 import sys
 import unittest
 from pathlib import Path
@@ -70,6 +71,10 @@ class PrintPageTest(PrintRouteBase):
         self.assertTrue(resp.headers["Location"].endswith("/app?verify=1"))
         resp = bare.get("/print?return=/onshape-panel%3Fd%3D1")
         self.assertTrue(resp.headers["Location"].endswith("/onshape-panel?d=1&verify=1"))
+        # A #fragment stays last: verify=1 belongs to the query, not the fragment.
+        self.assertEqual(print_routes._with_verify("/app?x=1#frag"), "/app?x=1&verify=1#frag")
+        self.assertEqual(print_routes._with_verify("/app#frag"), "/app?verify=1#frag")
+        self.assertEqual(print_routes._with_verify("/app?x=1"), "/app?x=1&verify=1")
 
     def test_onshape_source_sets_frame_ancestors(self):
         resp = self.client.get("/print?source=onshape")
@@ -188,6 +193,7 @@ class WorkerTest(unittest.TestCase):
         import tempfile
         from print_slicer import SliceResult
         tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
         upload, output = tmp / "uploads", tmp / "outputs"
         upload.mkdir()
         output.mkdir()
@@ -210,7 +216,8 @@ class WorkerTest(unittest.TestCase):
             def log_event(name, **kw):
                 events.append((name, kw))
 
-        worker = print_routes.make_worker(Tokens(), str(upload), str(output), Metrics(), lambda *a: None)
+        lines = []
+        worker = print_routes.make_worker(Tokens(), str(upload), str(output), Metrics(), lines.append)
         with mock.patch.object(print_routes, "slice_stl", fake_slice):
             result = worker("abcdefgh12345678")
         self.assertEqual(result["token"], "tok123")
@@ -221,6 +228,7 @@ class WorkerTest(unittest.TestCase):
         self.assertEqual(result["summary"]["warnings"], ["w"])
         self.assertEqual(result["part"]["part"]["name"], "sample_part")
         self.assertEqual(os.listdir(upload), [])          # scratch removed
+        self.assertIn("sliced: sample_part.gcode.3mf", lines[0])
         self.assertEqual(events[0][0], "print_job")
         self.assertEqual(events[0][1]["metadata"]["outcome"], "done")
 
@@ -228,6 +236,7 @@ class WorkerTest(unittest.TestCase):
         import tempfile
         from print_slicer import SliceError
         tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
         upload, output = tmp / "uploads", tmp / "outputs"
         upload.mkdir()
         output.mkdir()
@@ -264,6 +273,7 @@ class DownloadMimeTest(unittest.TestCase):
     def test_3mf_downloads_as_binary_and_nc_as_text(self):
         import tempfile
         tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
         archive = tmp / "x.gcode.3mf"
         archive.write_bytes(b"PK\x03\x04")
         nc = tmp / "x.nc"

@@ -80,12 +80,19 @@ class RealJobRouteTest(unittest.TestCase):
 
     def test_job_runs_to_done_and_download_is_a_zip(self):
         from frc_cam_gui_app import app, limiter
+        self.addCleanup(app.config.__setitem__, "TESTING", app.config["TESTING"])
         app.config["TESTING"] = True
         limiter.reset()
         client = app.test_client()
         with client.session_transaction() as sess:
             sess["app_verified"] = True
-        job_id = client.post("/print-job").get_json()["job_id"]
+        resp = client.post("/print-job")
+        self.assertEqual(resp.status_code, 202, resp.get_json())
+        job_id = resp.get_json()["job_id"]
+        # The poll loop outruns the app's 200/hour default limit on a slow slice,
+        # and a 429 has no JSON body to read a state out of.
+        limiter.enabled = False
+        self.addCleanup(setattr, limiter, "enabled", True)
         deadline = time.monotonic() + 130
         while True:
             data = client.get(f"/print-job/{job_id}").get_json()
@@ -96,6 +103,7 @@ class RealJobRouteTest(unittest.TestCase):
         self.assertEqual(data["state"], "done", data)
         self.assertGreater(data["summary"]["layer_count"], 0)
         resp = client.get(f"/download/{data['token']}")
+        self.addCleanup(resp.close)
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.mimetype, "application/octet-stream")
         self.assertIn("sample_part.gcode.3mf", resp.headers["Content-Disposition"])

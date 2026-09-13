@@ -4,6 +4,7 @@ Never imports frc_cam_gui_app. Everything shared (session gate, token manager,
 limiter, folders, metrics, logging, template context) arrives through
 init_print_routes(...). See docs/3D_PRINTING.md.
 """
+import contextlib
 import json
 import os
 import shutil
@@ -42,7 +43,9 @@ def safe_return_path(value):
 
 
 def _with_verify(path):
-    return path + ("&" if "?" in path else "?") + "verify=1"
+    """Append verify=1 to the query, keeping any #fragment at the end where it belongs."""
+    path, sep, fragment = path.partition("#")
+    return path + ("&" if "?" in path else "?") + "verify=1" + sep + fragment
 
 
 def make_worker(token_manager, upload_folder, output_folder, metrics, log):
@@ -56,7 +59,14 @@ def make_worker(token_manager, upload_folder, output_folder, metrics, log):
             result = slice_stl(SAMPLE_STL, scratch)
             final_path = os.path.join(output_folder, f"print_{job_id}.gcode.3mf")
             shutil.move(str(result.output_path), final_path)
-            token = token_manager.register_file(final_path, DELIVERED_NAME)
+            try:
+                token = token_manager.register_file(final_path, DELIVERED_NAME)
+            except Exception:
+                # No token means nothing can ever fetch or expire this archive.
+                with contextlib.suppress(OSError):
+                    os.unlink(final_path)
+                raise
+            log(f"🖨️ Print job {job_id[:8]} sliced: {DELIVERED_NAME}")
             outcome = "done"
             return {"token": token, "summary": result.summary(), "part": part_info()}
         except SliceError as exc:
