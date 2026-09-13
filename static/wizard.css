@@ -409,3 +409,12 @@ fieldset.field { border: 1px solid var(--line); border-radius: 6px; padding: 8px
 /* ---- 3D print wizard (templates/print_wizard.html) ---- */
 .print-value { display: block; color: var(--ink); font-size: 14px; }
 #print-canvas { display: block; width: 100%; height: 100%; }
+/* Full-page grid mode sizes #layout-canvas inline to the space its quadrant leaves
+   (print_wizard.js fitLayoutCanvas), so keep it centred and clamped to the column.
+   Scoped to the print page by body[data-return], which only templates/print_wizard.html
+   sets: the CNC wizard uses #wizard.grid and #layout-canvas too and is unchanged. */
+body[data-return] #wizard.grid #layout-canvas {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+}

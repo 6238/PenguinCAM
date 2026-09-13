@@ -65,3 +65,21 @@ test('appendNote keeps a note already on the panel', () => {
     '⚠ Thin walls\nCould not load the 3D view: HTTP 500');
   assert.equal(w.appendNote('⚠ One\n⚠ Two', 'Three'), '⚠ One\n⚠ Two\nThree');
 });
+
+test('fitCanvasSize keeps the 600:400 ratio inside both limits', () => {
+  // Wide, short space: the height is the binding limit.
+  assert.deepEqual(w.fitCanvasSize(900, 200, 600, 400), { w: 300, h: 200 });
+  // Narrow, tall space: the width is the binding limit.
+  assert.deepEqual(w.fitCanvasSize(360, 900, 600, 400), { w: 360, h: 240 });
+  // Plenty of room: never upscaled past the backing store.
+  assert.deepEqual(w.fitCanvasSize(2000, 1500, 600, 400), { w: 600, h: 400 });
+  assert.deepEqual(w.fitCanvasSize(600, 400, 600, 400), { w: 600, h: 400 });
+});
+
+test('fitCanvasSize never goes below the 120 px width floor', () => {
+  assert.deepEqual(w.fitCanvasSize(40, 30, 600, 400), { w: 120, h: 80 });
+  assert.deepEqual(w.fitCanvasSize(800, 10, 600, 400), { w: 120, h: 80 });
+  // A collapsed or not-yet-laid-out quadrant still yields a drawable size.
+  assert.deepEqual(w.fitCanvasSize(-50, -50, 600, 400), { w: 120, h: 80 });
+  assert.deepEqual(w.fitCanvasSize(NaN, 400, 600, 400), { w: 120, h: 80 });
+});

@@ -12,6 +12,7 @@
   var STEPS = ['setup', 'parts', 'layout', 'preview'];
   var EXPIRED_MESSAGE = 'This slice has expired, go back and slice again.';
   var RATE_MESSAGE = 'Too many slices in a minute, try again shortly.';
+  var MIN_CANVAS_W = 120;   // floor for the fitted layout canvas, in CSS pixels
 
   var state = {
     source: CFG.source,
@@ -27,6 +28,7 @@
     saveAction: 'download',
   };
   var viewer = null;
+  var resizeTimer = null;   // window.resize debounce for the layout canvas
 
   function $(sel) { return document.querySelector(sel); }
   function $all(sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); }
@@ -42,6 +44,16 @@
 
   function fitsBed(size, bed, height) {
     return size.x <= bed.x && size.y <= bed.y && size.z <= height;
+  }
+
+  // Largest size with the canvas's natural aspect ratio that fits both limits, never
+  // upscaled past the natural size and never narrower than MIN_CANVAS_W, so a crushed
+  // quadrant still shows a readable bed instead of a sliver.
+  function fitCanvasSize(availW, availH, naturalW, naturalH) {
+    var ratio = naturalW / naturalH;
+    var w = Math.min(availW, availH * ratio, naturalW);
+    if (!(w >= MIN_CANVAS_W)) w = MIN_CANVAS_W;   // also catches NaN and negative space
+    return { w: Math.round(w), h: Math.round(w / ratio) };
   }
 
   function summaryLine(summary) {
@@ -124,8 +136,38 @@
     $('#layout-errors').textContent = state.fits ? '' : tooBigMessage(i.part.size_mm, i.printer.bed_mm, i.printer.height_mm);
   }
 
+  // In full-page grid mode the quadrant is a fixed cell, so the stylesheet's
+  // `width: 100%; height: auto` makes the 600x400 canvas taller than the space left
+  // under the heading, hint and info line and the quadrant scrolls inside itself.
+  // Size it explicitly to what is left instead; the backing store stays 600x400.
+  // In single-step mode the inline sizes come off so the stylesheet applies again.
+  function fitLayoutCanvas() {
+    if (!HAS_DOM) return;
+    var wizard = $('#wizard'), canvas = $('#layout-canvas');
+    if (!wizard || !canvas) return;
+    if (!wizard.classList.contains('grid')) {
+      canvas.style.removeProperty('width');
+      canvas.style.removeProperty('height');
+      return;
+    }
+    var section = canvas.closest('.step[data-step="layout"]');
+    if (!section) return;
+    var cs = getComputedStyle(section);
+    var padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+    var padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+    var above = canvas.offsetTop - section.offsetTop;      // heading, hint, info line
+    var errors = $('#layout-errors');
+    var below = errors ? errors.offsetHeight : 0;          // the too-big message, when shown
+    var availW = section.clientWidth - padX;
+    var availH = section.clientHeight - padY - above - below - 8;   // 8 px slack
+    var fit = fitCanvasSize(availW, availH, canvas.width, canvas.height);
+    canvas.style.width = fit.w + 'px';
+    canvas.style.height = fit.h + 'px';
+  }
+
   // Top-down drawing: the bed as a rectangle, the part's footprint centred on it.
   function drawLayout() {
+    fitLayoutCanvas();
     var canvas = $('#layout-canvas'), ctx = canvas.getContext('2d');
     var i = state.info;
     var W = canvas.width, H = canvas.height, pad = 30;
@@ -545,6 +587,15 @@
       var back = $('input[name="mode"][value="print"]');
       if (back) back.checked = true;
     });
+    // Resizing the window changes the quadrant, so refit the canvas; debounced because
+    // a drag fires resize continuously and each redraw repaints the whole bed.
+    window.addEventListener('resize', function () {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function () {
+        resizeTimer = null;
+        if (state.info) drawLayout();
+      }, 100);
+    });
     gotoStep('setup');
     loadPart();
   }
@@ -556,6 +607,7 @@
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { formatDuration: formatDuration, fitsBed: fitsBed, summaryLine: summaryLine,
+                       fitCanvasSize: fitCanvasSize,
                        printPageUrl: printPageUrl, statusText: statusText, tooBigMessage: tooBigMessage,
                        errorForStatus: errorForStatus, appendNote: appendNote };
   }
