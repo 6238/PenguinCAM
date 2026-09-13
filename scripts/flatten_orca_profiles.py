@@ -27,9 +27,9 @@ REPO = Path(__file__).resolve().parent.parent
 
 # Output file stem -> (subdirectory of the vendor tree, profile name).
 PROFILE_SOURCES = {
-    "printer": ("machine", "Bambu Lab X1 Carbon 0.4 nozzle"),
-    "filament": ("filament", "Bambu PLA Basic @BBL X1C"),
-    "process": ("process", "0.20mm Standard @BBL X1C"),
+    "printer": ("machine", "Bambu Lab H2S 0.4 nozzle"),
+    "filament": ("filament", "Bambu PLA Basic @BBL H2S"),
+    "process": ("process", "0.20mm Standard @BBL H2S"),
 }
 
 # Keys that only mean something inside Orca's own preset database.

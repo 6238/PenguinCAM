@@ -17,9 +17,9 @@ tree inside the installed Orca build (version pinned in
 
 | File | Source profile |
 |------|----------------|
-| `printer.json` | `machine/Bambu Lab X1 Carbon 0.4 nozzle` |
-| `filament.json` | `filament/Bambu PLA Basic @BBL X1C` |
-| `process.json` | `process/0.20mm Standard @BBL X1C` |
+| `printer.json` | `machine/Bambu Lab H2S 0.4 nozzle` |
+| `filament.json` | `filament/Bambu PLA Basic @BBL H2S` |
+| `process.json` | `process/0.20mm Standard @BBL H2S` |
 
 Orca's command line does not resolve `inherits`, and the desktop app's export
 writes only a preset's differences from its parent, so neither can produce

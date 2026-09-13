@@ -90,7 +90,7 @@ class PartRouteTest(PrintRouteBase):
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertEqual(data["part"]["size_mm"], {"x": 40.0, "y": 30.0, "z": 12.0})
-        self.assertEqual(data["printer"]["bed_mm"], {"x": 256.0, "y": 256.0})
+        self.assertEqual(data["printer"]["bed_mm"], {"x": 340.0, "y": 320.0})
         self.assertIn("name", data["filament"])
 
     def test_part_stl_bytes(self):

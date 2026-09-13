@@ -14,10 +14,7 @@
     "brim_width": "5",
     "circle_compensation_manual_offset": "0",
     "compatible_printers": [
-        "Bambu Lab X1 Carbon 0.4 nozzle",
-        "Bambu Lab X1 0.4 nozzle",
-        "Bambu Lab P1S 0.4 nozzle",
-        "Bambu Lab X1E 0.4 nozzle"
+        "Bambu Lab H2S 0.4 nozzle"
     ],
     "compatible_printers_condition": "",
     "default_acceleration": [
@@ -49,7 +46,7 @@
     "from": "system",
     "gap_infill_speed": [
         "250",
-        "250"
+        "150"
     ],
     "infill_combination": "0",
     "infill_direction": "45",
@@ -83,14 +80,14 @@
     "inner_wall_line_width": "0.45",
     "inner_wall_speed": [
         "300",
-        "300"
+        "600"
     ],
     "interface_shells": "0",
     "internal_bridge_support_thickness": "0.8",
     "internal_solid_infill_line_width": "0.42",
     "internal_solid_infill_speed": [
         "250",
-        "250"
+        "600"
     ],
     "ironing_flow": "10%",
     "ironing_inset": "0.21",
@@ -106,7 +103,7 @@
     "max_bridge_length": "0",
     "max_travel_detour_distance": "0",
     "minimum_sparse_infill_area": "15",
-    "name": "0.20mm Standard @BBL X1C",
+    "name": "0.20mm Standard @BBL H2S",
     "only_one_wall_top": "1",
     "outer_wall_acceleration": [
         "5000",
@@ -115,7 +112,7 @@
     "outer_wall_line_width": "0.42",
     "outer_wall_speed": [
         "200",
-        "200"
+        "500"
     ],
     "overhang_1_4_speed": [
         "0",
@@ -143,11 +140,11 @@
     ],
     "prime_tower_brim_width": "3",
     "prime_tower_enable_framework": "0",
-    "prime_tower_flat_ironing": "0",
+    "prime_tower_flat_ironing": "1",
     "prime_tower_lift_height": "-1",
     "prime_tower_lift_speed": "90",
     "prime_tower_max_speed": "90",
-    "prime_tower_width": "35",
+    "prime_tower_width": "60",
     "print_extruder_id": [
         "1",
         "1"
@@ -161,7 +158,6 @@
     "raft_layers": "0",
     "reduce_crossing_wall": "0",
     "reduce_infill_retraction": "1",
-    "renamed_from": "0.20mm Bambu Support W @BBL X1C",
     "resolution": "0.012",
     "scarf_angle_threshold": "155",
     "seam_placement_away_from_overhangs": "0",
@@ -210,7 +206,7 @@
         "0",
         "0"
     ],
-    "smooth_coefficient": "150",
+    "smooth_coefficient": "4",
     "sparse_infill_acceleration": [
         "100%",
         "100%"
@@ -219,8 +215,8 @@
     "sparse_infill_line_width": "0.45",
     "sparse_infill_pattern": "crosshatch",
     "sparse_infill_speed": [
-        "270",
-        "270"
+        "350",
+        "600"
     ],
     "spiral_mode": "0",
     "standby_temperature_delta": "-5",
@@ -269,8 +265,8 @@
         "10000"
     ],
     "travel_speed": [
-        "500",
-        "500"
+        "1000",
+        "1000"
     ],
     "travel_speed_z": [
         "0",

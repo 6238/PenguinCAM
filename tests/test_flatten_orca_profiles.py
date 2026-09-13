@@ -62,10 +62,10 @@ class FlattenProfileTest(unittest.TestCase):
         self.assertEqual(list(json.loads(text).keys()), sorted(json.loads(text).keys()))
         self.assertIn('"layer_height": "0.2"', (out / "process.json").read_text())
 
-    def test_default_sources_are_the_x1c_set(self):
-        self.assertEqual(PROFILE_SOURCES["printer"], ("machine", "Bambu Lab X1 Carbon 0.4 nozzle"))
-        self.assertEqual(PROFILE_SOURCES["filament"], ("filament", "Bambu PLA Basic @BBL X1C"))
-        self.assertEqual(PROFILE_SOURCES["process"], ("process", "0.20mm Standard @BBL X1C"))
+    def test_default_sources_are_the_h2s_set(self):
+        self.assertEqual(PROFILE_SOURCES["printer"], ("machine", "Bambu Lab H2S 0.4 nozzle"))
+        self.assertEqual(PROFILE_SOURCES["filament"], ("filament", "Bambu PLA Basic @BBL H2S"))
+        self.assertEqual(PROFILE_SOURCES["process"], ("process", "0.20mm Standard @BBL H2S"))
 
 
 if __name__ == "__main__":

@@ -257,11 +257,11 @@ class PartInfoTest(unittest.TestCase):
         self.assertEqual(info["part"]["file"], "sample_part.stl")
         self.assertEqual(info["part"]["size_mm"], {"x": 40.0, "y": 30.0, "z": 12.0})
         self.assertEqual(info["part"]["triangles"], 20)
-        self.assertEqual(info["printer"]["name"], "Bambu Lab X1 Carbon 0.4 nozzle")
-        self.assertEqual(info["printer"]["bed_mm"], {"x": 256.0, "y": 256.0})
-        self.assertEqual(info["printer"]["height_mm"], 250.0)
-        self.assertEqual(info["filament"]["name"], "Bambu PLA Basic @BBL X1C")
-        self.assertEqual(info["process"]["name"], "0.20mm Standard @BBL X1C")
+        self.assertEqual(info["printer"]["name"], "Bambu Lab H2S 0.4 nozzle")
+        self.assertEqual(info["printer"]["bed_mm"], {"x": 340.0, "y": 320.0})
+        self.assertEqual(info["printer"]["height_mm"], 340.0)
+        self.assertEqual(info["filament"]["name"], "Bambu PLA Basic @BBL H2S")
+        self.assertEqual(info["process"]["name"], "0.20mm Standard @BBL H2S")
         self.assertEqual(info["process"]["layer_height_mm"], 0.2)
 
 

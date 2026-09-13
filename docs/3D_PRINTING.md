@@ -165,7 +165,7 @@ Orca's vendor profiles are inheritance chains. A Bambu printer profile inherits 
 family profile, which inherits from a base, and each file holds only the keys it
 overrides. The command line does not resolve `inherits`. It loads exactly the keys in the
 files it is given and fills every other key with built-in defaults, silently. Slicing
-with an unflattened X1 Carbon profile "succeeds" with a 200 mm bed, a filament density of
+with an unflattened Bambu printer profile "succeeds" with a 200 mm bed, a filament density of
 zero and no weight in the output.
 
 The desktop app's export does not help. It writes a user preset's differences plus the
@@ -189,9 +189,9 @@ The script reads the `BBL` vendor tree inside the installed Orca:
 
 | Output | Vendor subdirectory and profile |
 |--------|---------------------------------|
-| `print/profiles/printer.json` | `machine/Bambu Lab X1 Carbon 0.4 nozzle` |
-| `print/profiles/filament.json` | `filament/Bambu PLA Basic @BBL X1C` |
-| `print/profiles/process.json` | `process/0.20mm Standard @BBL X1C` |
+| `print/profiles/printer.json` | `machine/Bambu Lab H2S 0.4 nozzle` |
+| `print/profiles/filament.json` | `filament/Bambu PLA Basic @BBL H2S` |
+| `print/profiles/process.json` | `process/0.20mm Standard @BBL H2S` |
 
 Regenerate after an Orca upgrade, from the repository root:
 
@@ -311,8 +311,8 @@ archive, so the output directory is scratch space and only the archive is kept.
 stem, file name, bounding box in millimetres and triangle count, computed by
 `stl_bounds()` from the STL bytes; the printer name, bed size and printable height; and
 the filament and process names with the layer height. Every value in an Orca profile is a
-string. `printable_area` is a list of `"XxY"` corner strings such as `"256x256"` and
-`printable_height` is a string like `"250"`, so `part_info()` parses them to numbers once.
+string. `printable_area` is a list of `"XxY"` corner strings such as `"340x320"` and
+`printable_height` is a string like `"340"`, so `part_info()` parses them to numbers once.
 `stl_bounds()` reads binary and ASCII STLs; a binary file is identified by its exact
 length, never by a leading `solid`, because some tools write that word into binary files.
 
