@@ -113,9 +113,63 @@ missing_libs() {
         | grep 'not found' | awk '{print $1}' | sort -u
 }
 
-# Task 2 replaces this stub with the unprivileged hostlibs bootstrap.
+# Unprivileged Linux path: fill tools/orca/hostlibs with the Ubuntu 24.04
+# packages that ship the libraries ldd cannot find, verified against the
+# archive's own SHA-256 index. Repeats until ldd is clean.
 bootstrap_hostlibs() {
-    return 0
+    command -v dpkg-deb >/dev/null 2>&1 || die "dpkg-deb is required to unpack runtime libraries without root"
+    local idx="$DEST/index" hostlibs="$DEST/hostlibs" debs="$DEST/index/debs"
+    mkdir -p "$idx" "$hostlibs" "$debs"
+    echo "install-orca: fetching Ubuntu noble package indexes for $UBUNTU_ARCH"
+    curl -fsSL --retry 3 -o "$idx/Contents.gz" "$MIRROR/dists/noble/Contents-$UBUNTU_ARCH.gz" || die "could not fetch Contents-$UBUNTU_ARCH.gz"
+    # Only the library directory matters; keep those lines in a plain file for fast lookups.
+    zcat "$idx/Contents.gz" | grep "^usr/lib/$TRIPLET/" > "$idx/libs.idx" || true
+    : > "$idx/Packages"
+    local comp
+    for comp in main universe; do
+        curl -fsSL --retry 3 -o "$idx/Packages-$comp.gz" "$MIRROR/dists/noble/$comp/binary-$UBUNTU_ARCH/Packages.gz" || die "could not fetch $comp Packages.gz"
+        zcat "$idx/Packages-$comp.gz" >> "$idx/Packages"
+        echo >> "$idx/Packages"
+    done
+
+    # Package that ships usr/lib/<triplet>/<soname>; empty when unknown.
+    package_for_lib() {
+        grep -m1 -E "^usr/lib/$TRIPLET/$1[[:space:]]" "$idx/libs.idx" \
+            | awk '{print $NF}' | tr ',' '\n' | sed 's#.*/##' \
+            | grep -vE -- '-dev$|dbg' | head -1
+    }
+    # "Filename SHA256" for a package from the Packages index; empty when unknown.
+    pool_entry_for() {
+        awk -v p="$1" 'BEGIN{RS=""; FS="\n"}
+            $1=="Package: " p {f=""; s=""; for(i=1;i<=NF;i++){ if($i ~ /^Filename: /) f=substr($i,11); if($i ~ /^SHA256: /) s=substr($i,9) } print f, s; exit}' "$idx/Packages"
+    }
+
+    local round lib pkg entry file sha deb actual missing progressed
+    for round in 1 2 3 4 5 6 7 8 9 10 11 12; do
+        missing="$(missing_libs || true)"
+        [ -n "$missing" ] || break
+        echo "install-orca: round $round, $(printf '%s\n' "$missing" | grep -c .) libraries missing"
+        progressed=0
+        for lib in $missing; do
+            pkg="$(package_for_lib "$lib")"
+            [ -n "$pkg" ] || die "no Ubuntu noble package ships $lib for $UBUNTU_ARCH"
+            [ -f "$debs/.$pkg" ] && continue   # already unpacked this round or earlier
+            entry="$(pool_entry_for "$pkg")"
+            file="${entry% *}"; sha="${entry#* }"
+            [ -n "$file" ] && [ -n "$sha" ] || die "package $pkg (for $lib) not in the noble index"
+            deb="$debs/$(basename "$file")"
+            echo "install-orca:   $lib -> $pkg"
+            curl -fsSL --retry 3 -o "$deb" "$MIRROR/$file" || die "download of $file failed"
+            actual="$(sha256_of "$deb")"
+            [ "$actual" = "$sha" ] || { rm -f "$deb"; die "checksum mismatch for $file"; }
+            dpkg-deb -x "$deb" "$hostlibs" || die "dpkg-deb -x failed for $file"
+            rm -f "$deb"
+            : > "$debs/.$pkg"
+            progressed=1
+        done
+        [ "$progressed" = 1 ] || die "no progress resolving libraries:"$'\n'"$missing"
+    done
+    rm -rf "$idx"
 }
 
 case "$OS" in
@@ -151,6 +205,11 @@ case "$OS" in
         ;;
 esac
 
-"$DEST/orca-slicer" --help >/dev/null 2>&1 || die "installed orca-slicer fails to run (glibc 2.38 or newer is required on Linux)"
+# Orca drops a result.json in the working directory on every run, --help
+# included, so smoke-test it in a scratch directory and throw that away.
+SMOKE="$DEST/smoke"
+mkdir -p "$SMOKE"
+(cd "$SMOKE" && "$DEST/orca-slicer" --help >/dev/null 2>&1) || die "installed orca-slicer fails to run (glibc 2.38 or newer is required on Linux)"
+rm -rf "$SMOKE"
 echo "$STAMP" > "$DEST/VERSION"
 echo "install-orca: Orca Slicer $STAMP installed at $DEST/orca-slicer"

@@ -71,9 +71,12 @@ class InstallOrcaScriptTest(unittest.TestCase):
         self.dest.mkdir(parents=True)
         (self.dest / "VERSION").write_text("2.4.2 darwin-arm64\n")
         (self.dest / "orca-slicer").write_text("#!/bin/sh\nexit 0\n")
+        (self.dest / "orca-slicer").chmod(0o755)
         result = self.run_script()
         # The fake download is garbage, so the run must fail at the checksum,
         # proving it tried to replace the foreign install rather than trusting it.
+        # The wrapper is executable, so only the architecture half of the stamp
+        # can have forced the reinstall.
         self.assertNotEqual(result.returncode, 0)
         self.assertTrue((self.tmp / "curl-calls").exists(), "must download")
         self.assertFalse((self.dest / "VERSION").exists(), "stale VERSION must be removed")
