@@ -140,10 +140,16 @@
     for (var y = by + g; y < by + bh - 0.5; y += g) { ctx.moveTo(bx, y); ctx.lineTo(bx + bw, y); }
     ctx.stroke();
     var pw = size.x * scale, ph = size.y * scale;
-    ctx.fillStyle = state.fits ? 'rgba(47, 129, 247, 0.35)' : 'rgba(248, 81, 73, 0.35)';
-    ctx.strokeStyle = state.fits ? '#2f81f7' : '#f85149';
+    // Theme colours, so a too-big part is red in the light theme too. The fill is the
+    // same colour at 35% through globalAlpha rather than a second hardcoded rgba().
+    var footprint = state.fits ? (css.getPropertyValue('--accent').trim() || '#2f81f7')
+                               : (css.getPropertyValue('--danger').trim() || '#f85149');
+    ctx.fillStyle = footprint;
+    ctx.strokeStyle = footprint;
     ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.35;
     ctx.fillRect((W - pw) / 2, (H - ph) / 2, pw, ph);
+    ctx.globalAlpha = 1;
     ctx.strokeRect((W - pw) / 2, (H - ph) / 2, pw, ph);
     ctx.fillStyle = css.getPropertyValue('--ink').trim() || '#e6edf3';
     ctx.font = '12px sans-serif';
@@ -244,6 +250,9 @@
         fillSetup();
         fillParts();
         fillLayoutInfo();
+        // Part info arrives after gotoStep ran, so the layout gate needs re-applying:
+        // a too-big part must disable Next even if the student is already on Layout.
+        if (state.step === 'layout') $('#btn-next').disabled = !state.fits;
         if (state.step === 'layout' || $('#wizard').classList.contains('grid')) drawLayout();
         updateSummary();
       })
