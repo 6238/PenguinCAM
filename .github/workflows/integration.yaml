@@ -9,20 +9,35 @@ on:
 jobs:
   test-cam:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
       - name: Install dependencies
+        # A .venv in the checkout root is what the Makefile's `uv run python`
+        # picks up without a project file, so the interpreter is the same one
+        # the packages land in.
         run: |
-          pip install pygcode termcolor
-          pip install -r requirements.txt
-      
-      - name: Run CAM integration tests
-        run: python gcode_test.py
+          uv venv --python 3.11
+          uv pip install -r requirements.txt
+
+      - name: Cache Orca Slicer
+        uses: actions/cache@v4
+        with:
+          path: tools/orca
+          key: orca-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/install-orca.sh') }}
+
+      - name: Install Orca Slicer
+        run: scripts/install-orca.sh
+
+      - name: Run all tests (unit, system, Orca slice)
+        run: make test
