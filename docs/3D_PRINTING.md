@@ -529,7 +529,7 @@ with the bed only setting a floor, so a 12 mm part on a 256 mm bed is not a spec
 repaints the background, bed, part and grid; the grid is rebuilt rather than recoloured,
 because a `GridHelper` bakes its colours into vertex colours.
 
-### The two touches to the CNC wizard
+### Touches to the CNC wizard
 
 - `templates/wizard.html` gains one radio in the mode fieldset:
   `3D Printing — slice a part for the Bambu Lab printer`.
@@ -539,15 +539,21 @@ because a `GridHelper` bakes its colours into vertex colours.
 - `static/wizard.css` gains two rules for the print page, `.print-value` and
   `#print-canvas`.
 
-Both pages re-assert their own radio at init, because a browser form restore can leave
-another radio checked without firing a change event. The CNC page checks the radio for its
-current mode; the print page checks the `print` radio. That covers a fresh load, a reload
-and a form restore, because each of those runs the page's scripts.
+Three mechanisms keep the mode radios honest, because a browser form restore can leave
+another radio checked without firing a change event. First, each page re-checks the radio
+for its own mode at the end of `init()`. The CNC page checks the radio for its current
+mode; the print page checks the `print` radio. That covers a fresh load, a reload and a
+form restore, because each of those runs the page's scripts. Second, each page listens for
+`pageshow` and re-checks the same radio when `event.persisted` is true, which is the
+back/forward cache restoring a page without re-running its scripts. Third, every
+`name="mode"` radio in both templates carries `autocomplete="off"`, so browsers do not
+restore radio state on back-navigation or reload in the first place. On the print page,
+choosing any CNC radio still navigates to `returnUrl`, and that page loads with its own
+mode selected.
 
-A bfcache Back from `/print` to `/app` does not run them. The browser restores the page as
-it was, so the 3D Printing radio can stay checked until the student picks another mode. A
-`pageshow` listener would close that gap. On the print page, choosing any CNC radio
-navigates to `returnUrl`, and that page reloads with its default mode selected.
+One point stays unverified. A real bfcache restore could not be exercised under Playwright,
+because CDP disables the back/forward cache. The `pageshow` path was proved with a
+synthetic event. See section 12.
 
 ## 10. macOS differences
 
@@ -608,10 +614,11 @@ Open items in stage 1:
   plan's vCPU and memory allotment are measured on production. See
   [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md).
 - **macOS install untested.** See section 10.
-- **bfcache Back leaves the radio checked.** A Back from `/print` to `/app` that comes
-  from the back/forward cache does not re-run the page's scripts, so the 3D Printing radio
-  can stay checked until the student picks another mode. A `pageshow` listener on the CNC
-  page would close it. See section 9.
+- **A real bfcache restore is unverified.** Playwright drives Chrome over CDP, and that
+  disables the back/forward cache, so the restore path could only be proved with a
+  synthetic `pageshow` event. A hand check in the owner's Chrome is still worth doing:
+  Back from `/print` to `/app` should land on the CNC page with its own mode selected. See
+  section 9.
 - **The 3D view needs WebGL.** The container's headless Chrome has none, so the mesh
   cannot be checked there. A browser without WebGL still shows the summary numbers and a
   note, but no mesh.

@@ -15,7 +15,7 @@ A ground-up rework, delivered as a **step wizard** (Setup → Parts → Layout �
 - The wizard is the whole app: `/` (and `/app`) serve it full-screen in DXF-upload mode; the Onshape panel serves the same wizard with face-selection as the source.
 - **3D Printing (stage 1):** a "3D Printing" mode on Setup opens a print wizard that slices a fixed sample part with Orca Slicer for the team's Bambu Lab printer, shows print time, filament and layers, and delivers a .gcode.3mf through the same Download / Drive button. See [docs/3D_PRINTING.md](docs/3D_PRINTING.md).
 
-Key files for the CNC path: `templates/wizard.html`, `static/wizard.js`, `static/gcode_viewer.js` and `static/source_onshape.js`, with the engine in `frc_cam_postprocessor.py` and the routes in `frc_cam_gui_app.py`. The print path is `print_routes.py`, `print_jobs.py`, `print_slicer.py`, `templates/print_wizard.html`, `static/print_wizard.js`, `static/print_viewer.js` and the fixed assets in `print/`. `make install` also installs Orca Slicer, run `make test` after changes, and use `make test-quick` while iterating. Planned next: the **V3 config / computed feeds-&-speeds** model, `docs/FEEDSandSPEEDS.md` (not written yet).
+Key files for the CNC path: `templates/wizard.html`, `static/wizard.js`, `static/gcode_viewer.js` and `static/source_onshape.js`, with the engine in `frc_cam_postprocessor.py` and the routes in `frc_cam_gui_app.py`. The print path is `print_routes.py`, `print_jobs.py`, `print_slicer.py`, `templates/print_wizard.html`, `static/print_wizard.js`, `static/print_viewer.js` and the fixed assets in `print/`. `make install` also installs Orca Slicer. Run `make test` after changes. Use `make test-quick` while iterating. Planned next: the **V3 config / computed feeds-&-speeds** model, `docs/FEEDSandSPEEDS.md` (not written yet).
 
 🔗 **Demo video:**  
 [![Demo video](https://img.youtube.com/vi/gFReFDz-_LI/0.jpg)](https://youtu.be/zPZCTVh2n2Q)
@@ -325,7 +325,6 @@ penguincam/
 │   ├── INTEGRATIONS_GUIDE.md          # Onshape & Drive
 │   ├── 3D_PRINTING.md                 # The print path
 │   ├── quick-reference-card.md        # Quick start
-│   ├── TOOL_COMPENSATION_GUIDE.md     # Technical reference
 │   └── Z_COORDINATE_SYSTEM.md         # Zeroing guide
 │
 ├── static/                            # Static assets
