@@ -43,9 +43,23 @@ flowchart TB
 ### Where the files live
 
 Everything the print path owns sits under the top-level `print/` directory, so a future
-fabrication technology can take its own directory beside it. Only three things outside it
-know the print path exists: the `init_print_routes(...)` call in `frc_cam_gui_app.py`, the
-"3D Printing" radio in `templates/wizard.html`, and its handler in `static/wizard.js`.
+fabrication technology can take its own directory beside it. Five things outside it know
+the print path exists:
+
+- the `init_print_routes(...)` and `init_printer_routes(...)` calls in
+  `frc_cam_gui_app.py`, which also reads `printer_enabled` for the wizard's bootstrap;
+- the "3D Printing" radio in `templates/wizard.html`;
+- its handler in `static/wizard.js`;
+- `team_config.py`, for the `pairing_code` property;
+- `config_validation.py`, for the same key.
+
+The last two import `normalize_code` from `print.printer_relay`, because a pairing code is
+printer vocabulary and hoisting the helper to a root module would put printer knowledge in
+the CNC configuration layer. The cost is a real constraint, and it is deliberate:
+**`print/` is a hard dependency of the CNC configuration path**, so the directory can no
+longer be removed without breaking `team_config.py` and everything that reads a team's
+YAML. What keeps that cheap is that `normalize_code` is a pure function and
+`print/__init__.py` is a docstring and nothing else, so the import runs no code.
 
 ```
 print/
@@ -53,13 +67,20 @@ print/
   routes.py            the Flask blueprint
   jobs.py              the pool and the job table, no Flask
   slicer.py            the Orca wrapper, no Flask
+  printer_relay.py     the printer relay's in-memory records and tokens, no Flask
+  printer_routes.py    the printer relay's Flask blueprint
+  printer_daemon/      the Raspberry Pi daemon, its own requirements.txt and installer
   templates/           print_wizard.html
-  static/              print_wizard.js, print_viewer.js
+  static/              print_wizard.js, print_viewer.js, printer_panel.js
   scripts/             install-orca.sh, make_sample_part.py, flatten_orca_profiles.py
-  tests/               the Python tests, tests/js/ for the node tests, tests/fixtures/
+  tests/               the Python tests, tests/js/ and tests/printer_panel/ for node
   profiles/            the flattened Bambu Lab profiles
   sample_part.stl      the fixed part
 ```
+
+The printer relay and the daemon are documented on their own, in
+[PRINTER_SETUP.md](PRINTER_SETUP.md). They sit here because they are part of the printing
+path; the daemon is never imported by the backend and never imports it.
 
 Orca itself still installs to `tools/orca/` at the repository root, not under `print/`:
 it is a large untracked build artifact, `.gitignore` and `.dockerignore` name that path,
@@ -555,8 +576,9 @@ a developer can inspect a job with `curl`.
 
 `/download/<token>` picks its MIME type by extension: `.3mf` downloads as
 `application/octet-stream`, everything else stays `text/plain`. That one line in
-`frc_cam_gui_app.py` and the `init_print_routes` call are the only changes the print path
-makes to the Flask module. `/drive/upload/<token>` uploads by path and lets the Drive
+`frc_cam_gui_app.py`, the `init_print_routes` call, the `init_printer_routes` call beside
+it and the `printer_enabled` key in `_app_template_context` are the only changes the print
+path makes to the Flask module. `/drive/upload/<token>` uploads by path and lets the Drive
 client pick the type from the file name, so it needed no change.
 
 ### gunicorn
