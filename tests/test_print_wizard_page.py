@@ -28,7 +28,7 @@ class PrintWizardPageTest(unittest.TestCase):
         for step in ("setup", "parts", "layout", "preview"):
             self.assertIn(f'data-step="{step}"', html)
         for value in ("2d", "2.5d", "tubing", "print"):
-            self.assertIn(f'name="mode" value="{value}"', html)
+            self.assertIn(f'name="mode" value="{value}" autocomplete="off"', html)
         self.assertRegex(html, r'value="print"[^>]*checked')
         for el in ("p-printer", "p-filament", "p-process", "parts-list", "layout-info", "layout-canvas",
                    "layout-errors", "gen-status", "preview-stats", "print-canvas", "preview-errors",
@@ -62,7 +62,8 @@ class CncSetupRadioTest(unittest.TestCase):
 
     def test_cnc_setup_offers_3d_printing(self):
         html = self.client.get("/app").get_data(as_text=True)
-        self.assertRegex(html, r'<input type="radio" name="mode" value="print">\s*3D Printing')
+        self.assertRegex(
+            html, r'<input type="radio" name="mode" value="print" autocomplete="off">\s*3D Printing')
         js = (REPO / "static" / "wizard.js").read_text()
         self.assertIn("'/print?source='", js)
         self.assertIn("location.pathname + location.search", js)
