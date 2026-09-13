@@ -51,5 +51,23 @@ class PrintWizardPageTest(unittest.TestCase):
         self.assertIn('source: "onshape"', html)
 
 
+class CncSetupRadioTest(unittest.TestCase):
+    def setUp(self):
+        app.config["TESTING"] = True
+        self.client = app.test_client()
+        limiter.reset()
+        limiter.enabled = False
+
+    def tearDown(self):
+        limiter.enabled = True
+
+    def test_cnc_setup_offers_3d_printing(self):
+        html = self.client.get("/app").get_data(as_text=True)
+        self.assertRegex(html, r'<input type="radio" name="mode" value="print">\s*3D Printing')
+        js = (REPO / "static" / "wizard.js").read_text()
+        self.assertIn("'/print?source='", js)
+        self.assertIn("location.pathname + location.search", js)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -443,6 +443,15 @@
 
     $all('input[name="mode"]').forEach(function (r) {
       r.addEventListener('change', function () {
+        if (this.value === 'print') {
+          // The print wizard is a separate page. Carry source and theme, and the
+          // current path and query as the way back (the panel needs its Onshape
+          // parameters to re-handshake).
+          location.href = '/print?source=' + encodeURIComponent(state.source) +
+            '&theme=' + encodeURIComponent(CFG.theme || 'dark') +
+            '&return=' + encodeURIComponent(location.pathname + location.search);
+          return;
+        }
         state.mode = this.value;
         applyModeUI();
         dbg('mode', state.mode);
