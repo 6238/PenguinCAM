@@ -6,13 +6,27 @@
 (function () {
   'use strict';
 
+  // Case-insensitive "solid" at byte 0, the ASCII STL marker.
+  function startsWithSolid(bytes) {
+    var solid = [115, 111, 108, 105, 100];  // s o l i d
+    if (bytes.length < 5) return false;
+    for (var i = 0; i < 5; i++) {
+      if ((bytes[i] | 32) !== solid[i]) return false;
+    }
+    return true;
+  }
+
   function parseSTL(arrayBuffer) {
     var bytes = new Uint8Array(arrayBuffer);
     if (bytes.length < 15) throw new Error('STL file is empty or truncated');
     var count = 0, positions, i, o;
     var dv = new DataView(arrayBuffer);
     var binaryCount = bytes.length >= 84 ? dv.getUint32(80, true) : -1;
-    var isBinary = bytes.length >= 84 && bytes.length === 84 + 50 * binaryCount;
+    // Like three.js's STLLoader: a binary STL may carry trailing bytes, so the length
+    // only has to reach the triangle table. An exact fit is binary whatever the header
+    // says; a longer file is binary only when it does not start with "solid".
+    var fits = bytes.length >= 84 && bytes.length >= 84 + 50 * binaryCount;
+    var isBinary = fits && (bytes.length === 84 + 50 * binaryCount || !startsWithSolid(bytes));
     if (isBinary) {
       count = binaryCount;
       positions = new Float32Array(count * 9);
@@ -45,6 +59,13 @@
                  : { bg: 0x0a0e14, bed: 0x1e2632, grid: 0x30363d, part: 0x4c9aff };
   }
 
+  // Camera distance for a part of span partSpan on a bedX x bedY bed. Scaling off the
+  // bed alone turns a 12 mm part on a 256 mm bed into a speck, so the part's own span
+  // leads and the bed only sets a floor that keeps the whole plate roughly in frame.
+  function fitDistance(partSpan, bedX, bedY) {
+    return Math.max(partSpan * 2.5, Math.max(bedX, bedY) * 0.35);
+  }
+
   function PrintViewer(els) {
     this.els = els;
     this.mesh = null;
@@ -66,7 +87,7 @@
     this.camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 5000);
     this.renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
     this.renderer.setSize(w, h);
-    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.6));
     var dir = new THREE.DirectionalLight(0xffffff, 0.8);
     dir.position.set(100, 300, 200);
@@ -119,12 +140,16 @@
     this.bed = new THREE.Mesh(new THREE.PlaneGeometry(bedX, bedY),
                               new THREE.MeshPhongMaterial({ color: colors.bed, side: THREE.DoubleSide }));
     this.bed.rotation.x = -Math.PI / 2;
-    this.bed.position.y = -0.05;
+    this.bed.position.y = 0;                 // the plan's "bed at THREE y = 0", literally
     this.scene.add(this.bed);
-    this.grid = new THREE.GridHelper(Math.max(bedX, bedY), Math.round(Math.max(bedX, bedY) / 10), colors.grid, colors.grid);
+    // The grid floats a hair above the bed so it does not z-fight the part's bottom face.
+    this._gridSpec = { size: Math.max(bedX, bedY), divisions: Math.round(Math.max(bedX, bedY) / 10) };
+    this.grid = new THREE.GridHelper(this._gridSpec.size, this._gridSpec.divisions, colors.grid, colors.grid);
+    this.grid.position.y = 0.01;
     this.scene.add(this.grid);
 
-    var span = Math.max(bedX, bedY);
+    var size = { x: stl.max[0] - stl.min[0], y: stl.max[1] - stl.min[1], z: stl.max[2] - stl.min[2] };
+    var span = fitDistance(Math.max(size.x, size.y, size.z), bedX, bedY);
     this.fit = { pos: [span * 0.55, span * 0.6, span * 0.75], target: [0, (stl.max[2] - z0) / 2, 0] };
     this.resetView();
     if (this.els.emptyState) this.els.emptyState.style.display = 'none';
@@ -138,9 +163,23 @@
   };
 
   PrintViewer.prototype.setTheme = function () {
-    if (this.scene) this.scene.background = new THREE.Color(themeColors().bg);
+    var colors = themeColors();
+    if (!this.scene) return;
+    this.scene.background = new THREE.Color(colors.bg);
+    if (this.mesh && this.mesh.material && this.mesh.material.color) this.mesh.material.color.set(colors.part);
+    if (this.bed && this.bed.material && this.bed.material.color) this.bed.material.color.set(colors.bed);
+    // A GridHelper bakes its colours into vertex colours, so it cannot be recoloured in
+    // place: build a fresh helper with the same size and divisions.
+    if (this.grid && this._gridSpec) {
+      this.scene.remove(this.grid);
+      this.grid = new THREE.GridHelper(this._gridSpec.size, this._gridSpec.divisions, colors.grid, colors.grid);
+      this.grid.position.y = 0.01;
+      this.scene.add(this.grid);
+    }
   };
 
   if (typeof window !== 'undefined') window.PrintViewer = PrintViewer;
-  if (typeof module !== 'undefined' && module.exports) module.exports = { parseSTL: parseSTL, PrintViewer: PrintViewer };
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { parseSTL: parseSTL, PrintViewer: PrintViewer, fitDistance: fitDistance };
+  }
 })();

@@ -1619,6 +1619,10 @@
       bindConfigSource();
       establishUploadSession();
     }
+    // A back-navigation or a browser form restore can leave a radio checked that never
+    // fires a change event, so re-assert the mode the page is actually in.
+    var cur = $('input[name="mode"][value="' + state.mode + '"]');
+    if (cur) cur.checked = true;
     gotoStep('setup');
     dbg('init', { source: state.source, authed: CFG.authenticated, theme: CFG.theme });
     if (state.source === 'onshape' && !CFG.authenticated) {

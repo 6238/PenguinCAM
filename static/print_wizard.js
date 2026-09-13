@@ -518,6 +518,10 @@
       var opt25 = $('#opt-mode-25d'); if (opt25) opt25.hidden = true;
       var r25 = $('input[name="mode"][value="2.5d"]'); if (r25) r25.disabled = true;
     }
+    // A back-navigation or a browser form restore can leave a CNC radio checked that
+    // never fires a change event, so re-assert that this page is the 3D print one.
+    var cur = $('input[name="mode"][value="print"]');
+    if (cur) cur.checked = true;
     gotoStep('setup');
     loadPart();
   }
