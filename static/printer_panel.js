@@ -3,8 +3,9 @@
  * Spec: docs/superpowers/specs/2026-09-13-bambu-printer-relay-design.md, sections 4 (the
  * status-line table), 7 (the /printer/status and /printer/jobs routes) and 10.
  *
- * This file is the printer half of the print wizard's Preview step. print_wizard.html
- * loads it after print_wizard.js; it attaches to that page's DOM (#stepbar,
+ * This file is the printer half of the print wizard's Preview step.
+ * print/templates/print_wizard.html loads it after print_wizard.js; it attaches to that
+ * page's DOM (#stepbar,
  * #preview-stats, #preview-errors, #do-menu, #btn-do-caret, #final-action) and never
  * assumes any of it is present: a selector that misses is logged once, by name, and the
  * panel carries on without it.

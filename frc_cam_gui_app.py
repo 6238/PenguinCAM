@@ -2275,8 +2275,9 @@ init_print_routes(app, limiter=limiter, require_session=_require_app_session,
 # ============================================================================
 # 3D printer relay (Bambu LAN daemon)
 # ============================================================================
-# Sits beside the future init_print_routes(...) call from the 3D-print slicing branch;
-# both hand their blueprint this module's globals instead of importing them.
+# Sits beside the init_print_routes(...) call above; both hand their blueprint this
+# module's globals instead of importing them. The relay is NOT part of the print package:
+# it serves the CNC path's download tokens too, and the Pi daemon never imports either.
 import printer_relay  # noqa: E402 - registered here, beside the call that needs it
 from printer_routes import init_printer_routes  # noqa: E402
 

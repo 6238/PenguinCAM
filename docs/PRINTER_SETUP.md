@@ -302,7 +302,8 @@ backend in the agent container, and sending a real print through it, is
 
 `static/printer_panel.js` is the printer half of the print wizard's Preview step:
 the status line under the slice summary and the Send to Printer item in the split button's
-menu. `templates/print_wizard.html` loads it after `print_wizard.js`. The contract between
+menu. `print/templates/print_wizard.html` loads it after `print_wizard.js`, from the app's
+own static folder rather than the print blueprint's. The contract between
 the two scripts is small, and the panel's header comment is the copy to trust:
 
 - `window.PenguinCAM.getDownloadToken()` returns the slice's download token, the one
