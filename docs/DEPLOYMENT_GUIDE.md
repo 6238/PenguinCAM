@@ -89,6 +89,9 @@ GOOGLE_CLIENT_SECRET=your-client-secret
 AUTH_ENABLED=true
 ALLOWED_DOMAINS=your-workspace-domain.com
 # Example: ALLOWED_DOMAINS=popcornpenguins.com
+# Comma-separated. Use ALLOWED_DOMAINS=* to allow ANY Google account -- appropriate
+# for a public deployment, since each team is on its own school Workspace domain and
+# listing them would mean a redeploy per team. Unset or empty denies EVERY sign-in.
 ```
 
 #### **Onshape Integration**
@@ -338,7 +341,7 @@ Railway dashboard shows current usage and costs in real-time.
    - Add `*.json` with credentials to `.gitignore`
 
 2. **Restrict authentication**
-   - Use `ALLOWED_DOMAINS` to limit to your workspace
+   - Use `ALLOWED_DOMAINS` to limit to your workspace, or `*` to allow any Google account
    - Consider `ALLOWED_EMAILS` for admin-only features
 
 3. **Keep dependencies updated**
