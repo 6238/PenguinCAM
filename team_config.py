@@ -234,6 +234,30 @@ TEAM_6238_DEFAULTS = {
 }
 
 
+def extract_drive_folder_id(folder_value: Optional[str]) -> Optional[str]:
+    """
+    Normalize a configured Google Drive folder value to a bare folder ID.
+
+    Teams are told to paste the folder's Drive URL, but the upload path needs the
+    bare ID (it is used directly as a `parents` entry). Both the
+    TeamConfig.google_drive_folder_id property and to_dict() go through here so the
+    session dict can never carry an un-normalized URL.
+    """
+    if not folder_value:
+        return None
+
+    # Format: https://drive.google.com/drive/folders/FOLDER_ID
+    # or:     https://drive.google.com/drive/u/0/folders/FOLDER_ID
+    if 'drive.google.com' in folder_value:
+        parts = folder_value.split('/folders/')
+        if len(parts) == 2:
+            # Remove any query parameters or trailing slashes
+            return parts[1].split('?')[0].rstrip('/')
+
+    # Otherwise assume it's already just the ID
+    return folder_value
+
+
 class TeamConfig:
     """
     Manages team-specific configuration for PenguinCAM.
@@ -752,23 +776,7 @@ class TeamConfig:
         Google Drive folder ID for uploading G-code.
         Accepts either a folder ID or a full Drive URL, returns just the ID.
         """
-        folder_value = self._get('integrations', 'google_drive', 'folder_id')
-
-        if not folder_value:
-            return None
-
-        # If it's a full URL, extract the ID
-        if 'drive.google.com' in folder_value:
-            # Format: https://drive.google.com/drive/folders/FOLDER_ID
-            # or: https://drive.google.com/drive/u/0/folders/FOLDER_ID
-            parts = folder_value.split('/folders/')
-            if len(parts) == 2:
-                # Remove any query parameters or trailing slashes
-                folder_id = parts[1].split('?')[0].rstrip('/')
-                return folder_id
-
-        # Otherwise assume it's already just the ID
-        return folder_value
+        return extract_drive_folder_id(self._get('integrations', 'google_drive', 'folder_id'))
 
     # ========================================================================
     # Helpers
@@ -824,7 +832,8 @@ class TeamConfig:
             'machine_y_max': get_machine_setting('machine', 'dimensions', 'y_max'),
             'machine_z_max': get_machine_setting('machine', 'dimensions', 'z_max'),
             'google_drive_enabled': get_machine_setting('integrations', 'google_drive', 'enabled'),
-            'google_drive_folder_id': get_machine_setting('integrations', 'google_drive', 'folder_id'),
+            'google_drive_folder_id': extract_drive_folder_id(
+                get_machine_setting('integrations', 'google_drive', 'folder_id')),
             'default_tool_diameter': tool_in if (tool_in and tool_in > 0) else DEFAULT_TOOL_DIAMETER_IN,
             'default_tool_diameter_text': raw_tool if isinstance(raw_tool, str) else f'{raw_tool}"',
         }

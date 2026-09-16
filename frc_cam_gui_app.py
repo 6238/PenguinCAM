@@ -41,7 +41,7 @@ werkzeug_logger.handlers = []  # Remove all handlers
 
 # Import Google Drive integration (optional - will work without it)
 try:
-    from google_drive_integration import GoogleDriveUploader
+    from google_drive_integration import GoogleDriveUploader, default_folder_id
     GOOGLE_DRIVE_AVAILABLE = True
 except ImportError:
     GOOGLE_DRIVE_AVAILABLE = False
@@ -1539,7 +1539,9 @@ def drive_status():
     # Check team config to see if Drive is enabled
     team_config = session.get('team_config', {})
     drive_enabled = team_config.get('google_drive_enabled', False)
-    folder_id = team_config.get('google_drive_folder_id')
+    # Same resolution order the upload path uses, so status can never report "ready"
+    # for a destination the upload would then fail to find.
+    folder_id = team_config.get('google_drive_folder_id') or default_folder_id()
 
     if not drive_enabled or not folder_id:
         return jsonify({
@@ -1625,9 +1627,12 @@ def upload_to_drive(token):
                 }), 401
             log(f"✅ Got credentials, scopes: {creds.scopes if hasattr(creds, 'scopes') else 'unknown'}")
         
-        # Create uploader with credentials
-        log("🔧 Creating GoogleDriveUploader...")
-        uploader = GoogleDriveUploader(credentials=creds)
+        # Create uploader with credentials and THIS team's destination folder.
+        # The folder is per-team session state, so it must be passed per request --
+        # the server process is shared by every team.
+        folder_id = session.get('team_config', {}).get('google_drive_folder_id') or default_folder_id()
+        log(f"🔧 Creating GoogleDriveUploader (folder {folder_id})...")
+        uploader = GoogleDriveUploader(credentials=creds, folder_id=folder_id)
         
         log("🔐 Authenticating...")
         if not uploader.authenticate():

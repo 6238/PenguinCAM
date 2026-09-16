@@ -22,7 +22,12 @@ class PenguinCAMAuth:
         'openid',
         'https://www.googleapis.com/auth/userinfo.email',
         'https://www.googleapis.com/auth/userinfo.profile',
-        'https://www.googleapis.com/auth/drive'  # Full Drive access (needed for shared drives)
+        # drive.file is the only non-sensitive Drive scope: it grants per-file access to
+        # files this app creates, which is all we do. Broader scopes (drive, drive.readonly,
+        # drive.metadata*) are RESTRICTED and would require an annual CASA security
+        # assessment to publish externally. A user-supplied folder ID works as a parent
+        # under drive.file as long as the signed-in user can write to that folder.
+        'https://www.googleapis.com/auth/drive.file'
     ]
     
     def __init__(self, app):
@@ -172,9 +177,11 @@ class PenguinCAMAuth:
             flow = self._create_flow()
             
             # Generate authorization URL
+            # No include_granted_scopes: we request a fixed scope list rather than doing
+            # incremental auth, and users who previously granted full Drive would get the
+            # union back, which makes fetch_token() fail with "Scope has changed".
             authorization_url, state = flow.authorization_url(
                 access_type='offline',
-                include_granted_scopes='true',
                 prompt='consent'  # Force consent to get refresh token
             )
             

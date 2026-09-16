@@ -58,7 +58,7 @@ PenguinCAM uses **Google OAuth 2.0** to:
 - Search: "Google Drive API"
 - Click the result
 - Click **"Enable"**
-- Purpose: Allows file uploads to shared drive
+- Purpose: Allows file uploads to the team's Drive folder (`drive.file` scope only)
 
 #### **Google People API**
 - Search: "People API"  
