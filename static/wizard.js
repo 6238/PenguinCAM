@@ -649,6 +649,35 @@
       window.PenguinCAM.onSelectionBusy = function (busy) {
         setSel(busy ? 'Importing face, please wait…' : 'Select a face in Onshape…');
       };
+      window.PenguinCAM.onAuthExpired = function (authUrl, msg) {
+        // Onshape credentials died mid-session (expired, or retired because the user
+        // re-authorized elsewhere). Offer the same popup reconnect the Connect button
+        // uses, rather than leaving a dead-end error in the status label.
+        dbg('onshape:auth-expired', msg);
+        var el = $('#select-status');
+        if (!el) return;
+        el.textContent = String(msg || 'Onshape session expired') + ' ';
+        var link = document.createElement('a');
+        link.href = '#';
+        link.textContent = 'Reconnect Onshape';
+        link.addEventListener('click', function (e) {
+          e.preventDefault();
+          var popup = window.open(authUrl + '?popup=1', 'penguincam_oauth', 'width=520,height=720');
+          if (!popup) {
+            setSel('Pop-up blocked - allow pop-ups, then click Reconnect Onshape again.');
+            return;
+          }
+          setSel('Complete sign-in in the popup window...');
+          var iv = setInterval(function () {
+            if (popup.closed) {
+              clearInterval(iv);
+              setSel('Select a face in Onshape...');
+            }
+          }, 500);
+          setTimeout(function () { clearInterval(iv); }, 180000);
+        });
+        el.appendChild(link);
+      };
       window.PenguinCAM.onSelectionError = function (msg) {
         dbg('onshape:error', msg);
         // Strip any trailing sentence punctuation the server message already carries

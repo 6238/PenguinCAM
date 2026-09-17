@@ -4,7 +4,7 @@ PenguinCAM - FRC Team 6238 CAM Tool
 A Flask-based web interface for generating G-code from DXF files
 """
 
-from flask import Flask, render_template, request, jsonify, send_file, session, send_from_directory, redirect, make_response
+from flask import Flask, render_template, request, jsonify, send_file, session, send_from_directory, redirect, make_response, g
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -58,7 +58,8 @@ except ImportError:
 
 # Import Onshape integration (optional - will work without it)
 try:
-    from onshape_integration import get_onshape_client, session_manager, build_multilayer_dxf
+    from onshape_integration import (get_onshape_client, session_manager, build_multilayer_dxf,
+                                     OnshapeAuthError)
     ONSHAPE_AVAILABLE = True
 except ImportError:
     ONSHAPE_AVAILABLE = False
@@ -350,6 +351,24 @@ def normalize_material(material):
     if m == 'polycarb':
         return 'polycarbonate'
     return material
+
+@app.after_request
+def _persist_onshape_tokens(response):
+    """
+    Write back Onshape tokens that were refreshed during this request.
+
+    Runs for error responses too, which is the point: a refresh retires the previous
+    tokens at Onshape, so a refresh that isn't saved leaves the session holding dead
+    credentials and every later request 401s until the user manually re-authorizes.
+    """
+    if ONSHAPE_AVAILABLE:
+        client = getattr(g, 'onshape_client', None)
+        if client is not None and getattr(client, 'tokens_refreshed', False):
+            session_manager.update_session_tokens(client)
+            client.tokens_refreshed = False
+            log("🔄 Onshape tokens refreshed and saved to session")
+    return response
+
 
 def get_onshape_client_or_401():
     """
@@ -1901,7 +1920,9 @@ def onshape_export_face():
                     log(f"[EXPORT] 2D thickness discovery failed (non-fatal): {e}")
         session_manager.update_session_tokens(client)
         if not dxf_bytes:
-            return jsonify({'error': 'Onshape returned no DXF for that face.'}), 502
+            # NOT 502: Cloudflare replaces any origin 502/504 body with its own error
+            # page, so a gateway status here reaches the user as opaque HTML.
+            return jsonify({'error': 'Onshape returned no DXF for that face.'}), 500
 
         tmp = tempfile.NamedTemporaryFile(suffix='.dxf', delete=False, dir=UPLOAD_FOLDER)
         path = tmp.name
@@ -1956,11 +1977,16 @@ def onshape_export_face():
         detail = ' (2.5D, t={:.4f}")'.format(detected_thickness) if detected_thickness else ''
         log(f"[EXPORT] ok name='{geo['name']}' {geo['width']}x{geo['height']}{detail}")
         return jsonify(geo)
+    except OnshapeAuthError as e:
+        # Credentials are dead and a refresh could not rescue them. 401 + auth_url lets
+        # the panel offer a reconnect link instead of showing a dead-end error.
+        log(f"[EXPORT] Onshape auth failed: {e}")
+        return jsonify({'error': str(e), 'auth_url': '/onshape/auth'}), 401
     except RuntimeError as e:
         # Expected, user-facing failures from the 2.5D builder (bad face selection,
-        # expired auth, no parallel faces).
+        # no parallel faces). 400, not 502 -- see the note above about Cloudflare.
         log(f"[EXPORT] multilayer failed: {e}")
-        return jsonify({'error': str(e)}), 502
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         log(traceback.format_exc())
         return jsonify({'error': f'Face export failed: {str(e)}'}), 500

@@ -19,7 +19,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from urllib.parse import urlencode, parse_qs
 
-from flask import session
+from flask import session, g
 from shapely.geometry import Point, Polygon
 from shapely.ops import unary_union
 
@@ -43,6 +43,16 @@ def mask(secret):
     return f'****{s[-4:]}'
 
 
+class OnshapeAuthError(Exception):
+    """
+    Onshape rejected our credentials and a refresh could not rescue them.
+
+    Distinct from a generic failure so routes can answer 401 + a re-auth link
+    instead of a vague 500, and so the export fallback chain stops immediately
+    rather than replaying the same dead token against two more endpoints.
+    """
+
+
 class OnshapeClient:
     """Client for interacting with Onshape API"""
     
@@ -54,6 +64,7 @@ class OnshapeClient:
         self.access_token = None
         self.refresh_token = None
         self.token_expires = None
+        self.tokens_refreshed = False  # set when a refresh produces new tokens to persist
         # Auth mode: 'oauth' (interactive, session-driven) or 'apikey' (headless).
         self.auth_mode = 'oauth'
         self.api_access_key = None
@@ -230,8 +241,15 @@ class OnshapeClient:
             if response.status_code == 200:
                 token_data = response.json()
                 self.access_token = token_data.get('access_token')
+                # Onshape may rotate the refresh token too; keeping the old one would
+                # guarantee the next refresh fails.
+                self.refresh_token = token_data.get('refresh_token', self.refresh_token)
                 expires_in = token_data.get('expires_in', 3600)
                 self.token_expires = datetime.now() + timedelta(seconds=expires_in)
+                # Signals the request layer to write these back to the session cookie;
+                # a refresh retires the previous tokens at Onshape, so losing the new
+                # ones leaves the session holding credentials that can never work.
+                self.tokens_refreshed = True
                 return True
             else:
                 return False
@@ -248,12 +266,14 @@ class OnshapeClient:
                 raise ValueError("API-key mode selected but keys are not set")
             return
         if not self.access_token:
-            raise ValueError("No access token. User must authenticate first.")
+            raise OnshapeAuthError("Not connected to Onshape. Please connect your account.")
         
         # Refresh if expired or about to expire (within 5 minutes)
         if self.token_expires and datetime.now() >= self.token_expires - timedelta(minutes=5):
             if not self.refresh_access_token():
-                raise ValueError("Token expired and refresh failed")
+                raise OnshapeAuthError(
+                    "Onshape access expired and could not be refreshed. "
+                    "Please reconnect your Onshape account.")
     
     def _make_api_request(self, method, endpoint, **kwargs):
         """
@@ -281,7 +301,27 @@ class OnshapeClient:
             )
 
         headers['Authorization'] = f'Bearer {self.access_token}'
-        return self.session.request(method, url, headers=headers, **kwargs)
+        response = self.session.request(method, url, headers=headers, **kwargs)
+
+        # A 401 is the only authoritative signal that the token is dead. The clock
+        # check in _ensure_valid_token cannot see a token Onshape retired early (which
+        # happens when the same user re-authorizes elsewhere), so react to the 401
+        # itself: refresh once and replay. Without this the session stays broken
+        # forever, since nothing else ever reconsiders the stored token.
+        if response.status_code == 401:
+            log("Onshape returned 401; attempting token refresh and one retry")
+            if not self.refresh_access_token():
+                raise OnshapeAuthError(
+                    "Onshape access expired and could not be refreshed. "
+                    "Please reconnect your Onshape account.")
+            headers['Authorization'] = f'Bearer {self.access_token}'
+            response = self.session.request(method, url, headers=headers, **kwargs)
+            if response.status_code == 401:
+                raise OnshapeAuthError(
+                    "Onshape rejected our credentials even after refreshing. "
+                    "Please reconnect your Onshape account.")
+
+        return response
     
     def get_user_info(self):
         """Get information about the authenticated user"""
@@ -463,6 +503,8 @@ class OnshapeClient:
                 log(f"exportinternal failed: {response.status_code}")
                 log(f"Response: {response.text}")
                 
+        except OnshapeAuthError:
+            raise  # dead credentials: the other two methods would fail identically
         except Exception as e:
             log(f"Error with exportinternal: {e}")
             log(traceback.format_exc())
@@ -493,6 +535,8 @@ class OnshapeClient:
             else:
                 log(f"POST export failed: {response.status_code}")
                 
+        except OnshapeAuthError:
+            raise
         except Exception as e:
             log(f"Error with POST export: {e}")
         
@@ -535,6 +579,8 @@ class OnshapeClient:
                 log(f"Response: {response.text}")
                 return None
                 
+        except OnshapeAuthError:
+            raise
         except Exception as e:
             log(f"Error starting translation: {e}")
             log(traceback.format_exc())
@@ -561,6 +607,8 @@ class OnshapeClient:
                 log(f"Failed to check translation: {response.status_code}")
                 return None
                 
+        except OnshapeAuthError:
+            raise
         except Exception as e:
             log(f"Error checking translation: {e}")
             return None
@@ -2215,6 +2263,15 @@ class OnshapeSessionManager:
         expires_str = tokens.get('expires_at')
         if expires_str:
             client.token_expires = datetime.fromisoformat(expires_str)
+
+        # Register for end-of-request persistence (see _persist_onshape_tokens). Saving
+        # only on success paths loses tokens whenever a request later fails, and because
+        # a refresh retires the old tokens at Onshape that leaves the session
+        # permanently unusable rather than merely unchanged.
+        try:
+            g.onshape_client = client
+        except RuntimeError:
+            pass  # no request context (CLI/test use); caller persists explicitly
 
         return client
 
