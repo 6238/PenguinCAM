@@ -377,8 +377,13 @@ def cleanup_worker():
 # Initialize file token manager
 file_token_manager = FileTokenManager()
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
 
+app.config.update(
+    MAX_CONTENT_LENGTH=50 * 1024 * 1024,
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+)
 # Disable Flask/Werkzeug request logging in production (Vercel)
 if os.environ.get('VERCEL'):
     app.logger.disabled = True
