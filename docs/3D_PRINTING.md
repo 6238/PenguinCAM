@@ -1,7 +1,6 @@
 # 3D Printing: the print path (stage 1)
 
-Developer guide for PenguinCAM's 3D print path as built on `feature/3d-print-stage1`.
-The design it implements is the [design spec](superpowers/specs/2026-09-13-3d-print-slicing-design.md).
+Developer guide for PenguinCAM's 3D print path.
 Deployment numbers live in [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md). The fixed assets
 are described in [print/README.md](../print/README.md).
 
@@ -100,14 +99,14 @@ variable and no lookup on `PATH`.
 | Platform | `uname -s` / `uname -m` | Asset |
 |----------|--------------------------|-------|
 | Railway production, CI | Linux / x86_64 | `OrcaSlicer_Linux_AppImage_Ubuntu2404_V2.4.2.AppImage` |
-| Agent containers, Docker on the Mac | Linux / aarch64 | `OrcaSlicer_Linux_AppImage_Ubuntu2404_aarch64_V2.4.2.AppImage` |
-| Mac development | Darwin / arm64 | `OrcaSlicer_Mac_universal_V2.4.2.dmg` |
+| aarch64 Linux, Docker on Apple silicon | Linux / aarch64 | `OrcaSlicer_Linux_AppImage_Ubuntu2404_aarch64_V2.4.2.AppImage` |
+| macOS development | Darwin / arm64 | `OrcaSlicer_Mac_universal_V2.4.2.dmg` |
 
 Any other combination is refused with a message naming both values. A checksum mismatch
 deletes the download and exits non-zero. The script is idempotent: if
 `tools/orca/VERSION` already reads `<version> <arch>` and the wrapper is executable, it
 exits without touching the network. The stamp carries the architecture, so a `tools/`
-directory copied from a Mac into a Linux build is detected and replaced, not trusted.
+directory copied from macOS into a Linux build is detected and replaced, not trusted.
 Anything already at `tools/orca` that does not match is deleted before the download.
 
 ### The Linux wrapper
@@ -439,9 +438,9 @@ no app imports.
 
 `MAX_RUNNING` is sized by the rule `min(vCPU count, memory / peak resident memory of one
 slice)`, never below one. One slice of the sample part peaked at 93 MB resident and took
-0.23 s on the aarch64 agent container. A 120 x 120 x 40 mm box took 0.6 s at 250 MB peak.
-The production Railway plan's vCPU and memory allotment could not be read from the build
-container, so the value stays at one until it is measured.
+0.23 s on an aarch64 Linux machine. A 120 x 120 x 40 mm box took 0.6 s at 250 MB peak.
+The production Railway plan's vCPU and memory allotment has not been measured yet, so the
+value stays at one until it is.
 
 The job TTL and the token manager's file retention are independent clocks. Both are one
 hour today, but nothing links them: the token manager's cleanup thread unlinks registered
@@ -659,13 +658,13 @@ restore radio state on back-navigation or reload in the first place. On the prin
 choosing any CNC radio still navigates to `returnUrl`, and that page loads with its own
 mode selected.
 
-One point stays unverified. A real bfcache restore could not be exercised under Playwright,
-because CDP disables the back/forward cache. The `pageshow` path was proved with a
+One point stays unverified. A real bfcache restore cannot be exercised by browser automation
+that drives Chrome over CDP, because CDP disables the back/forward cache. The `pageshow` path was proved with a
 synthetic event. See section 12.
 
 ## 10. macOS differences
 
-The macOS path is written and untested in this session. Known differences:
+The macOS path is written but not yet verified on macOS. Known differences:
 
 - **Quarantine.** `curl` sets no quarantine attribute, but the install script clears
   `com.apple.quarantine` from `OrcaSlicer.app` with `xattr -dr` anyway, in case the image
@@ -674,9 +673,9 @@ The macOS path is written and untested in this session. Known differences:
   set has not been confirmed. `--datadir` is passed on every platform and points into the
   job's scratch directory, so it should hold there too.
 - **No `result.json`.** The macOS build does not write it, so `warnings` is always empty
-  on a Mac. Everything else in the summary comes from the archive and is unaffected.
-- **Untested.** That the copied `OrcaSlicer.app` runs headless from the command line on a
-  Mac has not been verified.
+  on macOS. Everything else in the summary comes from the archive and is unaffected.
+- **Unverified.** That the copied `OrcaSlicer.app` runs headless from the command line on
+  macOS has not been verified.
 
 ## 11. Testing
 
@@ -721,20 +720,19 @@ Open items in stage 1:
 - **Pool sizing.** `MAX_RUNNING` stays at one until peak resident memory and the Railway
   plan's vCPU and memory allotment are measured on production. See
   [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md).
-- **macOS install untested.** See section 10.
-- **A real bfcache restore is unverified.** Playwright drives Chrome over CDP, and that
-  disables the back/forward cache, so the restore path could only be proved with a
-  synthetic `pageshow` event. A hand check in the owner's Chrome is still worth doing:
+- **macOS install not yet verified.** See section 10.
+- **A real bfcache restore is unverified.** Browser automation over CDP disables the
+  back/forward cache, so the restore path could only be proved with a synthetic
+  `pageshow` event. A hand check in a real browser is still worth doing:
   Back from `/print` to `/app` should land on the CNC page with its own mode selected. See
   section 9.
-- **The 3D view needs WebGL.** The container's headless Chrome has none, so the mesh
-  cannot be checked there. A browser without WebGL still shows the summary numbers and a
-  note, but no mesh.
+- **The 3D view needs WebGL.** A browser without WebGL, such as a headless browser with
+  no GPU, still shows the summary numbers and a note, but no mesh.
 - **Vercel is unsupported** from this stage on: the serverless build has no Orca binary
   and a 60-second function limit. `app.py` and `vercel.json` are untouched but no longer
   describe a working deployment.
 
-Later stages, from the spec's scope:
+Later stages:
 
 - Exporting the part from Onshape instead of the fixed STL.
 - Printer, filament and process profiles chosen from team configuration.

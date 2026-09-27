@@ -5,10 +5,10 @@ of Orca processes allowed at once; the queue beyond it is deliberately small,
 because queued work nobody will wait for is worse than an honest refusal.
 
 Sizing basis (2026-09-13): one slice of print/sample_part.stl peaked at 93 MB
-resident and took 0.23 s wall clock on the aarch64 agent container. The
-production Railway plan's vCPU and memory allotment could not be read from the
-build container (no Railway token), so MAX_RUNNING stays at the spec's default
-of one until it is measured on the production plan. The rule when revisiting:
+resident and took 0.23 s wall clock on an aarch64 Linux machine. The
+production Railway plan's vCPU and memory allotment has not been measured yet,
+so MAX_RUNNING stays at its default of one until it is measured on the
+production plan. The rule when revisiting:
 min(vCPU count, memory / peak resident memory of one slice), never below one.
 See docs/DEPLOYMENT_GUIDE.md.
 """

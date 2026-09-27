@@ -48,5 +48,3 @@ __pycache__/
 
 # Orca Slicer, installed by print/scripts/install-orca.sh (never committed)
 tools/
-# SDD scratch workspace
-.superpowers/

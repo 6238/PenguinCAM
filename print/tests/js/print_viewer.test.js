@@ -43,8 +43,8 @@ test('parseSTL rejects an empty file', () => {
   assert.throws(() => v.parseSTL(new ArrayBuffer(0)), /STL/);
 });
 
-// The container's headless Chrome has no WebGL, so load() cannot be smoked in a
-// browser here. Drive it against a stub THREE instead: it guards the stated
+// load() needs WebGL in a real browser, so the node tests drive it against a
+// stub THREE instead: it guards the stated
 // coordinate contract, STL (x, y, z) -> THREE (x, z, -y), footprint centred on
 // the bed and the lowest point at y = 0.
 function stubThree() {

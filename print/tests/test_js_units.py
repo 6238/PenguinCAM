@@ -11,7 +11,7 @@ class NodeUnitTests(unittest.TestCase):
     def test_node_suite_passes(self):
         node = shutil.which("node")
         if node is None:
-            self.skipTest("node is not installed; the JS helper tests need it (CI and the dev machines have it)")
+            self.skipTest("node is not installed; install node to run the JS helper tests")
         # Glob in Python, not in node: a bare directory argument is loaded as a module by
         # node's test runner, and an empty argument list would make it discover the whole
         # repository. Both would report something other than these tests.

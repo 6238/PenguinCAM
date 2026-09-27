@@ -140,7 +140,7 @@
     this.bed = new THREE.Mesh(new THREE.PlaneGeometry(bedX, bedY),
                               new THREE.MeshPhongMaterial({ color: colors.bed, side: THREE.DoubleSide }));
     this.bed.rotation.x = -Math.PI / 2;
-    this.bed.position.y = 0;                 // the plan's "bed at THREE y = 0", literally
+    this.bed.position.y = 0;                 // the bed sits at THREE y = 0
     this.scene.add(this.bed);
     // The grid floats a hair above the bed so it does not z-fight the part's bottom face.
     this._gridSpec = { size: Math.max(bedX, bedY), divisions: Math.round(Math.max(bedX, bedY) / 10) };

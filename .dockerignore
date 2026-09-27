@@ -2,7 +2,6 @@ tools/
 .venv/
 venv/
 .git/
-.worktrees/
 __pycache__/
 *.pyc
 .env
@@ -10,4 +9,3 @@ __pycache__/
 google-creds.txt
 onshape_config.json
 PenguinCAM-config.yaml
-.superpowers/

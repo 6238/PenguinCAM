@@ -233,7 +233,7 @@ would see none of the first worker's jobs, tokens or counters.
 (`MAX_QUEUED = 2`). Beyond that, a request is refused rather than queued for someone who has
 stopped waiting.
 
-Measured on 2026-09-13, on an aarch64 container:
+Measured on 2026-09-13, on an aarch64 Linux machine:
 
 | Part | Wall clock | Peak resident |
 |------|-----------|---------------|
@@ -241,8 +241,8 @@ Measured on 2026-09-13, on an aarch64 container:
 | 120 x 120 x 40 mm box | 0.6 s | 250 MB |
 
 The rule for raising `MAX_RUNNING` is `min(vCPU count, memory / peak resident memory of one
-slice)`, never below one. The Railway plan's vCPU and memory allotment could not be read from
-the build container, so the constants stay where they are until someone reads the plan's
+slice)`, never below one. The Railway plan's vCPU and memory allotment has not been measured
+yet, so the constants stay where they are until someone reads the plan's
 allotment from the Railway dashboard and revisits them with that rule.
 
 ### Rate limit on slices
