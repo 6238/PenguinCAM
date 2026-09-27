@@ -1591,7 +1591,9 @@ def onshape_auth():
 
         # Store state in session for verification
         session['onshape_oauth_state'] = state
-
+        session.modified = True
+        log(f"🔐 OAuth state stored: {state[:8]}...")
+    
         next_path = request.args.get('next')
         if is_safe_internal_path(next_path):
             session['post_onshape_auth_redirect'] = next_path
