@@ -1623,7 +1623,14 @@ def onshape_oauth_callback():
 
         # Verify state (CSRF protection)
         expected_state = session.get('onshape_oauth_state')
-        if state != expected_state:
+        
+        log(
+            f"🔍 OAuth state check: "
+            f"returned={state[:8] if state else None}... "
+            f"expected={expected_state[:8] if expected_state else None}..."
+        )
+        
+        if not expected_state or not state or not secrets.compare_digest(state, expected_state):
             return "Authorization failed: Invalid state", 400
 
         # Exchange code for access token
