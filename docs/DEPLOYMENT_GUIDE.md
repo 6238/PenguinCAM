@@ -159,9 +159,9 @@ printer relay it is required.
 
 ### Development mode and the HTTPS rule
 
-Development mode is Flask's debug flag on **and** `RAILWAY_ENVIRONMENT` absent. The
-development server started as the project's [CLAUDE.md](../CLAUDE.md) describes meets both
-conditions. Gunicorn on Railway meets neither.
+Development mode is Flask's debug flag on **and** `RAILWAY_ENVIRONMENT` absent. The local
+development server (`uv run python frc_cam_gui_app.py` with `FLASK_ENV` unset, as in the
+[README](../README.md#local-testing)) meets both conditions. Gunicorn on Railway meets neither.
 
 Outside development mode, `/printer/daemon/*` and `/install-printer.sh` answer 403 to any
 request that did not arrive over HTTPS, judged after `ProxyFix`. On Railway, therefore,
@@ -208,8 +208,8 @@ The daemon recognises a challenge page, an HTML body on a JSON route, and names 
 `penguincam-printer status` instead of reporting a parse error.
 
 **Not yet confirmed:** as of 2026-09-13 the zone's plan and its Bot Fight Mode setting had
-not been checked in the dashboard, and nothing had been challenged. The owner should look:
-**Websites -> popcornpenguins.com** for the plan badge, and **Security -> Bots** for the
+not been checked in the dashboard, and nothing had been challenged. Whoever administers the
+zone should look: **Websites -> popcornpenguins.com** for the plan badge, and **Security -> Bots** for the
 toggle.
 
 ### Rate limits
@@ -224,7 +224,7 @@ multiply by the number of workers.
 ### Accepted risk: the pairing exchange budget is service-wide
 
 `POST /printer/daemon/pair` is limited to 60 requests a minute on a constant key, so every
-team shares one budget. That is the spec's choice (section 6): a pairing code is forty bits,
+team shares one budget. That is a deliberate choice: a pairing code is forty bits,
 which is out of reach at sixty guesses a minute, and keying the limit on the address would
 let a guesser spread the attempts over a botnet instead.
 
@@ -238,41 +238,41 @@ including right after a deploy that lost `FLASK_SECRET_KEY`.
 clears as soon as the pressure stops. Nothing is exposed: the attacker cannot pair either,
 and a Pi that already holds a token keeps syncing, because only the exchange is on this
 budget. If it ever happens in practice, the fix is a per-address limit alongside the
-service-wide one, once verification 8 says what address production actually sees.
+service-wide one, once a live probe shows what address production actually sees.
 
 ### What was verified, and when
 
-- Verification 5 (2026-09-13): a token signed with `FLASK_SECRET_KEY` verifies under the
+- Token durability (2026-09-13): a token signed with `FLASK_SECRET_KEY` verifies under the
   same key and is rejected under another; pinned by
-  `print/tests/test_printer_relay.py::TestVerificationFiveTokenDurability`, which mints a token in
+  `print/tests/test_printer_relay.py::TestTokenDurability`, which mints a token in
   a separate interpreter so a restart is what is actually being tested.
-- Verification 6 (2026-09-13): every daemon dependency has an aarch64 wheel; about 7 MB of
+- Daemon dependencies on the Pi (2026-09-13): every daemon dependency has an aarch64 wheel; about 7 MB of
   downloads, about 23 MB installed; 64-bit Raspberry Pi OS is required because Pillow
   publishes no 32-bit wheel.
-- Verification 7 (2026-09-13): the zone is proxied by Cloudflare, nothing was challenged on
+- Cloudflare (2026-09-13): the zone is proxied by Cloudflare, nothing was challenged on
   the day, the plan was not confirmed, and free-plan Bot Fight Mode cannot be skipped per
   path -- hence the GitHub raw installer URL.
-- Verification 8, partial (2026-09-13): `ProxyFix` honours one forwarded hop (`x_for=1`);
+- Limiter and proxy, partial (2026-09-13): `ProxyFix` honours one forwarded hop (`x_for=1`);
   `override_defaults=True` is set on every printer route and pinned by a test. Both, and the
   `X-Forwarded-Proto: https` that opens the HTTPS gate, are pinned by
-  `print/tests/test_printer_routes.py::TestVerificationEightLimiterAndProxy`. Note that `ProxyFix`
+  `print/tests/test_printer_routes.py::TestLimiterAndProxy`. Note that `ProxyFix`
   counts hops from the **right**: with `x_for=1` an `X-Forwarded-For` that already carries a
   chain gives the app the address the nearest proxy reported, not the browser's. Nothing in
   this feature keys a real limit on the address -- the printer routes key on the pairing
   code -- but the app-wide default does. **Open:** what address the app actually sees in
-  production for a browser and for a Pi. Needs a live probe against Railway; **ask the
-  owner** before running one.
-- Verifications 1 to 4: **open**, need the shop H2S.
+  production for a browser and for a Pi. Needs a live probe against Railway; **ask whoever
+  administers the deployment** before running one.
+- The daemon against a real printer: **open**, needs the shop H2S.
   `print/printer_daemon/tests/fixtures/h2s_status.json` is provisional until
   `print/printer_daemon/tests/smoke_test.py` has been run against it.
 
 ### Updating the daemon
 
-`print/print/printer_daemon/install.sh` pins `PENGUINCAM_SHA`. That SHA is the one place the daemon's
+`print/printer_daemon/install.sh` pins `PENGUINCAM_SHA`. That SHA is the one place the daemon's
 version is written.
 
 **Every pull request that changes anything under `print/printer_daemon/` updates it to that pull
-request's merge commit.** Until the owner sets it when opening the pull request it reads
+request's merge commit.** Until it is set when the pull request is opened it reads
 `REPLACE_BEFORE_MERGE`, and the installer refuses to run.
 
 **It is two edits, one commit.** `PENGUINCAM_SHA` in `print/printer_daemon/install.sh` and the

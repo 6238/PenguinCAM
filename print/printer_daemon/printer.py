@@ -58,7 +58,8 @@ _JOB_ID_RE = re.compile(r'^j[0-9a-f]{7,8}$')
 # 3 common, 4 info (OpenBambuAPI's hms.md, which is also how Bambu Studio colours the entry
 # -- bambulabs_api 2.6.6 exposes no HMS accessor at all, so there is no library constant to
 # use). Only fatal and serious stop a print; an info entry can sit in the list through a
-# perfectly healthy job. PROVISIONAL with the rest of the mapping until the Task 11 capture.
+# perfectly healthy job. PROVISIONAL with the rest of the mapping until tests/smoke_test.py
+# captures a real status.
 HMS_SEVERITY_STOPS = frozenset({1, 2})
 
 # SSDP: Bambu printers announce themselves to this group and port. Binding the port is not
@@ -169,7 +170,7 @@ def map_status(report, *, printer=None):
         'file': report.get('gcode_file') or report.get('subtask_name') or '',
         # mc_percent is a whole percent; mc_remaining_time is MINUTES (the library's
         # docstring says seconds, but every Bambu printer documented by OpenBambuAPI
-        # reports minutes here). Verification task 1 settles it against the real H2S.
+        # reports minutes here). tests/smoke_test.py settles it against the real H2S.
         'percent': _as_int(report.get('mc_percent')),
         'remaining_min': _as_int(report.get('mc_remaining_time')),
         'layer': _as_int(report.get('layer_num'), 0),
@@ -261,8 +262,8 @@ class PrinterLink:
         """Start the uploaded file. Plate 1 is what the slicer writes.
 
         use_ams is False: the slice is single-material, and an AMS mapping the team has not
-        asked for would be a surprising default. Revisit with the owner if the shop prints
-        from an AMS.
+        asked for would be a surprising default. Revisit if the shop prints from an
+        AMS.
 
         That choice puts the EXTERNAL SPOOL in charge of the material, and the printer
         checks the spool it has against the filament the slice asks for. The fixed profile
@@ -284,7 +285,7 @@ def discover(timeout=5.0, *, sock_factory=None):
     Returns a list of {'serial', 'model', 'name', 'ip'}. School networks often block
     broadcasts, so `pair` treats an empty list as normal and asks for an IP address.
 
-    PROVISIONAL: the exact SSDP header names are verification task 3. The parser below
+    PROVISIONAL: the exact SSDP header names are not yet confirmed on the H2S. The parser below
     accepts any `Key: value` header line and reads the ones Bambu is documented to send, so
     an unexpected name shows up as a missing field rather than a crash."""
     import time as _time

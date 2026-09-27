@@ -52,8 +52,8 @@ def _log(*args):
 def _is_dev_mode():
     """Development mode: Flask's debug flag on AND no RAILWAY_ENVIRONMENT.
 
-    The development server started as the project's CLAUDE.md describes meets both;
-    gunicorn on Railway meets neither. Two things hang off this: the HTTPS requirement
+    The local development server (`uv run python frc_cam_gui_app.py` with FLASK_ENV unset)
+    meets both; gunicorn on Railway meets neither. Two things hang off this: the HTTPS requirement
     below, and PRINTER_DEV_PAIRING_CODE."""
     try:
         return bool(current_app.debug) and not os.environ.get('RAILWAY_ENVIRONMENT')
@@ -135,7 +135,7 @@ def _authenticated_code():
 
 
 def _wire_job(job):
-    """The job as the daemon receives it: the four fields of the spec's wire shape.
+    """The job as the daemon receives it: the four fields of the wire shape.
 
     The relay's own dict also carries `state`, `team_number` and `handed_out_at`, which are
     the relay's bookkeeping and no business of the Pi's."""

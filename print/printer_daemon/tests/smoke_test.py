@@ -14,7 +14,9 @@ What it is for: the mocked tests are written against bambulabs_api's documented 
 names, because the shop H2S was not connected when this feature was built. This script
 prints the printer's RAW status document, which becomes the replacement for
 printer_daemon/tests/fixtures/h2s_status.json -- after which the state-mapping tests are
-pinned to the real thing. It answers spec verification tasks 1, 2 and 4.
+pinned to the real thing. It also answers three open questions: the status field names and
+units, the file-name form the printer reports, and how long the printer takes to report
+`running` after the start command.
 """
 
 import json
@@ -61,7 +63,7 @@ def main():
             sys.exit("no MQTT report arrived. Check LAN-only mode, Developer Mode and the "
                      "access code.")
 
-        print("\n--- raw status before the print (verification task 1) ---")
+        print("\n--- raw status before the print (status field names and units) ---")
         print(json.dumps(raw, indent=2, sort_keys=True, default=str))
         print("\n--- mapped snapshot ---")
         print(json.dumps(map_status(raw, printer=link.identity), indent=2, sort_keys=True))
@@ -72,7 +74,7 @@ def main():
         started = link.start(remote_name)
         print(f"start_print returned {started!r}")
 
-        # Verification task 4: how long from the start command to a reported `running`,
+        # How long from the start command to a reported `running`,
         # including the printer's preparing states.
         began = time.monotonic()
         seen = []
@@ -86,17 +88,17 @@ def main():
                 print(f"  t+{time.monotonic() - began:5.1f}s  {marker}")
             if snapshot['state'] == 'running' and snapshot['file'] == remote_name:
                 print(f"\nreported running after "
-                      f"{time.monotonic() - began:.1f}s (verification task 4)")
+                      f"{time.monotonic() - began:.1f}s")
                 break
             time.sleep(1.0)
         else:
             print("\nthe printer never reported running with our file name; "
-                  "check verification task 2 -- the reported file-name form")
+                  "check the reported file-name form below")
 
         final = link.raw_report()
         print("\n--- raw status while printing (this becomes the fixture) ---")
         print(json.dumps(final, indent=2, sort_keys=True, default=str))
-        print("\nReported file name (verification task 2): "
+        print("\nReported file name: "
               f"{final.get('gcode_file')!r} / subtask {final.get('subtask_name')!r}")
     finally:
         link.disconnect()

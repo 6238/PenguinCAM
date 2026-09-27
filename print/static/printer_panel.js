@@ -1,8 +1,5 @@
 /* PenguinCAM -- printer status line and "Send to Printer" for the print wizard.
  *
- * Spec: docs/superpowers/specs/2026-09-13-bambu-printer-relay-design.md, sections 4 (the
- * status-line table), 7 (the /printer/status and /printer/jobs routes) and 10.
- *
  * This file is the printer half of the print wizard's Preview step.
  * print/templates/print_wizard.html loads it after print_wizard.js; it attaches to that
  * page's DOM (#stepbar,
@@ -42,7 +39,7 @@
   // extension so only a real suffix matches. Mirrors strip_job_suffix in printer_relay.py;
   // it is a fallback only, since the routes send display_name already stripped.
   var JOB_SUFFIX_RE = /-j[0-9a-fA-F]{7,8}(?=\.gcode\.3mf$)/;
-  // The extension is noise on the status line: the spec's rows read "Printing sample_part",
+  // The extension is noise on the status line: the status line reads "Printing sample_part",
   // not "Printing sample_part.gcode.3mf".
   var EXTENSION_RE = /(\.gcode)?\.3mf$/i;
 
@@ -90,7 +87,7 @@
   }
 
   /**
-   * The status line's text: the first matching row of the spec's section 4 table.
+   * The status line's text: the first matching rule below, in order.
    * `payload` is the JSON body of GET /printer/status.
    */
   function renderStatusText(payload) {

@@ -612,8 +612,7 @@ The page carries `window.PenguinCAM` with five fields: `source`, `theme`, `retur
 `getDownloadToken()` and `choosePrinterAction()`, which are the contract with
 `print/static/printer_panel.js`, the printer half of the Preview step. That script, the
 `/printer/*` routes and the Raspberry Pi daemon behind them are documented in
-[PRINTER_SETUP.md](PRINTER_SETUP.md); testing them from a Mac against the container's
-server is [PRINTER_DEV_TESTING.md](PRINTER_DEV_TESTING.md).
+[PRINTER_SETUP.md](PRINTER_SETUP.md).
 
 ### `print/static/print_wizard.js`
 

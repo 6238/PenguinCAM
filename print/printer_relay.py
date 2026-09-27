@@ -82,7 +82,7 @@ def format_code(code):
 
 # The job id the daemon bakes into the uploaded file name, e.g. the '-j8f3a2c1' in
 # 'sample_part-j8f3a2c1.gcode.3mf'. Anchored on the extension so only a real suffix matches.
-# new_job_id() draws eight hex digits; the seven-digit 'j8f3a2c1' of the spec's examples is
+# new_job_id() draws eight hex digits; a seven-digit id such as 'j8f3a2c1' is
 # accepted too, so a name written by hand from the documentation still reads back cleanly.
 _JOB_SUFFIX_RE = re.compile(r'-j[0-9a-fA-F]{7,8}(?=\.gcode\.3mf$)')
 

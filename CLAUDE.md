@@ -143,7 +143,6 @@ Detailed documentation lives in the `docs/` directory. **Read these before modif
 | `quick-reference-card.md` | Changing UI workflows or default settings that affect end users |
 | [3D_PRINTING.md](docs/3D_PRINTING.md) | Changing the print wizard, the slicer wrapper, the job pool, or the Orca install |
 | [PRINTER_SETUP.md](docs/PRINTER_SETUP.md) | Changing the printer relay, the Pi daemon, the pairing flow, or the printer routes |
-| [PRINTER_DEV_TESTING.md](docs/PRINTER_DEV_TESTING.md) | Testing the relay end to end: backend in the agent container, daemon on the Mac, a real printer |
 
 ## Testing
 

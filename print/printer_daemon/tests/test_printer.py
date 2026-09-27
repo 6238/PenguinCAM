@@ -182,7 +182,7 @@ class TestFileNames(unittest.TestCase):
 
     def test_a_real_generated_job_id_round_trips(self):
         """The relay builds the id as 'j' + secrets.token_hex(4), so the stripper has to
-        recognise what it will really be handed, not just the example in the spec."""
+        recognise what it will really be handed, not just the example in the documentation."""
         for _ in range(200):
             job_id = 'j' + secrets.token_hex(4)
             name = pr.suffixed_name('sample_part.gcode.3mf', job_id)

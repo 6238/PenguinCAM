@@ -38,14 +38,13 @@ test-daemon:
 	@uv run python -m unittest discover -s print/printer_daemon/tests -t print --buffer
 
 # The daemon alone, as one archive, for running it on a laptop against a development
-# server (docs/PRINTER_DEV_TESTING.md). Staged through a directory rather than tar's
-# --transform, so the same target works with the Mac's bsdtar. dist/ is git-ignored.
+# server. Staged through a directory rather than tar's --transform, so the target works
+# with BSD tar as well as GNU tar. dist/ is git-ignored.
 DAEMON_TARBALL ?= dist/penguincam-printer-daemon.tar.gz
 daemon-tarball:
 	@rm -rf dist/penguincam-printer-daemon
-	@mkdir -p dist/penguincam-printer-daemon/docs
+	@mkdir -p dist/penguincam-printer-daemon
 	@cp -R print/printer_daemon dist/penguincam-printer-daemon/
-	@cp docs/PRINTER_DEV_TESTING.md dist/penguincam-printer-daemon/docs/
 	@find dist/penguincam-printer-daemon -name __pycache__ -type d -prune -exec rm -rf {} +
 	@tar -C dist -czf $(DAEMON_TARBALL) penguincam-printer-daemon
 	@rm -rf dist/penguincam-printer-daemon

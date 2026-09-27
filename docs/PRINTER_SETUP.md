@@ -188,7 +188,7 @@ code in the YAML matches the one `status` prints on the Pi.
 A redeploy of the site does not cause this, as long as `FLASK_SECRET_KEY` is set on the
 server. The Pi's token survives, and its next sync recreates the record within seconds with
 nobody opening anything. If every printer does show this after every deploy, the server is
-missing `FLASK_SECRET_KEY`. Tell the owner, and point at
+missing `FLASK_SECRET_KEY`. Tell whoever runs your PenguinCAM site, and point at
 [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md).
 
 **The printer does not answer**
@@ -213,7 +213,7 @@ is almost always a cloned SD card or a copied `config.toml`. Run
 **"blocked by a bot challenge"**
 
 The Pi reached the site and got a Cloudflare challenge page instead of an answer. The Pi
-cannot fix this. Tell the owner. The fix is a toggle in the Cloudflare dashboard, described
+cannot fix this. Tell whoever runs your PenguinCAM site. The fix is a toggle in the Cloudflare dashboard, described
 in [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md).
 
 **The print starts but uses the wrong filament**
@@ -285,26 +285,23 @@ to any request that did not arrive over HTTPS, unless the server is in developme
 
 ### Running a daemon against a local server
 
-Start the backend as this project's [CLAUDE.md](../CLAUDE.md) describes, then on the Pi:
+Start the development server as the [README](../README.md#local-testing) describes
+(`uv run python frc_cam_gui_app.py`), then on the Pi:
 
 ```
-sudo penguincam-printer pair --backend http://<your mac's LAN address>:6238 --dev
+sudo penguincam-printer pair --backend http://<development machine's LAN address>:6238 --dev
 ```
 
 `--dev` writes `dev = true` into the Pi's config file and is the only thing that lets the
 daemon talk plain HTTP. Without it both `pair` and `run` refuse a non-HTTPS backend URL, so
 a shop install can never end up talking HTTP. The installer never passes it. With it, `run`
 logs a warning naming the URL at every start, so the shortcut cannot go unnoticed. The flag
-exists because the development server is reached from the Pi by the Mac's LAN address, not
-by `localhost`, so a hostname rule would not do the job.
+exists because the development server is reached from the Pi by the development machine's LAN
+address, not by `localhost`, so a hostname rule would not do the job.
 
 To pair against a server nobody has opened in Onshape, set `PRINTER_DEV_PAIRING_CODE` to the
 Pi's code before starting the backend. It seeds a relay record. It is read only in
 development mode and ignored on Railway. See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md).
-
-The daemon does not have to be on a Pi. The full recipe for running it on a Mac against a
-backend in the agent container, and sending a real print through it, is
-[PRINTER_DEV_TESTING.md](PRINTER_DEV_TESTING.md).
 
 ### The wizard panel
 

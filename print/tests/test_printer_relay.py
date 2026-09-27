@@ -390,7 +390,7 @@ class TestJobIds(unittest.TestCase):
 
 
 class TestEveryEntryPointNormalizes(RelayTestCase):
-    """The spec's rule: everywhere a code is read, it is normalised before use.
+    """The rule: everywhere a code is read, it is normalised before use.
 
     A code reaches the relay from a YAML file, a typed pairing form and a bearer token, so
     the display form has to work wherever the canonical one does -- and a malformed one has
@@ -575,8 +575,8 @@ class TestDisplayNames(RelayTestCase):
         self.assertIsNone(self.relay.status_for(self.CODE)['last_result'])
 
 
-class TestVerificationFiveTokenDurability(unittest.TestCase):
-    """Spec verification task 5: a token signed with the app secret must survive a restart
+class TestTokenDurability(unittest.TestCase):
+    """A token signed with the app secret must survive a restart
     when FLASK_SECRET_KEY is set, and must be rejected under a different key.
 
     This is what makes FLASK_SECRET_KEY a requirement rather than a recommendation: without

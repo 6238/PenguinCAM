@@ -500,8 +500,8 @@ class TestRateLimitKeys(PrinterRouteTestCase):
         self.assertEqual(other.status_code, 429)
 
 
-class TestVerificationEightLimiterAndProxy(PrinterRouteTestCase):
-    """Spec verification task 8, the parts that need no production traffic.
+class TestLimiterAndProxy(PrinterRouteTestCase):
+    """The limiter and proxy checks that need no production traffic.
 
     What is pinned here: flask-limiter evaluates a route's key_func BEFORE the view, so a
     key_func that raised would be a 500 the view never sees -- hence the try/except in
@@ -659,7 +659,7 @@ class TestVerificationEightLimiterAndProxy(PrinterRouteTestCase):
         not the browser's -- 10.0.0.9 here, not 203.0.113.7.
 
         Harmless for the printer routes, whose real limits key on the pairing code. It is
-        the open half of verification 8 for anything that keys on the address: what the
+        the open question for anything that keys on the address: what the
         production chain actually looks like needs a live probe."""
         seen = self.capture_remote_addr()
         self.client.get('/printer/status', base_url='https://localhost',

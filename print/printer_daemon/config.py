@@ -51,8 +51,8 @@ def check_backend_url(url, *, dev):
 
     A plain-HTTP backend is refused unless `pair` was given --dev, which writes dev = true.
     The installer never passes --dev, so a shop install cannot talk HTTP. The flag exists
-    because the development server is reached from the Pi by the Mac's LAN address, not by
-    localhost, so a hostname rule would not do."""
+    because the development server is reached from the Pi by the development machine's LAN
+    address, not by localhost, so a hostname rule would not do."""
     parsed = urlparse(_normalize_url(url))
     if parsed.scheme not in ('http', 'https') or not parsed.netloc:
         raise ValueError(f"{url!r} is not a backend URL; it must start with https://")
