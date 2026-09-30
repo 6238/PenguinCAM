@@ -632,7 +632,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 formData.append('tabs_enabled', document.getElementById('tabsEnabled').checked ? '1' : '0');
                 formData.append('optional_stop_after_holes', document.getElementById('optionalStopAfterHoles')?.checked ? '1' : '0');
             }
-            formData.append('rotation', appState.rotationAngle);
+            const generationRotation = ((Number(appState.rotationAngle) % 360) + 360) % 360;
+            formData.append('rotation', String(generationRotation));
+            console.log('[DXF] Generating with part rotation:', generationRotation + '°');
             const quantityVal = parseInt(document.getElementById('quantity')?.value || '1', 10);
             formData.append('quantity', filesToUpload.length > 1 ? '1' : Math.max(1, quantityVal));
             const nestRotationVal = document.getElementById('nestRotation')?.value || 'auto';
@@ -660,6 +662,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     throw new Error(errorMsg + details);
                 }
 
+                console.log('[DXF] Server applied part rotation:', data.stats?.rotation ?? 'unknown');
                 appState.gcodeContent = data.gcode;
                 appState.outputFilename = data.real_filename || data.filename;
 
@@ -875,7 +878,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // DXF Setup State
         let currentMode = 'setup'; // 'setup' or 'preview'
         let dxfGeometry = null; // Parsed DXF geometry
-        let rotationAngle = 0; // 0, 90, 180, 270 degrees
         let dxfCanvas2D = null;
         let dxfCtx2D = null;
         let dxfBounds = null;
@@ -951,14 +953,10 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Setup event listeners
             document.getElementById('rotateBtn').addEventListener('click', () => {
-            appState.rotationAngle = (appState.rotationAngle + 90) % 360;
-            document.getElementById('rotationDisplay').textContent =
-                appState.rotationAngle + '°';
-
-            renderDxfSetup();
-            saveSettings();
+                appState.rotationAngle = (Number(appState.rotationAngle) + 90) % 360;
+                document.getElementById('rotationDisplay').textContent = appState.rotationAngle + '°';
                 renderDxfSetup();
-                saveSettings(); // Persist rotation angle
+                saveSettings();
             });
             
             // Mode toggle listeners
