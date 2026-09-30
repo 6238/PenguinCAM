@@ -184,7 +184,9 @@ function loadSettings() {
         // Use saved value if exists, otherwise keep server-provided default
         document.getElementById('toolDiameter').value = settings.toolDiameter || serverDefaultToolDiameter;
         appState.rotationAngle = settings.rotationAngle || DEFAULT_SETTINGS.rotationAngle;
-
+        rotationAngle = appState.rotationAngle;
+        document.getElementById('rotationDisplay').textContent =
+            appState.rotationAngle + '°';
         // Trigger material change to show/hide tube params and warnings
         const materialSelect = document.getElementById('material');
         if (materialSelect.value === 'aluminum_tube') {
@@ -616,7 +618,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 formData.append('tabs_enabled', document.getElementById('tabsEnabled').checked ? '1' : '0');
                 formData.append('optional_stop_after_holes', document.getElementById('optionalStopAfterHoles')?.checked ? '1' : '0');
             }
-            formData.append('rotation', rotationAngle); // Add rotation angle
+            formData.append('rotation', appState.rotationAngle);
             const quantityVal = parseInt(document.getElementById('quantity')?.value || '1', 10);
             formData.append('quantity', filesToUpload.length > 1 ? '1' : Math.max(1, quantityVal));
             const nestRotationVal = document.getElementById('nestRotation')?.value || 'auto';
@@ -935,9 +937,12 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Setup event listeners
             document.getElementById('rotateBtn').addEventListener('click', () => {
-                rotationAngle = (rotationAngle + 90) % 360;
-                appState.rotationAngle = rotationAngle; // Keep appState in sync
-                document.getElementById('rotationDisplay').textContent = rotationAngle + '°';
+            appState.rotationAngle = (appState.rotationAngle + 90) % 360;
+            document.getElementById('rotationDisplay').textContent =
+                appState.rotationAngle + '°';
+
+            renderDxfSetup();
+            saveSettings();
                 renderDxfSetup();
                 saveSettings(); // Persist rotation angle
             });
