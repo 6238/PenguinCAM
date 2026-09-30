@@ -1297,7 +1297,19 @@ document.addEventListener('DOMContentLoaded', () => {
             switchMode('setup');
         }
 
-        // Rebuild the multi-part preview whenever the nesting rotation mode changes.\n        // The selected value is also submitted with the Generate request.\n        const nestRotationSelect = document.getElementById('nestRotation');\n        if (nestRotationSelect) {\n            nestRotationSelect.addEventListener('change', () => {\n                if (appState.previewParts && appState.previewParts.length > 1) {\n                    buildCompositePreview(appState.previewParts);\n                    console.log('[Nesting] Preview rebuilt with rotation:', nestRotationSelect.value);\n                }\n            });\n        }\n\n        async function parseDxfFilesForSetup(files) {
+        // Rebuild the multi-part preview whenever the nesting rotation mode changes.
+        // The selected value is also submitted with the Generate request.
+        const nestRotationSelect = document.getElementById('nestRotation');
+        if (nestRotationSelect) {
+            nestRotationSelect.addEventListener('change', () => {
+                if (appState.previewParts && appState.previewParts.length > 1) {
+                    buildCompositePreview(appState.previewParts);
+                    console.log('[Nesting] Preview rebuilt with rotation:', nestRotationSelect.value);
+                }
+            });
+        }
+
+\n        async function parseDxfFilesForSetup(files) {
             try {
                 if (!files || files.length === 0) return;
                 if (files.length === 1) {
