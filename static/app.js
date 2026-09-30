@@ -2798,11 +2798,19 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Camera positioning
-            const viewDist = Math.max(maxX, maxY, maxZ) * 2;
-            camera.position.set(viewDist * 0.7, viewDist * 0.7, viewDist * 0.7);
+            // The setup view uses DXF X right / Y up. In the 3D viewer the machine
+            // plane is X / -Z, so start from a true top-down view with X horizontal
+            // and machine Y vertical on screen. This keeps 0° visually consistent
+            // between setup and G-code preview.
+            const viewDist = Math.max(maxX - minX, maxY - minY, maxZ, 1) * 2;
+            const centerX = (maxX + minX) / 2;
+            const centerZ = -((maxY + minY) / 2);
+            const centerY = Math.max(maxZ, toolpathStockHeight, 1) * 2;
 
+            camera.up.set(0, 0, -1);
+            camera.position.set(centerX, centerY + viewDist, centerZ);
             optimalCameraPosition = { x: camera.position.x, y: camera.position.y, z: camera.position.z };
-            optimalLookAtPosition = { x: maxX / 3, y: maxZ / 3, z: -maxY / 3 };
+            optimalLookAtPosition = { x: centerX, y: 0, z: centerZ };
 
             // Set OrbitControls target (rotation center)
             if (controls) {
