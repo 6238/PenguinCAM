@@ -943,7 +943,7 @@ def process_file():
 
                     result = pp.generate_gcode(suggested_filename=base_name, timestamp=timestamp_str)
 
-                    if quantity > 1 and result.success:
+                    if result.success:
                         part_w, part_h = pp.get_part_bounds()
                         gap = pp.tool_diameter
                         stock_x = pp.config.machine_x_max
