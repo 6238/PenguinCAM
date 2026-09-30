@@ -42,7 +42,7 @@ BionicsCAM is meant for students and mentors who need a practical path from CAD 
 
 First thing's first: huge thanks to **FRC Team 6238, Popcorn Penguins**, for PenguinCAM.
 
-BionicsCAM started late at night when our team needed a part immediately and the hosted PenguinCAM instance was unavailable. Railway was down. We got a local version running, then the project spiraled into a Vercel-hosted app with Onshape integration, auto-nesting, and enough debugging chaos to accidentally create a raccoon-themed engineering religion.
+BionicsCAM started late at night when our team needed a part immediately and the hosted PenguinCAM instance was unavailable. Railway was down. We got a local version running, then the project spiraled into a Vercel-hosted app with Onshape integration, auto-nesting, and extensive debugging work.
 
 The goal is simple: make it easier for the whole team to go from CAD to router-ready G-code without forcing every student to become a CAM expert on day one.
 
