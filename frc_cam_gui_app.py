@@ -1106,7 +1106,8 @@ def process_file():
             'real_filename': actual_filename,  # Real filename for client-side download
             'gcode': result.gcode,
             'console': console_output,
-            'parameters': parameters
+            'parameters': parameters,
+            'stats': result.stats
         }
 
         # Add cycle time if available
