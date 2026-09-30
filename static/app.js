@@ -184,7 +184,6 @@ function loadSettings() {
         // Use saved value if exists, otherwise keep server-provided default
         document.getElementById('toolDiameter').value = settings.toolDiameter || serverDefaultToolDiameter;
         appState.rotationAngle = settings.rotationAngle || DEFAULT_SETTINGS.rotationAngle;
-        rotationAngle = appState.rotationAngle;
         document.getElementById('rotationDisplay').textContent =
             appState.rotationAngle + '°';
         // Trigger material change to show/hide tube params and warnings
@@ -1733,7 +1732,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let displayHeight = Number(dxfBounds.height);
             if (!Number.isFinite(displayWidth) || displayWidth <= 0) displayWidth = Number(window.MACHINE_CONFIG?.xMax) || 48.0;
             if (!Number.isFinite(displayHeight) || displayHeight <= 0) displayHeight = Number(window.MACHINE_CONFIG?.yMax) || 48.0;
-            if (rotationAngle === 90 || rotationAngle === 270) {
+            if (appState.rotationAngle === 90 || appState.rotationAngle === 270) {
                 [displayWidth, displayHeight] = [displayHeight, displayWidth];
             }
             
@@ -1764,7 +1763,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 let dy = y - dxfBounds.centerY;
                 
                 // Apply rotation
-                const rotated = rotatePoint(dx, dy, rotationAngle);
+                const rotated = rotatePoint(dx, dy, appState.rotationAngle);
                 
                 // Scale and flip Y, then translate to canvas center
                 return {
@@ -1821,8 +1820,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             const aPos = toCanvasCoords(entity.center.x, entity.center.y);
                             // Y-flip means angles are negated, rotation subtracts from angle
                             // Canvas angle = -(DXF angle - rotation) = -DXF angle + rotation
-                            const startRad = (-entity.startAngle + rotationAngle) * Math.PI / 180;
-                            const endRad = (-entity.endAngle + rotationAngle) * Math.PI / 180;
+                            const startRad = (-entity.startAngle + appState.rotationAngle) * Math.PI / 180;
+                            const endRad = (-entity.endAngle + appState.rotationAngle) * Math.PI / 180;
                             const arcRadius = entity.radius * scale;
                             
                             // Validate arc parameters
@@ -1954,7 +1953,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (fitsInMachine) {
                 ctx.fillStyle = '#8B949E';
                 ctx.fillText(
-                    `${displayWidth.toFixed(2)}" × ${displayHeight.toFixed(2)}" (${rotationAngle}°)`,
+                    `${displayWidth.toFixed(2)}" × ${displayHeight.toFixed(2)}" (${appState.rotationAngle}°)`,
                     width / 2,
                     20
                 );
@@ -1962,7 +1961,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Part exceeds machine bounds - show error
                 ctx.fillStyle = '#FF4444';
                 ctx.fillText(
-                    `⚠️ ${displayWidth.toFixed(2)}" × ${displayHeight.toFixed(2)}" (${rotationAngle}°) - TOO LARGE`,
+                    `⚠️ ${displayWidth.toFixed(2)}" × ${displayHeight.toFixed(2)}" (${appState.rotationAngle}°) - TOO LARGE`,
                     width / 2,
                     20
                 );
@@ -2095,7 +2094,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Calculate rotated bounding box to determine offset
             // We need to rotate all points, find their bounds, then offset so min is at (0,0)
-            const radians = -rotationAngle * Math.PI / 180;  // Negative for clockwise (to match backend)
+            const radians = -appState.rotationAngle * Math.PI / 180;  // Negative for clockwise (to match backend)
             const cos = Math.cos(radians);
             const sin = Math.sin(radians);
 
@@ -2552,7 +2551,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Account for rotation
                 let dxfWidth = dxfBounds ? dxfBounds.width : (maxX - minX);
                 let dxfHeight = dxfBounds ? dxfBounds.height : (maxY - minY);
-                if (rotationAngle === 90 || rotationAngle === 270) {
+                if (appState.rotationAngle === 90 || appState.rotationAngle === 270) {
                     [dxfWidth, dxfHeight] = [dxfHeight, dxfWidth];
                 }
 
@@ -2584,7 +2583,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Account for rotation - swap DXF dimensions if rotated 90 or 270 degrees
                 let dxfWidth = dxfBounds ? dxfBounds.width : stockWidth;
                 let dxfHeight = dxfBounds ? dxfBounds.height : stockDepth;
-                if (rotationAngle === 90 || rotationAngle === 270) {
+                if (appState.rotationAngle === 90 || appState.rotationAngle === 270) {
                     [dxfWidth, dxfHeight] = [dxfHeight, dxfWidth];
                 }
 
