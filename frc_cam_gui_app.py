@@ -697,7 +697,12 @@ def process_file():
 
         tool_diameter = float(request.form.get('tool_diameter', 0.157))
         origin_corner = request.form.get('origin_corner', 'bottom-left')
-        rotation = int(request.form.get('rotation', 0))
+        try:
+            rotation = int(request.form.get('rotation', 0)) % 360
+        except (TypeError, ValueError):
+            rotation = 0
+        if rotation not in (0, 90, 180, 270):
+            rotation = 0
         use_25d = request.form.get('use25d', 'false').lower() == 'true'
         quantity = max(1, min(int(request.form.get('quantity', 1)), 50))  # clamp 1-50
         # nest_rotation: 'auto' | '0' | '90'
@@ -1026,6 +1031,11 @@ def process_file():
                         result.stats['nesting_rotation'] = rotation_label
 
 
+            # Always expose the exact part rotation used for this generation so the
+            # client can verify that a setup->generate round-trip did not reuse stale state.
+            if not hasattr(result, 'stats') or result.stats is None:
+                result.stats = {}
+            result.stats['rotation'] = rotation
             if not result.success:
                 log(f"❌ Post-processor API failed!")
                 for error in result.errors:
