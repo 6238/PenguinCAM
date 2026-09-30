@@ -1,4 +1,4 @@
-# BionicsCAM 🦝
+# BionicsCAM
 
 **Onshape-to-CNC CAM for FRC teams who would rather build robots than wrestle CAM software.**
 
@@ -6,7 +6,7 @@ The issue with most README's is that they are, well, boring. It seems like every
 
 BionicsCAM is a browser-based CNC workflow for flat FRC parts. It can import DXFs manually, pull selected faces from Onshape, generate toolpaths, preview G-code, and export ready-to-run NC files.
 
-It started as a fork/rebrand of **PenguinCAM by FRC Team 6238**, then wandered into the trash can and came back with Onshape integration, auto-nesting, Vercel deployment, and a suspicious number of raccoon jokes.
+It started as a fork/rebrand of **PenguinCAM by FRC Team 6238**, then wandered into the trash can and came back with Onshape integration, auto-nesting, Vercel deployment, and several project-specific improvements.
 
 **Live app:** <https://cam.team4909.org>
 
@@ -38,10 +38,6 @@ Because sometimes your team needs a bracket **now**, the normal CAM workflow is 
 
 BionicsCAM is meant for students and mentors who need a practical path from CAD to CNC without making every new student become a feeds-and-speeds wizard overnight.
 
-The raccoon philosophy:
-
-> Make the safe path easy, make the dangerous path obvious, and never let the overlay raccoon back into the G-code preview.
-
 ### Origin story
 
 First thing's first: huge thanks to **FRC Team 6238, Popcorn Penguins**, for PenguinCAM.
@@ -67,7 +63,7 @@ The goal is simple: make it easier for the whole team to go from CAD to router-r
 - Single DXF upload.
 - Multi-DXF upload.
 - Quantity support for multi-upload.
-- Works even when the Onshape API raccoon is having a day.
+
 
 ### Built for FRC
 
@@ -86,7 +82,7 @@ The goal is simple: make it easier for the whole team to go from CAD to router-r
 - Adds clearance between parts.
 - Generates one combined NC file.
 
-Auto-nesting V1 is intentionally simple. It does **not** do full polygon nesting, genetic algorithms, simulated annealing, AI magic, or raccoon divination.
+Auto-nesting V1 is intentionally simple. It does **not** do full polygon nesting, genetic algorithms, simulated annealing, AI magic, or other advanced optimization methods.
 
 ### G-code generation
 
@@ -104,7 +100,7 @@ Auto-nesting V1 is intentionally simple. It does **not** do full polygon nesting
 - G-code preview.
 - Stock outline.
 - Multi-part preview.
-- Overlay raccoon suppression when switching to G-code preview.
+
 
 ---
 
@@ -132,7 +128,7 @@ If Onshape import fails because of permissions, make sure the logged-in user can
 6. Preview G-code.
 7. Generate the NC file.
 
-Manual upload is the emergency exit when the Onshape raccoon eats the API tokens.
+Manual upload is the emergency exit when the Onshape import is unavailable.
 
  ### Edit: There is now a third option. Import from BionicsCAM itself.
  1. Click the "Import one part from Onshape" button
@@ -192,7 +188,7 @@ Default recommended mode for multi-user classroom/team use:
 ONSHAPE_BACKEND_AUTH_MODE=oauth
 ```
 
-OAuth mode means each user spends their own Onshape API requests and uses their own document permissions. Fewer permission raccoons, more personal responsibility.
+OAuth mode means each user spends their own Onshape API requests and uses their own document permissions. Each user is responsible for their own Onshape permissions and API usage.
 
 ---
 
@@ -228,7 +224,7 @@ node --check static/app.js
 node --check static/onshape_panel.js
 ```
 
-If the repo has been reorganized into folders, adjust paths accordingly. The raccoon cannot read your mind, but `ls` can help.
+If the repo has been reorganized into folders, adjust paths accordingly. `ls` can help verify the current project layout.
 
 ---
 
@@ -248,7 +244,7 @@ Before calling a build “good,” test these:
 - 2D runtime is reasonable.
 - 2.5D does not try to cut every line like a spaghetti machine.
 
-If a change touches nesting, preview, Onshape, or post-processing, test twice. That is where the raccoons live.
+If a change touches nesting, preview, Onshape, or post-processing, test twice. 
 
 ---
 
@@ -322,7 +318,7 @@ The preview path is probably only rendering the first DXF. Check multi-DXF setup
 
 ### G-code shows all parts but DXF preview does not
 
-Backend is probably fine. Frontend preview parser/rendering is the suspicious raccoon.
+Backend is probably fine. Frontend preview parser/rendering is the frontend preview parser/rendering.
 
 ### Parts overlap after nesting
 
@@ -338,9 +334,9 @@ Read the function logs. The useful part is usually the line before the traceback
 
 BionicsCAM is based on **PenguinCAM by FRC Team 6238, Popcorn Penguins**.
 
-Huge thank-you to Team 6238 for releasing PenguinCAM under the MIT License. BionicsCAM/RaccoonCAM would not exist without that foundation.
+Huge thank-you to Team 6238 for releasing PenguinCAM under the MIT License. BionicsCAM would not exist without that foundation.
 
-Additional BionicsCAM work by Srihaas Mynampati, Chris Johnson, and the Big Man Himself, Blake Borque, with extensive assistance from **ahem** AI tools and at least one metaphorical raccoon.
+Additional BionicsCAM work by Srihaas Mynampati, Chris Johnson, and the Big Man Himself, Blake Borque, with extensive assistance from **ahem** AI tools .
 
 ---
 
@@ -352,7 +348,7 @@ BionicsCAM is also distributed under the MIT License unless stated otherwise.
 
 Keep the original copyright and MIT license notices when redistributing or publishing modified versions.
 
-The license file should be boring. The README may contain raccoons.
+The README should document the project clearly.
 
 ---
 
@@ -362,17 +358,13 @@ This project may be referred to as:
 
 ```text
 BionicsCAM   current project/app name
-RaccoonCAM   chaotic spiritual successor / possible app-store name
 PenguinCAM   original upstream inspiration by Team 6238
 ```
 
-If publishing publicly, be clear that RaccoonCAM/BionicsCAM is a modified fork and is not officially endorsed by Team 6238 unless they say so.
+If publishing publicly, be clear that BionicsCAM is a modified fork and is not officially endorsed by Team 6238 unless they say so.
 
 ---
 
-## What's With All The Raccoons?
-
-Raccoons **are not** my favorite animal. This started as a debugging joke.
 
 When BionicsCAM first started working, it was tested by a teammate, Declan Murphy. Manual DXF upload worked, but the Onshape import path returned a painfully vague error:
 
@@ -400,9 +392,7 @@ Anyways, I spent about 3 hours of my own time tryna debug it, to no avail. I ask
 
 Much clearer.
 
-I immediately understood what happened and I pasted the logs to GPT-man. It was like "OH. We finally caught the raccoon on camera." That immediately became a metaphor for us. Since then, “raccoon” has been the official term for any bug, weird API behavior, preview overlay zombie, or mysterious CNC gremlin.
-
----
+I immediately understood what happened and I pasted the logs to GPT-man. ---
 
 ## Final Warning
 
@@ -410,6 +400,6 @@ CNC routers are real machines. They do not care that the preview looked cute.
 
 Always verify toolpaths, clamp material, set zeros correctly, and keep hands away from the danger zone.
 
-If something looks wrong, stop. The raccoon can wait.
+If something looks wrong, stop and investigate before operating the machine.
 
-P.S. Never let a 14 year old design a README.md
+P.S. Keep the README maintained as the project evolves.
