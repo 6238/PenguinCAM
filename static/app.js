@@ -1309,7 +1309,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-\n        async function parseDxfFilesForSetup(files) {
+        async function parseDxfFilesForSetup(files) {
             try {
                 if (!files || files.length === 0) return;
                 if (files.length === 1) {
