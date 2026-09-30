@@ -22,6 +22,8 @@ const appState = {
     currentMode: 'setup',
     dxfGeometry: null,
     rotationAngle: 0,
+    previewParts: null,
+    previewDxfText: null,
     dxfCanvas2D: null,
     dxfCtx2D: null,
     dxfBounds: null,
@@ -531,7 +533,20 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 const reader = new FileReader();
                 reader.onload = (e) => {
+                    appState.previewDxfText = e.target.result;
                     parseDxfForSetup(e.target.result);
+                    try {
+                        const parsed = parseDxfManually(e.target.result);
+                        const visualBounds = calculateGeometryVisualBounds(parsed?.geometry) || parsed?.bounds;
+                        appState.previewParts = [{
+                            name: dxfFiles[0].name,
+                            geometry: parsed?.geometry,
+                            bounds: visualBounds
+                        }];
+                    } catch (error) {
+                        console.warn('Could not cache single-DXF preview geometry:', error);
+                        appState.previewParts = null;
+                    }
                 };
                 reader.readAsText(dxfFiles[0]);
             }
@@ -1300,13 +1315,41 @@ document.addEventListener('DOMContentLoaded', () => {
         // Rebuild the multi-part preview whenever the nesting rotation mode changes.
         // The selected value is also submitted with the Generate request.
         const nestRotationSelect = document.getElementById('nestRotation');
-        if (nestRotationSelect) {
-            nestRotationSelect.addEventListener('change', () => {
-                if (appState.previewParts && appState.previewParts.length > 1) {
-                    buildCompositePreview(appState.previewParts);
-                    console.log('[Nesting] Preview rebuilt with rotation:', nestRotationSelect.value);
+        const quantityInput = document.getElementById('quantity');
+
+        function refreshNestingPreview() {
+            if (!appState.previewParts || appState.previewParts.length === 0) return;
+
+            const rotationMode = nestRotationSelect?.value || 'auto';
+            const quantity = Math.max(1, parseInt(quantityInput?.value || '1', 10) || 1);
+            const isMultiFile = appState.previewParts.length > 1;
+
+            // Show the actual nesting orientation whenever nesting is meaningful.
+            // For a single part with quantity=1 and Auto, keep the normal DXF preview.
+            if (!isMultiFile && quantity === 1 && rotationMode === 'auto') {
+                if (appState.previewDxfText) {
+                    parseDxfForSetup(appState.previewDxfText);
                 }
-            });
+                return;
+            }
+
+            const parts = isMultiFile
+                ? appState.previewParts
+                : Array.from({ length: quantity }, (_, index) => ({
+                    ...appState.previewParts[0],
+                    name: appState.previewParts[0].name + ' #' + (index + 1)
+                }));
+
+            buildCompositePreview(parts);
+            console.log('[Nesting] Preview rebuilt:', { rotationMode, quantity, isMultiFile });
+        }
+
+        if (nestRotationSelect) {
+            nestRotationSelect.addEventListener('change', refreshNestingPreview);
+        }
+        if (quantityInput) {
+            quantityInput.addEventListener('input', refreshNestingPreview);
+            quantityInput.addEventListener('change', refreshNestingPreview);
         }
 
         async function parseDxfFilesForSetup(files) {
