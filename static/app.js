@@ -1233,7 +1233,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 .map((part, originalIndex) => {
                     let rotated = false;
                     if (rotationMode === '90') rotated = true;
-                    else if (rotationMode === 'auto') rotated = part.bounds.height > part.bounds.width;
+                    else if (rotationMode === 'auto') rotated = part.bounds.height < part.bounds.width;
                     const slotW = rotated ? part.bounds.height : part.bounds.width;
                     const slotH = rotated ? part.bounds.width : part.bounds.height;
                     return { ...part, originalIndex, rotated, slotW, slotH, area: slotW * slotH };
@@ -1297,7 +1297,7 @@ document.addEventListener('DOMContentLoaded', () => {
             switchMode('setup');
         }
 
-        async function parseDxfFilesForSetup(files) {
+        // Rebuild the multi-part preview whenever the nesting rotation mode changes.\n        // The selected value is also submitted with the Generate request.\n        const nestRotationSelect = document.getElementById('nestRotation');\n        if (nestRotationSelect) {\n            nestRotationSelect.addEventListener('change', () => {\n                if (appState.previewParts && appState.previewParts.length > 1) {\n                    buildCompositePreview(appState.previewParts);\n                    console.log('[Nesting] Preview rebuilt with rotation:', nestRotationSelect.value);\n                }\n            });\n        }\n\n        async function parseDxfFilesForSetup(files) {
             try {
                 if (!files || files.length === 0) return;
                 if (files.length === 1) {
@@ -1315,6 +1315,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         bounds: visualBounds
                     };
                 });
+                appState.previewParts = parts;
                 buildCompositePreview(parts);
             } catch (error) {
                 console.error('Failed to build multi-DXF setup preview:', error);
