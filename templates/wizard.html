@@ -33,6 +33,11 @@
                     <a href="/config/refresh" class="config-refresh" title="Search Onshape again for your team configuration" aria-label="Search Onshape again for your team configuration">&#8635;</a>
                     {% endif %}
                 </p>
+                {# Say WHY we fell back. A silent fallback is the single biggest source of
+                   "PenguinCAM won't pick up our config" reports. #}
+                {% if source != 'upload' and team_config_error %}
+                <p class="config-status-reason">{{ team_config_error }}</p>
+                {% endif %}
                 {% endif %}
                 {% if config_refresh_result %}
                 <p class="config-refresh-result {{ 'is-ok' if config_refresh_result.ok else 'is-warn' }}">{{ config_refresh_result.message }}</p>
@@ -252,7 +257,15 @@
     <div id="connect-overlay" hidden>
         <div class="connect-card">
             <h2>Connect to Onshape</h2>
+            {% if auth_failure_ref %}
+            {# Stored credentials were just refused by Onshape and have been dropped. Say so,
+               and give the user a code to quote: it matches the server log lines that say
+               why (see OnshapeClient._dead_credentials). #}
+            <p>Your Onshape sign-in has expired. Connect again to continue.</p>
+            <p class="hint">If this keeps happening, tell your PenguinCAM admin and include this code: <strong>{{ auth_failure_ref }}</strong></p>
+            {% else %}
             <p>PenguinCAM needs access to your Onshape document to read parts.</p>
+            {% endif %}
             <button type="button" id="btn-connect" class="btn primary">Connect to Onshape</button>
             <p class="hint" id="connect-status"></p>
             <p class="hint">Sign-in opens in a pop-up. If it doesn't work, allow pop-ups and disable ad/tracking blockers for onshape.com and popcornpenguins.com.</p>
