@@ -31,7 +31,7 @@ import logging
 import metrics
 import feeds_speeds
 from logging_config import log  # shared log() + base logging setup (was duplicated per module)
-from testbed.settings import assert_testbed_allowed
+from testbed.settings import assert_testbed_allowed, testbed_is_on
 
 # Refuse to load a test bed on a deployed server, or a recording against the production
 # Onshape app. Here at import, not in __main__, because gunicorn imports this module.
@@ -2053,7 +2053,7 @@ def onshape_status():
         user_id = get_current_user_id()
         client = session_manager.get_client(user_id)
 
-        if client and client.access_token:
+        if client and (client.access_token or client.auth_mode == 'apikey'):
             # Try to get user info to verify connection
             user_info = client.get_user_info()
 
@@ -2350,6 +2350,11 @@ init_printer_routes(app,
                     token_manager=file_token_manager,
                     metrics=metrics,
                     log=log)
+
+# The Onshape test bed's routes and the print page's checklist strip; only when it is on.
+if testbed_is_on():
+    from testbed.flask_hooks import register_testbed_routes  # noqa: E402
+    register_testbed_routes(app)
 
 def cleanup():
     """Clean up temporary files on shutdown"""

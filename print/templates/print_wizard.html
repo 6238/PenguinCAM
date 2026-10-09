@@ -120,5 +120,6 @@
     <script src="{{ url_for('print.static', filename='print_viewer.js') }}"></script>
     <script src="{{ url_for('print.static', filename='print_wizard.js') }}"></script>
     <script src="{{ url_for('print.static', filename='printer_panel.js') }}"></script>
+    {% if testbed_mode %}<script src="/testbed/panel.js" data-mode="{{ testbed_mode }}"></script>{% endif %}
 </body>
 </html>

@@ -2370,6 +2370,20 @@ class OnshapeSessionManager:
         Returns:
             OnshapeClient with tokens restored, or None if not authenticated
         """
+        # Development sign-in (testbed/flask_hooks.py): replay mode only, where every call
+        # is answered from cassettes. On any other server the flag is ignored.
+        from testbed.settings import testbed_is_on, testbed_mode
+        if testbed_is_on() and testbed_mode() == 'replay' and session.get('testbed_apikey'):
+            try:
+                cached = g.get('onshape_client')
+            except RuntimeError:
+                cached = None
+            if cached is not None:
+                return cached
+            client = OnshapeClient.from_api_keys()
+            self._register(client)
+            return client
+
         tokens = session.get('onshape_tokens')
         if not tokens:
             return None
@@ -2423,6 +2437,8 @@ class OnshapeSessionManager:
         """
         if not client:
             return
+        if client.auth_mode == 'apikey':
+            return  # API keys have no tokens; writing empty ones would fake an OAuth session
 
         # Update session with potentially-refreshed tokens
         session['onshape_tokens'] = {

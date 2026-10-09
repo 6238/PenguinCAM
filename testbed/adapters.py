@@ -105,6 +105,12 @@ def _owner_lookup(client, endpoint):
     return response.json()
 
 
+def current_recording_scrubber():
+    """The Scrubber of the recording in progress, or None. Message logs are saved with it."""
+    recording = _active_recording()
+    return recording.scrubber if recording else None
+
+
 def begin_recording(name, client):
     """Make `name` current and learn the owner's values to scrub, using `client`.
 
