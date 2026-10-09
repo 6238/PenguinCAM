@@ -17,8 +17,8 @@ from pathlib import Path
 from urllib.parse import quote
 
 from testbed import settings
-from testbed.browser import (ReplayDevServer, host_url, launch_test_browser,
-                             sign_in_for_replay)
+from testbed.browser import (ReplayDevServer, grant_local_network, host_url,
+                             launch_test_browser, serve_fake_host, sign_in_for_replay)
 
 FIXTURES = Path(__file__).resolve().parent / 'fixtures'
 SCENARIO = 'part-select'
@@ -200,6 +200,21 @@ class FakeHostTest(_BrowserCase):
                'elementId': SYNTHETIC_DOCUMENT['eid']}
         replies = page.evaluate("m => window.__testbed.match(m, 'ask for a part')", ask)
         self.assertEqual([r['messageId'] for r in replies], ['testbed-9'])
+
+    def test_cdp_fallback_grant_frames_the_panel(self):
+        context = self.browser.new_context()
+        self.addCleanup(context.close)
+
+        def refuse(*args, **kwargs):
+            raise RuntimeError('Unknown permission: local-network-access')
+        context.grant_permissions = refuse            # as on a Playwright before 1.58
+        self.assertEqual(grant_local_network(self.browser, context), 'cdp')
+        context.route(settings.FAKE_HOST_ORIGIN + '/**',
+                      lambda route: serve_fake_host(route, self.message_dir))
+        sign_in_for_replay(context, settings.REPLAY_PORT)
+        page = context.new_page()
+        page.goto(host_url(SYNTHETIC_DOCUMENT, SCENARIO))
+        self.assertTrue(panel_frame(page).evaluate('window.PenguinCAM.authenticated'))
 
     def test_unrouted_request_to_fake_host_fails_safe(self):
         page = self.open_host()
