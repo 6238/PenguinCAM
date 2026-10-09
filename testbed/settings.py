@@ -87,6 +87,25 @@ def assert_testbed_allowed(environ=os.environ):
             raise RuntimeError('record mode refuses the production Onshape app')
 
 
+class MissingEnvironmentVariable(Exception):
+    """A credential or setting the command needs is not in the environment."""
+
+    def __init__(self, name):
+        super().__init__(f'missing environment variable: {name}')
+        self.name = name
+
+
+def required_environment(*names):
+    """The values of `names`, in order; the first one missing raises naming it, never a value."""
+    values = []
+    for name in names:
+        value = os.environ.get(name, '').strip()
+        if not value:
+            raise MissingEnvironmentVariable(name)
+        values.append(value)
+    return values
+
+
 def fresh_cassette_dir():
     """Where a fresh cassette is written: FRESH_DIR/cassettes, read when called.
 

@@ -147,6 +147,20 @@ def finish_recording() -> Path:
     return Cassette(recording.scenario, scrubbed).save(settings.fresh_cassette_dir())
 
 
+def discard_recording() -> int:
+    """Drop the recording in progress without writing it; return how many exchanges it held.
+
+    For a run that stopped part way: a partial cassette must not reach the drift report.
+    """
+    global _recording
+    with _state_lock:
+        recording, _recording = _recording, None
+    if recording is None:
+        return 0
+    with recording._lock:
+        return len(recording.exchanges)
+
+
 class LedgerRetry(Retry):
     """The client's Retry, with every retry attempt written to the call ledger.
 

@@ -61,3 +61,9 @@ daemon-tarball:
 testbed-replay:
 	@uv run python -c "import playwright" >/dev/null 2>&1 || uv pip install -r testbed/requirements.txt
 	@xvfb-run -a uv run python -m unittest discover -s testbed/tests -p 'browser_*.py' -t . -v
+
+# The live API check against real Onshape: records part-export with ONSHAPE_ACCESS_KEY and
+# ONSHAPE_SECRET_KEY, writes every call to the call ledger, then writes the drift report.
+# It checks the budget first and is never part of make test.
+testbed-record:
+	@uv run python -m testbed record
