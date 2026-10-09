@@ -183,8 +183,9 @@ class RecordModeTest(_TestbedCase):
         cassette = Cassette.load(self.tmp / 'fresh', 'rec-test')
         self.assertEqual(len(cassette.exchanges), 1)    # the owner lookups are not in it
         ex = cassette.exchanges[0]
+        # The local server is not *.onshape.com, so its query is dropped like a signed one.
         self.assertEqual((ex.method, ex.path, ex.query, ex.status),
-                         ('GET', '/api/v13/documents', {'q': ['tb-']}, 200))
+                         ('GET', '/api/v13/documents', {}, 200))
         self.assertEqual(ex.headers, {'Content-Type': 'application/json'})
         self.assertIn(STANDIN_EMAIL, ex.body_text)
         self.assertIn(STANDIN_USER_ID, ex.body_text)

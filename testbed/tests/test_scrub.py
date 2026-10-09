@@ -1,5 +1,6 @@
 """Tests for testbed/scrub.py: what a recording loses before it reaches disk."""
 import base64
+import json
 import os
 import subprocess
 import unittest
@@ -7,7 +8,7 @@ from pathlib import Path
 
 from testbed.cassette import Exchange
 from testbed.scrub import (STANDIN_EMAIL, STANDIN_NAME, STANDIN_USER_ID, Scrubber,
-                           find_secrets, standin_company_id)
+                           find_identity_leaks, find_secrets, standin_company_id)
 from testbed.settings import FIXTURE_DIR
 
 REPO = Path(__file__).resolve().parents[2]
@@ -90,6 +91,36 @@ class ScrubExchangeTest(unittest.TestCase):
         self.assertEqual(_scrubber().scrub_exchange(local).headers['Location'],
                          'https://cad.onshape.com/api/v13/x?a=1')
 
+    def test_foreign_exchange_query_dropped(self):
+        signed = {'X-Amz-Signature': ['abc'], 'X-Amz-Credential': ['k'], 'X-Amz-Security-Token': ['t']}
+        foreign = _exchange(host='s3.amazonaws.com', path='/bucket/part.stl', query=signed)
+        onshape = _exchange(host='cad.onshape.com', query={'a': ['1']})
+        self.assertEqual(_scrubber().scrub_exchange(foreign).query, {})
+        self.assertEqual(_scrubber().scrub_exchange(onshape).query, {'a': ['1']})
+
+    def test_owner_names_from_oauth_sessioninfo(self):
+        # The shape the OAuth callback's get_user_session_info() answer has.
+        sessioninfo = {'id': REAL_USER_ID, 'href': f'https://cad.onshape.com/api/users/{REAL_USER_ID}',
+                       'name': 'Jordan Smith', 'firstName': 'Jordan', 'lastName': 'Smith',
+                       'email': REAL_EMAIL, 'image': 'https://cad.onshape.com/images/x.png',
+                       'isGuest': False, 'isLight': False, 'state': 1}
+        scrubber = Scrubber.from_owner(sessioninfo, [])
+        body = ('{"name": "Jordan Smith", "firstName": "Jordan", "lastName": "Smith", '
+                '"email": "Real.Owner@School.Example.org", "note": "Smithfield Jordanian", '
+                '"createdBy": {"name": "Smith"}}')
+        scrubbed = scrubber.scrub_exchange(_exchange(body_text=body)).body_text
+        self.assertNotIn('"Jordan"', scrubbed)
+        self.assertNotIn('"Smith"', scrubbed)
+        self.assertNotIn('Jordan Smith', scrubbed)
+        self.assertIn('Smithfield Jordanian', scrubbed)        # whole words only
+        self.assertIn(f'"firstName": "{STANDIN_NAME}"', scrubbed)
+        self.assertIn(f'"email": "{STANDIN_EMAIL}"', scrubbed)  # case-insensitive email
+
+    def test_json_escaped_name_replaced(self):
+        scrubber = Scrubber.from_owner({'name': 'Zo\u00eb Owner'}, [])
+        scrubbed = scrubber.scrub_text('{"name": "Zo\\u00eb Owner"}')
+        self.assertEqual(scrubbed, f'{{"name": "{STANDIN_NAME}"}}')
+
     def test_scrub_text_replaces_known_values(self):
         text = f'{{"user": "{REAL_EMAIL}", "auth": "Bearer abc.def.ghi"}}'
         scrubbed = _scrubber().scrub_text(text)
@@ -106,9 +137,13 @@ class FindSecretsTest(unittest.TestCase):
             f'fine {STANDIN_EMAIL}',
             'token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl',
             'header Bearer abcdef',
-            'header Basic YWJjZGVmZ2hpams=',
+            'header Basic dXNlcjpzZWNyZXQ=',
             f'key {literal}',
             'b64 ' + base64.b64encode(literal.encode()).decode(),
+            '"X-Amz-Signature": ["abc"]',
+            'https://x.example/a?sig=abc',
+            'https://x.example/a?Expires=1&Signature=abc',
+            'Basic Settings for Basic Materials',
         ])
         found = find_secrets(text, [literal])
         kinds = {line: kind for line, kind in found}
@@ -120,6 +155,30 @@ class FindSecretsTest(unittest.TestCase):
         self.assertEqual(kinds[6], 'basic')
         self.assertEqual(kinds[7], 'literal')
         self.assertEqual(kinds[8], 'literal-base64')
+        self.assertEqual([kinds.get(n) for n in (9, 10, 11)], ['presigned'] * 3)
+        self.assertNotIn(12, kinds)            # "Basic Settings" is not a credential
+
+    def test_find_identity_leaks(self):
+        cassette = json.dumps({'exchanges': [
+            {'path': '/api/v13/documents', 'body_text': json.dumps({'items': [
+                {'owner': {'id': REAL_USER_ID, 'name': STANDIN_NAME},
+                 'createdBy': {'id': STANDIN_USER_ID, 'name': 'Jordan Smith'}}]})},
+            {'path': '/api/v13/users/sessioninfo',
+             'body_text': json.dumps({'id': STANDIN_USER_ID, 'firstName': 'Jordan'})},
+            {'path': '/api/v13/x', 'body_text': json.dumps({'owner': {
+                'id': standin_company_id(1), 'name': 'Test Bed Classroom 1'}})},
+        ]}, indent=1)
+        lines = cassette.splitlines()
+        documents_line = next(n for n, l in enumerate(lines, 1) if '/api/v13/documents' in l) + 1
+        sessioninfo_line = next(n for n, l in enumerate(lines, 1) if 'sessioninfo' in l) + 1
+        self.assertIn('firstName', lines[sessioninfo_line - 1])
+        self.assertEqual(find_identity_leaks(cassette), [
+            (documents_line, 'owner-name'), (documents_line, 'user-id'),
+            (sessioninfo_line, 'owner-name')])
+        log = '\n'.join([json.dumps({'userId': STANDIN_USER_ID}),
+                         json.dumps({'data': {'userId': REAL_USER_ID}})])
+        self.assertEqual(find_identity_leaks(log), [(2, 'user-id')])
+        self.assertEqual(find_identity_leaks('team:\n  name: x\n'), [])
 
 
 class FixtureTest(unittest.TestCase):
@@ -157,7 +216,7 @@ class CommittedRecordingsTest(unittest.TestCase):
                 if not path.is_file() or path.suffix == '.bin' or path.name == '.gitkeep':
                     continue
                 text = path.read_text(encoding='utf-8', errors='replace')
-                for line, kind in find_secrets(text, extras):
+                for line, kind in find_secrets(text, extras) + find_identity_leaks(text):
                     problems.append(f'{path.relative_to(REPO)}:{line} {kind}')
         self.assertEqual(problems, [], 'secret-like strings in committed recordings:\n'
                          + '\n'.join(problems))

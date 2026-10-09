@@ -4,6 +4,7 @@ A cassette is `<dir>/<scenario>.json`. Binary response bodies (STL and other exp
 sit next to it as `<dir>/<scenario>/NNN.bin`, NNN being the exchange's index.
 """
 import json
+import shutil
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Optional
@@ -58,6 +59,10 @@ class Cassette:
     def save(self, directory: Path) -> Path:
         directory = Path(directory)
         directory.mkdir(parents=True, exist_ok=True)
+        # A re-recording replaces every binary of the last one, so none is left orphaned.
+        binaries = directory / self.scenario
+        if self.scenario and binaries.is_dir() and binaries.parent == directory:
+            shutil.rmtree(binaries)
         records = []
         for index, ex in enumerate(self.exchanges):
             record = ex.to_json()
@@ -71,7 +76,7 @@ class Cassette:
         path = directory / f'{self.scenario}.json'
         document = {'scenario': self.scenario, 'synthetic': self.synthetic,
                     'exchanges': records}
-        path.write_text(json.dumps(document, indent=1, sort_keys=True))
+        path.write_text(json.dumps(document, indent=1, sort_keys=True) + '\n')
         return path
 
     @classmethod

@@ -32,7 +32,7 @@ class CassetteTest(unittest.TestCase):
             self.assertTrue((directory / 'part-select.json').is_file())
             self.assertEqual((directory / 'part-select' / '002.bin').read_bytes(), stl)
             raw = (directory / 'part-select.json').read_text()
-            self.assertEqual(raw, json.dumps(json.loads(raw), indent=1, sort_keys=True))
+            self.assertEqual(raw, json.dumps(json.loads(raw), indent=1, sort_keys=True) + '\n')
 
             loaded = Cassette.load(directory, 'part-select')
         self.assertEqual(loaded.scenario, 'part-select')
@@ -44,6 +44,14 @@ class CassetteTest(unittest.TestCase):
         self.assertEqual(loaded.exchanges[2].body(), stl)
         self.assertEqual(loaded.exchanges[0].body(), b'{"items": []}')
         self.assertEqual(loaded.exchanges[1].body(), b'')
+
+    def test_resave_leaves_no_orphan_binaries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            two = [_exchange(body_text=None, body_bytes=b'a'), _exchange(body_text=None, body_bytes=b'b')]
+            Cassette('s', two).save(directory)
+            Cassette('s', two[:1]).save(directory)
+            self.assertEqual(sorted(p.name for p in (directory / 's').iterdir()), ['000.bin'])
 
     def test_counted_calls_are_2xx_and_3xx(self):
         statuses = [200, 302, 399, 400, 402, 429, 503, 199]
