@@ -8,6 +8,7 @@ leaves it unset. Usage: flask_hooks_app.py CASSETTE_DIR. Prints one line,
 import json
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
@@ -39,7 +40,8 @@ def check_replay(app, results):
             results['tokens_in_cookie'] = 'onshape_tokens' in cookie
             results['user_email'] = cookie.get('user_email')
 
-        page = c.get(f'/print?source=onshape&return=/onshape-panel?{PANEL_QUERY}')
+        page = c.get('/print?source=onshape&return='
+                     + quote(f'/onshape-panel?{PANEL_QUERY}', safe=''))
         results['print_status'] = page.status_code
         results['print_html'] = page.get_data(as_text=True)
         cnc = c.get(f'/onshape-panel?{PANEL_QUERY}')
@@ -48,6 +50,13 @@ def check_replay(app, results):
         script = c.get('/testbed/panel.js')
         results['panel_js_status'] = script.status_code
         results['panel_js_type'] = script.mimetype
+
+        # The /testbed routes are exempt from the app's limiter (200 per hour by default)...
+        results['burst_statuses'] = sorted({c.get('/testbed/scenarios').status_code
+                                            for _ in range(250)})
+        # ...which is live here: /onshape/status allows 30 per minute.
+        results['status_burst_statuses'] = sorted({c.get('/onshape/status').status_code
+                                                   for _ in range(35)})
 
 
 def check_off(app, results):

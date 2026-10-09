@@ -18,6 +18,8 @@ from testbed.scrub import host_is_onshape
 # The test documents of spec 5.1, by the name that is their key in documents.json.
 TEST_DOCUMENT_NAMES = ('tb-box', 'tb-two-parts', 'tb-inch', 'tb-sideways', 'tb-oversized',
                        'tb-assembly')
+# Test documents whose element is an assembly, not a Part Studio: no part STL export path.
+ASSEMBLY_DOCUMENTS = ('tb-assembly',)
 # What a step's button does. The first five send a panel message; choose-print and back
 # are done in the panel itself, so the strip shows only their instruction.
 ACTIONS = ('ask-part', 'ask-two-parts', 'dialog-part', 'dialog-parts', 'close-dialog',
@@ -141,9 +143,14 @@ def export_part_stl(client, doc, part_id, params):
         if len(hops) == _MAX_HOPS:
             raise RuntimeError(f'export of part {part_id} still redirects after '
                                f'{_MAX_HOPS} hops')
+        if 'Location' not in response.headers:
+            raise RuntimeError(f'export of part {part_id} answered {response.status_code} '
+                               'without Location')
         location = urljoin(response.url, response.headers['Location'])
         hops.append(location)
         auth, headers = None, {'Accept': _STL_ACCEPT}
+        # The token is the one _make_api_request just used. A hop gets no refresh on a 401,
+        # which needs the token to expire within one export; the 401 is raised below.
         if host_is_onshape(urlsplit(location).hostname or ''):
             auth, extra = _auth_for(client)
             headers.update(extra)
@@ -161,7 +168,9 @@ def run_scenario_api(name: str, client, documents: dict) -> None:
     """
     if name != 'part-export':
         return
-    for doc in documents.values():
+    for name, doc in documents.items():
+        if name in ASSEMBLY_DOCUMENTS:      # its parts export through their Part Studio
+            continue
         for part_id in doc.get('parts', {}).values():
             export_part_stl(client, doc, part_id, None)          # Onshape's defaults: inches
             export_part_stl(client, doc, part_id, MM_BINARY)

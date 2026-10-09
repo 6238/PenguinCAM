@@ -2354,7 +2354,7 @@ init_printer_routes(app,
 # The Onshape test bed's routes and the print page's checklist strip; only when it is on.
 if testbed_is_on():
     from testbed.flask_hooks import register_testbed_routes  # noqa: E402
-    register_testbed_routes(app)
+    register_testbed_routes(app, limiter=limiter)
 
 def cleanup():
     """Clean up temporary files on shutdown"""

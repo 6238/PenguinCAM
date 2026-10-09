@@ -138,6 +138,8 @@ class PartExportRunnerTest(unittest.TestCase):
                        'parts': {'Box': 'JHD'}},
             'tb-two-parts': {'did': 'D2', 'wid': 'W2', 'eid': 'E2',
                              'parts': {'Box': 'JAD', 'Cylinder': 'JBD'}},
+            # An assembly has no part STL path; its parts are exported from tb-box.
+            'tb-assembly': {'did': 'D3', 'wid': 'W3', 'eid': 'E3', 'parts': {'Box <1>': 'JKD'}},
         }
         client = mock.Mock()
         client._make_api_request.return_value = mock.Mock(status_code=200, text='{}')
@@ -194,6 +196,7 @@ class ExportRedirectTest(unittest.TestCase):
             self.ex('/bucket/part.stl', 'solid elsewhere', host='example.com'),
             self.ex('/api/v13/parts/d/D1/w/W1/e/E1/partid/LOOP/stl', status=307,
                     headers={'Location': 'https://cad.onshape.com/api/v13/parts/d/D1/w/W1/e/E1/partid/LOOP/stl'}),
+            self.ex('/api/v13/parts/d/D1/w/W1/e/E1/partid/NOWHERE/stl', status=307),
         ], synthetic=True).save(self.cassettes)
 
     def ex(self, path, body='', status=200, host='cad.onshape.com', query=None, headers=None):
@@ -236,6 +239,8 @@ class ExportRedirectTest(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'redirect'):
                     self.run_export(client, None, part_id='LOOP')
                 self.assertEqual(len(self.sent), 4)     # the request and three hops
+                with self.assertRaisesRegex(RuntimeError, '307 without Location'):
+                    self.run_export(client, None, part_id='NOWHERE')
 
 
 if __name__ == '__main__':

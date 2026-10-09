@@ -140,9 +140,15 @@ class RecordHooksTest(_MinimalAppCase):
         self.assertEqual(response.status_code, 200)
         begin.assert_called_once_with('panel-load', client)
         cassette = self.tmp / 'fresh' / 'cassette.json'
+        with mock.patch.object(flask_hooks, 'finish_recording',
+                               side_effect=RuntimeError('402')):
+            failed = self.client.post('/testbed/done')
+        self.assertEqual(failed.status_code, 500)
+        self.assertIn('Choose the scenario again', failed.get_json()['error'])
         with mock.patch.object(flask_hooks, 'finish_recording', return_value=cassette) as finish:
-            done = self.client.post('/testbed/done').get_json()
+            done = self.client.post('/testbed/done').get_json()     # the log was kept
         finish.assert_called_once_with()
+        self.assertEqual(self.client.post('/testbed/done').status_code, 409)
         self.assertEqual(done['cassette'], str(cassette))
         self.assertTrue(Path(done['messages']).is_file())
 
@@ -173,6 +179,14 @@ class FullAppReplayTest(unittest.TestCase):
         self.assertNotIn('testbed', results['cnc_html'])
         self.assertEqual((results['panel_js_status'], results['panel_js_type']),
                          (200, 'text/javascript'))
+        # The strip reads the Onshape context from the return URL, so all of it arrives.
+        self.assertIn('elementId=e1', results['print_html'])
+        self.assertIn('server=https', results['print_html'])
+
+    def test_testbed_routes_not_rate_limited(self):
+        results = full_app_results('replay')
+        self.assertEqual(results['burst_statuses'], [200])          # 250 quick requests
+        self.assertIn(429, results['status_burst_statuses'])        # the limiter is on
 
 
 class FullAppOffTest(unittest.TestCase):

@@ -2370,14 +2370,18 @@ class OnshapeSessionManager:
         Returns:
             OnshapeClient with tokens restored, or None if not authenticated
         """
+        # One client per request. Rebuilding it on every call meant the end-of-request
+        # hook only ever saw the LAST client built, so a refresh (or a dead-credential
+        # verdict) reached on an earlier one in the same request could be lost.
+        try:
+            cached = g.get('onshape_client')
+        except RuntimeError:
+            cached = None
+
         # Development sign-in (testbed/flask_hooks.py): replay mode only, where every call
         # is answered from cassettes. On any other server the flag is ignored.
         from testbed.settings import testbed_is_on, testbed_mode
         if testbed_is_on() and testbed_mode() == 'replay' and session.get('testbed_apikey'):
-            try:
-                cached = g.get('onshape_client')
-            except RuntimeError:
-                cached = None
             if cached is not None:
                 return cached
             client = OnshapeClient.from_api_keys()
@@ -2387,14 +2391,6 @@ class OnshapeSessionManager:
         tokens = session.get('onshape_tokens')
         if not tokens:
             return None
-
-        # One client per request. Rebuilding it on every call meant the end-of-request
-        # hook only ever saw the LAST client built, so a refresh (or a dead-credential
-        # verdict) reached on an earlier one in the same request could be lost.
-        try:
-            cached = g.get('onshape_client')
-        except RuntimeError:
-            cached = None
         if cached is not None:
             return cached
 

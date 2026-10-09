@@ -99,9 +99,16 @@
     server: q.server || ''
   };
 
+  // Only an https://*.onshape.com origin on the default port, which includes the fake
+  // Onshape host, ever receives the document ids.
+  var ONSHAPE_ORIGIN = /^https:\/\/([a-z0-9-]+\.)+onshape\.com$/;
+
   function send(message) {
-    if (!context.server || window.parent === window) {
-      showStatus('Not inside Onshape: no server in the panel URL, nothing sent.');
+    if (!ONSHAPE_ORIGIN.test(context.server) || window.parent === window) {
+      var why = 'Not inside Onshape (server ' + JSON.stringify(context.server) +
+        '): nothing sent.';
+      if (window.console) window.console.warn('[testbed] ' + why);
+      showStatus(why);
       return;
     }
     window.parent.postMessage(message, context.server);
@@ -332,7 +339,7 @@
   };
 
   // applicationInit, which the print page does not send yet (spec 12).
-  if (context.server && window.parent !== window) {
+  if (window.parent !== window) {
     send(withContext({ messageName: 'applicationInit' }));
   }
 

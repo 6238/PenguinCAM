@@ -91,7 +91,7 @@ def add_messages():
 def done():
     global _message_log
     with _log_lock:
-        log, _message_log = _message_log, None
+        log = _message_log
     if log is None:
         return _error('choose a scenario first', 409)
     # Saved before finish_recording(), which drops the scrubber that knows the owner.
@@ -100,7 +100,13 @@ def done():
         try:
             result['cassette'] = str(finish_recording())
         except Exception as exc:          # a 402, or no recording: the strip shows it
-            return _error(f'the cassette was not saved: {exc}', 500)
+            # finish_recording() has discarded the buffer either way, so Done cannot retry;
+            # the message log is kept and saved again by the next Done.
+            return _error(f'the message log was saved but the cassette was not: {exc}. '
+                          'Choose the scenario again to record it afresh.', 500)
+    with _log_lock:
+        if _message_log is log:
+            _message_log = None
     return jsonify(result)
 
 
@@ -108,7 +114,9 @@ def panel_script():
     return send_file(str(PANEL_SCRIPT), mimetype='text/javascript', max_age=0)
 
 
-def register_testbed_routes(app) -> None:
+def register_testbed_routes(app, limiter=None) -> None:
+    """Add the routes and the template flag. `limiter`, the app's Flask-Limiter, exempts
+    them: they exist only on a development server, and a browser run calls them in bursts."""
     bp = Blueprint('testbed', __name__)
     if settings.testbed_mode() == 'replay':
         # Never in record mode, where the server holds real keys on all interfaces.
@@ -118,6 +126,8 @@ def register_testbed_routes(app) -> None:
     bp.add_url_rule('/testbed/messages', view_func=add_messages, methods=['POST'])
     bp.add_url_rule('/testbed/done', view_func=done, methods=['POST'])
     bp.add_url_rule('/testbed/panel.js', view_func=panel_script, methods=['GET'])
+    if limiter is not None:
+        limiter.exempt(bp)
     app.register_blueprint(bp)
 
     @app.context_processor
