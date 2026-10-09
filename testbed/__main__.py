@@ -48,16 +48,6 @@ def _known_scenarios(names):
     return names
 
 
-def _import_later_module(name, command):
-    """testbed.<name>, which a later part of the test bed adds, or a clear 'not yet'."""
-    try:
-        return __import__(f'testbed.{name}', fromlist=[name])
-    except ModuleNotFoundError as exc:
-        if exc.name != f'testbed.{name}':
-            raise
-        raise CommandFailed(f'{command} is not implemented yet (no testbed/{name}.py)') from None
-
-
 def _enter_record_mode():
     """Switch this process to record mode: every OnshapeClient records and is counted."""
     os.environ[settings.MODE_VARIABLE] = 'record'
@@ -153,27 +143,26 @@ def command_record(args):
 
 
 def _record_ui(names):
-    ui_run = _import_later_module('ui_run', 'record --ui')
+    from testbed.ui_run import OnshapeCheckStopped, OnshapeStepFailed, run_onshape_ui
     names = _known_scenarios(names or [n for n, s in SCENARIOS.items() if s.panel])
     ledger = CallLedger()
     ledger.check_budget(sum(_estimate(name) for name in names))
     before = ledger.counted_in_cycle()
-    stopped_by_check = getattr(ui_run, 'OnshapeCheckStopped', None)
     try:
-        ui_run.run_onshape_ui(names)
+        run_onshape_ui(names)
         _write_drift_report(names)
-    except Exception as exc:
-        if stopped_by_check is not None and isinstance(exc, stopped_by_check):
-            _say(f'stopped by an Onshape check: {exc}')
-            return EXIT_ONSHAPE_CHECK
-        raise
+    except OnshapeCheckStopped as exc:
+        _say(f'stopped by an Onshape check: {exc}')
+        return EXIT_ONSHAPE_CHECK
+    except OnshapeStepFailed as exc:
+        raise CommandFailed(str(exc)) from None
     finally:
         _print_counted(ledger, before)
     return 0
 
 
 def command_build_docs(args):
-    documents = _import_later_module('documents', 'build-docs')
+    from testbed import documents
     settings.required_environment(*API_KEY_VARIABLES)
     _enter_record_mode()
     ledger = CallLedger()

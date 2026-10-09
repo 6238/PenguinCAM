@@ -49,12 +49,14 @@ class ReplayDevServer:
     settings.state_dir()/logs/replay-devserver.log.
     """
 
+    MODE = 'replay'
+
     def __init__(self, port=REPLAY_PORT, cassette_dir=None, message_dir=None):
         self.port = port
         self.cassette_dir = cassette_dir
         self.message_dir = message_dir
         self.url = f'http://localhost:{port}'
-        self.log_path = settings.state_dir() / 'logs' / 'replay-devserver.log'
+        self.log_path = settings.state_dir() / 'logs' / f'{self.MODE}-devserver.log'
         self.process = None
 
     def __enter__(self):
@@ -62,7 +64,7 @@ class ReplayDevServer:
             raise RuntimeError(f'something already answers on port {self.port}; '
                                'stop it before running the browser scenarios')
         env = {k: v for k, v in os.environ.items() if k not in _SERVER_DROPPED}
-        env.update(PORT=str(self.port), PENGUINCAM_TESTBED='replay', EMBED_COOKIES='1')
+        env.update(PORT=str(self.port), PENGUINCAM_TESTBED=self.MODE, EMBED_COOKIES='1')
         if self.cassette_dir:
             env['TESTBED_CASSETTE_DIR'] = str(self.cassette_dir)
         if self.message_dir:
@@ -77,7 +79,7 @@ class ReplayDevServer:
             if self.process.poll() is not None or time.monotonic() > deadline:
                 self.__exit__(None, None, None)
                 tail = self.log_path.read_text(errors='replace')[-2000:]
-                raise RuntimeError(f'the replay development server did not answer on port '
+                raise RuntimeError(f'the {self.MODE} development server did not answer on port '
                                    f'{self.port}; its log ({self.log_path}) ends:\n{tail}')
             time.sleep(0.5)
         return self
@@ -96,6 +98,20 @@ class ReplayDevServer:
         except ProcessLookupError:
             pass
         self.process = None
+
+
+class RecordDevServer(ReplayDevServer):
+    """The development server in record mode on 6238, for the automated Onshape UI run.
+
+    Started as the workspace instructions describe: EMBED_COOKIES=1, the code's default
+    BASE_URL, and the dev app's ONSHAPE_CLIENT_ID and ONSHAPE_CLIENT_SECRET from this
+    environment. Its output goes to settings.state_dir()/logs/record-devserver.log.
+    """
+
+    MODE = 'record'
+
+    def __init__(self, port=settings.RECORD_PORT):
+        super().__init__(port)
 
 
 def _fulfill_text(route, status, body, content_type='text/plain; charset=utf-8'):

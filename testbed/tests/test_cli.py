@@ -227,14 +227,27 @@ class OtherCommandsTest(_CliCase):
         self.assertIn("last segment of the folder's URL", err)
         self.assertEqual([line for line in self.ledger_lines() if line['counted']], [])
 
-    def test_later_commands_say_not_implemented(self):
-        for argv in (('build-docs',), ('record', '--ui')):
-            with self.subTest(argv=argv), \
-                    mock.patch.dict(sys.modules, {'testbed.documents': None,
-                                                  'testbed.ui_run': None}):
-                code, out, err = self.run_cli(*argv)
-                self.assertEqual(code, 1)
-                self.assertIn('not implemented yet', err)
+    def test_record_ui_without_credentials_names_variable(self):
+        code, out, err = self.run_cli('record', '--ui', 'panel-load')
+        self.assertEqual(code, 2)
+        self.assertIn('ONSHAPE_USERNAME', err)
+
+    def test_record_ui_stopped_by_onshape_check_exits_3(self):
+        from testbed import ui_run
+        stop = ui_run.OnshapeCheckStopped('a challenge frame (sign-in page); screenshot: x.png')
+        with mock.patch.object(ui_run, 'run_onshape_ui', side_effect=stop):
+            code, out, err = self.run_cli('record', '--ui', 'panel-load')
+        self.assertEqual(code, 3)
+        self.assertIn('stopped by an Onshape check: a challenge frame', err)
+        self.assertIn('counted calls: 0', out)
+
+    def test_record_ui_failed_step_exits_1(self):
+        from testbed import ui_run
+        failed = ui_run.OnshapeStepFailed("panel-load: step 'open panel' failed")
+        with mock.patch.object(ui_run, 'run_onshape_ui', side_effect=failed):
+            code, out, err = self.run_cli('record', '--ui', 'panel-load')
+        self.assertEqual(code, 1)
+        self.assertIn("step 'open panel' failed", err)
 
 
 if __name__ == '__main__':
