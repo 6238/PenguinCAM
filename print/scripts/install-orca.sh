@@ -18,7 +18,7 @@ SHA_LINUX_AARCH64="e1a07275a25f176626c55a5df39e91bc4476d8c28ee4a3192ff758e29dd5c
 SHA_MACOS="e15e7bb1b66214ec6e96b169b388004179c4f5f705effcdaf8c80d4992ee0366"
 RELEASE_URL="https://github.com/OrcaSlicer/OrcaSlicer/releases/download/v${ORCA_VERSION}"
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DEST="$ROOT/tools/orca"
 
 die() { echo "install-orca: $*" >&2; exit 1; }

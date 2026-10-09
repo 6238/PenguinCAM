@@ -14,8 +14,9 @@ class InstallOrcaScriptTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="orca-install-test-"))
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
-        (self.tmp / "scripts").mkdir()
-        self.script = self.tmp / "scripts" / "install-orca.sh"
+        # The script sits at print/scripts/ and installs into tools/orca at the repo root.
+        (self.tmp / "print" / "scripts").mkdir(parents=True)
+        self.script = self.tmp / "print" / "scripts" / "install-orca.sh"
         shutil.copy(SCRIPT, self.script)
         self.script.chmod(0o755)
         self.fakebin = self.tmp / "fakebin"
