@@ -143,20 +143,24 @@ def command_record(args):
 
 
 def _record_ui(names):
-    from testbed.ui_run import OnshapeCheckStopped, OnshapeStepFailed, run_onshape_ui
+    from testbed import ui_run
     names = _known_scenarios(names or [n for n, s in SCENARIOS.items() if s.panel])
+    settings.required_environment(*ui_run.UI_VARIABLES)
     ledger = CallLedger()
     ledger.check_budget(sum(_estimate(name) for name in names))
     before = ledger.counted_in_cycle()
     try:
-        run_onshape_ui(names)
+        ui_run.run_onshape_ui(names)
         _write_drift_report(names)
-    except OnshapeCheckStopped as exc:
+    except ui_run.OnshapeCheckStopped as exc:
         _say(f'stopped by an Onshape check: {exc}')
         return EXIT_ONSHAPE_CHECK
-    except OnshapeStepFailed as exc:
+    except (ui_run.OnshapeStepFailed, ui_run.UiRunRefused) as exc:
         raise CommandFailed(str(exc)) from None
     finally:
+        if ui_run.panel_url_file().is_file():
+            print(f'panel URL the development app opens: '
+                  f'{ui_run.panel_url_file().read_text().strip()}')
         _print_counted(ledger, before)
     return 0
 
@@ -172,11 +176,24 @@ def command_build_docs(args):
     before = ledger.counted_in_cycle()
     try:
         set_current_scenario('build-docs')
-        documents.build_test_documents(OnshapeClient.from_api_keys(),
-                                       settings.testbed_folder_id(), rebuild=args.rebuild)
+        try:
+            built = documents.build_test_documents(
+                OnshapeClient.from_api_keys(), settings.testbed_folder_id(),
+                rebuild=args.rebuild)
+        except (documents.NotATestDocument, RuntimeError, ValueError) as exc:
+            raise CommandFailed(f'build-docs stopped: {exc}') from None
     finally:
         _print_counted(ledger, before)
-    return 0
+    print(f'documents: {settings.DOCUMENTS_FILE}')
+    pending = documents.pending_documents(built)
+    for name, why in pending.items():
+        if why == documents.NOT_IN_FOLDER:
+            print(f'{name} was created outside the test folder (document id '
+                  f"{built[name]['did']}): move it into the test folder in Onshape, then run "
+                  'build-docs again to build it')
+        else:
+            print(f'{name} was not built: {why}; run build-docs again')
+    return EXIT_FAILED if pending else 0
 
 
 def command_drift(args):

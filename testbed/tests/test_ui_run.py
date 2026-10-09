@@ -5,6 +5,7 @@ fixtures through a real browser.
 """
 import contextlib
 import io
+import json
 import logging
 import os
 import tempfile
@@ -46,13 +47,78 @@ class _Parsed(HTMLParser):
             self.text.append(data)
 
 
-class StubPage:
-    """Just enough of a Playwright page for detect_onshape_bot_check and sign-in."""
+class StubLocator:
+    def __init__(self, page, selector):
+        self.page, self.selector = page, selector
+        self.first = self
 
-    def __init__(self, html):
+    def _maybe_fail(self, what, value=''):
+        if self.selector in self.page.fail:
+            # Playwright's call log carries the value being filled, as the real error does.
+            raise RuntimeError(f'Locator.{what}: Timeout 30000ms exceeded.\nCall log:\n'
+                               f'  - {what}("{value}")')
+
+    def fill(self, value, **kwargs):
+        self._maybe_fail('fill', value)
+        self.page.actions.append(('fill', self.selector, value))
+
+    def click(self, **kwargs):
+        self._maybe_fail('click')
+        self.page.actions.append(('click', self.selector))
+
+    def check(self, **kwargs):
+        self.click()
+
+    def select_option(self, value, **kwargs):
+        self._maybe_fail('select_option', value)
+        self.page.actions.append(('select', self.selector, value))
+
+    def count(self):
+        self._maybe_fail('count')
+        return self.page.counts.get(self.selector, 1)
+
+    def wait_for(self, **kwargs):
+        self._maybe_fail('wait_for')
+
+    def get_attribute(self, name):
+        return self.page.attributes.get((self.selector, name))
+
+
+class StubFrame:
+    def __init__(self, page):
+        self.page = page
+
+    def locator(self, selector):
+        return StubLocator(self.page, 'panel ' + selector)
+
+
+class StubPage:
+    """Just enough of a Playwright page for the UI run's steps, with no browser.
+
+    `fail` holds the selectors (or 'goto') whose action raises; `signed_in` decides where
+    /documents lands.
+    """
+
+    def __init__(self, html='', fail=(), signed_in=False):
         self.parsed = _Parsed(html)
         self.actions = []
+        self.fail = set(fail)
+        self.signed_in = signed_in
+        self.counts, self.attributes = {}, {}
         self.url = 'https://cad.onshape.com/signin'
+        self.keyboard = mock.Mock()
+
+    def goto(self, url, **kwargs):
+        if 'goto' in self.fail:
+            raise RuntimeError(f'Page.goto: net::ERR_TIMED_OUT at {url}')
+        self.actions.append(('goto', url))
+        self.url = url if self.signed_in or not url.endswith('/documents') else ui_run.SIGN_IN_URL
+
+    def locator(self, selector):
+        return StubLocator(self, selector)
+
+    def frame_locator(self, selector):
+        return StubFrame(self)
 
     def eval_on_selector_all(self, selector, expression):
         assert selector == 'iframe', selector
@@ -63,16 +129,19 @@ class StubPage:
         return ' '.join(self.parsed.text)
 
     def wait_for_selector(self, selector, **kwargs):
+        StubLocator(self, selector).wait_for()
         self.actions.append(('wait', selector))
 
     def is_visible(self, selector, **kwargs):
+        if selector == ui_run.SELECTORS['email']:
+            return self.url.startswith(ui_run.SIGN_IN_URL)
         return True
 
     def fill(self, selector, value, **kwargs):
-        self.actions.append(('fill', selector, value))
+        StubLocator(self, selector).fill(value)
 
     def click(self, selector, **kwargs):
-        self.actions.append(('click', selector))
+        StubLocator(self, selector).click()
 
     def wait_for_load_state(self, *args, **kwargs):
         pass
@@ -80,8 +149,32 @@ class StubPage:
     def wait_for_timeout(self, ms):
         pass
 
+    def set_default_timeout(self, ms):
+        pass
+
     def screenshot(self, path=None, **kwargs):
         Path(path).write_bytes(b'png')
+
+
+class StubContext:
+    def __init__(self, page):
+        self.pages = [page]
+
+    def grant_permissions(self, *args, **kwargs):
+        pass
+
+    def close(self):
+        pass
+
+
+class StubServer:
+    log_path = Path('/nonexistent/record-devserver.log')
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
 
 
 def _page(name):
@@ -166,6 +259,127 @@ class SignInTest(unittest.TestCase):
     def test_selectors_are_one_table(self):
         for key in ('email', 'password', 'sign_in_submit', 'panel_frame'):
             self.assertIn(key, ui_run.SELECTORS)
+
+
+class UiRunEndToEndTest(unittest.TestCase):
+    """main() through run_onshape_ui with stub pages: what the owner would see."""
+
+    def setUp(self):
+        self.tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        env = dict(CREDENTIALS, XDG_STATE_HOME=str(self.tmp / 'state'))
+        env.update({k: v for k, v in os.environ.items() if k in ('PATH', 'HOME')})
+        self.enterContext(mock.patch.dict(os.environ, env, clear=True))
+        documents = {name: {'did': f'd{i}', 'wid': f'w{i}', 'eid': f'e{i}', 'parts': {}}
+                     for i, name in enumerate(('tb-box', 'tb-inch'), start=1)}
+        (self.tmp / 'documents.json').write_text(json.dumps(documents))
+        for name, sub in (('FRESH_DIR', 'fresh'), ('CASSETTE_DIR', 'cassettes'),
+                          ('MESSAGE_DIR', 'messages'), ('DOCUMENTS_FILE', 'documents.json')):
+            self.enterContext(mock.patch.object(settings, name, self.tmp / sub))
+        self.enterContext(mock.patch.object(ui_run, 'RecordDevServer', StubServer))
+        self.enterContext(mock.patch('playwright.sync_api.sync_playwright',
+                                     lambda: contextlib.nullcontext(object())))
+
+    def run_main(self, page):
+        from testbed.__main__ import main
+        self.enterContext(mock.patch.object(ui_run, 'launch_persistent_chrome',
+                                            lambda playwright, headed=True: (StubContext(page),
+                                                                             'stub')))
+        out, err = io.StringIO(), io.StringIO()
+        with self.assertLogs(level=logging.DEBUG) as logs, \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            logging.getLogger().debug('captured')
+            code = main(['record', '--ui', 'panel-load'])
+        return code, out.getvalue(), err.getvalue() + '\n'.join(logs.output)
+
+    def screenshots(self):
+        return sorted((settings.state_dir() / 'screenshots').glob('*.png'))
+
+    def test_failed_password_fill_never_leaks_the_password(self):
+        password = CREDENTIALS['ONSHAPE_PASSWORD']
+        page = StubPage(fail={ui_run.SELECTORS['password']})
+        code, out, err = self.run_main(page)
+        self.assertEqual(code, 1)
+        self.assertIn("step 'sign-in: password' failed", err)
+        self.assertIn('could not be filled', err)
+        self.assertEqual(len(self.screenshots()), 1)
+        for text in (out, err, *(p.name for p in self.screenshots())):
+            self.assertNotIn(password, text)
+
+    def test_any_error_text_is_redacted(self):
+        password = CREDENTIALS['ONSHAPE_PASSWORD']
+        page = StubPage()
+        self.enterContext(mock.patch.object(ui_run, 'launch_persistent_chrome',
+                                            lambda playwright, headed=True: (StubContext(page),
+                                                                             'stub')))
+        leaky = RuntimeError(f'boom with {password}')
+        with mock.patch.object(ui_run, '_ensure_signed_in', side_effect=leaky):
+            with self.assertRaises(ui_run.OnshapeStepFailed) as caught:
+                ui_run.run_onshape_ui(['panel-load'])
+        self.assertNotIn(password, str(caught.exception))
+        self.assertIsNone(caught.exception.__context__)
+        self.assertIn('***', str(caught.exception))
+        self.assertEqual(ui_run.redact_password(f'x {password} y'), 'x *** y')
+        with mock.patch.dict(os.environ, {'ONSHAPE_PASSWORD': 'a b&c"d'}):
+            self.assertEqual(ui_run.redact_password('1 a b&c"d 2 a%20b%26c%22d 3 a+b%26c%22d '
+                                                    '4 a b&c\\"d'), '1 *** 2 *** 3 *** 4 ***')
+
+    def test_documents_page_failure_stops_with_screenshot(self):
+        code, out, err = self.run_main(StubPage(fail={'goto'}))
+        self.assertEqual(code, 1)
+        self.assertIn("step 'documents page' failed: Page.goto: net::ERR_TIMED_OUT", err)
+        self.assertNotIn('Traceback', err)
+        self.assertEqual(len(self.screenshots()), 1)
+
+    def test_bot_check_after_sign_in_exits_3(self):
+        page = StubPage((HTML / 'verify-human.html').read_text())
+        code, out, err = self.run_main(page)
+        self.assertEqual(code, 3)
+        self.assertIn('stopped by an Onshape check', err)
+        self.assertEqual(len(self.screenshots()), 1)
+
+    def test_tb_inch_units_failure_tells_owner_to_do_it_by_hand(self):
+        page = StubPage(signed_in=True, fail={ui_run.SELECTORS['workspace_units']})
+        code, out, err = self.run_main(page)
+        self.assertEqual(code, 1)
+        self.assertIn("step 'tb-inch units' failed", err)
+        self.assertIn('by hand', err)
+        self.assertIn(str(ui_run.tb_inch_units_file()), err)
+        self.assertEqual(len(self.screenshots()), 1)
+
+    def test_panel_step_failure_names_step_and_records_nothing_else(self):
+        ui_run.tb_inch_units_file().write_text('inch\n')
+        page = StubPage(signed_in=True, fail={ui_run.SELECTORS['panel_icon']})
+        page.counts[ui_run.SELECTORS['panel_frame']] = 0
+        code, out, err = self.run_main(page)
+        self.assertEqual(code, 1)
+        self.assertIn("step 'panel-load: open panel' failed", err)
+        self.assertEqual(len(self.screenshots()), 1)
+        self.assertNotIn(('goto', 'https://cad.onshape.com/documents/d2/w/w2/e/e2'),
+                         page.actions)          # the units step was skipped: marker present
+
+    def test_strip_failure_names_step(self):
+        ui_run.tb_inch_units_file().write_text('inch\n')
+        page = StubPage(signed_in=True, fail={'panel ' + ui_run.SELECTORS['strip_scenario']})
+        page.attributes[(ui_run.SELECTORS['panel_frame'], 'src')] = \
+            'http://localhost:6238/onshape-panel?documentId=d1'
+        page.counts['panel ' + ui_run.SELECTORS['panel_connect']] = 0
+        code, out, err = self.run_main(page)
+        self.assertEqual(code, 1)
+        self.assertIn("step 'panel-load: choose print' failed", err)
+        # The panel URL was recorded and is in the run's report.
+        self.assertEqual(ui_run.panel_url_file().read_text().strip(),
+                         'http://localhost:6238/onshape-panel')
+        self.assertIn('panel URL the development app opens: '
+                      'http://localhost:6238/onshape-panel', out)
+
+    def test_tb_inch_units_switched_once(self):
+        page = StubPage(signed_in=True)
+        self.assertTrue(ui_run.switch_tb_inch_units(page, {'did': 'd2', 'wid': 'w2',
+                                                           'eid': 'e2'}))
+        self.assertIn(('click', ui_run.SELECTORS['units_ok']), page.actions)
+        self.assertTrue(ui_run.tb_inch_units_file().is_file())
+        self.assertFalse(ui_run.switch_tb_inch_units(page, {'did': 'd2', 'wid': 'w2',
+                                                            'eid': 'e2'}))
 
 
 class ExecutableTest(unittest.TestCase):

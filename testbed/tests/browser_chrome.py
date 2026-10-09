@@ -21,6 +21,8 @@ HTML = Path(__file__).resolve().parent / 'fixtures' / 'html'
 BOT_CHECK_PAGES = ('recaptcha.html', 'hcaptcha.html', 'cloudflare.html', 'verify-human.html',
                    'unusual-activity.html', 'verify-email.html', 'security-check.html')
 PLAIN_PAGES = ('signin.html', 'documents.html')
+# The offline tests keep Chrome's own background traffic (updates, safe browsing) off too.
+OFFLINE_ARGS = ('--disable-background-networking', '--disable-component-update')
 
 
 def _needs_display(test):
@@ -39,7 +41,8 @@ class ChromeTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as state, \
                 mock.patch.dict(os.environ, {'XDG_STATE_HOME': state}), \
                 sync_playwright() as playwright:
-            context, executable = ui_run.launch_persistent_chrome(playwright, headed=True)
+            context, executable = ui_run.launch_persistent_chrome(
+                playwright, headed=True, extra_args=OFFLINE_ARGS)
             try:
                 self.assertTrue((settings.state_dir() / 'chrome-profile').is_dir())
                 print(f'\nbrowser_chrome: {_which(executable)} ran: {executable} '
@@ -66,7 +69,8 @@ class ChromeTest(unittest.TestCase):
                 mock.patch.dict(os.environ, {'XDG_STATE_HOME': state}), \
                 mock.patch.object(ui_run, 'CHROME_BINARY', Path(state) / 'no-chrome'), \
                 sync_playwright() as playwright:
-            context, executable = ui_run.launch_persistent_chrome(playwright, headed=True)
+            context, executable = ui_run.launch_persistent_chrome(
+                playwright, headed=True, extra_args=OFFLINE_ARGS)
             try:
                 self.assertEqual(executable, ui_run.FALLBACK_CHROMIUM)
                 page = context.new_page()

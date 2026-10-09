@@ -16,7 +16,8 @@ from onshape_integration import OnshapeClient
 from testbed import adapters, settings
 from testbed.adapters import set_current_scenario
 from testbed.cassette import Cassette, Exchange
-from testbed.documents import (TEST_DESCRIPTION, TEST_DOCUMENTS, NotATestDocument,
+from testbed.documents import (NOT_IN_FOLDER, TEST_DESCRIPTION, TEST_DOCUMENTS,
+                               NotATestDocument, pending_documents,
                                assert_test_document, build_test_documents, extrude_feature,
                                sketch_circle_feature, sketch_rectangle_feature)
 from testbed.scenarios import TEST_DOCUMENT_NAMES
@@ -169,13 +170,29 @@ class BuildTest(_BuildCase):
             self.build(rebuild='tb-inch')
         self.assertEqual(self.calls_to('DELETE', '/'), [])
 
-    def test_write_refused_when_created_document_not_in_folder(self):
-        # parentId did not place the new documents in the folder: no write follows.
+    def test_document_created_outside_folder_is_not_written_until_moved(self):
+        # parentId did not place the new documents in the folder: no write follows, and
+        # each entry is marked pending so the owner can move it by hand.
         self.answer_listings([], [])
-        with self.assertRaises(NotATestDocument) as caught:
-            self.build()
-        self.assertIn('not listed in the test folder', str(caught.exception))
+        built = self.build()
         self.assertEqual(self.calls_to('POST', '/partstudios/'), [])
+        self.assertEqual(self.calls_to('POST', '/assemblies/'), [])
+        self.assertEqual(pending_documents(built),
+                         {name: NOT_IN_FOLDER for name in TEST_DOCUMENT_NAMES})
+        self.assertEqual(json.loads(settings.DOCUMENTS_FILE.read_text()), built)
+        # Not moved yet: nothing is created a second time and nothing is written.
+        adapters.reset_testbed_adapters_for_tests()
+        self.build()
+        self.assertEqual([(m, e) for m, e, _kw in self.calls], [('GET', '/documents')])
+        # Moved: the next run builds them all without creating any.
+        adapters.reset_testbed_adapters_for_tests()
+        self.answer_listings(self.full_listing)
+        built = self.build()
+        self.assertEqual([e for e, _kw in self.calls_to('POST', '/documents')
+                          if e == '/documents'], [])
+        self.assertEqual(pending_documents(built), {})
+        self.assertEqual(list(built['tb-box']['parts']), ['Box'])
+        self.assertTrue(built['tb-assembly']['eid'])
 
 
 class RulesTest(unittest.TestCase):
@@ -216,6 +233,13 @@ class FeatureBodiesTest(unittest.TestCase):
         self.assertEqual(xs, {0.0, 0.04})
         self.assertEqual(ys, {0.0, 0.03})
         self.assertEqual({e['endParam'] for e in feature['entities']}, {0.04, 0.03})
+        # Planes by name with Onshape's query string, never by a hard-coded id.
+        for plane in ('Top', 'Front', 'Right'):
+            query = sketch_rectangle_feature(plane, 0.01, 0.01)['feature']['parameters'][0]
+            self.assertEqual(query['queries'][0], {
+                'btType': 'BTMIndividualQuery-138',
+                'queryString': f'query=qCreatedBy(makeId("{plane}"), EntityType.FACE);'})
+        self.assertNotIn('deterministicIds', json.dumps(TEST_DOCUMENTS, default=vars))
         circle = sketch_circle_feature('Top', 0.01)['feature']['entities'][0]['geometry']
         self.assertEqual(circle['radius'], 0.01)
         # Plain numbers only in the sketch: no expression with units.

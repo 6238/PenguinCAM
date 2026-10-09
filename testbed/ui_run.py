@@ -18,9 +18,10 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote, quote_plus
 
 from testbed import settings
 from testbed.browser import RecordDevServer
@@ -55,6 +56,13 @@ SELECTORS = {
     'oauth_allow': 'button:has-text("Allow"), button:has-text("Authorize")',
     # A part by name in the parts list or the feature tree; {name} is filled in.
     'part_in_list': '.os-parts-list [title="{name}"], .os-feature-tree [title="{name}"]',
+    # tb-inch's workspace units (spec 5.1: no API sets them): Document menu, Workspace
+    # units, Length, Inch, OK. Guessed, not yet seen on the live page.
+    'document_menu': '[data-testid="document-menu"], button[aria-label="Document menu"]',
+    'workspace_units': 'text=Workspace units',
+    'units_length': '[data-testid="units-length"], select[name="length"]',
+    'units_inch': 'text=Inch',
+    'units_ok': 'button:has-text("OK")',
     # Inside the panel (PenguinCAM's own pages, not Onshape's).
     'panel_connect': 'a[href*="/onshape/auth"], button:has-text("Connect")',
     'panel_mode_print': 'input[name="mode"][value="print"]',
@@ -77,11 +85,43 @@ class OnshapeCheckStopped(Exception):
 
 
 class OnshapeStepFailed(Exception):
-    """A step could not find its control in Onshape's interface; a screenshot was saved."""
+    """A step failed (a control not found, a page that did not load). The message names
+    the step and the screenshot's path. Exit code 1."""
+
+
+class UiRunRefused(RuntimeError):
+    """The run will not start: the production app's client id, or no documents.json."""
+
+
+class _PasswordFillFailed(Exception):
+    """The password field could not be filled. Carries nothing of the original error,
+    whose text (Playwright's call log) holds the value that was being filled."""
+
+    def __str__(self):
+        return 'the password field could not be filled'
 
 
 def _say(text):
-    print(f'ui run: {text}', file=sys.stderr)
+    print(f'ui run: {redact_password(text)}', file=sys.stderr)
+
+
+def redact_password(text) -> str:
+    """`text` with ONSHAPE_PASSWORD, plain, URL-encoded or JSON-escaped, replaced by ***."""
+    text = str(text)
+    password = os.environ.get('ONSHAPE_PASSWORD', '')
+    if not password:
+        return text
+    forms = {password, quote(password, safe=''), quote_plus(password),
+             json.dumps(password)[1:-1]}
+    for form in sorted(forms, key=len, reverse=True):
+        text = text.replace(form, '***')
+    return text
+
+
+def _reason(exc) -> str:
+    """The first line of an error, redacted: Playwright's call logs follow on later lines."""
+    lines = str(exc).strip().splitlines()
+    return redact_password(lines[0] if lines else type(exc).__name__)
 
 
 def chrome_executable() -> Optional[str]:
@@ -102,14 +142,49 @@ def _profile_dir() -> Path:
     return path
 
 
+def panel_url_file() -> Path:
+    """Where the run records which panel URL the development app opens (spec 5.9)."""
+    return settings.state_dir() / 'panel-url.txt'
+
+
+def tb_inch_units_file() -> Path:
+    """Present once tb-inch's workspace units are inches; the run then skips that step."""
+    return settings.state_dir() / 'tb-inch-units.txt'
+
+
 def screenshot(page, label) -> Path:
-    """Save the page to state_dir()/screenshots/<time>-<label>.png; return the path."""
+    """Save the page to state_dir()/screenshots/<UTC time>Z-<label>.png; return the path."""
     directory = settings.state_dir() / 'screenshots'
     directory.mkdir(parents=True, exist_ok=True)
     safe = re.sub(r'[^a-z0-9-]+', '-', label.lower()).strip('-') or 'page'
-    path = directory / f"{datetime.now():%Y%m%d-%H%M%S}-{safe}.png"
+    path = directory / f'{datetime.now(timezone.utc):%Y%m%d-%H%M%S}Z-{safe}.png'
     page.screenshot(path=str(path))
     return path
+
+
+def _screenshot_or_reason(page, label) -> str:
+    try:
+        return str(screenshot(page, label))
+    except Exception as exc:
+        return f'none (the screenshot failed: {_reason(exc)})'
+
+
+def ui_step(page, step, action, advice=''):
+    """Run `action()`. If it fails, stop the run: screenshot, then OnshapeStepFailed naming
+    `step` (and `advice`, what the owner can do). A bot check stop passes through.
+
+    The new error is raised outside the `except`, so the original, whose text may hold
+    a filled value, is not chained to it.
+    """
+    try:
+        return action()
+    except (OnshapeCheckStopped, OnshapeStepFailed):
+        raise
+    except Exception as exc:
+        reason = _reason(exc)
+    path = _screenshot_or_reason(page, step)
+    raise OnshapeStepFailed(f'step {step!r} failed: {reason}; screenshot: {path}'
+                            + (f'. {advice}' if advice else ''))
 
 
 def _grant_local_network(context, page):
@@ -124,16 +199,17 @@ def _grant_local_network(context, page):
             'origin': ONSHAPE_ORIGIN, 'permissions': ['localNetwork', 'loopbackNetwork']})
         return 'cdp'
     except Exception as exc:
-        _say(f'could not grant the local network permission ({exc}); the panel may not load')
+        _say(f'could not grant the local network permission ({_reason(exc)}); the panel '
+             'may not load')
         return None
 
 
-def launch_persistent_chrome(playwright, headed=True):
+def launch_persistent_chrome(playwright, headed=True, extra_args=()):
     """(context, executable): a persistent browser context on the kept profile.
 
     Google Chrome when it is installed and starts, else /usr/bin/chromium, which is logged.
-    Chrome's sandbox is off: the container has no user namespaces, and the run visits only
-    cad.onshape.com and the local development server.
+    The sandbox is off for both: the container has no user namespaces, so neither starts
+    with it, and the run visits only cad.onshape.com and the local development server.
     """
     candidates = []
     chrome = chrome_executable()
@@ -148,12 +224,11 @@ def launch_persistent_chrome(playwright, headed=True):
         try:
             context = playwright.chromium.launch_persistent_context(
                 str(_profile_dir()), executable_path=executable, headless=not headed,
-                args=['--no-sandbox'], viewport={'width': 1400, 'height': 900})
+                args=['--no-sandbox', *extra_args], viewport={'width': 1400, 'height': 900})
         except Exception as exc:
-            last_error = exc
+            last_error = _reason(exc)
             if executable != FALLBACK_CHROMIUM:
-                _say(f'Google Chrome did not launch ({str(exc).splitlines()[0]}); '
-                     f'using {FALLBACK_CHROMIUM}')
+                _say(f'Google Chrome did not launch ({last_error}); using {FALLBACK_CHROMIUM}')
             continue
         _say(f'browser: {executable}')
         return context, executable
@@ -162,6 +237,9 @@ def launch_persistent_chrome(playwright, headed=True):
 
 def detect_onshape_bot_check(page) -> Optional[str]:
     """Why the page looks like Onshape asking whether this is a person, or None."""
+    url = (getattr(page, 'url', '') or '').lower()
+    if any(marker in url for marker in _BOT_CHECK_FRAMES):
+        return f'a challenge page at {url.split("?")[0]}'
     sources = page.eval_on_selector_all(
         'iframe', 'frames => frames.map(f => f.getAttribute("src") || "")')
     for source in sources:
@@ -182,7 +260,7 @@ def stop_on_onshape_check(page, where) -> None:
     """Raise OnshapeCheckStopped, after a screenshot, if the page shows a bot check."""
     reason = detect_onshape_bot_check(page)
     if reason:
-        path = screenshot(page, f'onshape-check-{where}')
+        path = _screenshot_or_reason(page, f'onshape-check-{where}')
         raise OnshapeCheckStopped(f'{reason} ({where}); screenshot: {path}')
 
 
@@ -194,41 +272,98 @@ def _settle(page):
     page.wait_for_timeout(PACE_MS)
 
 
+def _fill_password(page, password):
+    failed = False
+    try:
+        page.locator(SELECTORS['password']).first.fill(password)
+    except Exception:
+        failed = True
+    if failed:                  # raised here, outside the except: nothing is chained
+        raise _PasswordFillFailed()
+
+
 def sign_in_to_onshape(page) -> None:
     """Fill Onshape's sign-in form with ONSHAPE_USERNAME and ONSHAPE_PASSWORD and submit.
 
-    The page is already on the sign-in page. Neither value is logged.
+    The page is already on the sign-in page. Neither value is logged, and a failed step
+    stops with a screenshot and a message that cannot hold the password.
     """
     username, password = settings.required_environment('ONSHAPE_USERNAME', 'ONSHAPE_PASSWORD')
-    page.wait_for_selector(SELECTORS['email'], timeout=STEP_TIMEOUT_MS)
-    stop_on_onshape_check(page, 'sign-in page')
-    page.fill(SELECTORS['email'], username)
-    page.wait_for_timeout(PACE_MS)
-    if not page.is_visible(SELECTORS['password']):        # the two-step form: email first
-        page.click(SELECTORS['email_continue'])
-        page.wait_for_selector(SELECTORS['password'], timeout=STEP_TIMEOUT_MS)
-    page.fill(SELECTORS['password'], password)
-    page.wait_for_timeout(PACE_MS)
-    page.click(SELECTORS['sign_in_submit'])
+
+    def email():
+        page.wait_for_selector(SELECTORS['email'], timeout=STEP_TIMEOUT_MS)
+        stop_on_onshape_check(page, 'sign-in page')
+        page.fill(SELECTORS['email'], username)
+        page.wait_for_timeout(PACE_MS)
+
+    def to_password():
+        if not page.is_visible(SELECTORS['password']):    # the two-step form: email first
+            page.click(SELECTORS['email_continue'])
+            page.wait_for_selector(SELECTORS['password'], timeout=STEP_TIMEOUT_MS)
+        stop_on_onshape_check(page, 'password page')
+
+    def submit():
+        page.wait_for_timeout(PACE_MS)
+        page.click(SELECTORS['sign_in_submit'])
+
+    ui_step(page, 'sign-in: email', email)
+    ui_step(page, 'sign-in: continue to the password', to_password)
+    ui_step(page, 'sign-in: password', lambda: _fill_password(page, password))
+    ui_step(page, 'sign-in: submit', submit)
     _say('submitted the Onshape sign-in form')
     _settle(page)
     stop_on_onshape_check(page, 'after sign-in')
 
 
 def _ensure_signed_in(page):
-    page.goto(f'{ONSHAPE_ORIGIN}/documents')
-    _settle(page)
-    stop_on_onshape_check(page, 'documents page')
-    if page.url.startswith(SIGN_IN_URL) or page.is_visible(SELECTORS['email']):
+    def documents_page():
+        page.goto(f'{ONSHAPE_ORIGIN}/documents')
+        _settle(page)
+        stop_on_onshape_check(page, 'documents page')
+        return page.url.startswith(SIGN_IN_URL) or page.is_visible(SELECTORS['email'])
+
+    if ui_step(page, 'documents page', documents_page):
         if not page.url.startswith(SIGN_IN_URL):
-            page.goto(SIGN_IN_URL)
-            _settle(page)
+            ui_step(page, 'sign-in page', lambda: (page.goto(SIGN_IN_URL), _settle(page)))
         sign_in_to_onshape(page)
     else:
         _say('the kept Chrome profile is still signed in to Onshape')
     if page.url.startswith(SIGN_IN_URL):
-        path = screenshot(page, 'sign-in-failed')
-        raise OnshapeStepFailed(f'still on the sign-in page after signing in; screenshot: {path}')
+        path = _screenshot_or_reason(page, 'sign-in-failed')
+        raise OnshapeStepFailed(f"step 'sign-in' failed: still on the sign-in page after "
+                                f'submitting; screenshot: {path}')
+
+
+def _open_document(page, document, where):
+    page.goto(f"{ONSHAPE_ORIGIN}/documents/{document['did']}/w/{document['wid']}"
+              f"/e/{document['eid']}")
+    _settle(page)
+    stop_on_onshape_check(page, where)
+
+
+def switch_tb_inch_units(page, document) -> bool:
+    """The first run's extra (spec 5.1): set tb-inch's workspace units to inches.
+
+    Done once; tb_inch_units_file() records it. False when it was already done.
+    """
+    marker = tb_inch_units_file()
+    if marker.is_file():
+        return False
+    advice = ("Switch tb-inch's units to inches by hand in Onshape (Document menu, "
+              f'Workspace units, Length: Inch), then create {marker} so the run skips '
+              'this step')
+
+    def switch():
+        _open_document(page, document, 'tb-inch units')
+        for key in ('document_menu', 'workspace_units', 'units_length', 'units_inch',
+                    'units_ok'):
+            page.locator(SELECTORS[key]).first.click()
+            page.wait_for_timeout(PACE_MS)
+
+    ui_step(page, 'tb-inch units', switch, advice)
+    marker.write_text('inch\n')
+    _say("tb-inch's workspace units are now inches")
+    return True
 
 
 class _PanelScenario:
@@ -240,23 +375,23 @@ class _PanelScenario:
         self.document = document
         self.panel = page.frame_locator(SELECTORS['panel_frame'])
 
+    def _step(self, step, action):
+        return ui_step(self.page, f'{self.scenario.name}: {step}', action)
+
     def run(self):
-        doc = self.document
-        self.step = 'open document'
-        self.page.goto(f"{ONSHAPE_ORIGIN}/documents/{doc['did']}/w/{doc['wid']}/e/{doc['eid']}")
-        _settle(self.page)
-        stop_on_onshape_check(self.page, self.scenario.name)
+        name = self.scenario.name
+        self._step('open document', lambda: _open_document(self.page, self.document, name))
         for index, step in enumerate(self.scenario.steps):
-            self.step = step.name
-            if index and self._strip_ready():
-                self.panel.locator(SELECTORS['strip_next']).click()
+            def act(step=step, index=index):
+                if index and self._strip_ready():
+                    self.panel.locator(SELECTORS['strip_next']).click()
+                    self.page.wait_for_timeout(PACE_MS)
+                self._do(step)
                 self.page.wait_for_timeout(PACE_MS)
-            self._do(step)
-            self.page.wait_for_timeout(PACE_MS)
-            stop_on_onshape_check(self.page, f'{self.scenario.name}-{step.name}')
-        self.step = 'done'
-        self.panel.locator(SELECTORS['strip_done']).click()
-        _settle(self.page)
+                stop_on_onshape_check(self.page, f'{name}-{step.name}')
+            self._step(step.name, act)
+        self._step('done', lambda: (self.panel.locator(SELECTORS['strip_done']).click(),
+                                    _settle(self.page)))
 
     def _strip_ready(self):
         try:
@@ -277,8 +412,8 @@ class _PanelScenario:
         elif step.action == 'back':
             self.panel.locator(SELECTORS['panel_mode_2d']).check()
         elif step.select:
-            for number, name in enumerate(step.select):
-                target = self.page.locator(SELECTORS['part_in_list'].format(name=name)).first
+            for number, part in enumerate(step.select):
+                target = self.page.locator(SELECTORS['part_in_list'].format(name=part)).first
                 target.click(modifiers=['Control'] if number else None)
                 self.page.wait_for_timeout(PACE_MS)
         elif step.name == 'deselect':
@@ -290,7 +425,9 @@ class _PanelScenario:
             self.page.locator(SELECTORS['panel_icon']).first.click()
         frame = self.page.locator(SELECTORS['panel_frame']).first
         frame.wait_for(timeout=STEP_TIMEOUT_MS)
-        _say(f"panel URL: {(frame.get_attribute('src') or '').split('?')[0]}")
+        url = (frame.get_attribute('src') or '').split('?')[0]
+        panel_url_file().write_text(url + '\n')
+        _say(f'panel URL: {url} (recorded in {panel_url_file()})')
         _settle(self.page)
         connect = self.panel.locator(SELECTORS['panel_connect'])
         if connect.count():                      # the one place OAuth runs
@@ -305,19 +442,7 @@ class _PanelScenario:
             _settle(self.page)
 
 
-def run_onshape_ui(scenarios, headed=True) -> Path:
-    """Run the panel scenarios in real Onshape; return the fresh message log directory.
-
-    Needs ONSHAPE_USERNAME, ONSHAPE_PASSWORD and the dev app's ONSHAPE_CLIENT_ID and
-    ONSHAPE_CLIENT_SECRET; refuses the production app's client id.
-    """
-    values = dict(zip(UI_VARIABLES, settings.required_environment(*UI_VARIABLES)))
-    if values['ONSHAPE_CLIENT_ID'].startswith(_PRODUCTION_CLIENT_ID_PREFIX):
-        raise RuntimeError('the automated Onshape UI run refuses the production Onshape '
-                           'app: ONSHAPE_CLIENT_ID must be PenguinCAM-chondl-dev\'s')
-    if not settings.DOCUMENTS_FILE.is_file():
-        raise RuntimeError(f'{settings.DOCUMENTS_FILE} does not exist; run build-docs first')
-    documents = json.loads(settings.DOCUMENTS_FILE.read_text())
+def _run(scenarios, documents, headed):
     from playwright.sync_api import sync_playwright
 
     with RecordDevServer() as server, sync_playwright() as playwright:
@@ -328,19 +453,37 @@ def run_onshape_ui(scenarios, headed=True) -> Path:
             page.set_default_timeout(STEP_TIMEOUT_MS)
             _grant_local_network(context, page)
             _ensure_signed_in(page)
+            if 'tb-inch' in documents:
+                switch_tb_inch_units(page, documents['tb-inch'])
             for name in scenarios:
                 scenario = SCENARIOS[name]
-                driver = _PanelScenario(page, scenario, documents[scenario.document])
-                try:
-                    driver.run()
-                except (OnshapeCheckStopped, OnshapeStepFailed):
-                    raise
-                except Exception as exc:
-                    path = screenshot(page, f'{name}-{driver.step}')
-                    raise OnshapeStepFailed(f'{name}: step {driver.step!r} failed: '
-                                            f'{str(exc).splitlines()[0]}; screenshot: {path}'
-                                            ) from None
+                _PanelScenario(page, scenario, documents[scenario.document]).run()
                 _say(f'{name}: done')
         finally:
             context.close()
     return settings.fresh_message_dir()
+
+
+def run_onshape_ui(scenarios, headed=True) -> Path:
+    """Run the panel scenarios in real Onshape; return the fresh message log directory.
+
+    Needs ONSHAPE_USERNAME, ONSHAPE_PASSWORD and the dev app's ONSHAPE_CLIENT_ID and
+    ONSHAPE_CLIENT_SECRET; refuses the production app's client id. Whatever stops the run,
+    the error that leaves here has ONSHAPE_PASSWORD redacted and nothing chained to it.
+    """
+    values = dict(zip(UI_VARIABLES, settings.required_environment(*UI_VARIABLES)))
+    if values['ONSHAPE_CLIENT_ID'].startswith(_PRODUCTION_CLIENT_ID_PREFIX):
+        raise UiRunRefused('the automated Onshape UI run refuses the production Onshape '
+                           "app: ONSHAPE_CLIENT_ID must be PenguinCAM-chondl-dev's")
+    if not settings.DOCUMENTS_FILE.is_file():
+        raise UiRunRefused(f'{settings.DOCUMENTS_FILE} does not exist; run build-docs first')
+    documents = json.loads(settings.DOCUMENTS_FILE.read_text())
+    try:
+        return _run(scenarios, documents, headed)
+    except OnshapeCheckStopped as exc:
+        stopped = OnshapeCheckStopped(redact_password(exc))
+    except OnshapeStepFailed as exc:
+        stopped = OnshapeStepFailed(redact_password(exc))
+    except Exception as exc:
+        stopped = OnshapeStepFailed(f'the UI run failed: {_reason(exc)}')
+    raise stopped               # outside the except: the original is not chained

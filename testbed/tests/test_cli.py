@@ -86,6 +86,10 @@ class _CliCase(unittest.TestCase):
         os.environ['ONSHAPE_ACCESS_KEY'] = 'test-access'
         os.environ['ONSHAPE_SECRET_KEY'] = 'test-secret'
 
+    def give_ui_credentials(self):
+        os.environ.update(ONSHAPE_USERNAME='testbed@example.invalid', ONSHAPE_PASSWORD='pw',
+                          ONSHAPE_CLIENT_ID='devclientid0000', ONSHAPE_CLIENT_SECRET='dev')
+
     def onshape_answers_from(self, *exchanges):
         """Every live call the recording adapter makes is answered from these exchanges."""
         Cassette('part-export', list(exchanges), synthetic=True).save(settings.CASSETTE_DIR)
@@ -227,6 +231,36 @@ class OtherCommandsTest(_CliCase):
         self.assertIn("last segment of the folder's URL", err)
         self.assertEqual([line for line in self.ledger_lines() if line['counted']], [])
 
+    def test_build_docs_tells_owner_to_move_documents_outside_folder(self):
+        self.give_keys()
+        os.environ['TESTBED_FOLDER_ID'] = 'f00000000000000000000f01'
+        fixture = Path(__file__).resolve().parent / 'fixtures' / 'cassettes'
+        cassette = Cassette.load(fixture, 'synthetic-build-docs')
+        for ex in cassette.exchanges:
+            if ex.method == 'GET' and ex.path == '/api/v13/documents':
+                ex.body_text = json.dumps({'items': []})     # parentId placed nothing
+        cassette.scenario = 'build-docs'
+        cassette.save(settings.CASSETTE_DIR)
+        replay = ReplayAdapter()
+        self.enterContext(mock.patch.object(
+            HTTPAdapter, 'send', lambda adapter, request, **kw: replay.send(request, **kw)))
+        code, out, err = self.run_cli('build-docs')
+        self.assertEqual(code, 1, err)
+        self.assertIn('tb-box was created outside the test folder', out)
+        self.assertIn('move it into the test folder in Onshape', out)
+        self.assertIn('counted calls: 8', out)        # two listings and six creations
+
+    def test_build_docs_refusal_is_one_line(self):
+        self.give_keys()
+        os.environ['TESTBED_FOLDER_ID'] = 'f00000000000000000000f01'
+        from testbed import documents
+        refused = documents.NotATestDocument('tb-box is not listed in the test folder')
+        with mock.patch.object(documents, 'build_test_documents', side_effect=refused):
+            code, out, err = self.run_cli('build-docs')
+        self.assertEqual(code, 1)
+        self.assertIn('build-docs stopped: tb-box is not listed', err)
+        self.assertNotIn('Traceback', err)
+
     def test_record_ui_without_credentials_names_variable(self):
         code, out, err = self.run_cli('record', '--ui', 'panel-load')
         self.assertEqual(code, 2)
@@ -234,6 +268,7 @@ class OtherCommandsTest(_CliCase):
 
     def test_record_ui_stopped_by_onshape_check_exits_3(self):
         from testbed import ui_run
+        self.give_ui_credentials()
         stop = ui_run.OnshapeCheckStopped('a challenge frame (sign-in page); screenshot: x.png')
         with mock.patch.object(ui_run, 'run_onshape_ui', side_effect=stop):
             code, out, err = self.run_cli('record', '--ui', 'panel-load')
@@ -243,6 +278,7 @@ class OtherCommandsTest(_CliCase):
 
     def test_record_ui_failed_step_exits_1(self):
         from testbed import ui_run
+        self.give_ui_credentials()
         failed = ui_run.OnshapeStepFailed("panel-load: step 'open panel' failed")
         with mock.patch.object(ui_run, 'run_onshape_ui', side_effect=failed):
             code, out, err = self.run_cli('record', '--ui', 'panel-load')

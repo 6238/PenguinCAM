@@ -10,6 +10,7 @@ missing ones are built. Nothing is written to or deleted unless assert_test_docu
 says the target is a test document.
 """
 import json
+import sys
 from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import quote
@@ -24,11 +25,16 @@ TEST_DESCRIPTION = 'created by PenguinCAM test bed'
 # instances. Plus one for a --rebuild's delete.
 BUILD_DOCS_ESTIMATE = 41
 
-# Onshape's deterministic ids for the three default planes.
-PLANE_IDS = {'Top': 'JDC', 'Front': 'JCC', 'Right': 'JFC'}
+# The default planes, found by name with the query string Onshape documents rather than
+# by deterministic ids, which it says must not be hard-coded.
+PLANES = ('Top', 'Front', 'Right')
 # The id of Onshape's Name part property, set through the metadata endpoint.
 NAME_PROPERTY_ID = '57f3fb8efa3416c06701d60d'
 VERSION_NAME = 'tb-box for part-export'
+# A documents.json entry with this key was created but not built; its value says why.
+PENDING = 'pending'
+NOT_IN_FOLDER = 'not in the test folder'
+FOLDER_PAGE = 20                    # GET /documents answers at most 20 items at a time
 _FEATURE_CALL = 'BTFeatureDefinitionCall-1406'
 
 
@@ -52,9 +58,12 @@ class DocumentSpec:
 # ---------------------------------------------------------------------------
 
 def _plane_query(plane):
+    if plane not in PLANES:
+        raise ValueError(f'plane must be one of {PLANES}, not {plane!r}')
     return {'btType': 'BTMParameterQueryList-148', 'parameterId': 'sketchPlane',
-            'queries': [{'btType': 'BTMIndividualQuery-138',
-                         'deterministicIds': [PLANE_IDS[plane]]}]}
+            'queries': [{'btType': 'BTMIndividualQuery-138', 'queryString':
+                         f'query=qCreatedBy(makeId("{plane}"), '
+                         'EntityType.FACE);'}]}
 
 
 def _sketch(plane, name, entities, constraints):
@@ -199,6 +208,8 @@ def assert_test_document(document_json, folder_listing) -> None:
 # ---------------------------------------------------------------------------
 
 def _call(client, method, endpoint, **kwargs):
+    # OnshapeClient has no public method for an arbitrary endpoint; its private one keeps
+    # the authentication and the test bed's record and replay adapters.
     response = client._make_api_request(method, endpoint, **kwargs)
     if not 200 <= response.status_code < 300:
         raise RuntimeError(f'{method} {endpoint} answered HTTP {response.status_code}')
@@ -206,7 +217,15 @@ def _call(client, method, endpoint, **kwargs):
 
 
 def _list_folder(client, folder_id):
-    return _items(_call(client, 'GET', '/documents', params={'parentId': folder_id}))
+    """Every document in the folder: GET /documents?parentId=<folder>, page by page."""
+    items, params = [], {'parentId': folder_id}
+    while True:
+        answer = _call(client, 'GET', '/documents', params=params)
+        page = _items(answer)
+        items.extend(page)
+        if not (isinstance(answer, dict) and answer.get('next')) or not page:
+            return items
+        params = {'parentId': folder_id, 'offset': len(items), 'limit': FOLDER_PAGE}
 
 
 def _post_features(client, where, spec):
@@ -232,7 +251,8 @@ def _name_parts(client, where, spec):
     for part, name in zip(parts, spec.part_names):
         if part.get('name') != name:
             _call(client, 'POST', f"/metadata/{where}/p/{quote(part['partId'], safe='')}",
-                  json={'properties': [{'propertyId': NAME_PROPERTY_ID, 'value': name}]})
+                  json={'jsonType': 'metadata-part', 'partId': part['partId'],
+                        'properties': [{'propertyId': NAME_PROPERTY_ID, 'value': name}]})
         named[name] = part['partId']
     if len(named) != len(spec.part_names):
         raise RuntimeError(f'{spec.name}: expected parts {spec.part_names}, Onshape listed '
@@ -279,10 +299,17 @@ def _write_documents_json(built):
     settings.DOCUMENTS_FILE.write_text(json.dumps(built, indent=1, sort_keys=True) + '\n')
 
 
+def pending_documents(documents: dict) -> dict:
+    """{name: why} for the documents.json entries that were created but not built yet."""
+    return {name: entry[PENDING] for name, entry in documents.items() if entry.get(PENDING)}
+
+
 def build_test_documents(client, folder_id: str, rebuild: Optional[str] = None) -> dict:
     """Build the test documents missing from the folder; return and write documents.json.
 
-    With `rebuild`, that one test document is deleted first and built again.
+    With `rebuild`, that one test document is deleted first and built again. A document
+    POST /documents created outside the folder is not written to: its entry is marked
+    pending (NOT_IN_FOLDER) and it is built by the first run that finds it in the folder.
     """
     names = [spec.name for spec in TEST_DOCUMENTS]
     if rebuild is not None and rebuild not in names:
@@ -298,38 +325,52 @@ def build_test_documents(client, folder_id: str, rebuild: Optional[str] = None) 
         assert_test_document(present[rebuild], listing)
         _call(client, 'DELETE', f"/documents/{present.pop(rebuild)['id']}")
         previous.pop(rebuild, None)
+        if rebuild == 'tb-box' and 'tb-assembly' in present:
+            print('build-docs: tb-assembly still places the old version of tb-box; run '
+                  'build-docs --rebuild tb-assembly next', file=sys.stderr)
 
-    built = {}
+    built, to_build, created = {}, {}, {}
     for name, item in present.items():
-        if previous.get(name, {}).get('did') != item['id']:
+        entry = previous.get(name, {})
+        if entry.get('did') != item['id']:
             raise RuntimeError(f'{name} is in the test folder but not in documents.json; '
                                f'run build-docs --rebuild {name}')
-        built[name] = previous[name]
-
-    created = {}
+        if entry.get(PENDING):
+            to_build[name] = item                 # moved into the folder since: build it
+        else:
+            built[name] = entry
     for spec in TEST_DOCUMENTS:
-        if spec.name not in present:
-            created[spec.name] = _call(client, 'POST', '/documents', json={
-                'name': spec.name, 'description': TEST_DESCRIPTION, 'parentId': folder_id})
-    if not created:
-        _write_documents_json(built)
-        return built
+        entry = previous.get(spec.name, {})
+        if spec.name in present:
+            continue
+        if entry.get(PENDING) == NOT_IN_FOLDER:   # created before, still not moved
+            built[spec.name] = entry
+            continue
+        created[spec.name] = to_build[spec.name] = _call(client, 'POST', '/documents', json={
+            'name': spec.name, 'description': TEST_DESCRIPTION, 'parentId': folder_id})
 
-    # Listed again: the rules need each new document to be in the folder before any write.
-    listing = _list_folder(client, folder_id)
+    if created:
+        # Listed again: the rules need each new document to be in the folder before any
+        # write. This is also the check that parentId places a document in the folder.
+        listing = _list_folder(client, folder_id)
+    listed = {item.get('id') for item in listing}
     for spec in TEST_DOCUMENTS:
-        document = created.get(spec.name)
+        document = to_build.get(spec.name)
         if document is None:
             continue
-        try:
-            assert_test_document(document, listing)
-        except NotATestDocument as exc:
-            raise NotATestDocument(f'{exc}. POST /documents with parentId did not place it '
-                                   'in the folder: move it there in Onshape, then run '
-                                   'build-docs again') from None
-        if spec.kind == 'assembly':
-            built[spec.name] = _build_assembly(client, document, spec, built)
+        stub = {'did': document['id'], 'wid': document['defaultWorkspace']['id'], 'parts': {}}
+        if document['id'] not in listed:
+            built[spec.name] = dict(stub, **{PENDING: NOT_IN_FOLDER})
+        elif spec.kind == 'assembly' and any(
+                built.get(source, {}).get(PENDING) or source not in built
+                for source, _count in spec.instances or []):
+            built[spec.name] = dict(stub, **{PENDING: 'waits for the documents it places'})
         else:
-            built[spec.name] = _build_part_studio(client, document, spec)
+            assert_test_document(document, listing)
+            if spec.kind == 'assembly':
+                built[spec.name] = _build_assembly(client, document, spec, built)
+            else:
+                built[spec.name] = _build_part_studio(client, document, spec)
         _write_documents_json(built)      # after each document, so a failure loses no ids
+    _write_documents_json(built)
     return built
