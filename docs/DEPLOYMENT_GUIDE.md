@@ -95,6 +95,9 @@ GOOGLE_CLIENT_SECRET=your-client-secret
 AUTH_ENABLED=true
 ALLOWED_DOMAINS=your-workspace-domain.com
 # Example: ALLOWED_DOMAINS=popcornpenguins.com
+# Comma-separated. Use ALLOWED_DOMAINS=* to allow ANY Google account -- appropriate
+# for a public deployment, since each team is on its own school Workspace domain and
+# listing them would mean a redeploy per team. Unset or empty denies EVERY sign-in.
 ```
 
 #### **Onshape Integration**
@@ -117,9 +120,12 @@ ALLOWED_EMAILS=admin@example.com,teacher@example.com
 # Comma-separated list of specific emails to allow
 
 # Google Drive (optional)
-DRIVE_NAME=Your Team Shared Drive
-DRIVE_FOLDER=CNC/G-code
-# Path within the shared drive
+GOOGLE_DRIVE_FOLDER_ID=1AbC...
+# Fallback destination folder ID, used only when a team's PenguinCAM-config.yaml
+# does not set google_drive_folder_id. Get it from the folder's Drive URL:
+# https://drive.google.com/drive/folders/<THIS PART>
+# (DRIVE_NAME / DRIVE_FOLDER were removed: under the drive.file scope PenguinCAM
+# cannot search Drive by name or path, so the destination must be an explicit ID.)
 
 # Flask (optional)
 FLASK_ENV=production
@@ -558,7 +564,7 @@ Railway dashboard shows current usage and costs in real-time.
    - Add `*.json` with credentials to `.gitignore`
 
 2. **Restrict authentication**
-   - Use `ALLOWED_DOMAINS` to limit to your workspace
+   - Use `ALLOWED_DOMAINS` to limit to your workspace, or `*` to allow any Google account
    - Consider `ALLOWED_EMAILS` for admin-only features
 
 3. **Keep dependencies updated**

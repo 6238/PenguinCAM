@@ -5,6 +5,7 @@ Focus on higher-level functions; minimal tests for low-level utilities.
 
 import unittest
 import math
+import re
 import sys
 import os
 import tempfile
@@ -391,7 +392,7 @@ class TestMultiMachineConfig(unittest.TestCase):
         cfg = TeamConfig(self.TWO_MACHINES)
 
         m1 = self._part_gcode(cfg)
-        self.assertIn('PERIMETER (NO TABS)', m1)
+        self.assertIn('PERIMETER - NO TABS', m1)
         self.assertIn('Tabs disabled', m1)
         self.assertNotIn('CONTOUR ONLY', m1)  # threshold 0 -> always fully clear
 
@@ -1089,8 +1090,91 @@ class TestUnmillableFeatures(unittest.TestCase):
         # else: buffer succeeded (Shapely is very robust) - test passes anyway
 
 
+class TestModalSetupLine(unittest.TestCase):
+    """The opening modal block is split one-code-per-line for Carbide Motion.
+
+    Carbide Motion (Shapeoko HDM) rejects the combined "G90 G94 G91.1 G40 G49 G17" with
+    "Value set multiple times" even though it is legal - six distinct modal groups, which
+    stock GRBL accepts. Splitting it is what makes that controller run our output.
+    """
+
+    MODAL_CODES = ['G17', 'G94', 'G91.1', 'G40', 'G49', 'G90']
+
+    def _header(self):
+        pp = FRCPostProcessor(0.25, 0.157)
+        pp.apply_material_preset('plywood')
+        pp.circles = [{'center': (1.0, 1.0), 'diameter': 0.25}]
+        pp.polylines = [[(0, 0), (4, 0), (4, 4), (0, 4)]]
+        pp.classify_holes()
+        pp.identify_perimeter_and_pockets()
+        result = pp.generate_gcode()
+        self.assertTrue(result.success)
+        return result.gcode
+
+    def test_each_modal_code_is_alone_on_its_line(self):
+        """One G-word per block, each carrying a short comment."""
+        lines = FRCPostProcessor(0.25, 0.157)._modal_setup_gcode()
+        self.assertEqual(len(self.MODAL_CODES), len(lines))
+        for code, line in zip(self.MODAL_CODES, lines):
+            body, _, comment = line.partition(';')
+            self.assertEqual(code, body.strip())
+            self.assertTrue(comment.strip(), f'{code} should carry a short comment')
+
+    def test_no_block_combines_modal_words(self):
+        """The whole point: no emitted block carries more than one G-word."""
+        gword = re.compile(r'(?<![A-Za-z0-9.])G\d+(?:\.\d+)?')
+        for line in self._header().split('\n'):
+            code = line.split(';')[0].split('(')[0]
+            self.assertLessEqual(
+                len(gword.findall(code)), 1,
+                f'Carbide Motion rejects multi-G-word blocks: {line.strip()}'
+            )
+
+    def test_absolute_mode_is_set_last(self):
+        """G90 must follow G91.1.
+
+        A parser that truncates "G91.1" to G91 would otherwise leave the machine in
+        INCREMENTAL distance mode and cut the whole part as relative moves. Ending on G90
+        makes that failure benign instead of catastrophic.
+        """
+        codes = [ln.split(';')[0].strip()
+                 for ln in FRCPostProcessor(0.25, 0.157)._modal_setup_gcode()]
+        self.assertLess(codes.index('G91.1'), codes.index('G90'))
+
+    def test_modal_setup_precedes_all_motion(self):
+        gcode = self._header().split('\n')
+        codes = [ln.split(';')[0].strip() for ln in gcode]
+        last_modal = max(codes.index(c) for c in self.MODAL_CODES)
+        first_motion = next(i for i, c in enumerate(codes)
+                            if c.startswith(('G0 ', 'G1 ', 'G2 ', 'G3 ')))
+        self.assertLess(last_modal, first_motion)
+
+    def test_park_line_keeps_g53_with_its_motion(self):
+        """G53 is non-modal and applies only to its own block - it must NOT be split."""
+        pp = FRCPostProcessor(0.25, 0.157)
+        pp.apply_material_preset('plywood')
+        pp.park_position = (0.0, 0.0, -0.25)
+        park = pp._park_gcode('Park')
+        self.assertTrue(park, 'park_position set should emit park lines')
+        for line in park:
+            self.assertRegex(line.split(';')[0], r'G53\s+G0\s')
+
+    def test_park_emits_nothing_when_unconfigured(self):
+        """Machines without park_position never see a G53 line at all."""
+        pp = FRCPostProcessor(0.25, 0.157)
+        pp.apply_material_preset('plywood')
+        pp.park_position = None
+        self.assertEqual([], pp._park_gcode('Park'))
+
+
 class TestGCodeFormatting(unittest.TestCase):
-    """Test that generated G-code has no nested comments or unicode characters."""
+    """Test that generated G-code has no nested comments or unicode characters.
+
+    `finalize_gcode` (gcode_hygiene.py) now scrubs these on the way out, so what these
+    tests really pin is that this generation path still routes through that gate - they
+    fail if a future assembly point joins its lines itself. The checks that catch the
+    mistake at its source live in tests/test_gcode_hygiene.py.
+    """
 
     def setUp(self):
         """Create a simple test part that exercises all major operations."""

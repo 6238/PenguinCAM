@@ -58,7 +58,7 @@ PenguinCAM uses **Google OAuth 2.0** to:
 - Search: "Google Drive API"
 - Click the result
 - Click **"Enable"**
-- Purpose: Allows file uploads to shared drive
+- Purpose: Allows file uploads to the team's Drive folder (`drive.file` scope only)
 
 #### **Google People API**
 - Search: "People API"  
@@ -325,11 +325,13 @@ You should be redirected to `/auth/login`
 
 **Causes:**
 1. **Wrong domain:** User email domain doesn't match `ALLOWED_DOMAINS`
+   (the server log names the rejected domain and the configured list -- check there first)
 2. **Email restriction:** User not in `ALLOWED_EMAILS` list
 
 **Solutions:**
 - Check user's email domain matches workspace domain
-- Verify `ALLOWED_DOMAINS` environment variable
+- Verify `ALLOWED_DOMAINS` environment variable (set it to `*` to allow any Google
+  account; unset or empty denies everyone)
 - If using `ALLOWED_EMAILS`, add user to list or remove variable
 
 ---

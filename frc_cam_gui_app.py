@@ -4,7 +4,7 @@ PenguinCAM - FRC Team 6238 CAM Tool
 A Flask-based web interface for generating G-code from DXF files
 """
 
-from flask import Flask, render_template, request, jsonify, send_file, session, send_from_directory, redirect, make_response
+from flask import Flask, render_template, request, jsonify, send_file, session, send_from_directory, redirect, make_response, g
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -41,7 +41,7 @@ werkzeug_logger.handlers = []  # Remove all handlers
 
 # Import Google Drive integration (optional - will work without it)
 try:
-    from google_drive_integration import GoogleDriveUploader
+    from google_drive_integration import GoogleDriveUploader, default_folder_id
     GOOGLE_DRIVE_AVAILABLE = True
 except ImportError:
     GOOGLE_DRIVE_AVAILABLE = False
@@ -58,7 +58,8 @@ except ImportError:
 
 # Import Onshape integration (optional - will work without it)
 try:
-    from onshape_integration import get_onshape_client, session_manager, build_multilayer_dxf
+    from onshape_integration import (get_onshape_client, session_manager, build_multilayer_dxf,
+                                     OnshapeAuthError)
     ONSHAPE_AVAILABLE = True
 except ImportError:
     ONSHAPE_AVAILABLE = False
@@ -351,6 +352,33 @@ def normalize_material(material):
         return 'polycarbonate'
     return material
 
+@app.after_request
+def _persist_onshape_tokens(response):
+    """
+    Write back Onshape tokens that were refreshed during this request.
+
+    Runs for error responses too, which is the point: a refresh retires the previous
+    tokens at Onshape, so a refresh that isn't saved leaves the session holding dead
+    credentials and every later request 401s until the user manually re-authorizes.
+
+    Credentials Onshape has definitively refused are DELETED instead. Kept, they made
+    the session look signed in forever: the panel never showed Connect, every API call
+    failed, and closing/reopening the panel reloaded the same dead cookie. Dropped, the
+    next render shows Connect and one sign-in fixes it.
+    """
+    if ONSHAPE_AVAILABLE:
+        client = getattr(g, 'onshape_client', None)
+        if client is not None and client.credentials_dead:
+            session_manager.clear_session(get_current_user_id())
+            log(f"[ONSHAPE-AUTH] ref={client.auth_failure_ref} dropped dead Onshape "
+                f"credentials from the session; the user will be asked to Connect")
+        elif client is not None and client.tokens_refreshed:
+            session_manager.update_session_tokens(client)
+            client.tokens_refreshed = False
+            log("🔄 Onshape tokens refreshed and saved to session")
+    return response
+
+
 def get_onshape_client_or_401():
     """
     Get Onshape client for current user, or return 401 error response.
@@ -557,6 +585,10 @@ def _app_template_context(force_defaults=False):
         # One-shot result of an explicit /config/refresh click, consumed on this render so
         # it doesn't stick around on the next page load.
         'config_refresh_result': None if force_defaults else session.pop('config_refresh_result', None),
+        # Why we fell back to defaults. Previously this reason existed but was only ever
+        # shown after an explicit /config/refresh click, so a failed automatic lookup left
+        # the user staring at "Using default configuration" with no explanation at all.
+        'team_config_error': None if force_defaults else session.get('team_config_error'),
         'machines': machines,
         'machines_info': machines_info,
         'current_machine_id': current_machine_id,
@@ -580,8 +612,14 @@ def _require_onshape_auth():
 
 def _has_onshape_session():
     """True when the current browser has an authenticated Onshape client (the
-    Onshape-panel flow). Its OAuth is its gate — unchanged by the upload flow."""
-    return bool(ONSHAPE_AVAILABLE and session_manager.get_client(get_current_user_id()))
+    Onshape-panel flow). Its OAuth is its gate — unchanged by the upload flow.
+
+    Credentials Onshape refused earlier in this request don't count, even though they are
+    still in the session until _persist_onshape_tokens drops them."""
+    if not ONSHAPE_AVAILABLE:
+        return False
+    client = session_manager.get_client(get_current_user_id())
+    return bool(client and not client.credentials_dead)
 
 
 def _require_app_session():
@@ -858,11 +896,19 @@ def _serve_onshape_panel():
     # Onshape passes the user's current theme (e.g. ?theme=light|dark) when it loads the
     # panel iframe; mirror it so the panel matches Onshape's light/dark preference.
     theme = 'dark' if request.args.get('theme', 'light').lower() == 'dark' else 'light'
-    authenticated = bool(ONSHAPE_AVAILABLE and session_manager.get_client(get_current_user_id()))
-    log(f"[PANEL] render did={onshape_ctx['documentId'][:8]} authed={authenticated} theme={theme}")
+    # Build the context FIRST: it may call Onshape (the team-config refresh), and that call
+    # is what discovers the stored credentials are dead. Deciding `authenticated` before it
+    # rendered a dead session as signed in, so the Connect screen never appeared.
+    context = _app_template_context()
+    authenticated = _has_onshape_session()
+    client = getattr(g, 'onshape_client', None)
+    auth_failure_ref = client.auth_failure_ref if client is not None and client.credentials_dead else None
+    log(f"[PANEL] render did={onshape_ctx['documentId'][:8]} authed={authenticated} theme={theme}"
+        + (f" auth_failure_ref={auth_failure_ref}" if auth_failure_ref else ""))
     resp = make_response(render_template('wizard.html', source='onshape',
                                          authenticated=authenticated, onshape_ctx=onshape_ctx,
-                                         theme=theme, **_app_template_context()))
+                                         auth_failure_ref=auth_failure_ref,
+                                         theme=theme, **context))
     # Allow embedding only within Onshape; allow the session cookie to ride in the iframe.
     resp.headers['Content-Security-Policy'] = "frame-ancestors https://*.onshape.com"
     resp.headers.pop('X-Frame-Options', None)
@@ -1549,7 +1595,9 @@ def drive_status():
     # Check team config to see if Drive is enabled
     team_config = session.get('team_config', {})
     drive_enabled = team_config.get('google_drive_enabled', False)
-    folder_id = team_config.get('google_drive_folder_id')
+    # Same resolution order the upload path uses, so status can never report "ready"
+    # for a destination the upload would then fail to find.
+    folder_id = team_config.get('google_drive_folder_id') or default_folder_id()
 
     if not drive_enabled or not folder_id:
         return jsonify({
@@ -1635,9 +1683,12 @@ def upload_to_drive(token):
                 }), 401
             log(f"✅ Got credentials, scopes: {creds.scopes if hasattr(creds, 'scopes') else 'unknown'}")
         
-        # Create uploader with credentials
-        log("🔧 Creating GoogleDriveUploader...")
-        uploader = GoogleDriveUploader(credentials=creds)
+        # Create uploader with credentials and THIS team's destination folder.
+        # The folder is per-team session state, so it must be passed per request --
+        # the server process is shared by every team.
+        folder_id = session.get('team_config', {}).get('google_drive_folder_id') or default_folder_id()
+        log(f"🔧 Creating GoogleDriveUploader (folder {folder_id})...")
+        uploader = GoogleDriveUploader(credentials=creds, folder_id=folder_id)
         
         log("🔐 Authenticating...")
         if not uploader.authenticate():
@@ -1811,8 +1862,7 @@ def onshape_authed():
     poll. The embedded iframe polls this after opening the OAuth popup and reloads
     once tokens land in the session — avoids relying on window.opener/postMessage,
     which cross-origin OAuth navigation often severs."""
-    authed = bool(ONSHAPE_AVAILABLE and session_manager.get_client(get_current_user_id()))
-    return jsonify({'authenticated': authed})
+    return jsonify({'authenticated': _has_onshape_session()})
 
 
 @app.route('/onshape/export-face', methods=['POST'])
@@ -1906,7 +1956,9 @@ def onshape_export_face():
                     log(f"[EXPORT] 2D thickness discovery failed (non-fatal): {e}")
         session_manager.update_session_tokens(client)
         if not dxf_bytes:
-            return jsonify({'error': 'Onshape returned no DXF for that face.'}), 502
+            # NOT 502: Cloudflare replaces any origin 502/504 body with its own error
+            # page, so a gateway status here reaches the user as opaque HTML.
+            return jsonify({'error': 'Onshape returned no DXF for that face.'}), 500
 
         tmp = tempfile.NamedTemporaryFile(suffix='.dxf', delete=False, dir=UPLOAD_FOLDER)
         path = tmp.name
@@ -1961,11 +2013,16 @@ def onshape_export_face():
         detail = ' (2.5D, t={:.4f}")'.format(detected_thickness) if detected_thickness else ''
         log(f"[EXPORT] ok name='{geo['name']}' {geo['width']}x{geo['height']}{detail}")
         return jsonify(geo)
+    except OnshapeAuthError as e:
+        # Credentials are dead and a refresh could not rescue them. 401 + auth_url lets
+        # the panel offer a reconnect link instead of showing a dead-end error.
+        log(f"[EXPORT] Onshape auth failed: {e}")
+        return jsonify({'error': str(e), 'auth_url': '/onshape/auth'}), 401
     except RuntimeError as e:
         # Expected, user-facing failures from the 2.5D builder (bad face selection,
-        # expired auth, no parallel faces).
+        # no parallel faces). 400, not 502 -- see the note above about Cloudflare.
         log(f"[EXPORT] multilayer failed: {e}")
-        return jsonify({'error': str(e)}), 502
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         log(traceback.format_exc())
         return jsonify({'error': f'Face export failed: {str(e)}'}), 500

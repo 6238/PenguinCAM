@@ -26,6 +26,7 @@ from shapely.ops import unary_union
 
 # Local modules
 from dxf_geometry import entities_to_closed_paths, polygon_from_path, sample_spline
+from gcode_hygiene import finalize_gcode
 from team_config import TeamConfig
 
 
@@ -1393,8 +1394,8 @@ class FRCPostProcessor:
                 else:
                     cleared_holes.append((i, hole, needs_peck))
                     strategy = "peck + spiral" if needs_peck else "helical + spiral"
-                    reason = "(partial depth)" if not is_through_cut else ""
-                    gcode.append(f"(Hole {i} - {diameter:.3f}\" diameter, {hole_area:.3f} sq in - {strategy} {reason})")
+                    reason = ", partial depth" if not is_through_cut else ""
+                    gcode.append(f"(Hole {i} - {diameter:.3f}\" diameter, {hole_area:.3f} sq in - {strategy}{reason})")
 
             # Process cleared holes first
             if cleared_holes:
@@ -1552,7 +1553,7 @@ class FRCPostProcessor:
             if self.tabs_enabled:
                 gcode.append("(===== PERIMETER WITH TABS =====)")
             else:
-                gcode.append("(===== PERIMETER (NO TABS) =====)")
+                gcode.append("(===== PERIMETER - NO TABS =====)")
 
             gcode.extend(self._generate_perimeter_gcode(self.perimeter))
             gcode.append("")
@@ -1589,7 +1590,7 @@ class FRCPostProcessor:
         # Return result
         return PostProcessorResult(
             success=True,
-            gcode='\n'.join(gcode),
+            gcode=finalize_gcode(gcode),
             filename=filename,
             warnings=warnings + self.warnings,
             stats={
@@ -1649,7 +1650,7 @@ class FRCPostProcessor:
             if self.tabs_enabled:
                 perimeter.append("(===== PERIMETER WITH TABS =====)")
             else:
-                perimeter.append("(===== PERIMETER (NO TABS) =====)")
+                perimeter.append("(===== PERIMETER - NO TABS =====)")
             perimeter.extend(self._generate_perimeter_gcode(self.perimeter, defer_tab_removal=True))
 
         # Phase D: tab removal, using the positions captured during the perimeter pass.
@@ -1665,6 +1666,34 @@ class FRCPostProcessor:
     # (G53) motion appears ONLY when a park_position is configured, and coolant M-codes
     # ONLY when a coolant type is configured - so the default output runs on GRBL, Easel,
     # WinCNC, Mach, etc.
+
+    def _modal_setup_gcode(self):
+        """The modal state every program opens with, one code per line.
+
+        These six words are legal in a single block - six distinct modal groups, nothing
+        set twice - and stock GRBL accepts the combined form. Carbide Motion (Shapeoko
+        HDM) rejects it anyway with "Value set multiple times", so we emit one per line;
+        the machine state that results is identical, since none of these cause motion or
+        depend on each other, and all of them still precede the first move.
+
+        G90 is deliberately LAST. A parser that reads "G91.1" with integer truncation
+        sees G91 - incremental distance mode - which is the most plausible source of that
+        Carbide error (G90 and a truncated G91 really would set distance mode twice).
+        Ending on G90 means such a controller lands in absolute mode regardless. Losing
+        the arc-mode set is harmless by comparison: incremental IJK is the default
+        everywhere and the only mode GRBL supports.
+
+        Do NOT generalize this to "one G-word per line" - see _park_gcode, where G53 is
+        non-modal and MUST share its block with the motion it applies to.
+        """
+        return [
+            'G17  ; XY plane',
+            'G94  ; Feed per minute',
+            'G91.1  ; Arc centers incremental, IJK relative to start point',
+            'G40  ; Cutter comp cancel',
+            'G49  ; Tool length comp cancel',
+            'G90  ; Absolute positioning',
+        ]
 
     def _safe_z(self) -> float:
         """Work-coordinate (G54) safe retract height above Z=0 (sacrifice board). Uses the
@@ -1848,11 +1877,8 @@ class FRCPostProcessor:
             gcode.append("(  ** VERIFY Z-ZERO BEFORE RUNNING **)")
             gcode.append("")
 
-        # Modal G-code setup
-        gcode.append("G90 G94 G91.1 G40 G49 G17")
-
-        if not is_multilayer:
-            gcode.append("(G90=Absolute, G94=Feed/min, G91.1=Arc centers incremental - IJK relative to start point, G40=Cutter comp cancel, G49=Tool length comp cancel, G17=XY plane)")
+        # Modal G-code setup, one code per line (see _modal_setup_gcode)
+        gcode.extend(self._modal_setup_gcode())
 
         # Units
         if self.units == "inch":
@@ -1860,8 +1886,6 @@ class FRCPostProcessor:
         else:
             gcode.append("G21  ; Millimeters")
 
-        # Ensure absolute positioning mode
-        gcode.append("G90  ; Absolute positioning mode")
         gcode.append("")
 
         # Spindle on
@@ -2645,7 +2669,7 @@ class FRCPostProcessor:
 
         return PostProcessorResult(
             success=True,
-            gcode='\n'.join(gcode),
+            gcode=finalize_gcode(gcode),
             filename=filename,
             warnings=warnings + self.warnings,
             stats={
@@ -4771,16 +4795,15 @@ class FRCPostProcessor:
         gcode.append('( SETUP INSTRUCTIONS: )')
         gcode.append('( 1. Mount tube in jig with end facing user )')
         gcode.append(self._tube_wcs_setup_comment())
-        gcode.append('( 3. Z=0 is at bottom of tube [jig surface] )')
+        gcode.append('( 3. Z=0 is at bottom of tube, jig surface )')
         gcode.append('( 4. Y=0 is at nominal end face of tube )')
         gcode.append('( )')
 
         # === INITIALIZATION ===
         gcode.append('')
         gcode.append('( === INITIALIZATION === )')
-        gcode.append('G90 G94 G91.1 G40 G49 G17')
-        gcode.append('G20')
-        gcode.append('G90  ; Absolute positioning mode')
+        gcode.extend(self._modal_setup_gcode())
+        gcode.append('G20  ; Inches')
         gcode.append('')
         gcode.append('( Spindle )')
         gcode.append(f'S{self.spindle_speed} M3')
@@ -4858,7 +4881,7 @@ class FRCPostProcessor:
         # Return result
         return PostProcessorResult(
             success=True,
-            gcode='\n'.join(gcode),
+            gcode=finalize_gcode(gcode),
             filename=filename,
             warnings=[],
             stats={
@@ -4979,9 +5002,8 @@ class FRCPostProcessor:
         # === INITIALIZATION ===
         gcode.append('')
         gcode.append('( === INITIALIZATION === )')
-        gcode.append('G90 G94 G91.1 G40 G49 G17')
-        gcode.append('G20')
-        gcode.append('G90  ; Absolute positioning mode')
+        gcode.extend(self._modal_setup_gcode())
+        gcode.append('G20  ; Inches')
         gcode.append('')
         gcode.append('( Spindle )')
         gcode.append(f'S{self.spindle_speed} M3')
@@ -5044,10 +5066,10 @@ class FRCPostProcessor:
         gcode.append('( Machine pattern on first face )')
         gcode.append('( Machining holes and pockets only - perimeter is tube face )')
         z_offset = tube_height - self.material_thickness
-        gcode.append(f'( Z offset: +{z_offset:.3f}" [tube_height - wall_thickness] )')
+        gcode.append(f'( Z offset: +{z_offset:.3f}", tube_height - wall_thickness )')
         # Y offset for first face: matches facing offset so holes align with face
         y_offset_first_face = self.tube_facing_offset if square_end else 0.0
-        gcode.append(f'( Y offset: +{y_offset_first_face:.3f}" [rough end will be milled back] )')
+        gcode.append(f'( Y offset: +{y_offset_first_face:.3f}", rough end will be milled back )')
         gcode.append('')
         gcode.extend(self._generate_toolpath_gcode(skip_perimeter=True, z_offset=z_offset, y_offset=y_offset_first_face))
 
@@ -5097,15 +5119,15 @@ class FRCPostProcessor:
         # face 1's pattern mirrored onto the opposite side.
         if two_face:
             gcode.append('( Machine second face pattern - X-mirrored )')
-            gcode.append('( Distinct second-face pattern, X-mirrored [tube flipped end-for-end] )')
+            gcode.append('( Distinct second-face pattern, X-mirrored, tube flipped end-for-end )')
         else:
             gcode.append('( Machine pattern on second face - X-mirrored )')
-            gcode.append('( Pattern is X-mirrored [tube flipped end-for-end] so holes align opposite )')
+            gcode.append('( Pattern is X-mirrored, tube flipped end-for-end, so holes align opposite )')
         z_offset = tube_height - self.material_thickness
-        gcode.append(f'( Z offset: +{z_offset:.3f}" [tube_height - wall_thickness] )')
+        gcode.append(f'( Z offset: +{z_offset:.3f}", tube_height - wall_thickness )')
         # Y offset: 0 for Phase 2 - work zero is re-established after flip, face is at Y=0"
         y_offset_phase2 = 0.0
-        gcode.append(f'( Y offset: {y_offset_phase2:.4f}" [face at Y=0, no offset needed] )')
+        gcode.append(f'( Y offset: {y_offset_phase2:.4f}", face at Y=0, no offset needed )')
         gcode.append('')
 
         # Mirror X coordinates around tube centerline (tube flipped end-for-end). The
@@ -5181,7 +5203,7 @@ class FRCPostProcessor:
         # Return result
         return PostProcessorResult(
             success=True,
-            gcode='\n'.join(gcode),
+            gcode=finalize_gcode(gcode),
             filename=filename,
             warnings=[],
             stats={
@@ -5741,7 +5763,7 @@ def assemble_job_gcode(part_jobs, header_pp, timestamp=None, suggested_filename=
 
     return PostProcessorResult(
         success=True,
-        gcode='\n'.join(gcode),
+        gcode=finalize_gcode(gcode),
         filename=filename,
         stats={
             'num_parts': len(part_jobs),

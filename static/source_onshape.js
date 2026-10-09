@@ -91,11 +91,39 @@
         faceId: faceId, partId: partId, multilayer: multilayer
       })
     })
-      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      // Read as text and parse defensively: an error response is not always JSON
+      // (a proxy or CDN can substitute its own HTML error page), and calling
+      // r.json() on that rejects with an opaque SyntaxError that tells the user
+      // nothing about what actually went wrong.
+      .then(function (r) {
+        return r.text().then(function (body) {
+          var j = null;
+          try { j = JSON.parse(body); } catch (e) { /* not JSON; handled below */ }
+          return { ok: r.ok, status: r.status, j: j, body: body };
+        });
+      })
       .then(function (res) {
         if (P.onSelectionBusy) P.onSelectionBusy(false);
-        if (!res.ok || !res.j.success) {
-          if (P.onSelectionError) P.onSelectionError((res.j && res.j.error) || 'export failed');
+        if (!res.ok || !res.j || !res.j.success) {
+          var msg;
+          if (res.j && res.j.error) {
+            msg = res.j.error;
+          } else if (!res.j) {
+            // Non-JSON body: name the status so this is diagnosable at a glance.
+            msg = 'Server error (HTTP ' + res.status + '). Please try again.';
+            dbg('onshape:export-nonjson', { status: res.status, body: res.body.slice(0, 200) });
+          } else {
+            msg = 'export failed';
+          }
+          // Dead Onshape credentials: offer a reconnect rather than a dead end.
+          if (res.status === 401 && res.j && res.j.auth_url) {
+            if (P.onAuthExpired) {
+              P.onAuthExpired(res.j.auth_url, msg);
+              return;
+            }
+            msg = msg + ' Reconnect at ' + res.j.auth_url;
+          }
+          if (P.onSelectionError) P.onSelectionError(msg);
           if (active) arm();  // let them try another face
           return;
         }

@@ -13,6 +13,19 @@ subset of G-code (`G0 G1 G2 G3 G4 G17 G20/G21 G40 G49 G54 G80 G90 G91.1 G94`, `M
 M30`). It is designed to run on **GRBL, WinCNC, Mach3/Mach4, LinuxCNC** and similar
 controllers without machine-coordinate moves.
 
+**One G-word per block.** The opening modal state is emitted as six separate lines
+(`G17`, `G94`, `G91.1`, `G40`, `G49`, `G90`) rather than the combined
+`G90 G94 G91.1 G40 G49 G17` that most posts use. The combined form is legal - six
+distinct modal groups - and stock GRBL accepts it, but **Carbide Motion (Shapeoko HDM)
+rejects it** with "Value set multiple times". `G90` is emitted last on purpose: a parser
+that truncates `G91.1` to `G91` would otherwise leave the machine in incremental distance
+mode. See `FRCPostProcessor._modal_setup_gcode`.
+
+The one exception is `G53`, which is non-modal and applies only to the block it appears
+in, so `G53 G0 Z...` must stay on one line. That line is only emitted when
+`park_position` is configured (see below) - a controller that rejects multi-G-word blocks
+would likely reject it too, so leave `park_position` unset on such machines.
+
 Three features are **opt-in via config** and, if enabled, add codes or assumptions that not
 every controller supports:
 

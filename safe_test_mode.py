@@ -27,7 +27,7 @@ class SafeTestPostProcessor(FRCPostProcessor):
         
         # SAFETY HEADER
         gcode.append("(===========================================)")
-        gcode.append("(       ⚠️  SAFE TEST MODE ACTIVE  ⚠️       )")
+        gcode.append("(  !!!   SAFE TEST MODE ACTIVE   !!!  )")
         gcode.append("(===========================================)")
         gcode.append("(This is a DRY RUN version for testing)")
         gcode.append(f"(Tool raised {self.safety_height_offset}\" above normal)")

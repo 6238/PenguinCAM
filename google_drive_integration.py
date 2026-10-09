@@ -1,63 +1,55 @@
 """
 Google Drive Integration for FRC CAM GUI
-Saves G-code files directly to team's shared Google Drive
+Saves G-code files directly to a team's Google Drive folder
+
+Scope note: this module operates under `drive.file` only (see PenguinCAMAuth.SCOPES).
+That grants access to files this app creates -- it cannot browse, search, or resolve
+folders by name or path. The destination is therefore always an explicit folder ID
+supplied by the team's config, never discovered at runtime.
 """
 
 import os
-import json
-import pickle
-from pathlib import Path
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
-from logging_config import log  # shared log() + logging setup (was duplicated per module)
+from logging_config import log
+from team_config import extract_drive_folder_id  # one shared URL-or-ID normalizer  # shared log() + logging setup (was duplicated per module)
 
-# Scopes needed - only Drive file access
+# Scope needed - per-file access to files we create (non-sensitive; no CASA audit)
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 
-# Where to store credentials and tokens
-CREDENTIALS_FILE = 'credentials.json'  # Download from Google Cloud Console
-TOKEN_FILE = 'token.pickle'  # Auto-generated after first auth
+
+def default_folder_id():
+    """
+    Server-wide fallback destination folder, if one is configured.
+
+    Teams normally supply their own folder via PenguinCAM-config.yaml; this only
+    covers deployments running without team config.
+    """
+    # Check both GOOGLE_DRIVE_FOLDER_ID (preferred) and DRIVE_FOLDER_ID (legacy).
+    # Normalized so a pasted Drive URL works here too, same as in team config.
+    return extract_drive_folder_id(
+        os.environ.get('GOOGLE_DRIVE_FOLDER_ID') or os.environ.get('DRIVE_FOLDER_ID'))
+
 
 class GoogleDriveUploader:
     """Handles uploading files to Google Drive"""
-    
-    def __init__(self, credentials=None):
+
+    def __init__(self, credentials=None, folder_id=None):
         """
         Initialize with credentials from session
-        
+
         Args:
             credentials: Google OAuth2 credentials object
+            folder_id: Destination Drive folder ID (from the team's config). Falls back
+                       to the server-wide default only if not supplied. Must be passed
+                       per request -- it is per-team state and must never be cached on
+                       the server, which is shared by every team.
         """
         self.service = None
-        self.config = self._load_config()
         self.credentials = credentials
-        
-    def _load_config(self):
-        """Load drive configuration (folder IDs, etc.)"""
-        config_file = 'drive_config.json'
-        if os.path.exists(config_file):
-            with open(config_file, 'r') as f:
-                return json.load(f)
+        self.folder_id = folder_id or default_folder_id()
 
-        # Environment variables override
-        # Check both GOOGLE_DRIVE_FOLDER_ID (preferred) and DRIVE_FOLDER_ID (legacy)
-        folder_id = os.environ.get('GOOGLE_DRIVE_FOLDER_ID') or os.environ.get('DRIVE_FOLDER_ID')
-
-        return {
-            'shared_drive_name': os.environ.get('DRIVE_NAME', 'Popcorn Penguins'),
-            'folder_path': os.environ.get('DRIVE_FOLDER', 'CNC/G-code'),
-            'folder_id': folder_id
-        }
-    
-    def _save_config(self):
-        """Save configuration"""
-        with open('drive_config.json', 'w') as f:
-            json.dump(self.config, f, indent=2)
-    
     def authenticate(self):
         """
         Use provided credentials to build Drive service
@@ -65,83 +57,22 @@ class GoogleDriveUploader:
         """
         if not self.credentials:
             return False
-        
+
         try:
             self.service = build('drive', 'v3', credentials=self.credentials)
             return True
         except Exception as e:
             log(f"Drive authentication error: {e}")
             return False
-    
-    def find_shared_drive(self, drive_name):
-        """Find a shared drive by name"""
-        try:
-            results = self.service.drives().list(
-                pageSize=100
-            ).execute()
-            
-            drives = results.get('drives', [])
-            for drive in drives:
-                if drive['name'] == drive_name:
-                    return drive['id']
-            
-            return None
-        except HttpError as error:
-            log(f"Error finding shared drive: {error}")
-            return None
-    
-    def find_folder_in_drive(self, drive_id, folder_path):
-        """
-        Find a folder by path within a shared drive
-        folder_path example: "CNC/G-code" 
-        """
-        folder_names = folder_path.split('/')
-        current_folder_id = None
-        
-        for folder_name in folder_names:
-            query_parts = [
-                f"name='{folder_name}'",
-                "mimeType='application/vnd.google-apps.folder'",
-                "trashed=false"
-            ]
-            
-            if current_folder_id:
-                query_parts.append(f"'{current_folder_id}' in parents")
-            
-            query = ' and '.join(query_parts)
-            
-            try:
-                results = self.service.files().list(
-                    q=query,
-                    spaces='drive',
-                    corpora='drive',
-                    driveId=drive_id,
-                    includeItemsFromAllDrives=True,
-                    supportsAllDrives=True,
-                    fields='files(id, name)'
-                ).execute()
-                
-                folders = results.get('files', [])
-                if not folders:
-                    # Folder doesn't exist
-                    return None
-                
-                current_folder_id = folders[0]['id']
-                
-            except HttpError as error:
-                log(f"Error finding folder '{folder_name}': {error}")
-                return None
-        
-        return current_folder_id
-    
+
     def upload_file(self, file_path, filename=None):
         """
         Upload a file to the configured Google Drive folder
-        
+
         Args:
             file_path: Path to the file to upload
             filename: Optional custom filename (uses file_path name if not provided)
-        
+
         Returns:
             dict with 'success', 'file_id', 'web_link', and 'message'
         """
@@ -151,65 +82,52 @@ class GoogleDriveUploader:
                     'success': False,
                     'message': 'Authentication failed'
                 }
-        
-        # Find or set up the shared drive and folder
-        drive_name = self.config.get('shared_drive_name', 'Popcorn Penguins')
-        drive_id = self.find_shared_drive(drive_name)
-        
-        if not drive_id:
+
+        if not self.folder_id:
             return {
                 'success': False,
-                'message': f"Shared drive '{drive_name}' not found. "
-                          f"Make sure you have access to it."
+                'message': 'No Google Drive folder configured. '
+                           'Set google_drive_folder_id in PenguinCAM-config.yaml.'
             }
-        
-        # Find the target folder
-        folder_path = self.config.get('folder_path', 'CNC/G-code')
-        folder_id = self.config.get('folder_id')
-        
-        if not folder_id:
-            folder_id = self.find_folder_in_drive(drive_id, folder_path)
-            if folder_id:
-                self.config['folder_id'] = folder_id
-                self._save_config()
-        
-        if not folder_id:
-            return {
-                'success': False,
-                'message': f"Folder '{folder_path}' not found in '{drive_name}'. "
-                          f"Please create it manually or update drive_config.json"
-            }
-        
-        # Upload the file
+
         try:
             if not filename:
                 filename = os.path.basename(file_path)
-            
+
+            # parents + supportsAllDrives is enough for shared drives; driveId is not
+            # needed and cannot be resolved under drive.file anyway.
             file_metadata = {
                 'name': filename,
-                'parents': [folder_id],
-                'driveId': drive_id
+                'parents': [self.folder_id]
             }
-            
+
             media = MediaFileUpload(file_path, resumable=True)
-            
+
             file = self.service.files().create(
                 body=file_metadata,
                 media_body=media,
                 supportsAllDrives=True,
                 fields='id, name, webViewLink'
             ).execute()
-            
+
             return {
                 'success': True,
                 'file_id': file['id'],
                 'web_link': file.get('webViewLink', ''),
-                'message': f"✅ Saved to {drive_name}/{folder_path}/{filename}"
+                'message': f"✅ Saved {filename} to Google Drive"
             }
-            
+
         except HttpError as error:
+            # 404 on create almost always means the folder ID is wrong or this user
+            # lacks access to it -- say so, rather than leaking the raw API error.
+            if error.resp.status in (403, 404):
+                return {
+                    'success': False,
+                    'message': f"Could not write to the configured Drive folder. "
+                               f"Check that google_drive_folder_id is correct and that "
+                               f"you have edit access to that folder."
+                }
             return {
                 'success': False,
                 'message': f"Upload failed: {str(error)}"
             }
-    

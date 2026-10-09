@@ -75,21 +75,45 @@ this project does not use `pyproject.toml`.
 - **NEVER use nested parenthesis comments** in G-code output
 - ❌ Bad: `(Outer comment (nested comment) more text)`
 - ✅ Good: `(Outer comment, nested text, more text)`
-- CNC controllers will fail or produce unpredictable behavior with nested comments
-- There is a unit test (`test_no_nested_comments`) but it doesn't catch every case since some G-code is conditional
+- A controller ends the comment at the first `)` and tries to execute the rest of the line
 
 ### Unicode Characters - FORBIDDEN
 - **All G-code must be pure ASCII** - no unicode characters
 - ❌ Bad: `(Cut depth: 0.25″)` (curly quotes), `(Feedrate → 75 IPM)` (arrows)
 - ✅ Good: `(Cut depth: 0.25")` (straight quotes), `(Feedrate: 75 IPM)` (colon)
-- There is a unit test (`test_no_unicode_characters`) but it doesn't catch every case
+
+### Square Brackets in Comments - FORBIDDEN
+- **No `[` or `]` inside a parenthesis comment** - some controllers read them as expressions
+- ❌ Bad: `(Z offset: +1.875" [tube_height - wall_thickness])`
+- ✅ Good: `(Z offset: +1.875", tube_height - wall_thickness)`
+
+### How these rules are enforced
+
+Three layers, because no single one is sufficient (`gcode_hygiene.py`):
+
+1. **Runtime gate.** Every generated program is assembled by `finalize_gcode()`, which
+   scrubs each line: nested parens flatten to commas, unicode transliterates to ASCII
+   (`°` → ` deg`, `″` → `"`), brackets are dropped, unclosed comments are closed. A bad
+   comment can never reach a machine, whichever branch produced it. **Any new place that
+   builds a G-code program must go through `finalize_gcode()`, not `'\n'.join(...)`.**
+2. **Strict mode in tests.** `tests/__init__.py` sets `gcode_hygiene.STRICT = True`, so
+   during `make test` `finalize_gcode()` *raises* instead of repairing. Any generation
+   test that produces a bad line fails, naming the line. (`make test` runs discovery with
+   `-t .` so the `tests` package init actually loads - don't drop that flag.)
+3. **Source lint.** `tests/test_gcode_hygiene.py` parses the emitting modules with `ast`
+   and checks every G-code comment *literal*, including ones inside conditional branches
+   that no test executes. This is what layers 1 and 2 cannot see on their own.
+
+Add new G-code-emitting modules to `GCODE_SOURCES` in `tests/test_gcode_hygiene.py`.
 
 ### Best Practices
 When generating G-code comments:
 1. Use commas or semicolons instead of nested parentheses
 2. Use straight ASCII quotes and standard punctuation
-3. Test conditional code paths manually if they generate comments
-4. Be especially careful with f-strings that include measurements or user data
+3. Be especially careful with f-strings that include measurements or user data - an
+   interpolated value or a conditional fragment is the usual way a stray `(` gets in
+4. Note that the runtime scrubber *repairs* rather than rejects, so a mistake shows up as
+   a mangled comment in production; fix it at the source when strict mode flags it
 
 ## Git Operations
 

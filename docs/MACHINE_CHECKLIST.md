@@ -11,6 +11,9 @@ Only if you set `park_position` in your config (this is what adds G53 machine mo
 ☐ Controller supports G53 machine-coordinate moves
 ☐ Machine Z increases upward and machine Z=0 is a safe, high-clearance position
    → If your controller mishandles G53 (e.g. GRBL/Easel), REMOVE `park_position` from your config.
+☐ Controller accepts two G-words in one block (`G53 G0 Z...`) - G53 is non-modal and cannot
+   be split onto its own line. Carbide Motion rejects multi-G-word blocks, so leave
+   `park_position` unset on a Shapeoko.
 
 Only if you set `machine.coolant` (this is what adds M7/M8/M9):
 ☐ Controller supports the coolant M-codes (stock GRBL needs M7 compiled in)

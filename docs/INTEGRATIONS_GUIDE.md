@@ -196,9 +196,9 @@ You need a **Google Workspace Shared Drive** (formerly Team Drive):
 2. Or create one: Click **"+ New"** next to Shared drives
 3. Name it after your team
 
-#### Step 2: Create Folder Structure
+#### Step 2: Create the Destination Folder
 
-Inside your shared drive:
+Create whatever folder you want the G-code to land in, for example:
 
 ```
 Popcorn Penguins/
@@ -207,41 +207,57 @@ Popcorn Penguins/
         └── (generated files will go here)
 ```
 
-Create these folders:
-1. Click into your shared drive
-2. Right-click → New Folder → "CNC"
-3. Enter CNC folder → New Folder → "G-code"
+Then open that folder in Drive and copy its ID out of the URL:
 
-**Note:** You can use any folder structure you want, just remember the path!
+```
+https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^ this is the folder ID
+```
+
+**Note:** PenguinCAM identifies the destination by ID, not by name or path. You can
+use any folder structure you like, and renaming or moving the folder later is fine --
+the ID never changes.
 
 ---
 
 ### Configuring Drive Uploads
 
-#### Environment Variables (Optional)
+#### Team Config (Preferred)
 
-These have sensible defaults but can be customized:
+Set the destination in your team's `PenguinCAM-config.yaml`:
 
-```bash
-DRIVE_NAME=Popcorn Penguins
-DRIVE_FOLDER=CNC/G-code
+```yaml
+google_drive_enabled: true
+google_drive_folder_id: 1AbCdEfGhIjKlMnOpQrStUvWxYz
 ```
 
-**Default behavior if not set:**
-- Shared drive: "Popcorn Penguins"
-- Folder path: "CNC/G-code"
+#### Environment Variable (Fallback)
 
-Only set these if you want different names/paths.
+For deployments running without team config, a server-wide default:
+
+```bash
+GOOGLE_DRIVE_FOLDER_ID=1AbCdEfGhIjKlMnOpQrStUvWxYz
+```
+
+The team config wins when both are set. There is no name- or path-based
+configuration: under the `drive.file` scope PenguinCAM cannot search Drive.
 
 #### How It Works
 
 1. User logs in with Google (OAuth from [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md))
 2. User processes a part and generates G-code
 3. User clicks **"Save to Google Drive"**
-4. File uploads to: `Shared Drive > CNC > G-code > filename.nc`
+4. File uploads to the configured folder ID
 5. All team members can access the file
 
-**Important:** The user's OAuth tokens are used for upload, but the file goes to the **shared drive**, not their personal Drive.
+**Important:** The user's OAuth tokens are used for upload, but the file goes to the
+configured folder, not their personal Drive. The signed-in user must have edit access
+to that folder -- PenguinCAM uploads as them, not as a service account.
+
+**Scope note:** PenguinCAM requests only `drive.file`, which grants access to files it
+creates and nothing else. It cannot read, list, or modify any other file in your Drive.
+A folder ID supplied in config works as an upload destination under this scope as long
+as the signed-in user can write to that folder.
 
 ---
 
@@ -365,7 +381,7 @@ Have another team member:
 
 **Solutions:**
 1. Check internet connection
-2. Verify shared drive exists and name matches `DRIVE_NAME`
+2. Verify the folder ID is correct and the user has edit access to that folder
 3. Verify folder path exists: `CNC/G-code`
 4. Check user is a member of the shared drive
 5. Try uploading a file directly to Drive to test access
@@ -377,9 +393,9 @@ Have another team member:
 **Problem:** Files upload but appear in wrong folder
 
 **Solutions:**
-1. Check `DRIVE_FOLDER` environment variable
+1. Check `google_drive_folder_id` in the team config (or `GOOGLE_DRIVE_FOLDER_ID`)
 2. Verify path matches actual folder structure
-3. Path should be relative to shared drive root: `CNC/G-code` not `/CNC/G-code`
+3. The value must be a bare folder ID, not a full URL or a path
 4. Case-sensitive: `G-code` ≠ `g-code`
 
 ---
@@ -571,8 +587,7 @@ Once integrations are working:
 ```bash
 ONSHAPE_CLIENT_ID=xxxxx
 ONSHAPE_CLIENT_SECRET=xxxxx
-DRIVE_NAME=Your Team Shared Drive
-DRIVE_FOLDER=CNC/G-code
+GOOGLE_DRIVE_FOLDER_ID=1AbCdEfGhIjKlMnOpQrStUvWxYz
 ```
 
 **Drive Path:**

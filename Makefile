@@ -21,13 +21,13 @@ test: test-quick
 # Everything except the slow slicer run; the tool for iteration.
 test-quick: test-daemon
 	@echo "Running unit tests..."
-	@uv run python -m unittest discover -s tests --buffer
+	@PENGUINCAM_STRICT_GCODE=1 uv run python -m unittest discover -s tests -t . --buffer
 	@echo ""
 	@echo "Running print unit tests..."
 	@uv run python -m unittest discover -s print/tests -t . --buffer
 	@echo ""
 	@echo "Running system tests..."
-	@uv run python gcode_test.py --quiet
+	@PENGUINCAM_STRICT_GCODE=1 uv run python gcode_test.py --quiet
 
 # The Pi daemon's own suite. Its requirements go into the development venv only -- they are
 # NOT in the repository's requirements.txt and must never reach the Docker image.

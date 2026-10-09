@@ -12,6 +12,7 @@ from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request as GoogleRequest
 from googleapiclient.discovery import build
 import secrets
+from datetime import timedelta
 from logging_config import log  # shared log() + logging setup (was duplicated per module)
 
 class PenguinCAMAuth:
@@ -22,7 +23,12 @@ class PenguinCAMAuth:
         'openid',
         'https://www.googleapis.com/auth/userinfo.email',
         'https://www.googleapis.com/auth/userinfo.profile',
-        'https://www.googleapis.com/auth/drive'  # Full Drive access (needed for shared drives)
+        # drive.file is the only non-sensitive Drive scope: it grants per-file access to
+        # files this app creates, which is all we do. Broader scopes (drive, drive.readonly,
+        # drive.metadata*) are RESTRICTED and would require an annual CASA security
+        # assessment to publish externally. A user-supplied folder ID works as a parent
+        # under drive.file as long as the signed-in user can write to that folder.
+        'https://www.googleapis.com/auth/drive.file'
     ]
     
     def __init__(self, app):
@@ -40,8 +46,17 @@ class PenguinCAMAuth:
                 log("⚠️  WARNING: Using random secret key. Set FLASK_SECRET_KEY environment variable for persistent sessions across redeploys.")
         
         # Configure session lifetime (30 days)
-        from datetime import timedelta
         app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+
+        if self.config.get('enabled'):
+            if self.config.get('allow_any_domain'):
+                log("🔓 Google sign-in OPEN to any Google account (ALLOWED_DOMAINS='*')")
+            elif self.config.get('allowed_domains'):
+                log(f"🔐 Google sign-in limited to: "
+                    f"{', '.join(self.config['allowed_domains'])}")
+            else:
+                log("⚠️  AUTH_ENABLED=true but ALLOWED_DOMAINS is unset — every sign-in "
+                    "will be denied. Set it to a domain list or '*'.")
         
         # Register routes
         self._register_routes()
@@ -58,9 +73,14 @@ class PenguinCAMAuth:
         # Base URL for redirects
         config['base_url'] = os.environ.get('BASE_URL', 'http://localhost:6238')
         
-        # Allowed domains/emails
+        # Allowed domains/emails.
+        # ALLOWED_DOMAINS='*' opens sign-in to any Google account (any domain), which is
+        # what a public deployment wants: teams live on their own school Workspace
+        # domains, so an explicit list would mean a redeploy per team. Unset/empty still
+        # denies everyone, so the gate can only be opened deliberately.
         env_domains = os.environ.get('ALLOWED_DOMAINS', '')
         config['allowed_domains'] = [d.strip() for d in env_domains.split(',') if d.strip()]
+        config['allow_any_domain'] = '*' in config['allowed_domains']
         
         env_emails = os.environ.get('ALLOWED_EMAILS', '')
         config['allowed_emails'] = [e.strip() for e in env_emails.split(',') if e.strip()]
@@ -140,19 +160,35 @@ class PenguinCAMAuth:
         return flow
     
     def _check_authorization(self, email, domain):
-        """Check if user is authorized"""
+        """
+        Check if user is authorized.
+
+        Denials are logged with the reason: the user-facing page cannot say why
+        (it would leak the allowlist), so without this a rejected sign-in is
+        invisible server-side and indistinguishable from a broken config.
+        """
         # Check specific emails
         if email in self.config.get('allowed_emails', []):
             return True
-        
+
         # Check domain
         if self.config.get('require_domain', True):
+            if self.config.get('allow_any_domain'):
+                return True  # ALLOWED_DOMAINS='*'
+
             allowed_domains = self.config.get('allowed_domains', [])
             if not allowed_domains:
+                log(f"🚫 Auth denied for {email}: ALLOWED_DOMAINS is unset or empty, "
+                    f"so no one is authorized. Set it to a domain list or '*'.")
                 return False  # No domains configured = no one allowed
-            
-            return domain in allowed_domains
-        
+
+            if domain in allowed_domains:
+                return True
+
+            log(f"🚫 Auth denied for {email}: domain '{domain}' is not in "
+                f"ALLOWED_DOMAINS ({', '.join(allowed_domains)}).")
+            return False
+
         return True  # If not requiring domain and not in specific list, allow
     
     def _register_routes(self):
@@ -172,9 +208,11 @@ class PenguinCAMAuth:
             flow = self._create_flow()
             
             # Generate authorization URL
+            # No include_granted_scopes: we request a fixed scope list rather than doing
+            # incremental auth, and users who previously granted full Drive would get the
+            # union back, which makes fetch_token() fail with "Scope has changed".
             authorization_url, state = flow.authorization_url(
                 access_type='offline',
-                include_granted_scopes='true',
                 prompt='consent'  # Force consent to get refresh token
             )
             
@@ -213,7 +251,8 @@ class PenguinCAMAuth:
                 if not self._check_authorization(email, domain):
                     return self._render_error_page(
                         'Access Denied',
-                        f'Your account ({email}) is not authorized to access PenguinCAM.'
+                        f'Your account ({email}) is not authorized to access '
+                        f'PenguinCAM. Ask your team mentor to allow your email domain.'
                     )
                 
                 # Save credentials to session

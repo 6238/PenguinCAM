@@ -147,7 +147,7 @@ The finishing arc at `Y-0.0787` (tool radius) places the actual tube face at Y=0
 ```
 ┌─────────────────────────────────────────────┐
 │ INITIALIZATION                              │
-│  • G90 G94 G91.1 G40 G49 G17 (modal setup)  │
+│  • Modal setup, one G-code per line         │
 │  • G20 (inch mode)                          │
 │  • G0 G28 G91 Z0. (home Z axis)             │
 │  • G90 (back to absolute)                   │
@@ -282,7 +282,12 @@ Tube facing always uses the **aluminum** preset:
 ( )
 
 ( === INITIALIZATION === )
-G90 G94 G91.1 G40 G49 G17
+G17
+G94
+G91.1
+G40
+G49
+G90
 G20
 G0 G28 G91 Z0.  ; Home Z axis at rapid speed
 G90  ; Back to absolute mode
