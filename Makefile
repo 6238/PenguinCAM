@@ -1,4 +1,4 @@
-.PHONY: install install-orca test test-quick test-daemon daemon-tarball
+.PHONY: install install-orca test test-quick test-daemon daemon-tarball testbed-replay testbed-record
 
 # Installs the Python environment and Orca Slicer (tools/orca, pinned in
 # print/scripts/install-orca.sh). Orca is a core dependency: the server refuses to
@@ -25,6 +25,9 @@ test-quick: test-daemon
 	@echo ""
 	@echo "Running print unit tests..."
 	@uv run python -m unittest discover -s print/tests -t . --buffer
+	@echo ""
+	@echo "Running test bed unit tests..."
+	@uv run python -m unittest discover -s testbed/tests -t . --buffer
 	@echo ""
 	@echo "Running system tests..."
 	@PENGUINCAM_STRICT_GCODE=1 uv run python gcode_test.py --quiet

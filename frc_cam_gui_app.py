@@ -31,6 +31,11 @@ import logging
 import metrics
 import feeds_speeds
 from logging_config import log  # shared log() + base logging setup (was duplicated per module)
+from testbed.settings import assert_testbed_allowed
+
+# Refuse to load a test bed on a deployed server, or a recording against the production
+# Onshape app. Here at import, not in __main__, because gunicorn imports this module.
+assert_testbed_allowed()
 
 # Quiet Werkzeug's request logging (clutters Vercel logs); the base logging config and log()
 # now come from logging_config (imported above).
