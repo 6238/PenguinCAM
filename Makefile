@@ -17,6 +17,7 @@ test: test-quick
 	@echo ""
 	@echo "Running Orca Slicer integration tests..."
 	@uv run python -m unittest print.tests.orca_integration_test
+	@uv run python -m unittest testbed.tests.slice_fixture_box
 
 # Everything except the slow slicer run; the tool for iteration.
 test-quick: test-daemon

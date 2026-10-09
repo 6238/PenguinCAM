@@ -22,6 +22,8 @@ CASSETTE_DIR = TESTBED_DIR / 'cassettes'
 MESSAGE_DIR = TESTBED_DIR / 'messages'
 FRESH_DIR = TESTBED_DIR / '.fresh'
 FIXTURE_DIR = TESTBED_DIR / 'fixtures'
+# The test documents' ids, written by the documents builder and read by the scenarios.
+DOCUMENTS_FILE = TESTBED_DIR / 'documents.json'
 
 # The production Onshape app's client id starts with this; a recording must never use it.
 _PRODUCTION_CLIENT_ID_PREFIX = 'VKDK'
