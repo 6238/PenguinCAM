@@ -34,7 +34,7 @@
   };
 
   var pending = [];        // events not yet posted to the server
-  var recorded = [];       // every event of this page load, with its step, for the harness
+  var recorded = [];       // every event since the scenario was chosen, with its step
   var messageCount = 0;    // messageId testbed-<n>, n counting from 1 per page load
   var scenarios = [];
   var current = null;      // the current scenario object
@@ -218,6 +218,7 @@
       current = find(name);
       stepIndex = 0;
       pending = [];
+      recorded.length = 0;     // the same array the harness holds
       remember();
       showStatus('');
       render();
@@ -284,6 +285,7 @@
     strip.id = 'testbed-strip';
     strip.appendChild(el('strong', 'Test bed ' + mode, 'margin-right:8px;color:#e08a52;'));
     ui.picker = el('select', '', 'font:inherit;');
+    ui.picker.id = 'testbed-scenario';
     ui.picker.appendChild(el('option', 'Scenario...'));
     ui.picker.options[0].value = '';
     for (var i = 0; i < scenarios.length; i++) {
@@ -297,15 +299,18 @@
     };
     ui.instruction = el('span', '', 'margin-left:8px;flex:1 1 240px;');
     ui.action = el('button', '', BUTTON);
+    ui.action.id = 'testbed-action';
     ui.action.type = 'button';
     ui.action.onclick = function () {
       var step = current && current.steps[stepIndex];
       if (step) act(step.action);
     };
     ui.next = el('button', 'Next step', BUTTON);
+    ui.next.id = 'testbed-next';
     ui.next.type = 'button';
     ui.next.onclick = nextStep;
     ui.done = el('button', 'Done', BUTTON);
+    ui.done.id = 'testbed-done';
     ui.done.type = 'button';
     ui.done.onclick = finish;
     ui.status = el('span', '', 'margin-left:8px;color:#a89e8b;');
