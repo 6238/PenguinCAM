@@ -112,7 +112,7 @@ class ReplayHooksTest(_MinimalAppCase):
             done = self.client.post('/testbed/done')
         finish.assert_not_called()                      # replay records no cassette
         self.assertEqual(done.status_code, 200)
-        saved = json.loads((self.tmp / 'fresh' / 'part-select.json').read_text())
+        saved = json.loads((self.tmp / 'fresh' / 'messages' / 'part-select.json').read_text())
         self.assertEqual(saved['scenario'], 'part-select')
         self.assertIs(saved['synthetic'], False)
         self.assertEqual([(s['step'], len(s['events'])) for s in saved['steps']],

@@ -87,6 +87,25 @@ def assert_testbed_allowed(environ=os.environ):
             raise RuntimeError('record mode refuses the production Onshape app')
 
 
+def fresh_cassette_dir():
+    """Where a fresh cassette is written: FRESH_DIR/cassettes, read when called.
+
+    The fresh recordings mirror the committed layout, because a scenario's cassette and its
+    message log are both `<scenario>.json` and would otherwise overwrite each other.
+    """
+    return FRESH_DIR / 'cassettes'
+
+
+def fresh_message_dir():
+    """Where a fresh message log is written: FRESH_DIR/messages, read when called."""
+    return FRESH_DIR / 'messages'
+
+
+def drift_report_path():
+    """The drift report the record and drift commands write: FRESH_DIR/drift-report.md."""
+    return FRESH_DIR / 'drift-report.md'
+
+
 def state_dir():
     """$XDG_STATE_HOME/penguincam-testbed (default ~/.local/state/...), created on demand."""
     base = os.environ.get('XDG_STATE_HOME') or Path.home() / '.local' / 'state'

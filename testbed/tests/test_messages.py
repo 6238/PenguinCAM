@@ -45,7 +45,7 @@ class MessageLogTest(unittest.TestCase):
             message_log_segment(log, 'select part Box')
         # The defaults are the committed and the fresh directories, read when called.
         with mock.patch.object(settings, 'FRESH_DIR', self.tmp / 'fresh'), \
-                mock.patch.object(settings, 'MESSAGE_DIR', self.tmp / 'fresh'):
+                mock.patch.object(settings, 'MESSAGE_DIR', self.tmp / 'fresh' / 'messages'):
             save_message_log(log)
             self.assertEqual(load_message_log('part-select'), log)
 

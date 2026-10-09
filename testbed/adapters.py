@@ -5,7 +5,7 @@ is called from OnshapeClient.__init__ and mounts one adapter per session:
 
 - record mode: RecordingAdapter makes the live call, writes it to the call ledger and
   buffers the exchange for the current scenario; finish_recording() scrubs the buffer and
-  writes a cassette to testbed/.fresh/.
+  writes a cassette to testbed/.fresh/cassettes/.
 - replay mode: ReplayAdapter answers every request, on any host, from the current
   scenario's cassette and never opens a connection. A miss is a 599.
 
@@ -128,7 +128,7 @@ def begin_recording(name, client):
 
 
 def finish_recording() -> Path:
-    """Scrub the buffer, write it to settings.FRESH_DIR, clear it and return the path.
+    """Scrub the buffer, write it to the fresh cassettes, clear it and return the path.
 
     After a 402 the buffer is discarded and AllowanceExhausted raised instead: a partial
     recording must not reach the drift report as if it were complete.
@@ -144,7 +144,7 @@ def finish_recording() -> Path:
     with recording._lock:                  # a late request thread may still be appending
         exchanges = list(recording.exchanges)
     scrubbed = [recording.scrubber.scrub_exchange(ex) for ex in exchanges]
-    return Cassette(recording.scenario, scrubbed).save(settings.FRESH_DIR)
+    return Cassette(recording.scenario, scrubbed).save(settings.fresh_cassette_dir())
 
 
 class LedgerRetry(Retry):

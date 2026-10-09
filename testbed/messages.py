@@ -32,11 +32,11 @@ def _scrubbed(value, scrubber):
 def save_message_log(log, directory=None, scrubber=None) -> Path:
     """Write `log` with every string scrubbed and return the path.
 
-    `directory` defaults to settings.FRESH_DIR, where the drift report reads it. The
+    `directory` defaults to settings.fresh_message_dir(), where the drift report reads it. The
     scrubber defaults to the recording's, which knows the owner's values; without a
     recording in progress, one that still removes credentials and tokens.
     """
-    directory = Path(directory or settings.FRESH_DIR)
+    directory = Path(directory or settings.fresh_message_dir())
     scrubber = scrubber or current_recording_scrubber() or Scrubber({})
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{log['scenario']}.json"

@@ -178,11 +178,11 @@ class RecordModeTest(_TestbedCase):
         self.assertIn(REAL_EMAIL, response.text)       # the caller sees the real answer
 
         path = finish_recording()
-        self.assertEqual(path, self.tmp / 'fresh' / 'rec-test.json')
+        self.assertEqual(path, self.tmp / 'fresh' / 'cassettes' / 'rec-test.json')
         text = path.read_text()
         for real in (REAL_EMAIL, REAL_USER_ID, REAL_COMPANY_ID, 'local-secret', 'Authorization'):
             self.assertNotIn(real, text)
-        cassette = Cassette.load(self.tmp / 'fresh', 'rec-test')
+        cassette = Cassette.load(self.tmp / 'fresh' / 'cassettes', 'rec-test')
         self.assertEqual(len(cassette.exchanges), 1)    # the owner lookups are not in it
         ex = cassette.exchanges[0]
         # The local server is not *.onshape.com, so its query is dropped like a signed one.
@@ -204,7 +204,7 @@ class RecordModeTest(_TestbedCase):
         begin_recording('rec-binary', self.client)
         self.assertEqual(self.client.session.get(f'{self.base}/part.stl').content, stl)
         finish_recording()
-        cassette = Cassette.load(self.tmp / 'fresh', 'rec-binary')
+        cassette = Cassette.load(self.tmp / 'fresh' / 'cassettes', 'rec-binary')
         self.assertEqual(cassette.exchanges[0].body(), stl)
 
     def test_record_each_redirect_hop(self):
@@ -214,7 +214,7 @@ class RecordModeTest(_TestbedCase):
         response = self.client.session.get(f'{self.base}/a')
         self.assertEqual(response.text, 'arrived')
         finish_recording()
-        cassette = Cassette.load(self.tmp / 'fresh', 'rec-redirect')
+        cassette = Cassette.load(self.tmp / 'fresh' / 'cassettes', 'rec-redirect')
         self.assertEqual([(ex.path, ex.status) for ex in cassette.exchanges],
                          [('/a', 307), ('/b', 200)])
         self.assertEqual(cassette.exchanges[0].headers['Location'], f'{self.base}/b')
@@ -257,7 +257,7 @@ class RecordModeTest(_TestbedCase):
         self.assertEqual(len(self.ledger_lines()), 3)
         with self.assertRaises(AllowanceExhausted):
             finish_recording()                          # a partial recording is not written
-        self.assertFalse((self.tmp / 'fresh' / 'rec-402-latch.json').exists())
+        self.assertFalse((self.tmp / 'fresh' / 'cassettes' / 'rec-402-latch.json').exists())
 
     def test_record_then_replay_signed_foreign_redirect(self):
         signed = 'X-Amz-Signature=deadbeef&X-Amz-Security-Token=tok'
