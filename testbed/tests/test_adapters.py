@@ -20,9 +20,9 @@ from urllib3.util.retry import Retry
 
 from onshape_integration import OnshapeClient
 from testbed import adapters, settings
-from testbed.adapters import (LedgerRetry, RecordingAdapter, ReplayAdapter, begin_recording,
-                              current_scenario, finish_recording, install_testbed_adapters,
-                              set_current_scenario)
+from testbed.adapters import (LedgerRetry, RecordingAdapter, ReplayAdapter,
+                              allowance_exhausted, begin_recording, current_scenario,
+                              finish_recording, install_testbed_adapters, set_current_scenario)
 from testbed.cassette import Cassette, Exchange
 from testbed.ledger import AllowanceExhausted
 from testbed.scrub import STANDIN_EMAIL, STANDIN_USER_ID, standin_company_id
@@ -42,6 +42,7 @@ class _ScriptedHandler(BaseHTTPRequestHandler):
     def _answer(self):
         length = int(self.headers.get('Content-Length') or 0)
         self.rfile.read(length)
+        self.server.hits.append(urlsplit(self.path).path)
         queue = self.server.routes.get(urlsplit(self.path).path, [(404, {}, b'')])
         status, headers, body = queue.pop(0) if len(queue) > 1 else queue[0]
         self.send_response(status)
@@ -129,6 +130,7 @@ class RecordModeTest(_TestbedCase):
     def setUp(self):
         super().setUp()
         self.server = ThreadingHTTPServer(('127.0.0.1', 0), _ScriptedHandler)
+        self.server.hits = []
         self.server.routes = {
             '/api/v13/users/sessioninfo': [(200, JSON, json.dumps(
                 {'id': REAL_USER_ID, 'email': REAL_EMAIL, 'name': 'Real Owner'}).encode())],
@@ -235,6 +237,47 @@ class RecordModeTest(_TestbedCase):
             self.client._make_api_request('GET', '/documents')
         last = self.ledger_lines()[-1]
         self.assertEqual((last['status'], last['counted']), (402, False))
+        self.assertTrue(allowance_exhausted())
+
+    def test_402_latch_survives_client_exception_handlers(self):
+        info = self.server.routes['/api/v13/users/sessioninfo'][0]
+        self.server.routes['/api/v13/users/sessioninfo'] = [info, (402, JSON, b'{}')]
+        begin_recording('rec-402-latch', self.client)
+        self.assertEqual(len(self.server.hits), 2)
+        # get_user_session_info catches every Exception and returns None ...
+        self.assertIsNone(self.client.get_user_session_info())
+        self.assertTrue(allowance_exhausted())
+        self.assertEqual(len(self.server.hits), 3)
+        # ... yet nothing live happens after the 402, through any method.
+        self.assertIsNone(self.client.get_companies())
+        self.assertIsNone(self.client.get_user_info())
+        with self.assertRaises(AllowanceExhausted):
+            self.fast_session().get(f'{self.base}/api/v13/documents')
+        self.assertEqual(len(self.server.hits), 3)
+        self.assertEqual(len(self.ledger_lines()), 3)
+        with self.assertRaises(AllowanceExhausted):
+            finish_recording()                          # a partial recording is not written
+        self.assertFalse((self.tmp / 'fresh' / 'rec-402-latch.json').exists())
+
+    def test_record_then_replay_signed_foreign_redirect(self):
+        signed = 'X-Amz-Signature=deadbeef&X-Amz-Security-Token=tok'
+        self.server.routes['/api/v13/parts/stl'] = [(307, {'Location': f'{self.base}/blob?{signed}'}, b'')]
+        self.server.routes['/blob'] = [(200, {'Content-Type': 'text/plain'}, b'solid part')]
+        begin_recording('rec-signed', self.client)
+        self.assertEqual(self.client.session.get(f'{self.base}/api/v13/parts/stl').text, 'solid part')
+        path = finish_recording()
+        text = path.read_text()
+        for leaked in ('X-Amz', 'deadbeef', 'tok'):
+            self.assertNotIn(leaked, text)
+
+        os.environ['PENGUINCAM_TESTBED'] = 'replay'
+        settings.reset_testbed_settings_for_tests()
+        with mock.patch.object(settings, 'CASSETTE_DIR', path.parent), \
+                mock.patch.object(socket.socket, 'connect', side_effect=AssertionError('network used')):
+            set_current_scenario('rec-signed')
+            replayed = OnshapeClient.from_api_keys().session.get(f'{self.base}/api/v13/parts/stl')
+        self.assertEqual((replayed.status_code, replayed.text), (200, 'solid part'))
+        self.assertEqual([r.status_code for r in replayed.history], [307])
 
 
 class ReplayModeTest(_TestbedCase):
@@ -294,7 +337,8 @@ class ReplayModeTest(_TestbedCase):
         set_current_scenario('no-such-cassette')
         got = self.client.session.get('https://cad.onshape.com/api/v13/x')
         self.assertEqual(got.status_code, 599)
-        self.assertTrue(got.text.startswith('not in the cassette: GET cad.onshape.com/api/v13/x'))
+        self.assertEqual(got.text, 'not in the cassette: GET cad.onshape.com/api/v13/x '
+                                   '(scenario no-such-cassette; no cassette file no-such-cassette.json)')
 
     def test_exhausted_match_repeats_last(self):
         self.save('repeat', self.ex('/api/v13/x', 'one'), self.ex('/api/v13/x', 'two'))
@@ -323,6 +367,14 @@ class ReplayModeTest(_TestbedCase):
         self.assertEqual((got.status_code, got.text), (200, 'solid part'))
         self.assertEqual([r.status_code for r in got.history], [307])
         self.assertEqual(got.url, 'https://cad-files.onshape.com/blob/part.stl')
+
+    def test_replay_foreign_host_ignores_query(self):
+        self.save('foreign', self.ex('/bucket/part.stl', 'from s3', host='s3.amazonaws.com'),
+                  self.ex('/api/v13/x', 'onshape', query={'a': ['1']}))
+        got = self.client.session.get('https://s3.amazonaws.com/bucket/part.stl?X-Amz-Signature=new')
+        self.assertEqual(got.text, 'from s3')
+        got = self.client.session.get('https://cad.onshape.com/api/v13/x?a=2')
+        self.assertEqual(got.status_code, 599)          # an Onshape query still matters
 
     def test_replay_answers_any_host_without_network(self):
         self.save('hosts', self.ex('/bucket/part.stl', 'from s3', host='s3.amazonaws.com'))

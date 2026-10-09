@@ -26,8 +26,8 @@ from urllib3.util.retry import Retry
 
 from testbed import settings
 from testbed.cassette import KEPT_HEADERS, Cassette, Exchange
-from testbed.ledger import CallLedger
-from testbed.scrub import Scrubber
+from testbed.ledger import AllowanceExhausted, CallLedger
+from testbed.scrub import Scrubber, host_is_onshape
 
 VOLATILE_KEYS = {'microversionId', 'timestamp', 'createdAt', 'modifiedAt'}
 MISS_STATUS = 599                    # not in the client's retry list, so it fails at once
@@ -37,6 +37,10 @@ _state_lock = threading.Lock()
 _current_scenario = None
 _recording = None                    # the ScenarioRecording in record mode, or None
 _replay_states = {}                  # (cassette dir, scenario) -> _ReplayState
+# Set by the first 402. The client's broad `except Exception` handlers swallow the
+# AllowanceExhausted a 402 raises, so this latch is what really stops a recording: every
+# later send refuses without touching the network, and record commands check it.
+_allowance_exhausted = threading.Event()
 
 
 # ---------------------------------------------------------------------------
@@ -56,12 +60,18 @@ def current_scenario():
         return _current_scenario
 
 
+def allowance_exhausted():
+    """True once Onshape has answered 402 in this process; nothing live runs after it."""
+    return _allowance_exhausted.is_set()
+
+
 def reset_testbed_adapters_for_tests():
     global _current_scenario, _recording
     with _state_lock:
         _current_scenario = None
         _recording = None
         _replay_states.clear()
+    _allowance_exhausted.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -112,13 +122,22 @@ def begin_recording(name, client):
 
 
 def finish_recording() -> Path:
-    """Scrub the buffer, write it to settings.FRESH_DIR, clear it and return the path."""
+    """Scrub the buffer, write it to settings.FRESH_DIR, clear it and return the path.
+
+    After a 402 the buffer is discarded and AllowanceExhausted raised instead: a partial
+    recording must not reach the drift report as if it were complete.
+    """
     global _recording
     with _state_lock:
         recording, _recording = _recording, None
     if recording is None:
         raise RuntimeError('no recording in progress; call begin_recording first')
-    scrubbed = [recording.scrubber.scrub_exchange(ex) for ex in recording.exchanges]
+    if allowance_exhausted():
+        raise AllowanceExhausted(f'recording {recording.scenario} discarded: Onshape answered '
+                                 '402, the annual API allowance is used up')
+    with recording._lock:                  # a late request thread may still be appending
+        exchanges = list(recording.exchanges)
+    scrubbed = [recording.scrubber.scrub_exchange(ex) for ex in exchanges]
     return Cassette(recording.scenario, scrubbed).save(settings.FRESH_DIR)
 
 
@@ -199,10 +218,16 @@ class RecordingAdapter(HTTPAdapter):
         super().__init__(**kwargs)
 
     def send(self, request, **kwargs):
+        if allowance_exhausted():
+            raise AllowanceExhausted('refusing a live Onshape call: an earlier call got 402, '
+                                     'the annual API allowance is used up')
         response = super().send(request, **kwargs)
         # Every live exchange is a ledger line, the 402 included, before anything stops.
         self.ledger.record_call(current_scenario(), request.method,
                                 urlsplit(request.url).path, response.status_code)
+        if response.status_code == 402:
+            _allowance_exhausted.set()
+            response.close()
         self.ledger.raise_if_allowance_exhausted(response.status_code)
         recording = _active_recording()
         if recording is not None:
@@ -228,6 +253,8 @@ def _normal_query(query):
 
 
 def _normal_body(text):
+    # JSON compared without volatile keys, anything else as exact text: a multipart upload
+    # with a random boundary would never match, so one needs its own rule first.
     if not text:
         return None
     try:
@@ -237,7 +264,10 @@ def _normal_body(text):
 
 
 def _match_key(method, host, path, query, body_text):
-    return (method.upper(), host.lower(), path, _normal_query(query), _normal_body(body_text))
+    # A foreign host's query was dropped when it was recorded (it may be a signature), so
+    # a request to one matches on method, host and path alone.
+    query = _normal_query(query) if host_is_onshape(host) else ()
+    return (method.upper(), host.lower(), path, query, _normal_body(body_text))
 
 
 class _ReplayState:
@@ -296,8 +326,9 @@ class ReplayAdapter(HTTPAdapter):
         if exchange is None:
             query = f'?{parts.query}' if parts.query else ''
             status, headers = MISS_STATUS, {'Content-Type': 'text/plain'}
+            missing = '' if state or scenario is None else f'; no cassette file {scenario}.json'
             body = (f'not in the cassette: {request.method} {parts.netloc}{parts.path}{query} '
-                    f'(scenario {scenario})').encode()
+                    f'(scenario {scenario}{missing})').encode()
         else:
             status, headers, body = exchange.status, dict(exchange.headers), exchange.body()
         raw = HTTPResponse(body=BytesIO(body), headers=headers, status=status,
