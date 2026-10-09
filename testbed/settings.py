@@ -14,6 +14,8 @@ MODES = ('replay', 'record')
 RECORD_PORT = 6238            # the development server, pinned by the Onshape dev app
 REPLAY_PORT = 6240            # the replay development server the browser scenarios start
 FAKE_HOST_ORIGIN = 'https://cad-testbed.onshape.com'
+# The API key pair a replay-mode client gets when none is set; replay never sends it anywhere.
+REPLAY_PLACEHOLDER_KEYS = ('testbed-replay', 'testbed-replay')
 
 TESTBED_DIR = Path(__file__).resolve().parent
 CASSETTE_DIR = TESTBED_DIR / 'cassettes'

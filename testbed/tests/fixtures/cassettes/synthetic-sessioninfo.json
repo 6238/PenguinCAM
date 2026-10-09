@@ -1,0 +1,39 @@
+{
+ "exchanges": [
+  {
+   "body_file": null,
+   "body_text": "{\"id\": \"000000000000000000000001\", \"email\": \"testbed@example.invalid\", \"name\": \"Test Bed Owner\", \"href\": \"https://cad.onshape.com/api/v13/users/000000000000000000000001\"}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/users/sessioninfo",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"items\": [{\"id\": \"0000000000000000000000c1\", \"name\": \"Test Bed Classroom\", \"href\": \"https://cad.onshape.com/api/v13/companies/0000000000000000000000c1\"}]}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/companies",
+   "query": {
+    "activeOnly": [
+     "true"
+    ],
+    "includeAll": [
+     "false"
+    ]
+   },
+   "request_body": null,
+   "status": 200
+  }
+ ],
+ "scenario": "synthetic-sessioninfo",
+ "synthetic": true
+}

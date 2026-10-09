@@ -107,6 +107,12 @@ class OnshapeClient:
         adapter = HTTPAdapter(max_retries=retry)
         self.session.mount('https://', adapter)
         self.session.mount('http://', adapter)
+        # The test bed records or replays every Onshape call; off unless PENGUINCAM_TESTBED
+        # is set, and then nothing of it beyond its settings module is imported.
+        from testbed.settings import testbed_is_on
+        if testbed_is_on():
+            from testbed.adapters import install_testbed_adapters
+            install_testbed_adapters(self.session, retry)
 
     @classmethod
     def from_api_keys(cls, access_key=None, secret_key=None):
@@ -121,6 +127,11 @@ class OnshapeClient:
         client.auth_mode = 'apikey'
         client.api_access_key = access_key or os.environ.get('ONSHAPE_ACCESS_KEY')
         client.api_secret_key = secret_key or os.environ.get('ONSHAPE_SECRET_KEY')
+        if not client.api_access_key or not client.api_secret_key:
+            # A replay answers from cassettes, so it needs no real keys; only there.
+            from testbed.settings import REPLAY_PLACEHOLDER_KEYS, testbed_mode
+            if testbed_mode() == 'replay':
+                client.api_access_key, client.api_secret_key = REPLAY_PLACEHOLDER_KEYS
         if not client.api_access_key or not client.api_secret_key:
             raise ValueError(
                 "API-key auth requires ONSHAPE_ACCESS_KEY and ONSHAPE_SECRET_KEY "

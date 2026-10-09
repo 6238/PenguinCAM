@@ -51,3 +51,6 @@ tools/
 
 # Daemon archives built by `make daemon-tarball`
 dist/
+
+# Test bed: fresh recordings, read by the drift report
+testbed/.fresh/
