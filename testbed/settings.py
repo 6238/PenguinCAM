@@ -90,8 +90,8 @@ def assert_testbed_allowed(environ=os.environ):
 class MissingEnvironmentVariable(Exception):
     """A credential or setting the command needs is not in the environment."""
 
-    def __init__(self, name):
-        super().__init__(f'missing environment variable: {name}')
+    def __init__(self, name, hint=None):
+        super().__init__(f'missing environment variable: {name}' + (f' ({hint})' if hint else ''))
         self.name = name
 
 
@@ -162,3 +162,13 @@ def budget_settings():
 def chromium_executable():
     """The Chromium the browser scenarios drive: TESTBED_CHROMIUM, or /usr/bin/chromium."""
     return os.environ.get('TESTBED_CHROMIUM', '').strip() or '/usr/bin/chromium'
+
+
+def testbed_folder_id():
+    """TESTBED_FOLDER_ID: the Onshape folder the test documents live in."""
+    value = os.environ.get('TESTBED_FOLDER_ID', '').strip()
+    if not value:
+        raise MissingEnvironmentVariable(
+            'TESTBED_FOLDER_ID', "the test folder's id is the last segment of the folder's "
+            'URL in Onshape')
+    return value

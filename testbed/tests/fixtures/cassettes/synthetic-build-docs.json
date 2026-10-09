@@ -1,0 +1,534 @@
+{
+ "exchanges": [
+  {
+   "body_file": null,
+   "body_text": "{\"items\": []}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/documents",
+   "query": {
+    "parentId": [
+     "f00000000000000000000f01"
+    ]
+   },
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"id\": \"d00000000000000000000001\", \"name\": \"tb-box\", \"description\": \"created by PenguinCAM test bed\", \"defaultWorkspace\": {\"id\": \"w00000000000000000000001\"}}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/documents",
+   "query": {},
+   "request_body": "{\"name\": \"tb-box\", \"description\": \"created by PenguinCAM test bed\", \"parentId\": \"f00000000000000000000f01\"}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"id\": \"d00000000000000000000002\", \"name\": \"tb-two-parts\", \"description\": \"created by PenguinCAM test bed\", \"defaultWorkspace\": {\"id\": \"w00000000000000000000002\"}}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/documents",
+   "query": {},
+   "request_body": "{\"name\": \"tb-two-parts\", \"description\": \"created by PenguinCAM test bed\", \"parentId\": \"f00000000000000000000f01\"}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"id\": \"d00000000000000000000003\", \"name\": \"tb-inch\", \"description\": \"created by PenguinCAM test bed\", \"defaultWorkspace\": {\"id\": \"w00000000000000000000003\"}}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/documents",
+   "query": {},
+   "request_body": "{\"name\": \"tb-inch\", \"description\": \"created by PenguinCAM test bed\", \"parentId\": \"f00000000000000000000f01\"}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"id\": \"d00000000000000000000004\", \"name\": \"tb-sideways\", \"description\": \"created by PenguinCAM test bed\", \"defaultWorkspace\": {\"id\": \"w00000000000000000000004\"}}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/documents",
+   "query": {},
+   "request_body": "{\"name\": \"tb-sideways\", \"description\": \"created by PenguinCAM test bed\", \"parentId\": \"f00000000000000000000f01\"}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"id\": \"d00000000000000000000005\", \"name\": \"tb-oversized\", \"description\": \"created by PenguinCAM test bed\", \"defaultWorkspace\": {\"id\": \"w00000000000000000000005\"}}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/documents",
+   "query": {},
+   "request_body": "{\"name\": \"tb-oversized\", \"description\": \"created by PenguinCAM test bed\", \"parentId\": \"f00000000000000000000f01\"}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"id\": \"d00000000000000000000006\", \"name\": \"tb-assembly\", \"description\": \"created by PenguinCAM test bed\", \"defaultWorkspace\": {\"id\": \"w00000000000000000000006\"}}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/documents",
+   "query": {},
+   "request_body": "{\"name\": \"tb-assembly\", \"description\": \"created by PenguinCAM test bed\", \"parentId\": \"f00000000000000000000f01\"}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"items\": [{\"id\": \"d00000000000000000000001\", \"name\": \"tb-box\", \"description\": \"created by PenguinCAM test bed\", \"defaultWorkspace\": {\"id\": \"w00000000000000000000001\"}}, {\"id\": \"d00000000000000000000002\", \"name\": \"tb-two-parts\", \"description\": \"created by PenguinCAM test bed\", \"defaultWorkspace\": {\"id\": \"w00000000000000000000002\"}}, {\"id\": \"d00000000000000000000003\", \"name\": \"tb-inch\", \"description\": \"created by PenguinCAM test bed\", \"defaultWorkspace\": {\"id\": \"w00000000000000000000003\"}}, {\"id\": \"d00000000000000000000004\", \"name\": \"tb-sideways\", \"description\": \"created by PenguinCAM test bed\", \"defaultWorkspace\": {\"id\": \"w00000000000000000000004\"}}, {\"id\": \"d00000000000000000000005\", \"name\": \"tb-oversized\", \"description\": \"created by PenguinCAM test bed\", \"defaultWorkspace\": {\"id\": \"w00000000000000000000005\"}}, {\"id\": \"d00000000000000000000006\", \"name\": \"tb-assembly\", \"description\": \"created by PenguinCAM test bed\", \"defaultWorkspace\": {\"id\": \"w00000000000000000000006\"}}]}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/documents",
+   "query": {
+    "parentId": [
+     "f00000000000000000000f01"
+    ]
+   },
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "[{\"id\": \"e0000000000000000000000p\", \"name\": \"Part Studio 1\", \"elementType\": \"PARTSTUDIO\"}, {\"id\": \"e0000000000000000000000a\", \"name\": \"Assembly 1\", \"elementType\": \"ASSEMBLY\"}]",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/documents/d/d00000000000000000000001/w/w00000000000000000000001/elements",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"feature\": {\"btType\": \"BTMSketch-151\", \"featureType\": \"newSketch\", \"name\": \"Box sketch\", \"parameters\": [{\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"sketchPlane\", \"queries\": [{\"btType\": \"BTMIndividualQuery-138\", \"deterministicIds\": [\"JDC\"]}]}], \"entities\": [{\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"bottom\", \"startPointId\": \"bottom.start\", \"endPointId\": \"bottom.end\", \"startParam\": 0.0, \"endParam\": 0.04, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.0, \"dirX\": 1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"right\", \"startPointId\": \"right.start\", \"endPointId\": \"right.end\", \"startParam\": 0.0, \"endParam\": 0.03, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.04, \"pntY\": 0.0, \"dirX\": 0.0, \"dirY\": 1.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"top\", \"startPointId\": \"top.start\", \"endPointId\": \"top.end\", \"startParam\": 0.0, \"endParam\": 0.04, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.04, \"pntY\": 0.03, \"dirX\": -1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"left\", \"startPointId\": \"left.start\", \"endPointId\": \"left.end\", \"startParam\": 0.0, \"endParam\": 0.03, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.03, \"dirX\": 0.0, \"dirY\": -1.0}}], \"constraints\": [{\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner0\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"bottom.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"right.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner1\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"right.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"top.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner2\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"top.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"left.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner3\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"left.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"bottom.start\"}]}], \"featureId\": \"F01f1\"}, \"featureState\": {\"featureStatus\": \"OK\"}}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/partstudios/d/d00000000000000000000001/w/w00000000000000000000001/e/e0000000000000000000000p/features",
+   "query": {},
+   "request_body": "{\"btType\": \"BTFeatureDefinitionCall-1406\", \"feature\": {\"btType\": \"BTMSketch-151\", \"featureType\": \"newSketch\", \"name\": \"Box sketch\", \"parameters\": [{\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"sketchPlane\", \"queries\": [{\"btType\": \"BTMIndividualQuery-138\", \"deterministicIds\": [\"JDC\"]}]}], \"entities\": [{\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"bottom\", \"startPointId\": \"bottom.start\", \"endPointId\": \"bottom.end\", \"startParam\": 0.0, \"endParam\": 0.04, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.0, \"dirX\": 1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"right\", \"startPointId\": \"right.start\", \"endPointId\": \"right.end\", \"startParam\": 0.0, \"endParam\": 0.03, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.04, \"pntY\": 0.0, \"dirX\": 0.0, \"dirY\": 1.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"top\", \"startPointId\": \"top.start\", \"endPointId\": \"top.end\", \"startParam\": 0.0, \"endParam\": 0.04, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.04, \"pntY\": 0.03, \"dirX\": -1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"left\", \"startPointId\": \"left.start\", \"endPointId\": \"left.end\", \"startParam\": 0.0, \"endParam\": 0.03, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.03, \"dirX\": 0.0, \"dirY\": -1.0}}], \"constraints\": [{\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner0\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"bottom.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"right.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner1\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"right.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"top.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner2\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"top.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"left.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner3\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"left.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"bottom.start\"}]}]}}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"feature\": {\"btType\": \"BTMFeature-134\", \"featureType\": \"extrude\", \"name\": \"Box\", \"parameters\": [{\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"bodyType\", \"enumName\": \"ExtendedToolBodyType\", \"value\": \"SOLID\"}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"operationType\", \"enumName\": \"NewBodyOperationType\", \"value\": \"NEW\"}, {\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"entities\", \"queries\": [{\"btType\": \"BTMIndividualSketchRegionQuery-140\", \"featureId\": \"F01f1\"}]}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"endBound\", \"enumName\": \"BoundingType\", \"value\": \"BLIND\"}, {\"btType\": \"BTMParameterQuantity-147\", \"parameterId\": \"depth\", \"expression\": \"10 mm\"}], \"featureId\": \"F01f2\"}, \"featureState\": {\"featureStatus\": \"OK\"}}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/partstudios/d/d00000000000000000000001/w/w00000000000000000000001/e/e0000000000000000000000p/features",
+   "query": {},
+   "request_body": "{\"btType\": \"BTFeatureDefinitionCall-1406\", \"feature\": {\"btType\": \"BTMFeature-134\", \"featureType\": \"extrude\", \"name\": \"Box\", \"parameters\": [{\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"bodyType\", \"enumName\": \"ExtendedToolBodyType\", \"value\": \"SOLID\"}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"operationType\", \"enumName\": \"NewBodyOperationType\", \"value\": \"NEW\"}, {\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"entities\", \"queries\": [{\"btType\": \"BTMIndividualSketchRegionQuery-140\", \"featureId\": \"F01f1\"}]}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"endBound\", \"enumName\": \"BoundingType\", \"value\": \"BLIND\"}, {\"btType\": \"BTMParameterQuantity-147\", \"parameterId\": \"depth\", \"expression\": \"10 mm\"}]}}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "[{\"partId\": \"J01P1\", \"name\": \"Part 1\"}]",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/parts/d/d00000000000000000000001/w/w00000000000000000000001/e/e0000000000000000000000p",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/metadata/d/d00000000000000000000001/w/w00000000000000000000001/e/e0000000000000000000000p/p/J01P1",
+   "query": {},
+   "request_body": "{\"properties\": [{\"propertyId\": \"57f3fb8efa3416c06701d60d\", \"value\": \"Box\"}]}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"id\": \"v00000000000000000000001\", \"name\": \"tb-box for part-export\"}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/documents/d/d00000000000000000000001/versions",
+   "query": {},
+   "request_body": "{\"documentId\": \"d00000000000000000000001\", \"workspaceId\": \"w00000000000000000000001\", \"name\": \"tb-box for part-export\", \"description\": \"created by PenguinCAM test bed\"}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "[{\"id\": \"e0000000000000000000000p\", \"name\": \"Part Studio 1\", \"elementType\": \"PARTSTUDIO\"}, {\"id\": \"e0000000000000000000000a\", \"name\": \"Assembly 1\", \"elementType\": \"ASSEMBLY\"}]",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/documents/d/d00000000000000000000002/w/w00000000000000000000002/elements",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"feature\": {\"btType\": \"BTMSketch-151\", \"featureType\": \"newSketch\", \"name\": \"Box sketch\", \"parameters\": [{\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"sketchPlane\", \"queries\": [{\"btType\": \"BTMIndividualQuery-138\", \"deterministicIds\": [\"JDC\"]}]}], \"entities\": [{\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"bottom\", \"startPointId\": \"bottom.start\", \"endPointId\": \"bottom.end\", \"startParam\": 0.0, \"endParam\": 0.04, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.0, \"dirX\": 1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"right\", \"startPointId\": \"right.start\", \"endPointId\": \"right.end\", \"startParam\": 0.0, \"endParam\": 0.03, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.04, \"pntY\": 0.0, \"dirX\": 0.0, \"dirY\": 1.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"top\", \"startPointId\": \"top.start\", \"endPointId\": \"top.end\", \"startParam\": 0.0, \"endParam\": 0.04, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.04, \"pntY\": 0.03, \"dirX\": -1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"left\", \"startPointId\": \"left.start\", \"endPointId\": \"left.end\", \"startParam\": 0.0, \"endParam\": 0.03, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.03, \"dirX\": 0.0, \"dirY\": -1.0}}], \"constraints\": [{\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner0\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"bottom.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"right.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner1\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"right.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"top.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner2\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"top.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"left.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner3\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"left.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"bottom.start\"}]}], \"featureId\": \"F02f1\"}, \"featureState\": {\"featureStatus\": \"OK\"}}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/partstudios/d/d00000000000000000000002/w/w00000000000000000000002/e/e0000000000000000000000p/features",
+   "query": {},
+   "request_body": "{\"btType\": \"BTFeatureDefinitionCall-1406\", \"feature\": {\"btType\": \"BTMSketch-151\", \"featureType\": \"newSketch\", \"name\": \"Box sketch\", \"parameters\": [{\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"sketchPlane\", \"queries\": [{\"btType\": \"BTMIndividualQuery-138\", \"deterministicIds\": [\"JDC\"]}]}], \"entities\": [{\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"bottom\", \"startPointId\": \"bottom.start\", \"endPointId\": \"bottom.end\", \"startParam\": 0.0, \"endParam\": 0.04, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.0, \"dirX\": 1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"right\", \"startPointId\": \"right.start\", \"endPointId\": \"right.end\", \"startParam\": 0.0, \"endParam\": 0.03, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.04, \"pntY\": 0.0, \"dirX\": 0.0, \"dirY\": 1.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"top\", \"startPointId\": \"top.start\", \"endPointId\": \"top.end\", \"startParam\": 0.0, \"endParam\": 0.04, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.04, \"pntY\": 0.03, \"dirX\": -1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"left\", \"startPointId\": \"left.start\", \"endPointId\": \"left.end\", \"startParam\": 0.0, \"endParam\": 0.03, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.03, \"dirX\": 0.0, \"dirY\": -1.0}}], \"constraints\": [{\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner0\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"bottom.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"right.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner1\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"right.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"top.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner2\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"top.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"left.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner3\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"left.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"bottom.start\"}]}]}}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"feature\": {\"btType\": \"BTMFeature-134\", \"featureType\": \"extrude\", \"name\": \"Box\", \"parameters\": [{\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"bodyType\", \"enumName\": \"ExtendedToolBodyType\", \"value\": \"SOLID\"}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"operationType\", \"enumName\": \"NewBodyOperationType\", \"value\": \"NEW\"}, {\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"entities\", \"queries\": [{\"btType\": \"BTMIndividualSketchRegionQuery-140\", \"featureId\": \"F02f1\"}]}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"endBound\", \"enumName\": \"BoundingType\", \"value\": \"BLIND\"}, {\"btType\": \"BTMParameterQuantity-147\", \"parameterId\": \"depth\", \"expression\": \"10 mm\"}], \"featureId\": \"F02f2\"}, \"featureState\": {\"featureStatus\": \"OK\"}}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/partstudios/d/d00000000000000000000002/w/w00000000000000000000002/e/e0000000000000000000000p/features",
+   "query": {},
+   "request_body": "{\"btType\": \"BTFeatureDefinitionCall-1406\", \"feature\": {\"btType\": \"BTMFeature-134\", \"featureType\": \"extrude\", \"name\": \"Box\", \"parameters\": [{\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"bodyType\", \"enumName\": \"ExtendedToolBodyType\", \"value\": \"SOLID\"}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"operationType\", \"enumName\": \"NewBodyOperationType\", \"value\": \"NEW\"}, {\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"entities\", \"queries\": [{\"btType\": \"BTMIndividualSketchRegionQuery-140\", \"featureId\": \"F02f1\"}]}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"endBound\", \"enumName\": \"BoundingType\", \"value\": \"BLIND\"}, {\"btType\": \"BTMParameterQuantity-147\", \"parameterId\": \"depth\", \"expression\": \"10 mm\"}]}}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"feature\": {\"btType\": \"BTMSketch-151\", \"featureType\": \"newSketch\", \"name\": \"Cylinder sketch\", \"parameters\": [{\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"sketchPlane\", \"queries\": [{\"btType\": \"BTMIndividualQuery-138\", \"deterministicIds\": [\"JDC\"]}]}], \"entities\": [{\"btType\": \"BTMSketchCurve-4\", \"entityId\": \"circle\", \"centerId\": \"circle.center\", \"geometry\": {\"btType\": \"BTCurveGeometryCircle-115\", \"radius\": 0.01, \"xCenter\": 0.07, \"yCenter\": 0.015, \"xDir\": 1.0, \"yDir\": 0.0, \"clockwise\": false}}], \"constraints\": [], \"featureId\": \"F02f3\"}, \"featureState\": {\"featureStatus\": \"OK\"}}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/partstudios/d/d00000000000000000000002/w/w00000000000000000000002/e/e0000000000000000000000p/features",
+   "query": {},
+   "request_body": "{\"btType\": \"BTFeatureDefinitionCall-1406\", \"feature\": {\"btType\": \"BTMSketch-151\", \"featureType\": \"newSketch\", \"name\": \"Cylinder sketch\", \"parameters\": [{\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"sketchPlane\", \"queries\": [{\"btType\": \"BTMIndividualQuery-138\", \"deterministicIds\": [\"JDC\"]}]}], \"entities\": [{\"btType\": \"BTMSketchCurve-4\", \"entityId\": \"circle\", \"centerId\": \"circle.center\", \"geometry\": {\"btType\": \"BTCurveGeometryCircle-115\", \"radius\": 0.01, \"xCenter\": 0.07, \"yCenter\": 0.015, \"xDir\": 1.0, \"yDir\": 0.0, \"clockwise\": false}}], \"constraints\": []}}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"feature\": {\"btType\": \"BTMFeature-134\", \"featureType\": \"extrude\", \"name\": \"Cylinder\", \"parameters\": [{\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"bodyType\", \"enumName\": \"ExtendedToolBodyType\", \"value\": \"SOLID\"}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"operationType\", \"enumName\": \"NewBodyOperationType\", \"value\": \"NEW\"}, {\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"entities\", \"queries\": [{\"btType\": \"BTMIndividualSketchRegionQuery-140\", \"featureId\": \"F02f3\"}]}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"endBound\", \"enumName\": \"BoundingType\", \"value\": \"BLIND\"}, {\"btType\": \"BTMParameterQuantity-147\", \"parameterId\": \"depth\", \"expression\": \"20 mm\"}], \"featureId\": \"F02f4\"}, \"featureState\": {\"featureStatus\": \"OK\"}}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/partstudios/d/d00000000000000000000002/w/w00000000000000000000002/e/e0000000000000000000000p/features",
+   "query": {},
+   "request_body": "{\"btType\": \"BTFeatureDefinitionCall-1406\", \"feature\": {\"btType\": \"BTMFeature-134\", \"featureType\": \"extrude\", \"name\": \"Cylinder\", \"parameters\": [{\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"bodyType\", \"enumName\": \"ExtendedToolBodyType\", \"value\": \"SOLID\"}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"operationType\", \"enumName\": \"NewBodyOperationType\", \"value\": \"NEW\"}, {\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"entities\", \"queries\": [{\"btType\": \"BTMIndividualSketchRegionQuery-140\", \"featureId\": \"F02f3\"}]}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"endBound\", \"enumName\": \"BoundingType\", \"value\": \"BLIND\"}, {\"btType\": \"BTMParameterQuantity-147\", \"parameterId\": \"depth\", \"expression\": \"20 mm\"}]}}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "[{\"partId\": \"J02P1\", \"name\": \"Part 1\"}, {\"partId\": \"J02P2\", \"name\": \"Part 2\"}]",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/parts/d/d00000000000000000000002/w/w00000000000000000000002/e/e0000000000000000000000p",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/metadata/d/d00000000000000000000002/w/w00000000000000000000002/e/e0000000000000000000000p/p/J02P1",
+   "query": {},
+   "request_body": "{\"properties\": [{\"propertyId\": \"57f3fb8efa3416c06701d60d\", \"value\": \"Box\"}]}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/metadata/d/d00000000000000000000002/w/w00000000000000000000002/e/e0000000000000000000000p/p/J02P2",
+   "query": {},
+   "request_body": "{\"properties\": [{\"propertyId\": \"57f3fb8efa3416c06701d60d\", \"value\": \"Cylinder\"}]}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "[{\"id\": \"e0000000000000000000000p\", \"name\": \"Part Studio 1\", \"elementType\": \"PARTSTUDIO\"}, {\"id\": \"e0000000000000000000000a\", \"name\": \"Assembly 1\", \"elementType\": \"ASSEMBLY\"}]",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/documents/d/d00000000000000000000003/w/w00000000000000000000003/elements",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"feature\": {\"btType\": \"BTMSketch-151\", \"featureType\": \"newSketch\", \"name\": \"Block sketch\", \"parameters\": [{\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"sketchPlane\", \"queries\": [{\"btType\": \"BTMIndividualQuery-138\", \"deterministicIds\": [\"JDC\"]}]}], \"entities\": [{\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"bottom\", \"startPointId\": \"bottom.start\", \"endPointId\": \"bottom.end\", \"startParam\": 0.0, \"endParam\": 0.0508, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.0, \"dirX\": 1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"right\", \"startPointId\": \"right.start\", \"endPointId\": \"right.end\", \"startParam\": 0.0, \"endParam\": 0.0254, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0508, \"pntY\": 0.0, \"dirX\": 0.0, \"dirY\": 1.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"top\", \"startPointId\": \"top.start\", \"endPointId\": \"top.end\", \"startParam\": 0.0, \"endParam\": 0.0508, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0508, \"pntY\": 0.0254, \"dirX\": -1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"left\", \"startPointId\": \"left.start\", \"endPointId\": \"left.end\", \"startParam\": 0.0, \"endParam\": 0.0254, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.0254, \"dirX\": 0.0, \"dirY\": -1.0}}], \"constraints\": [{\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner0\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"bottom.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"right.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner1\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"right.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"top.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner2\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"top.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"left.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner3\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"left.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"bottom.start\"}]}], \"featureId\": \"F03f1\"}, \"featureState\": {\"featureStatus\": \"OK\"}}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/partstudios/d/d00000000000000000000003/w/w00000000000000000000003/e/e0000000000000000000000p/features",
+   "query": {},
+   "request_body": "{\"btType\": \"BTFeatureDefinitionCall-1406\", \"feature\": {\"btType\": \"BTMSketch-151\", \"featureType\": \"newSketch\", \"name\": \"Block sketch\", \"parameters\": [{\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"sketchPlane\", \"queries\": [{\"btType\": \"BTMIndividualQuery-138\", \"deterministicIds\": [\"JDC\"]}]}], \"entities\": [{\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"bottom\", \"startPointId\": \"bottom.start\", \"endPointId\": \"bottom.end\", \"startParam\": 0.0, \"endParam\": 0.0508, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.0, \"dirX\": 1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"right\", \"startPointId\": \"right.start\", \"endPointId\": \"right.end\", \"startParam\": 0.0, \"endParam\": 0.0254, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0508, \"pntY\": 0.0, \"dirX\": 0.0, \"dirY\": 1.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"top\", \"startPointId\": \"top.start\", \"endPointId\": \"top.end\", \"startParam\": 0.0, \"endParam\": 0.0508, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0508, \"pntY\": 0.0254, \"dirX\": -1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"left\", \"startPointId\": \"left.start\", \"endPointId\": \"left.end\", \"startParam\": 0.0, \"endParam\": 0.0254, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.0254, \"dirX\": 0.0, \"dirY\": -1.0}}], \"constraints\": [{\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner0\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"bottom.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"right.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner1\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"right.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"top.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner2\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"top.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"left.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner3\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"left.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"bottom.start\"}]}]}}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"feature\": {\"btType\": \"BTMFeature-134\", \"featureType\": \"extrude\", \"name\": \"Block\", \"parameters\": [{\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"bodyType\", \"enumName\": \"ExtendedToolBodyType\", \"value\": \"SOLID\"}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"operationType\", \"enumName\": \"NewBodyOperationType\", \"value\": \"NEW\"}, {\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"entities\", \"queries\": [{\"btType\": \"BTMIndividualSketchRegionQuery-140\", \"featureId\": \"F03f1\"}]}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"endBound\", \"enumName\": \"BoundingType\", \"value\": \"BLIND\"}, {\"btType\": \"BTMParameterQuantity-147\", \"parameterId\": \"depth\", \"expression\": \"0.5 in\"}], \"featureId\": \"F03f2\"}, \"featureState\": {\"featureStatus\": \"OK\"}}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/partstudios/d/d00000000000000000000003/w/w00000000000000000000003/e/e0000000000000000000000p/features",
+   "query": {},
+   "request_body": "{\"btType\": \"BTFeatureDefinitionCall-1406\", \"feature\": {\"btType\": \"BTMFeature-134\", \"featureType\": \"extrude\", \"name\": \"Block\", \"parameters\": [{\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"bodyType\", \"enumName\": \"ExtendedToolBodyType\", \"value\": \"SOLID\"}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"operationType\", \"enumName\": \"NewBodyOperationType\", \"value\": \"NEW\"}, {\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"entities\", \"queries\": [{\"btType\": \"BTMIndividualSketchRegionQuery-140\", \"featureId\": \"F03f1\"}]}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"endBound\", \"enumName\": \"BoundingType\", \"value\": \"BLIND\"}, {\"btType\": \"BTMParameterQuantity-147\", \"parameterId\": \"depth\", \"expression\": \"0.5 in\"}]}}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "[{\"partId\": \"J03P1\", \"name\": \"Part 1\"}]",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/parts/d/d00000000000000000000003/w/w00000000000000000000003/e/e0000000000000000000000p",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/metadata/d/d00000000000000000000003/w/w00000000000000000000003/e/e0000000000000000000000p/p/J03P1",
+   "query": {},
+   "request_body": "{\"properties\": [{\"propertyId\": \"57f3fb8efa3416c06701d60d\", \"value\": \"Block\"}]}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "[{\"id\": \"e0000000000000000000000p\", \"name\": \"Part Studio 1\", \"elementType\": \"PARTSTUDIO\"}, {\"id\": \"e0000000000000000000000a\", \"name\": \"Assembly 1\", \"elementType\": \"ASSEMBLY\"}]",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/documents/d/d00000000000000000000004/w/w00000000000000000000004/elements",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"feature\": {\"btType\": \"BTMSketch-151\", \"featureType\": \"newSketch\", \"name\": \"Post sketch\", \"parameters\": [{\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"sketchPlane\", \"queries\": [{\"btType\": \"BTMIndividualQuery-138\", \"deterministicIds\": [\"JFC\"]}]}], \"entities\": [{\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"bottom\", \"startPointId\": \"bottom.start\", \"endPointId\": \"bottom.end\", \"startParam\": 0.0, \"endParam\": 0.01, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.0, \"dirX\": 1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"right\", \"startPointId\": \"right.start\", \"endPointId\": \"right.end\", \"startParam\": 0.0, \"endParam\": 0.01, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.01, \"pntY\": 0.0, \"dirX\": 0.0, \"dirY\": 1.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"top\", \"startPointId\": \"top.start\", \"endPointId\": \"top.end\", \"startParam\": 0.0, \"endParam\": 0.01, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.01, \"pntY\": 0.01, \"dirX\": -1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"left\", \"startPointId\": \"left.start\", \"endPointId\": \"left.end\", \"startParam\": 0.0, \"endParam\": 0.01, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.01, \"dirX\": 0.0, \"dirY\": -1.0}}], \"constraints\": [{\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner0\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"bottom.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"right.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner1\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"right.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"top.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner2\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"top.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"left.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner3\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"left.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"bottom.start\"}]}], \"featureId\": \"F04f1\"}, \"featureState\": {\"featureStatus\": \"OK\"}}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/partstudios/d/d00000000000000000000004/w/w00000000000000000000004/e/e0000000000000000000000p/features",
+   "query": {},
+   "request_body": "{\"btType\": \"BTFeatureDefinitionCall-1406\", \"feature\": {\"btType\": \"BTMSketch-151\", \"featureType\": \"newSketch\", \"name\": \"Post sketch\", \"parameters\": [{\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"sketchPlane\", \"queries\": [{\"btType\": \"BTMIndividualQuery-138\", \"deterministicIds\": [\"JFC\"]}]}], \"entities\": [{\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"bottom\", \"startPointId\": \"bottom.start\", \"endPointId\": \"bottom.end\", \"startParam\": 0.0, \"endParam\": 0.01, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.0, \"dirX\": 1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"right\", \"startPointId\": \"right.start\", \"endPointId\": \"right.end\", \"startParam\": 0.0, \"endParam\": 0.01, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.01, \"pntY\": 0.0, \"dirX\": 0.0, \"dirY\": 1.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"top\", \"startPointId\": \"top.start\", \"endPointId\": \"top.end\", \"startParam\": 0.0, \"endParam\": 0.01, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.01, \"pntY\": 0.01, \"dirX\": -1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"left\", \"startPointId\": \"left.start\", \"endPointId\": \"left.end\", \"startParam\": 0.0, \"endParam\": 0.01, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.01, \"dirX\": 0.0, \"dirY\": -1.0}}], \"constraints\": [{\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner0\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"bottom.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"right.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner1\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"right.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"top.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner2\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"top.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"left.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner3\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"left.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"bottom.start\"}]}]}}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"feature\": {\"btType\": \"BTMFeature-134\", \"featureType\": \"extrude\", \"name\": \"Post\", \"parameters\": [{\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"bodyType\", \"enumName\": \"ExtendedToolBodyType\", \"value\": \"SOLID\"}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"operationType\", \"enumName\": \"NewBodyOperationType\", \"value\": \"NEW\"}, {\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"entities\", \"queries\": [{\"btType\": \"BTMIndividualSketchRegionQuery-140\", \"featureId\": \"F04f1\"}]}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"endBound\", \"enumName\": \"BoundingType\", \"value\": \"BLIND\"}, {\"btType\": \"BTMParameterQuantity-147\", \"parameterId\": \"depth\", \"expression\": \"60 mm\"}], \"featureId\": \"F04f2\"}, \"featureState\": {\"featureStatus\": \"OK\"}}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/partstudios/d/d00000000000000000000004/w/w00000000000000000000004/e/e0000000000000000000000p/features",
+   "query": {},
+   "request_body": "{\"btType\": \"BTFeatureDefinitionCall-1406\", \"feature\": {\"btType\": \"BTMFeature-134\", \"featureType\": \"extrude\", \"name\": \"Post\", \"parameters\": [{\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"bodyType\", \"enumName\": \"ExtendedToolBodyType\", \"value\": \"SOLID\"}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"operationType\", \"enumName\": \"NewBodyOperationType\", \"value\": \"NEW\"}, {\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"entities\", \"queries\": [{\"btType\": \"BTMIndividualSketchRegionQuery-140\", \"featureId\": \"F04f1\"}]}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"endBound\", \"enumName\": \"BoundingType\", \"value\": \"BLIND\"}, {\"btType\": \"BTMParameterQuantity-147\", \"parameterId\": \"depth\", \"expression\": \"60 mm\"}]}}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "[{\"partId\": \"J04P1\", \"name\": \"Part 1\"}]",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/parts/d/d00000000000000000000004/w/w00000000000000000000004/e/e0000000000000000000000p",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/metadata/d/d00000000000000000000004/w/w00000000000000000000004/e/e0000000000000000000000p/p/J04P1",
+   "query": {},
+   "request_body": "{\"properties\": [{\"propertyId\": \"57f3fb8efa3416c06701d60d\", \"value\": \"Post\"}]}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "[{\"id\": \"e0000000000000000000000p\", \"name\": \"Part Studio 1\", \"elementType\": \"PARTSTUDIO\"}, {\"id\": \"e0000000000000000000000a\", \"name\": \"Assembly 1\", \"elementType\": \"ASSEMBLY\"}]",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/documents/d/d00000000000000000000005/w/w00000000000000000000005/elements",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"feature\": {\"btType\": \"BTMSketch-151\", \"featureType\": \"newSketch\", \"name\": \"Slab sketch\", \"parameters\": [{\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"sketchPlane\", \"queries\": [{\"btType\": \"BTMIndividualQuery-138\", \"deterministicIds\": [\"JDC\"]}]}], \"entities\": [{\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"bottom\", \"startPointId\": \"bottom.start\", \"endPointId\": \"bottom.end\", \"startParam\": 0.0, \"endParam\": 0.4, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.0, \"dirX\": 1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"right\", \"startPointId\": \"right.start\", \"endPointId\": \"right.end\", \"startParam\": 0.0, \"endParam\": 0.05, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.4, \"pntY\": 0.0, \"dirX\": 0.0, \"dirY\": 1.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"top\", \"startPointId\": \"top.start\", \"endPointId\": \"top.end\", \"startParam\": 0.0, \"endParam\": 0.4, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.4, \"pntY\": 0.05, \"dirX\": -1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"left\", \"startPointId\": \"left.start\", \"endPointId\": \"left.end\", \"startParam\": 0.0, \"endParam\": 0.05, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.05, \"dirX\": 0.0, \"dirY\": -1.0}}], \"constraints\": [{\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner0\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"bottom.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"right.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner1\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"right.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"top.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner2\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"top.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"left.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner3\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"left.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"bottom.start\"}]}], \"featureId\": \"F05f1\"}, \"featureState\": {\"featureStatus\": \"OK\"}}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/partstudios/d/d00000000000000000000005/w/w00000000000000000000005/e/e0000000000000000000000p/features",
+   "query": {},
+   "request_body": "{\"btType\": \"BTFeatureDefinitionCall-1406\", \"feature\": {\"btType\": \"BTMSketch-151\", \"featureType\": \"newSketch\", \"name\": \"Slab sketch\", \"parameters\": [{\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"sketchPlane\", \"queries\": [{\"btType\": \"BTMIndividualQuery-138\", \"deterministicIds\": [\"JDC\"]}]}], \"entities\": [{\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"bottom\", \"startPointId\": \"bottom.start\", \"endPointId\": \"bottom.end\", \"startParam\": 0.0, \"endParam\": 0.4, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.0, \"dirX\": 1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"right\", \"startPointId\": \"right.start\", \"endPointId\": \"right.end\", \"startParam\": 0.0, \"endParam\": 0.05, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.4, \"pntY\": 0.0, \"dirX\": 0.0, \"dirY\": 1.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"top\", \"startPointId\": \"top.start\", \"endPointId\": \"top.end\", \"startParam\": 0.0, \"endParam\": 0.4, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.4, \"pntY\": 0.05, \"dirX\": -1.0, \"dirY\": 0.0}}, {\"btType\": \"BTMSketchCurveSegment-155\", \"entityId\": \"left\", \"startPointId\": \"left.start\", \"endPointId\": \"left.end\", \"startParam\": 0.0, \"endParam\": 0.05, \"geometry\": {\"btType\": \"BTCurveGeometryLine-117\", \"pntX\": 0.0, \"pntY\": 0.05, \"dirX\": 0.0, \"dirY\": -1.0}}], \"constraints\": [{\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner0\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"bottom.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"right.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner1\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"right.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"top.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner2\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"top.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"left.start\"}]}, {\"btType\": \"BTMSketchConstraint-2\", \"constraintType\": \"COINCIDENT\", \"entityId\": \"corner3\", \"parameters\": [{\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localFirst\", \"value\": \"left.end\"}, {\"btType\": \"BTMParameterString-149\", \"parameterId\": \"localSecond\", \"value\": \"bottom.start\"}]}]}}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"feature\": {\"btType\": \"BTMFeature-134\", \"featureType\": \"extrude\", \"name\": \"Slab\", \"parameters\": [{\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"bodyType\", \"enumName\": \"ExtendedToolBodyType\", \"value\": \"SOLID\"}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"operationType\", \"enumName\": \"NewBodyOperationType\", \"value\": \"NEW\"}, {\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"entities\", \"queries\": [{\"btType\": \"BTMIndividualSketchRegionQuery-140\", \"featureId\": \"F05f1\"}]}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"endBound\", \"enumName\": \"BoundingType\", \"value\": \"BLIND\"}, {\"btType\": \"BTMParameterQuantity-147\", \"parameterId\": \"depth\", \"expression\": \"10 mm\"}], \"featureId\": \"F05f2\"}, \"featureState\": {\"featureStatus\": \"OK\"}}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/partstudios/d/d00000000000000000000005/w/w00000000000000000000005/e/e0000000000000000000000p/features",
+   "query": {},
+   "request_body": "{\"btType\": \"BTFeatureDefinitionCall-1406\", \"feature\": {\"btType\": \"BTMFeature-134\", \"featureType\": \"extrude\", \"name\": \"Slab\", \"parameters\": [{\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"bodyType\", \"enumName\": \"ExtendedToolBodyType\", \"value\": \"SOLID\"}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"operationType\", \"enumName\": \"NewBodyOperationType\", \"value\": \"NEW\"}, {\"btType\": \"BTMParameterQueryList-148\", \"parameterId\": \"entities\", \"queries\": [{\"btType\": \"BTMIndividualSketchRegionQuery-140\", \"featureId\": \"F05f1\"}]}, {\"btType\": \"BTMParameterEnum-145\", \"parameterId\": \"endBound\", \"enumName\": \"BoundingType\", \"value\": \"BLIND\"}, {\"btType\": \"BTMParameterQuantity-147\", \"parameterId\": \"depth\", \"expression\": \"10 mm\"}]}}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "[{\"partId\": \"J05P1\", \"name\": \"Part 1\"}]",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/parts/d/d00000000000000000000005/w/w00000000000000000000005/e/e0000000000000000000000p",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/metadata/d/d00000000000000000000005/w/w00000000000000000000005/e/e0000000000000000000000p/p/J05P1",
+   "query": {},
+   "request_body": "{\"properties\": [{\"propertyId\": \"57f3fb8efa3416c06701d60d\", \"value\": \"Slab\"}]}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"id\": \"e0000000000000000000000b\", \"name\": \"Assembly\"}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/assemblies/d/d00000000000000000000006/w/w00000000000000000000006",
+   "query": {},
+   "request_body": "{\"name\": \"Assembly\"}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/assemblies/d/d00000000000000000000006/w/w00000000000000000000006/e/e0000000000000000000000b/instances",
+   "query": {},
+   "request_body": "{\"documentId\": \"d00000000000000000000001\", \"versionId\": \"v00000000000000000000001\", \"elementId\": \"e0000000000000000000000p\", \"partId\": \"J01P1\", \"isAssembly\": false, \"isWholePartStudio\": false}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/assemblies/d/d00000000000000000000006/w/w00000000000000000000006/e/e0000000000000000000000b/instances",
+   "query": {},
+   "request_body": "{\"documentId\": \"d00000000000000000000001\", \"versionId\": \"v00000000000000000000001\", \"elementId\": \"e0000000000000000000000p\", \"partId\": \"J01P1\", \"isAssembly\": false, \"isWholePartStudio\": false}",
+   "status": 200
+  }
+ ],
+ "scenario": "synthetic-build-docs",
+ "synthetic": true
+}

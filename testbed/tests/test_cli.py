@@ -219,6 +219,14 @@ class OtherCommandsTest(_CliCase):
         self.assertIn(str(settings.CASSETTE_DIR / 'part-export.json'), out)
         self.assertFalse((settings.fresh_cassette_dir() / 'part-export.json').exists())
 
+    def test_build_docs_without_folder_names_variable(self):
+        self.give_keys()
+        code, out, err = self.run_cli('build-docs')
+        self.assertEqual(code, 2)
+        self.assertIn('TESTBED_FOLDER_ID', err)
+        self.assertIn("last segment of the folder's URL", err)
+        self.assertEqual([line for line in self.ledger_lines() if line['counted']], [])
+
     def test_later_commands_say_not_implemented(self):
         for argv in (('build-docs',), ('record', '--ui')):
             with self.subTest(argv=argv), \

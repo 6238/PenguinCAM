@@ -22,8 +22,6 @@ from testbed.ledger import AllowanceExhausted, BudgetExceeded, CallLedger, Ledge
 from testbed.scenarios import SCENARIOS
 
 API_KEY_VARIABLES = ('ONSHAPE_ACCESS_KEY', 'ONSHAPE_SECRET_KEY')
-# build-docs' estimate until the documents builder gives one: spec 5.1's 30 to 40 calls.
-BUILD_DOCS_ESTIMATE = 40
 EXIT_FAILED, EXIT_MISSING_VARIABLE, EXIT_ONSHAPE_CHECK, EXIT_BUDGET = 1, 2, 3, 4
 
 
@@ -179,7 +177,7 @@ def command_build_docs(args):
     settings.required_environment(*API_KEY_VARIABLES)
     _enter_record_mode()
     ledger = CallLedger()
-    ledger.check_budget(getattr(documents, 'BUILD_DOCS_ESTIMATE', BUILD_DOCS_ESTIMATE))
+    ledger.check_budget(documents.BUILD_DOCS_ESTIMATE)
     from onshape_integration import OnshapeClient
     from testbed.adapters import set_current_scenario
     before = ledger.counted_in_cycle()
