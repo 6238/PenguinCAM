@@ -53,3 +53,11 @@ daemon-tarball:
 	@tar -C dist -czf $(DAEMON_TARBALL) penguincam-printer-daemon
 	@rm -rf dist/penguincam-printer-daemon
 	@echo "wrote $(DAEMON_TARBALL)"
+
+# The browser scenarios in replay mode: a replay development server on 6240 and a test
+# browser on the fake Onshape host, under Xvfb. No live Onshape call. Playwright comes
+# from testbed/requirements.txt, never requirements.txt; it drives the system Chromium
+# (TESTBED_CHROMIUM, default /usr/bin/chromium) and never downloads a browser.
+testbed-replay:
+	@uv run python -c "import playwright" >/dev/null 2>&1 || uv pip install -r testbed/requirements.txt
+	@xvfb-run -a uv run python -m unittest discover -s testbed/tests -p 'browser_*.py' -t . -v

@@ -1,0 +1,52 @@
+{
+ "exchanges": [
+  {
+   "body_file": null,
+   "body_text": "{\"items\": [{\"id\": \"0000000000000000000000c1\", \"name\": \"Test Bed Classroom 1\"}]}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/companies",
+   "query": {
+    "activeOnly": [
+     "true"
+    ],
+    "includeAll": [
+     "false"
+    ]
+   },
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"items\": []}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/documents/search",
+   "query": {},
+   "request_body": "{\"ownerId\": \"0000000000000000000000c1\", \"foundIn\": \"w\", \"when\": \"latest\", \"documentFilter\": 7, \"rawQuery\": \"_all:PenguinCAM-config.yaml\", \"limit\": 50}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"id\": \"000000000000000000000001\", \"email\": \"testbed@example.invalid\", \"name\": \"Test Bed Owner\"}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/users/sessioninfo",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  }
+ ],
+ "scenario": "synthetic-panel",
+ "synthetic": true
+}

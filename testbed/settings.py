@@ -18,8 +18,10 @@ FAKE_HOST_ORIGIN = 'https://cad-testbed.onshape.com'
 REPLAY_PLACEHOLDER_KEYS = ('testbed-replay', 'testbed-replay')
 
 TESTBED_DIR = Path(__file__).resolve().parent
-CASSETTE_DIR = TESTBED_DIR / 'cassettes'
-MESSAGE_DIR = TESTBED_DIR / 'messages'
+# TESTBED_CASSETTE_DIR and TESTBED_MESSAGE_DIR, read once at import, point a replay
+# development server at other recordings: the browser self-tests' synthetic fixtures.
+CASSETTE_DIR = Path(os.environ.get('TESTBED_CASSETTE_DIR') or TESTBED_DIR / 'cassettes')
+MESSAGE_DIR = Path(os.environ.get('TESTBED_MESSAGE_DIR') or TESTBED_DIR / 'messages')
 FRESH_DIR = TESTBED_DIR / '.fresh'
 FIXTURE_DIR = TESTBED_DIR / 'fixtures'
 # The test documents' ids, written by the documents builder and read by the scenarios.
@@ -117,3 +119,8 @@ def budget_settings():
     """(annual budget, cycle start date or None, per-run cap) of counted Onshape calls."""
     return (_env_int('TESTBED_BUDGET', 250), _env_date('TESTBED_CYCLE_START'),
             _env_int('TESTBED_RUN_CAP', 150))
+
+
+def chromium_executable():
+    """The Chromium the browser scenarios drive: TESTBED_CHROMIUM, or /usr/bin/chromium."""
+    return os.environ.get('TESTBED_CHROMIUM', '').strip() or '/usr/bin/chromium'

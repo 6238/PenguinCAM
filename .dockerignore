@@ -9,3 +9,6 @@ __pycache__/
 google-creds.txt
 onshape_config.json
 PenguinCAM-config.yaml
+
+# Test bed: fresh recordings
+testbed/.fresh/

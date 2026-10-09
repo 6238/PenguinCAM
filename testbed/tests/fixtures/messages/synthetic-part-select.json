@@ -1,0 +1,140 @@
+{
+ "scenario": "synthetic-part-select",
+ "steps": [
+  {
+   "events": [],
+   "step": "open panel"
+  },
+  {
+   "events": [],
+   "step": "choose print"
+  },
+  {
+   "events": [
+    {
+     "data": {
+      "documentId": "0000000000000000000000d1",
+      "elementId": "0000000000000000000000e1",
+      "entityTypeSpecifier": [
+       "BODY"
+      ],
+      "messageId": "testbed-3",
+      "messageName": "requestSelection",
+      "requiredSelectionCount": 1,
+      "workspaceId": "0000000000000000000000a1"
+     },
+     "dir": "out",
+     "origin": "https://cad-testbed.onshape.com",
+     "t_ms": 1000
+    },
+    {
+     "data": {
+      "documentId": "0000000000000000000000d1",
+      "elementId": "0000000000000000000000e1",
+      "messageId": "testbed-3",
+      "messageName": "REQUESTED_SELECTION",
+      "selections": [],
+      "status": {
+       "statusCode": "PENDING"
+      },
+      "workspaceId": "0000000000000000000000a1"
+     },
+     "dir": "in",
+     "origin": "https://cad-testbed.onshape.com",
+     "t_ms": 1040
+    }
+   ],
+   "step": "ask for a part"
+  },
+  {
+   "events": [
+    {
+     "data": {
+      "documentId": "0000000000000000000000d1",
+      "elementId": "0000000000000000000000e1",
+      "messageId": "testbed-3",
+      "messageName": "REQUESTED_SELECTION",
+      "selections": [
+       {
+        "elementId": "0000000000000000000000e1",
+        "entityType": "BODY",
+        "partId": "JHD",
+        "selectionId": "JHD",
+        "selectionType": "ENTITY",
+        "workspaceMicroversionId": "0000000000000000000000f1"
+       }
+      ],
+      "status": {
+       "statusCode": "SUCCESS"
+      },
+      "workspaceId": "0000000000000000000000a1"
+     },
+     "dir": "in",
+     "origin": "https://cad-testbed.onshape.com",
+     "t_ms": 4200
+    }
+   ],
+   "step": "select part Cylinder"
+  },
+  {
+   "events": [
+    {
+     "data": {
+      "documentId": "0000000000000000000000d1",
+      "elementId": "0000000000000000000000e1",
+      "messageName": "openSelectItemDialog",
+      "selectParts": true,
+      "workspaceId": "0000000000000000000000a1"
+     },
+     "dir": "out",
+     "origin": "https://cad-testbed.onshape.com",
+     "t_ms": 6000
+    }
+   ],
+   "step": "open part dialog"
+  },
+  {
+   "events": [
+    {
+     "data": {
+      "documentId": "0000000000000000000000d1",
+      "elementId": "0000000000000000000000e1",
+      "messageName": "SELECTION",
+      "selections": [
+       {
+        "elementId": "0000000000000000000000e1",
+        "entityType": "BODY",
+        "partId": "JFD",
+        "selectionId": "JFD",
+        "selectionType": "ENTITY",
+        "workspaceMicroversionId": "0000000000000000000000f1"
+       }
+      ],
+      "workspaceId": "0000000000000000000000a1"
+     },
+     "dir": "in",
+     "origin": "https://cad-testbed.onshape.com",
+     "t_ms": 9100
+    }
+   ],
+   "step": "select part Box"
+  },
+  {
+   "events": [
+    {
+     "data": {
+      "documentId": "0000000000000000000000d1",
+      "elementId": "0000000000000000000000e1",
+      "messageName": "closeSelectItemDialog",
+      "workspaceId": "0000000000000000000000a1"
+     },
+     "dir": "out",
+     "origin": "https://cad-testbed.onshape.com",
+     "t_ms": 11000
+    }
+   ],
+   "step": "close dialog"
+  }
+ ],
+ "synthetic": true
+}

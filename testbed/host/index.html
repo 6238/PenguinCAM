@@ -1,0 +1,23 @@
+<!doctype html>
+<!-- PenguinCAM test bed: the fake Onshape host (spec 5.4). Served by the test browser
+     itself at https://cad-testbed.onshape.com/documents/...; it frames the panel and
+     answers its messages from a recorded message log. It does not try to look like
+     Onshape. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Fake Onshape host</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #1a1714; color: #f1ebdf;
+                 font: 13px/18px sans-serif; }
+    body { display: flex; }
+    #model { flex: 1; padding: 12px; color: #a89e8b; }
+    #panel { width: 420px; height: 100%; border: 0; border-left: 2px solid #4a3f33;
+             background: #fff; }
+  </style>
+</head>
+<body>
+  <div id="model">Fake Onshape host</div>
+  <script src="/_testbed/host.js"></script>
+</body>
+</html>

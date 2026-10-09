@@ -107,6 +107,15 @@ class TestbedSettingsTest(unittest.TestCase):
         for path in (settings.CASSETTE_DIR, settings.MESSAGE_DIR, settings.FIXTURE_DIR):
             self.assertEqual(path.parent, settings.TESTBED_DIR)
 
+    def test_cassette_and_message_dirs_from_environment(self):
+        # Read when settings is imported, so a fresh process sees them.
+        code = ('from testbed import settings; '
+                'print(settings.CASSETTE_DIR); print(settings.MESSAGE_DIR)')
+        run = subprocess.run([sys.executable, '-c', code], cwd=REPO, capture_output=True,
+                             text=True, env=_clean_env(TESTBED_CASSETTE_DIR='/x/cassettes',
+                                                       TESTBED_MESSAGE_DIR='/x/messages'))
+        self.assertEqual(run.stdout.split(), ['/x/cassettes', '/x/messages'], run.stderr)
+
     def test_state_dir_follows_xdg_and_is_created(self):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
