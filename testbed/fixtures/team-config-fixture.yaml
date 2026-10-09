@@ -1,0 +1,5 @@
+# The team config every recording replays in place of the classroom's real
+# PenguinCAM-config.yaml, which can hold a printer pairing code. Minimal on purpose.
+team:
+  number: 0
+  name: Test Bed Team
