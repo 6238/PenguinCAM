@@ -127,8 +127,9 @@ class ScenarioDriver:
         # Chosen in the strip as the owner does, which starts its message log afresh.
         self.frame.select_option('#testbed-scenario', self.scenario.name)
         wait_for(self.page, lambda: self.frame.evaluate(
-            'name => window.PenguinCAMTestbed.currentStep() === name && '
-            'window.PenguinCAMTestbed.recorded.length === 0', self.names[0]),
+            '([scenario, step]) => window.PenguinCAMTestbed.currentScenario() === scenario && '
+            'window.PenguinCAMTestbed.currentStep() === step && '
+            'window.PenguinCAMTestbed.recorded.length === 0', [self.scenario.name, self.names[0]]),
             f'the strip to start {self.scenario.name}')
 
     def _strip_index(self):

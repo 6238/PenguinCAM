@@ -70,10 +70,13 @@
     recorded.push({ step: currentStepName(), event: event });
   }
 
-  // Added at load, so it sees every message before the page's own listeners filter them.
-  window.addEventListener('message', function (e) {
+  // Each received message is recorded once, before any of the page's own filters.
+  function recordIn(e) {
+    if (e.testbedRecorded) return;
+    e.testbedRecorded = true;
     record('in', e.origin, e.data);
-  });
+  }
+  window.addEventListener('message', recordIn);
 
   // ---------------------------------------------------------------- Onshape context
 
@@ -139,6 +142,14 @@
         }
       };
     } catch (e) { /* not replaceable here: the page's messages go out unrecorded */ }
+    // print_onshape.js listens before this script loads, and its handler may answer at
+    // once (a selection re-arms). Recording inside its handler keeps a message ahead of
+    // the page's answer to it; the listener above still records anything this misses.
+    var handle = cfg.onshapeMessenger.handleMessage;
+    cfg.onshapeMessenger.handleMessage = function (e) {
+      if (e) recordIn(e);
+      return handle.apply(this, arguments);
+    };
   }
 
   function withContext(message) {
@@ -372,6 +383,7 @@
     nextStep: nextStep,
     done: finish,
     currentStep: currentStepName,
+    currentScenario: function () { return current ? current.name : null; },
     deferred: deferred
   };
 
