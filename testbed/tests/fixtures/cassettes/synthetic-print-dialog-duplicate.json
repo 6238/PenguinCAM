@@ -1,0 +1,52 @@
+{
+ "exchanges": [
+  {
+   "body_file": null,
+   "body_text": "{\"message\": \"synthetic error\", \"status\": 404}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/parts/d/d00000000000000000000002/v/b00000000000000000000002/e/e00000000000000000000003/partid/idTagBox1/stl",
+   "query": {
+    "angleTolerance": [
+     "0.1309"
+    ],
+    "chordTolerance": [
+     "0.00005"
+    ],
+    "linkDocumentId": [
+     "d00000000000000000000001"
+    ],
+    "mode": [
+     "binary"
+    ],
+    "units": [
+     "millimeter"
+    ]
+   },
+   "request_body": null,
+   "status": 404
+  },
+  {
+   "body_file": null,
+   "body_text": "[{\"partId\": \"JHD\", \"name\": \"Box\", \"bodyType\": \"solid\", \"elementId\": \"e00000000000000000000003\", \"isHidden\": false, \"isMesh\": false, \"partNumber\": null, \"state\": \"IN_PROGRESS\", \"appearance\": {\"color\": {\"red\": 200, \"green\": 200, \"blue\": 200}, \"opacity\": 255, \"isGenerated\": false}}, {\"partId\": \"JQD\", \"name\": \"Box\", \"bodyType\": \"solid\", \"elementId\": \"e00000000000000000000003\", \"isHidden\": false, \"isMesh\": false, \"partNumber\": null, \"state\": \"IN_PROGRESS\", \"appearance\": {\"color\": {\"red\": 200, \"green\": 200, \"blue\": 200}, \"opacity\": 255, \"isGenerated\": false}}]",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/parts/d/d00000000000000000000002/v/b00000000000000000000002/e/e00000000000000000000003",
+   "query": {
+    "linkDocumentId": [
+     "d00000000000000000000001"
+    ]
+   },
+   "request_body": null,
+   "status": 200
+  }
+ ],
+ "scenario": "synthetic-print-dialog-duplicate",
+ "synthetic": true
+}

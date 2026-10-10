@@ -1,0 +1,75 @@
+{
+ "exchanges": [
+  {
+   "body_file": null,
+   "body_text": "[{\"id\": \"e00000000000000000000001\", \"name\": \"Part Studio 1\", \"elementType\": \"PARTSTUDIO\", \"dataType\": \"onshape/partstudio\", \"type\": \"Part Studio\"}]",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/documents/d/d00000000000000000000001/w/a00000000000000000000001/elements",
+   "query": {
+    "elementId": [
+     "e00000000000000000000001"
+    ]
+   },
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"btType\": \"BTConfigurationResponse-2019\", \"configurationParameters\": [], \"currentConfiguration\": []}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/elements/d/d00000000000000000000001/w/a00000000000000000000001/e/e00000000000000000000001/configuration",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "[{\"partId\": \"JHD\", \"name\": \"Box\", \"bodyType\": \"solid\", \"elementId\": \"e00000000000000000000001\", \"isHidden\": false, \"isMesh\": false, \"partNumber\": null, \"state\": \"IN_PROGRESS\", \"appearance\": {\"color\": {\"red\": 200, \"green\": 200, \"blue\": 200}, \"opacity\": 255, \"isGenerated\": false}}, {\"partId\": \"JKD\", \"name\": \"Cylinder\", \"bodyType\": \"solid\", \"elementId\": \"e00000000000000000000001\", \"isHidden\": false, \"isMesh\": false, \"partNumber\": null, \"state\": \"IN_PROGRESS\", \"appearance\": {\"color\": {\"red\": 200, \"green\": 200, \"blue\": 200}, \"opacity\": 255, \"isGenerated\": false}}, {\"partId\": \"JSD\", \"name\": \"Lid sketch\", \"bodyType\": \"sheet\", \"elementId\": \"e00000000000000000000001\", \"isHidden\": false, \"isMesh\": false, \"partNumber\": null, \"state\": \"IN_PROGRESS\", \"appearance\": {\"color\": {\"red\": 200, \"green\": 200, \"blue\": 200}, \"opacity\": 255, \"isGenerated\": false}}]",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/parts/d/d00000000000000000000001/w/a00000000000000000000001/e/e00000000000000000000001",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"message\": \"synthetic error\", \"status\": 402}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/parts/d/d00000000000000000000001/w/a00000000000000000000001/e/e00000000000000000000001/partid/JHD/stl",
+   "query": {
+    "angleTolerance": [
+     "0.1309"
+    ],
+    "chordTolerance": [
+     "0.00005"
+    ],
+    "mode": [
+     "binary"
+    ],
+    "units": [
+     "millimeter"
+    ]
+   },
+   "request_body": null,
+   "status": 402
+  }
+ ],
+ "scenario": "synthetic-print-ps-402",
+ "synthetic": true
+}

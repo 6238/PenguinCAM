@@ -1,0 +1,84 @@
+{
+ "exchanges": [
+  {
+   "body_file": null,
+   "body_text": null,
+   "headers": {
+    "Location": "https://cad.onshape.com/api/v13/blob/synthetic/d-d00000000000000000000001-w-a00000000000000000000001-e-e00000000000000000000001-JHD.stl"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/parts/d/d00000000000000000000001/w/a00000000000000000000001/e/e00000000000000000000001/partid/JHD/stl",
+   "query": {
+    "angleTolerance": [
+     "0.1309"
+    ],
+    "chordTolerance": [
+     "0.00005"
+    ],
+    "mode": [
+     "binary"
+    ],
+    "units": [
+     "millimeter"
+    ]
+   },
+   "request_body": null,
+   "status": 307
+  },
+  {
+   "body_file": "synthetic-print-ps-refresh/001.bin",
+   "body_text": null,
+   "headers": {
+    "Content-Type": "application/octet-stream"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/blob/synthetic/d-d00000000000000000000001-w-a00000000000000000000001-e-e00000000000000000000001-JHD.stl",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": null,
+   "headers": {
+    "Location": "https://cad.onshape.com/api/v13/blob/synthetic/d-d00000000000000000000001-w-a00000000000000000000001-e-e00000000000000000000001-JKD.stl"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/parts/d/d00000000000000000000001/w/a00000000000000000000001/e/e00000000000000000000001/partid/JKD/stl",
+   "query": {
+    "angleTolerance": [
+     "0.1309"
+    ],
+    "chordTolerance": [
+     "0.00005"
+    ],
+    "mode": [
+     "binary"
+    ],
+    "units": [
+     "millimeter"
+    ]
+   },
+   "request_body": null,
+   "status": 307
+  },
+  {
+   "body_file": "synthetic-print-ps-refresh/003.bin",
+   "body_text": null,
+   "headers": {
+    "Content-Type": "application/octet-stream"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/blob/synthetic/d-d00000000000000000000001-w-a00000000000000000000001-e-e00000000000000000000001-JKD.stl",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  }
+ ],
+ "scenario": "synthetic-print-ps-refresh",
+ "synthetic": true
+}

@@ -1,0 +1,48 @@
+{
+ "exchanges": [
+  {
+   "body_file": null,
+   "body_text": null,
+   "headers": {
+    "Location": "https://cad.onshape.com/api/v13/blob/synthetic/d-d00000000000000000000002-v-b00000000000000000000002-e-e00000000000000000000003-idTagBox1.stl"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/parts/d/d00000000000000000000002/v/b00000000000000000000002/e/e00000000000000000000003/partid/idTagBox1/stl",
+   "query": {
+    "angleTolerance": [
+     "0.1309"
+    ],
+    "chordTolerance": [
+     "0.00005"
+    ],
+    "linkDocumentId": [
+     "d00000000000000000000001"
+    ],
+    "mode": [
+     "binary"
+    ],
+    "units": [
+     "millimeter"
+    ]
+   },
+   "request_body": null,
+   "status": 307
+  },
+  {
+   "body_file": "synthetic-print-dialog-one/001.bin",
+   "body_text": null,
+   "headers": {
+    "Content-Type": "application/octet-stream"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/blob/synthetic/d-d00000000000000000000002-v-b00000000000000000000002-e-e00000000000000000000003-idTagBox1.stl",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  }
+ ],
+ "scenario": "synthetic-print-dialog-one",
+ "synthetic": true
+}
