@@ -1,0 +1,12 @@
+{
+    "type": "filament",
+    "name": "fdm_filament_common",
+    "from": "system",
+    "instantiation": "false",
+    "filament_density": [
+        "1.00"
+    ],
+    "filament_type": [
+        "PLA"
+    ]
+}

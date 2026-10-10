@@ -1,0 +1,16 @@
+{
+    "type": "filament",
+    "name": "Generic PLA @BBL H2S",
+    "inherits": "Generic PLA @base",
+    "from": "system",
+    "setting_id": "GFSL99",
+    "instantiation": "true",
+    "filament_extruder_variant": [
+        "Direct Drive Standard",
+        "Direct Drive High Flow"
+    ],
+    "compatible_printers": [
+        "Bambu Lab H2S 0.4 nozzle",
+        "Bambu Lab H2S 0.8 nozzle"
+    ]
+}

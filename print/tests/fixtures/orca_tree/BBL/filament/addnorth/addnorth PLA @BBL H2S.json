@@ -1,0 +1,13 @@
+{
+    "type": "filament",
+    "name": "addnorth PLA @BBL H2S",
+    "inherits": "Generic PLA @base",
+    "from": "system",
+    "instantiation": "true",
+    "filament_extruder_variant": [
+        "Direct Drive Standard"
+    ],
+    "compatible_printers": [
+        "Bambu Lab H2S 0.4 nozzle"
+    ]
+}

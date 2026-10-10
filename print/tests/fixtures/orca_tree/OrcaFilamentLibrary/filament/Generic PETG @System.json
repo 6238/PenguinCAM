@@ -1,0 +1,14 @@
+{
+    "type": "filament",
+    "name": "Generic PETG @System",
+    "inherits": "fdm_filament_common",
+    "from": "system",
+    "instantiation": "true",
+    "filament_extruder_variant": [
+        "Direct Drive Standard",
+        "Direct Drive High Flow"
+    ],
+    "compatible_printers": [
+        "Bambu Lab H2S 0.4 nozzle"
+    ]
+}

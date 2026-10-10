@@ -1,0 +1,13 @@
+{
+    "type": "filament",
+    "name": "Bambu ABS @base",
+    "inherits": "fdm_filament_common",
+    "from": "system",
+    "instantiation": "false",
+    "filament_type": [
+        "ABS"
+    ],
+    "nozzle_temperature": [
+        "250"
+    ]
+}

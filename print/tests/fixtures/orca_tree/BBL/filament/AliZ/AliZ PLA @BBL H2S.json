@@ -1,0 +1,15 @@
+{
+    "type": "filament",
+    "name": "AliZ PLA @BBL H2S",
+    "inherits": "AliZ PLA @base",
+    "from": "system",
+    "setting_id": "GFSA01",
+    "instantiation": "true",
+    "filament_extruder_variant": [
+        "Direct Drive Standard",
+        "Direct Drive High Flow"
+    ],
+    "compatible_printers": [
+        "Bambu Lab H2S 0.4 nozzle"
+    ]
+}

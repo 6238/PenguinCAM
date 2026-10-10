@@ -1,0 +1,1373 @@
+{
+    "dropped": [],
+    "filaments": [
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle"
+            ],
+            "file": "filament/Bambu_ABS__BBL_H2S.json",
+            "name": "Bambu ABS @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_ABS__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu ABS @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.6 nozzle"
+            ],
+            "file": "filament/Bambu_ABS__BBL_H2S_0.6_nozzle.json",
+            "name": "Bambu ABS @BBL H2S 0.6 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_ABS__BBL_H2S_0.8_nozzle.json",
+            "name": "Bambu ABS @BBL H2S 0.8 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_ABS-GF__BBL_H2S.json",
+            "name": "Bambu ABS-GF @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle"
+            ],
+            "file": "filament/Bambu_ASA__BBL_H2S.json",
+            "name": "Bambu ASA @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_ASA__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu ASA @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.6 nozzle"
+            ],
+            "file": "filament/Bambu_ASA__BBL_H2S_0.6_nozzle.json",
+            "name": "Bambu ASA @BBL H2S 0.6 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_ASA__BBL_H2S_0.8_nozzle.json",
+            "name": "Bambu ASA @BBL H2S 0.8 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_ASA-Aero__BBL_H2S.json",
+            "name": "Bambu ASA-Aero @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_ASA-CF__BBL_H2S.json",
+            "name": "Bambu ASA-CF @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PA-CF__BBL_H2S.json",
+            "name": "Bambu PA-CF @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PA6-CF__BBL_H2S.json",
+            "name": "Bambu PA6-CF @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PA6-GF__BBL_H2S.json",
+            "name": "Bambu PA6-GF @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PAHT-CF__BBL_H2S.json",
+            "name": "Bambu PAHT-CF @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle"
+            ],
+            "file": "filament/Bambu_PC__BBL_H2S.json",
+            "name": "Bambu PC @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_PC__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu PC @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.6 nozzle"
+            ],
+            "file": "filament/Bambu_PC__BBL_H2S_0.6_nozzle.json",
+            "name": "Bambu PC @BBL H2S 0.6 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PC__BBL_H2S_0.8_nozzle.json",
+            "name": "Bambu PC @BBL H2S 0.8 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PC_FR__BBL_H2S.json",
+            "name": "Bambu PC FR @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_PC_FR__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu PC FR @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PET-CF__BBL_H2S.json",
+            "name": "Bambu PET-CF @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PETG_Basic__BBL_H2S.json",
+            "name": "Bambu PETG Basic @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_PETG_Basic__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu PETG Basic @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle"
+            ],
+            "file": "filament/Bambu_PETG_HF__BBL_H2S.json",
+            "name": "Bambu PETG HF @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_PETG_HF__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu PETG HF @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.6 nozzle"
+            ],
+            "file": "filament/Bambu_PETG_HF__BBL_H2S_0.6_nozzle.json",
+            "name": "Bambu PETG HF @BBL H2S 0.6 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PETG_HF__BBL_H2S_0.8_nozzle.json",
+            "name": "Bambu PETG HF @BBL H2S 0.8 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PETG_Translucent__BBL_H2S.json",
+            "name": "Bambu PETG Translucent @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_PETG_Translucent__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu PETG Translucent @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PETG-CF__BBL_H2S.json",
+            "name": "Bambu PETG-CF @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Aero__BBL_H2S.json",
+            "name": "Bambu PLA Aero @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Basic__BBL_H2S.json",
+            "name": "Bambu PLA Basic @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Basic__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu PLA Basic @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.6 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Basic__BBL_H2S_0.6_nozzle.json",
+            "name": "Bambu PLA Basic @BBL H2S 0.6 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Basic__BBL_H2S_0.8_nozzle.json",
+            "name": "Bambu PLA Basic @BBL H2S 0.8 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Dynamic__BBL_H2S.json",
+            "name": "Bambu PLA Dynamic @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Dynamic__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu PLA Dynamic @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Galaxy__BBL_H2S.json",
+            "name": "Bambu PLA Galaxy @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Galaxy__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu PLA Galaxy @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Glow__BBL_H2S.json",
+            "name": "Bambu PLA Glow @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Glow__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu PLA Glow @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Lite__BBL_H2S.json",
+            "name": "Bambu PLA Lite @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Lite__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu PLA Lite @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Marble__BBL_H2S.json",
+            "name": "Bambu PLA Marble @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Matte__BBL_H2S.json",
+            "name": "Bambu PLA Matte @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Matte__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu PLA Matte @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.6 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Matte__BBL_H2S_0.6_nozzle.json",
+            "name": "Bambu PLA Matte @BBL H2S 0.6 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Matte__BBL_H2S_0.8_nozzle.json",
+            "name": "Bambu PLA Matte @BBL H2S 0.8 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Metal__BBL_H2S.json",
+            "name": "Bambu PLA Metal @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Metal__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu PLA Metal @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Silk__BBL_H2S.json",
+            "name": "Bambu PLA Silk @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Silk__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu PLA Silk @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Silk___BBL_H2S.json",
+            "name": "Bambu PLA Silk+ @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Silk___BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu PLA Silk+ @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Sparkle__BBL_H2S.json",
+            "name": "Bambu PLA Sparkle @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Tough__BBL_H2S.json",
+            "name": "Bambu PLA Tough @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Tough__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu PLA Tough @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Tough___BBL_H2S.json",
+            "name": "Bambu PLA Tough+ @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Tough___BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu PLA Tough+ @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.6 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Tough___BBL_H2S_0.6_nozzle.json",
+            "name": "Bambu PLA Tough+ @BBL H2S 0.6 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Tough___BBL_H2S_0.8_nozzle.json",
+            "name": "Bambu PLA Tough+ @BBL H2S 0.8 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Translucent__BBL_H2S.json",
+            "name": "Bambu PLA Translucent @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Translucent__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu PLA Translucent @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PLA_Wood__BBL_H2S.json",
+            "name": "Bambu PLA Wood @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PLA-CF__BBL_H2S.json",
+            "name": "Bambu PLA-CF @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PPA-CF__BBL_H2S.json",
+            "name": "Bambu PPA-CF @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PPS-CF__BBL_H2S.json",
+            "name": "Bambu PPS-CF @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_PVA__BBL_H2S.json",
+            "name": "Bambu PVA @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_Support_For_PA_PET__BBL_H2S.json",
+            "name": "Bambu Support For PA/PET @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_Support_For_PLA__BBL_H2S.json",
+            "name": "Bambu Support For PLA @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_Support_For_PLA__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu Support For PLA @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_Support_For_PLA_PETG__BBL_H2S.json",
+            "name": "Bambu Support For PLA/PETG @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_Support_For_PLA_PETG__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu Support For PLA/PETG @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_Support_G__BBL_H2S.json",
+            "name": "Bambu Support G @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_Support_W__BBL_H2S.json",
+            "name": "Bambu Support W @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Bambu_Support_W__BBL_H2S_0.2_nozzle.json",
+            "name": "Bambu Support W @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_Support_for_ABS__BBL_H2S.json",
+            "name": "Bambu Support for ABS @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle"
+            ],
+            "file": "filament/Bambu_TPU_85A__BBL_H2S.json",
+            "name": "Bambu TPU 85A @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.6 nozzle"
+            ],
+            "file": "filament/Bambu_TPU_85A__BBL_H2S_0.6_nozzle.json",
+            "name": "Bambu TPU 85A @BBL H2S 0.6 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_TPU_85A__BBL_H2S_0.8_nozzle.json",
+            "name": "Bambu TPU 85A @BBL H2S 0.8 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle"
+            ],
+            "file": "filament/Bambu_TPU_90A__BBL_H2S.json",
+            "name": "Bambu TPU 90A @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.6 nozzle"
+            ],
+            "file": "filament/Bambu_TPU_90A__BBL_H2S_0.6_nozzle.json",
+            "name": "Bambu TPU 90A @BBL H2S 0.6 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_TPU_90A__BBL_H2S_0.8_nozzle.json",
+            "name": "Bambu TPU 90A @BBL H2S 0.8 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_TPU_95A__BBL_H2S.json",
+            "name": "Bambu TPU 95A @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_TPU_95A_HF__BBL_H2S.json",
+            "name": "Bambu TPU 95A HF @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Bambu_TPU_for_AMS__BBL_H2S.json",
+            "name": "Bambu TPU for AMS @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Generic_ABS__BBL_H2S_0.2_nozzle.json",
+            "name": "Generic ABS @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_ABS__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic ABS @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Generic_ASA__BBL_H2S_0.2_nozzle.json",
+            "name": "Generic ASA @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_ASA__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic ASA @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_BVOH__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic BVOH @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_EVA__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic EVA @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Generic_HIPS__BBL_H2S_0.2_nozzle.json",
+            "name": "Generic HIPS @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_HIPS__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic HIPS @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PA__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic PA @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PA-CF__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic PA-CF @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PC__BBL_H2S.json",
+            "name": "Generic PC @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Generic_PC__BBL_H2S_0.2_nozzle.json",
+            "name": "Generic PC @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PCTG__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic PCTG @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PE__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic PE @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PE-CF__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic PE-CF @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PETG__BBL_H2S.json",
+            "name": "Generic PETG @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Generic_PETG__BBL_H2S_0.2_nozzle.json",
+            "name": "Generic PETG @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Generic_PETG_HF__BBL_H2S_0.2_nozzle.json",
+            "name": "Generic PETG HF @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PETG_HF__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic PETG HF @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PETG-CF__BBL_H2S.json",
+            "name": "Generic PETG-CF @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PHA__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic PHA @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PLA__BBL_H2S.json",
+            "name": "Generic PLA @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Generic_PLA__BBL_H2S_0.2_nozzle.json",
+            "name": "Generic PLA @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PLA_High_Speed__BBL_H2S.json",
+            "name": "Generic PLA High Speed @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Generic_PLA_High_Speed__BBL_H2S_0.2_nozzle.json",
+            "name": "Generic PLA High Speed @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PLA_Silk__BBL_H2S.json",
+            "name": "Generic PLA Silk @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PLA-CF__BBL_H2S.json",
+            "name": "Generic PLA-CF @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PP__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic PP @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PP-CF__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic PP-CF @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PP-GF__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic PP-GF @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PPA-CF__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic PPA-CF @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PPA-GF__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic PPA-GF @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PPS__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic PPS @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PPS-CF__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic PPS-CF @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_PVA__BBL_H2S_0.4_nozzle.json",
+            "name": "Generic PVA @BBL H2S 0.4 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_TPU__BBL_H2S.json",
+            "name": "Generic TPU @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Generic_TPU_for_AMS__BBL_H2S.json",
+            "name": "Generic TPU for AMS @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Overture_Matte_PLA__BBL_H2S.json",
+            "name": "Overture Matte PLA @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Overture_Matte_PLA__BBL_H2S_0.2_nozzle.json",
+            "name": "Overture Matte PLA @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/Overture_PLA__BBL_H2S.json",
+            "name": "Overture PLA @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/Overture_PLA__BBL_H2S_0.2_nozzle.json",
+            "name": "Overture PLA @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/PolyLite_PETG__BBL_H2S.json",
+            "name": "PolyLite PETG @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/PolyLite_PETG__BBL_H2S_0.2_nozzle.json",
+            "name": "PolyLite PETG @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/PolyLite_PLA__BBL_H2S.json",
+            "name": "PolyLite PLA @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/PolyLite_PLA__BBL_H2S_0.2_nozzle.json",
+            "name": "PolyLite PLA @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/PolyTerra_PLA__BBL_H2S.json",
+            "name": "PolyTerra PLA @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/PolyTerra_PLA__BBL_H2S_0.2_nozzle.json",
+            "name": "PolyTerra PLA @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle",
+                "Bambu Lab H2S 0.6 nozzle",
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "filament/eSUN_PLA___BBL_H2S.json",
+            "name": "eSUN PLA+ @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "filament/eSUN_PLA___BBL_H2S_0.2_nozzle.json",
+            "name": "eSUN PLA+ @BBL H2S 0.2 nozzle"
+        }
+    ],
+    "orca_version": "2.4.2",
+    "printers": [
+        {
+            "file": "printer/Bambu_Lab_H2S_0.2_nozzle.json",
+            "name": "Bambu Lab H2S 0.2 nozzle"
+        },
+        {
+            "file": "printer/Bambu_Lab_H2S_0.4_nozzle.json",
+            "name": "Bambu Lab H2S 0.4 nozzle"
+        },
+        {
+            "file": "printer/Bambu_Lab_H2S_0.6_nozzle.json",
+            "name": "Bambu Lab H2S 0.6 nozzle"
+        },
+        {
+            "file": "printer/Bambu_Lab_H2S_0.8_nozzle.json",
+            "name": "Bambu Lab H2S 0.8 nozzle"
+        }
+    ],
+    "processes": [
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle"
+            ],
+            "file": "process/0.08mm_High_Quality__BBL_H2S.json",
+            "name": "0.08mm High Quality @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "process/0.08mm_High_Quality__BBL_H2S_0.2_nozzle.json",
+            "name": "0.08mm High Quality @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "process/0.10mm_Standard__BBL_H2S_0.2_nozzle.json",
+            "name": "0.10mm Standard @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.2 nozzle"
+            ],
+            "file": "process/0.12mm_Balanced_Quality__BBL_H2S_0.2_nozzle.json",
+            "name": "0.12mm Balanced Quality @BBL H2S 0.2 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle"
+            ],
+            "file": "process/0.12mm_High_Quality__BBL_H2S.json",
+            "name": "0.12mm High Quality @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle"
+            ],
+            "file": "process/0.16mm_High_Quality__BBL_H2S.json",
+            "name": "0.16mm High Quality @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle"
+            ],
+            "file": "process/0.16mm_Standard__BBL_H2S.json",
+            "name": "0.16mm Standard @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.6 nozzle"
+            ],
+            "file": "process/0.18mm_Balanced_Quality__BBL_H2S_0.6_nozzle.json",
+            "name": "0.18mm Balanced Quality @BBL H2S 0.6 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle"
+            ],
+            "file": "process/0.20mm_High_Quality__BBL_H2S.json",
+            "name": "0.20mm High Quality @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle"
+            ],
+            "file": "process/0.20mm_Standard__BBL_H2S.json",
+            "name": "0.20mm Standard @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.6 nozzle"
+            ],
+            "file": "process/0.24mm_Balanced_Quality__BBL_H2S_0.6_nozzle.json",
+            "name": "0.24mm Balanced Quality @BBL H2S 0.6 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "process/0.24mm_Balanced_Quality__BBL_H2S_0.8_nozzle.json",
+            "name": "0.24mm Balanced Quality @BBL H2S 0.8 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.4 nozzle"
+            ],
+            "file": "process/0.24mm_Standard__BBL_H2S.json",
+            "name": "0.24mm Standard @BBL H2S"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.6 nozzle"
+            ],
+            "file": "process/0.30mm_Standard__BBL_H2S_0.6_nozzle.json",
+            "name": "0.30mm Standard @BBL H2S 0.6 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "process/0.32mm_Balanced_Quality__BBL_H2S_0.8_nozzle.json",
+            "name": "0.32mm Balanced Quality @BBL H2S 0.8 nozzle"
+        },
+        {
+            "compatible_printers": [
+                "Bambu Lab H2S 0.8 nozzle"
+            ],
+            "file": "process/0.40mm_Standard__BBL_H2S_0.8_nozzle.json",
+            "name": "0.40mm Standard @BBL H2S 0.8 nozzle"
+        }
+    ],
+    "skipped": [
+        {
+            "kind": "filament",
+            "name": "addnorth ABS rABS",
+            "reason": "addnorth ABS rABS: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PA Adura",
+            "reason": "addnorth PA Adura: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PA Adura FDA",
+            "reason": "addnorth PA Adura FDA: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PA-CF Adura X",
+            "reason": "addnorth PA-CF Adura X: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PA6 Addlantis",
+            "reason": "addnorth PA6 Addlantis: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PC BLend HT LCF",
+            "reason": "addnorth PC BLend HT LCF: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PETG Base",
+            "reason": "addnorth PETG Base: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PETG ESD",
+            "reason": "addnorth PETG ESD: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PETG Economy",
+            "reason": "addnorth PETG Economy: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PETG Flame v0",
+            "reason": "addnorth PETG Flame v0: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PETG PRO Matte",
+            "reason": "addnorth PETG PRO Matte: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PETG rPETG Matte",
+            "reason": "addnorth PETG rPETG Matte: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PETG-CF Rigid X",
+            "reason": "addnorth PETG-CF Rigid X: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PLA E-PLA",
+            "reason": "addnorth PLA E-PLA: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PLA Economy",
+            "reason": "addnorth PLA Economy: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PLA HT-PLA PRO Matte",
+            "reason": "addnorth PLA HT-PLA PRO Matte: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PLA Premium Silk",
+            "reason": "addnorth PLA Premium Silk: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PLA Textura",
+            "reason": "addnorth PLA Textura: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PLA Wood",
+            "reason": "addnorth PLA Wood: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PLA X-PLA",
+            "reason": "addnorth PLA X-PLA: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PLA X-PLA High Speed",
+            "reason": "addnorth PLA X-PLA High Speed: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PLA rPLA RE-ADD",
+            "reason": "addnorth PLA rPLA RE-ADD: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PLA-CF Carbon Fiber",
+            "reason": "addnorth PLA-CF Carbon Fiber: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth PVDF Adamant S1",
+            "reason": "addnorth PVDF Adamant S1: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth TPU EasyFlex",
+            "reason": "addnorth TPU EasyFlex: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth TPU Pro Matte 85A",
+            "reason": "addnorth TPU Pro Matte 85A: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        },
+        {
+            "kind": "filament",
+            "name": "addnorth TPU Pro Matte 95A",
+            "reason": "addnorth TPU Pro Matte 95A: filament_extruder_variant has no 'Direct Drive High Flow', only ['Direct Drive Standard']"
+        }
+    ]
+}

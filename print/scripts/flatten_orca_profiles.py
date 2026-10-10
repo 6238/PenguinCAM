@@ -10,6 +10,14 @@ preset's differences plus its parent's name. So the profiles PenguinCAM ships
 in print/profiles/ are produced by this script from the tree inside the
 installed Orca build, and an integration test fails when they drift.
 
+It writes two things: the three default profiles (print/profiles/printer.json,
+filament.json, process.json), and the catalog in print/profiles/catalog/:
+every printer of the H2S family, and every filament and process from the BBL
+tree that names one of them, each flattened, with an index.json listing them.
+Profiles are found by their `name` field through an index over the BBL tree
+and Orca's separate filament library, because many BBL filaments sit in vendor
+subfolders and inherit from a library base.
+
 Two selections cannot be inherited because they are not part of any vendor
 profile - the desktop app makes them from the device or the plate picker, and
 the command line has no such thing. This script writes them in explicitly:
@@ -24,15 +32,35 @@ Usage (from the repository root, after `make install`):
 Options:
     --profile-dir DIR   Orca's BBL vendor tree (default: inside tools/orca)
     --out DIR           Output directory (default: print/profiles)
+    --catalog-out DIR   Catalog directory (default: print/profiles/catalog)
+    --no-catalog        Write the three defaults only
     --audit-only        Print the audit, write nothing
 """
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
 PKG = Path(__file__).resolve().parent.parent     # the print/ directory
 REPO = PKG.parent
+CATALOG_OUT = PKG / "profiles" / "catalog"
+
+# The printer family the catalog covers. Another family is one more list here
+# (and a `printers=` argument to build_catalog).
+H2S_PRINTERS = [
+    "Bambu Lab H2S 0.2 nozzle",
+    "Bambu Lab H2S 0.4 nozzle",
+    "Bambu Lab H2S 0.6 nozzle",
+    "Bambu Lab H2S 0.8 nozzle",
+]
+
+# Catalog kind -> (subdirectory of the vendor tree, index.json list name).
+CATALOG_KINDS = {
+    "printer": ("machine", "printers"),
+    "filament": ("filament", "filaments"),
+    "process": ("process", "processes"),
+}
 
 # Output file stem -> (subdirectory of the vendor tree, profile name).
 PROFILE_SOURCES = {
@@ -89,16 +117,53 @@ def bbl_profile_dir():
     raise FileNotFoundError(f"no Orca profile tree at {linux} or {macos}; run `make install`")
 
 
-def _load(profile_dir, subdir, name):
-    path = Path(profile_dir) / subdir / f"{name}.json"
-    if not path.is_file():
-        raise FileNotFoundError(f"profile '{name}' not found at {path}")
+def library_profile_dir():
+    """Orca's filament library, the BBL tree's sibling, which BBL filaments inherit from."""
+    return bbl_profile_dir().parent / "OrcaFilamentLibrary"
+
+
+def _read(path):
     with open(path, encoding="utf-8") as fh:
         return json.load(fh)
 
 
-def flatten_profile(profile_dir, subdir, name, provenance=None):
-    """Resolve `name` in `profile_dir/subdir` into one dict, child keys over parent keys.
+def build_name_index(roots, kind):
+    """Index every `root/kind/**/*.json` by its `name` field.
+
+    Two files with one name inside one root fail the build. Across roots the
+    earlier root wins: BBL.json registers its own copy of each filament the
+    library also has, so the BBL file is the one Orca loads for a BBL printer.
+    Returns (index, the number of later-root names shadowed).
+    """
+    index, shadowed = {}, 0
+    for root in roots:
+        local = {}
+        base = Path(root) / kind
+        if not base.is_dir():
+            continue
+        for path in sorted(base.rglob("*.json")):
+            name = _read(path).get("name")
+            if not name:
+                continue
+            if name in local:
+                raise ValueError(f"two {kind} profiles named '{name}' in {root}: {local[name]} and {path}")
+            local[name] = path
+        for name, path in local.items():
+            if name in index:
+                shadowed += 1
+            else:
+                index[name] = path
+    return index, shadowed
+
+
+def _roots(profile_dir):
+    """The BBL tree, then the library beside it when there is one."""
+    library = Path(profile_dir).parent / "OrcaFilamentLibrary"
+    return [Path(profile_dir)] + ([library] if library.is_dir() else [])
+
+
+def flatten_indexed(index, kind, name, provenance=None):
+    """Resolve `name` through `index` into one dict, child keys over parent keys.
 
     When `provenance` is a dict it is filled with key -> the profile in the
     chain whose value won, which is what the audit reports.
@@ -108,9 +173,11 @@ def flatten_profile(profile_dir, subdir, name, provenance=None):
     seen = set()
     while current:
         if current in seen:
-            raise ValueError(f"inheritance loop at '{current}' under {subdir}")
+            raise ValueError(f"inheritance loop at '{current}' under {kind}")
         seen.add(current)
-        data = _load(profile_dir, subdir, current)
+        if current not in index:
+            raise FileNotFoundError(f"{kind} profile '{current}' not found (wanted for '{name}')")
+        data = _read(index[current])
         chain.append(data)
         current = data.get("inherits", "")
     merged = {}
@@ -124,6 +191,12 @@ def flatten_profile(profile_dir, subdir, name, provenance=None):
     for key in DROP_KEYS:
         merged.pop(key, None)
     return merged
+
+
+def flatten_profile(profile_dir, subdir, name, provenance=None):
+    """Resolve `name` from the tree at `profile_dir` (and the library beside it)."""
+    index, _ = build_name_index(_roots(profile_dir), subdir)
+    return flatten_indexed(index, subdir, name, provenance=provenance)
 
 
 def apply_selections(subdir, flat, provenance=None):
@@ -171,13 +244,19 @@ def check_selection(profiles):
 
 def build_profiles(profile_dir, sources=PROFILE_SOURCES):
     """Flatten every source, apply the selections, and return (profiles, provenance)."""
-    profiles, provenance = {}, {}
+    profiles, provenance, indexes = {}, {}, {}
     for stem, (subdir, name) in sources.items():
+        if subdir not in indexes:
+            indexes[subdir], _ = build_name_index(_roots(profile_dir), subdir)
         prov = {}
-        flat = flatten_profile(profile_dir, subdir, name, provenance=prov)
+        flat = flatten_indexed(indexes[subdir], subdir, name, provenance=prov)
         apply_selections(subdir, flat, provenance=prov)
         profiles[stem], provenance[stem] = flat, prov
     return profiles, provenance
+
+
+def _json_text(data):
+    return json.dumps(data, indent=4, ensure_ascii=False, sort_keys=True) + "\n"
 
 
 def dump_profiles(profiles, out_dir):
@@ -185,8 +264,105 @@ def dump_profiles(profiles, out_dir):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     for stem, flat in profiles.items():
-        text = json.dumps(flat, indent=4, ensure_ascii=False, sort_keys=True) + "\n"
-        (out_dir / f"{stem}.json").write_text(text, encoding="utf-8")
+        (out_dir / f"{stem}.json").write_text(_json_text(flat), encoding="utf-8")
+
+
+def profile_file_stem(name):
+    """A profile name as a file stem: anything outside [A-Za-z0-9._-] becomes `_`."""
+    return re.sub(r"[^A-Za-z0-9._-]", "_", name)
+
+
+def _orca_version():
+    stamp = REPO / "tools" / "orca" / "VERSION"
+    return stamp.read_text().split()[0] if stamp.is_file() else "unknown"
+
+
+def build_catalog(bbl_dir, library_dir, printers=H2S_PRINTERS, orca_version=None):
+    """Flatten `printers` and every BBL filament and process that names one of them.
+
+    A profile whose variant array lacks EXTRUDER_VARIANT is skipped with its
+    reason. Per printer, a filament or process whose variant index differs from
+    the printer's is dropped for that printer (today's check_selection, for
+    every combination). Returns {'profiles': {kind: {name: flat}}, 'index': the
+    index.json content, 'shadowed': {kind: count}}.
+    """
+    bbl_dir = Path(bbl_dir)
+    roots = [bbl_dir, Path(library_dir)]
+    profiles = {kind: {} for kind in CATALOG_KINDS}
+    index = {"orca_version": orca_version or _orca_version(),
+             "printers": [], "filaments": [], "processes": [], "skipped": [], "dropped": []}
+    shadowed = {}
+
+    machines, shadowed["printer"] = build_name_index(roots, "machine")
+    printer_index = {}
+    for name in printers:
+        flat = apply_selections("machine", flatten_indexed(machines, "machine", name))
+        try:
+            printer_index[name] = variant_index("machine", flat)
+        except ValueError as exc:
+            index["skipped"].append({"kind": "printer", "name": name, "reason": str(exc)})
+            continue
+        profiles["printer"][name] = flat
+
+    for kind in ("filament", "process"):
+        subdir, list_name = CATALOG_KINDS[kind]
+        names, shadowed[kind] = build_name_index(roots, subdir)
+        for name, path in sorted(names.items()):
+            if not path.is_relative_to(bbl_dir) or _read(path).get("instantiation") != "true":
+                continue
+            flat = flatten_indexed(names, subdir, name)
+            compatible = flat.get("compatible_printers") or []
+            wanted = [p for p in printers if p in compatible]
+            if not wanted:
+                continue
+            try:
+                own = variant_index(subdir, flat)
+            except ValueError as exc:
+                index["skipped"].append({"kind": kind, "name": name, "reason": str(exc)})
+                continue
+            fits = []
+            for printer in wanted:
+                if printer not in printer_index:
+                    continue
+                if printer_index[printer] != own:
+                    index["dropped"].append({
+                        "printer": printer, "kind": kind, "name": name,
+                        "reason": f"{EXTRUDER_VARIANT} is index {own} here and "
+                                  f"{printer_index[printer]} on the printer"})
+                    continue
+                fits.append(printer)
+            if fits:
+                profiles[kind][name] = flat
+                index[list_name].append({"name": name, "compatible_printers": fits})
+
+    index["printers"] = [{"name": name} for name in profiles["printer"]]
+    for kind, (_subdir, list_name) in CATALOG_KINDS.items():
+        stems = {}
+        for entry in index[list_name]:
+            stem = profile_file_stem(entry["name"])
+            if stem in stems:
+                raise ValueError(f"{kind} profiles '{stems[stem]}' and '{entry['name']}' share the file stem {stem}")
+            stems[stem] = entry["name"]
+            entry["file"] = f"{kind}/{stem}.json"
+        index[list_name].sort(key=lambda e: e["name"])
+    return {"profiles": profiles, "index": index, "shadowed": shadowed}
+
+
+def write_catalog(catalog, out_dir):
+    """Write the catalog's files and index.json, removing files no longer in it."""
+    out_dir = Path(out_dir)
+    for kind, (_subdir, list_name) in CATALOG_KINDS.items():
+        kind_dir = out_dir / kind
+        kind_dir.mkdir(parents=True, exist_ok=True)
+        wanted = set()
+        for entry in catalog["index"][list_name]:
+            path = out_dir / entry["file"]
+            wanted.add(path.name)
+            path.write_text(_json_text(catalog["profiles"][kind][entry["name"]]), encoding="utf-8")
+        for stale in kind_dir.glob("*.json"):
+            if stale.name not in wanted:
+                stale.unlink()
+    (out_dir / "index.json").write_text(_json_text(catalog["index"]), encoding="utf-8")
 
 
 def write_profiles(profile_dir, out_dir, sources=PROFILE_SOURCES):
@@ -276,6 +452,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--profile-dir", type=Path, default=None)
     parser.add_argument("--out", type=Path, default=PKG / "profiles")
+    parser.add_argument("--catalog-out", type=Path, default=CATALOG_OUT)
+    parser.add_argument("--no-catalog", action="store_true", help="write the three defaults only")
     parser.add_argument("--audit-only", action="store_true", help="print the audit, write nothing")
     args = parser.parse_args(argv)
     profile_dir = args.profile_dir or bbl_profile_dir()
@@ -287,7 +465,26 @@ def main(argv=None):
         for stem, (subdir, name) in PROFILE_SOURCES.items():
             print(f"{stem}.json <- {subdir}/{name}")
     print_audit(profiles, provenance, index)
+    if not args.no_catalog and not args.audit_only:
+        catalog = build_catalog(profile_dir, Path(profile_dir).parent / "OrcaFilamentLibrary")
+        write_catalog(catalog, args.catalog_out)
+        print_catalog_log(catalog)
     return 0
+
+
+def print_catalog_log(catalog, out=sys.stdout):
+    """The build log: counts, the shadowed names, every skipped profile and dropped pair."""
+    idx = catalog["index"]
+    print(f"\nCatalog: {len(idx['printers'])} printers, {len(idx['filaments'])} filaments, "
+          f"{len(idx['processes'])} processes", file=out)
+    shadowed = ", ".join(f"{kind} {count}" for kind, count in catalog["shadowed"].items())
+    print(f"Library names shadowed by the BBL tree: {shadowed}", file=out)
+    print(f"Skipped ({len(idx['skipped'])}):", file=out)
+    for entry in idx["skipped"]:
+        print(f"  {entry['kind']} {entry['name']}: {entry['reason']}", file=out)
+    print(f"Dropped ({len(idx['dropped'])}):", file=out)
+    for entry in idx["dropped"]:
+        print(f"  {entry['printer']} / {entry['kind']} {entry['name']}: {entry['reason']}", file=out)
 
 
 if __name__ == "__main__":

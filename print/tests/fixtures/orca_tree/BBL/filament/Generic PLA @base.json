@@ -1,0 +1,10 @@
+{
+    "type": "filament",
+    "name": "Generic PLA @base",
+    "inherits": "fdm_filament_common",
+    "from": "system",
+    "instantiation": "false",
+    "nozzle_temperature": [
+        "220"
+    ]
+}

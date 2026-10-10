@@ -1,0 +1,17 @@
+{
+    "type": "machine",
+    "name": "Bambu Lab H2S 0.8 nozzle",
+    "inherits": "Bambu Lab H2S 0.4 nozzle",
+    "from": "system",
+    "setting_id": "GM002",
+    "instantiation": "true",
+    "nozzle_diameter": [
+        "0.8"
+    ],
+    "printer_extruder_variant": [
+        "Direct Drive High Flow"
+    ],
+    "nozzle_volume": [
+        "150"
+    ]
+}

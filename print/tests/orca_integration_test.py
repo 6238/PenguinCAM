@@ -18,7 +18,9 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "print" / "scripts"))
 
 from print.slicer import SAMPLE_STL, PROFILE_DIR, slice_stl  # noqa: E402
-from flatten_orca_profiles import bbl_profile_dir, write_profiles  # noqa: E402
+from flatten_orca_profiles import (  # noqa: E402
+    CATALOG_OUT, bbl_profile_dir, build_catalog, library_profile_dir, write_catalog, write_profiles,
+)
 
 
 class OrcaInstalledTest(unittest.TestCase):
@@ -113,6 +115,31 @@ class ProfileDriftTest(unittest.TestCase):
             self.assertTrue(filecmp.cmp(out / name, PROFILE_DIR / name, shallow=False),
                             f"{name} differs from the installed Orca's profile tree; "
                             f"run `uv run python print/scripts/flatten_orca_profiles.py`")
+
+
+class CatalogTest(unittest.TestCase):
+    """The committed catalog must equal a rebuild from the installed Orca."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.catalog = build_catalog(bbl_profile_dir(), library_profile_dir())
+
+    def test_catalog_matches_installed_orca(self):
+        out = Path(tempfile.mkdtemp(prefix="orca-catalog-"))
+        self.addCleanup(shutil.rmtree, out, ignore_errors=True)
+        write_catalog(self.catalog, out)
+        built = sorted(p.relative_to(out).as_posix() for p in out.rglob("*.json"))
+        committed = sorted(p.relative_to(CATALOG_OUT).as_posix() for p in CATALOG_OUT.rglob("*.json"))
+        hint = "the catalog differs from the installed Orca; run `uv run python print/scripts/flatten_orca_profiles.py`"
+        self.assertEqual(built, committed, hint)
+        for rel in built:
+            self.assertTrue(filecmp.cmp(out / rel, CATALOG_OUT / rel, shallow=False), f"{rel}: {hint}")
+
+    def test_skipped_list_matches_index(self):
+        committed = json.loads((CATALOG_OUT / "index.json").read_text())
+        self.assertEqual([(s["kind"], s["name"]) for s in self.catalog["index"]["skipped"]],
+                         [(s["kind"], s["name"]) for s in committed["skipped"]])
+        self.assertTrue(committed["skipped"])           # the addnorth family, today
 
 
 class PlateSliceTest(unittest.TestCase):

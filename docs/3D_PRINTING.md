@@ -228,9 +228,12 @@ That is why the flattened files set `from` to `system`.
 
 The script reads the `BBL` vendor tree inside the installed Orca:
 `tools/orca/squashfs-root/resources/profiles/BBL/` on Linux, or the equivalent under
-`OrcaSlicer.app/Contents/Resources/` on macOS. For each output file it:
+`OrcaSlicer.app/Contents/Resources/` on macOS, and Orca's filament library beside it
+(`profiles/OrcaFilamentLibrary/`). Profiles are found by their `name` field through a name
+index over both trees (see "The catalog" below), not by file path. For each output file it:
 
-1. Follows `inherits` from the named profile to the root, refusing a loop.
+1. Follows `inherits` from the named profile to the root through the name index, refusing
+   a loop.
 2. Merges the chain child over parent.
 3. Sets `inherits` to an empty string and `from` to `system`.
 4. Drops `instantiation` and `setting_id`, which only mean something inside Orca's own
@@ -339,6 +342,62 @@ came from without writing anything:
 ```bash
 uv run python print/scripts/flatten_orca_profiles.py --audit-only
 ```
+
+### The catalog
+
+Besides the three defaults, the script writes a **catalog** to `print/profiles/catalog/`:
+every profile a team may name in its `printing:` configuration, flattened the same way.
+`--no-catalog` writes the defaults only.
+
+**The name index.** Many BBL filaments live in vendor subfolders
+(`BBL/filament/AliZ/...`) and inherit from a base in the separate filament library
+(`AliZ PLA @base` in `OrcaFilamentLibrary/filament/base/`), so a lookup at
+`<kind>/<name>.json` fails. `build_name_index` walks every JSON file under
+`BBL/<kind>/` and `OrcaFilamentLibrary/<kind>/`, recursively, and indexes each by its
+`name`; `inherits` is resolved through that index. Two files with one name inside one tree
+fail the build. About a hundred filament names (for example `Bambu ABS @base`) exist in
+both trees, and most of those differ in value. **The BBL tree's copy wins**, because
+`BBL.json` registers its own copy of each such profile, so the BBL file is the one Orca
+loads for a BBL printer. The build log prints how many library names were shadowed.
+
+**What is flattened.** Every printer in `H2S_PRINTERS` (the H2S with the 0.2, 0.4, 0.6 and
+0.8 mm nozzles), with the High Flow and plate selections applied as for the default
+printer, and every filament and process from the BBL tree marked
+`instantiation: "true"` whose flattened `compatible_printers` names one of those printers.
+Library profiles are flattened only as parents, never listed.
+
+**What is skipped or dropped.** A profile whose variant array lacks
+`Direct Drive High Flow` is skipped, because every variant-aware value would silently
+resolve to the wrong index; the addnorth filaments (27 profiles with Orca 2.4.2) are
+skipped for this. A filament or process whose High Flow index differs from a printer's is
+dropped for that printer, which extends `check_selection` to every combination. Each
+skipped profile and dropped combination is printed in the build log and listed in
+`index.json`.
+
+**`index.json`** holds the Orca version and one list per kind:
+
+```json
+{
+  "orca_version": "2.4.2",
+  "printers":  [{"name": "Bambu Lab H2S 0.4 nozzle", "file": "printer/Bambu_Lab_H2S_0.4_nozzle.json"}],
+  "filaments": [{"name": "...", "file": "filament/...json", "compatible_printers": ["..."]}],
+  "processes": [{"name": "...", "file": "process/...json", "compatible_printers": ["..."]}],
+  "skipped":   [{"kind": "filament", "name": "...", "reason": "..."}],
+  "dropped":   [{"printer": "...", "kind": "process", "name": "...", "reason": "..."}]
+}
+```
+
+`compatible_printers` lists only the printers that passed the variant check. A file's stem
+is the profile name with every character outside `[A-Za-z0-9._-]` replaced by `_`; two
+names with one stem fail the build. With Orca 2.4.2 the catalog holds 4 printers, 136
+filaments and 16 processes, about 1.1 MB, and is committed whole.
+
+**Another printer family** is a one-line change: a list beside `H2S_PRINTERS` passed as
+`build_catalog(..., printers=...)`.
+
+`CatalogTest` in `print/tests/orca_integration_test.py` rebuilds the catalog from the
+installed Orca and fails if any file, or the set of files, differs from the committed one,
+and checks that the build's skipped list equals `index.json`'s.
 
 ## 5. Sample part
 

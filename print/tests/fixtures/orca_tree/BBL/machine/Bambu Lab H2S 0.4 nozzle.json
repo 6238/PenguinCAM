@@ -1,0 +1,22 @@
+{
+    "type": "machine",
+    "name": "Bambu Lab H2S 0.4 nozzle",
+    "inherits": "fdm_machine_common",
+    "from": "system",
+    "setting_id": "GM001",
+    "instantiation": "true",
+    "nozzle_diameter": [
+        "0.4"
+    ],
+    "extruder_type": [
+        "Direct Drive"
+    ],
+    "printer_extruder_variant": [
+        "Direct Drive Standard",
+        "Direct Drive High Flow"
+    ],
+    "nozzle_volume": [
+        "145",
+        "148"
+    ]
+}
