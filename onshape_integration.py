@@ -388,10 +388,18 @@ class OnshapeClient:
         Returns:
             Response object
         """
+        return self.request_absolute(method, f"{self.API_BASE}{endpoint}", **kwargs)
+
+    def request_absolute(self, method, url, **kwargs):
+        """Make an authenticated request to an absolute Onshape URL.
+
+        The one place authentication is applied: _make_api_request is this call with the
+        API base prefixed, and the print path follows an export's redirect with it, so no
+        token leaves the client. The caller's headers dict is copied, never written to.
+        """
         self._ensure_valid_token()
 
-        url = f"{self.API_BASE}{endpoint}"
-        headers = kwargs.pop('headers', {})
+        headers = dict(kwargs.pop('headers', None) or {})
 
         if self.auth_mode == 'apikey':
             # HTTP Basic (accessKey:secretKey). requests builds the header
@@ -415,14 +423,14 @@ class OnshapeClient:
                 raise self._dead_credentials(
                     "Onshape access expired and could not be refreshed. "
                     "Please reconnect your Onshape account.",
-                    f"Onshape returned 401 on {method} {endpoint} and refresh failed")
+                    f"Onshape returned 401 on {method} {url} and refresh failed")
             headers['Authorization'] = f'Bearer {self.access_token}'
             response = self.session.request(method, url, headers=headers, **kwargs)
             if response.status_code == 401:
                 raise self._dead_credentials(
                     "Onshape rejected our credentials even after refreshing. "
                     "Please reconnect your Onshape account.",
-                    f"Onshape returned 401 on {method} {endpoint} even after a refresh")
+                    f"Onshape returned 401 on {method} {url} even after a refresh")
 
         return response
     

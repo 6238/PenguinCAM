@@ -17,6 +17,7 @@ from flask import (Blueprint, Response, g, jsonify, make_response, redirect, ren
 
 from .events import configure_print_events, print_event, valid_page_id
 from .jobs import GENERIC_FAILURE, JobFailure, JobPool, QueueFull
+from .onshape_parts import NO_CONTEXT_MESSAGE, NoOnshapeContext, panel_context_from_return, rest_address
 from .slicer import SAMPLE_STL, SliceError, part_info, slice_stl
 
 DELIVERED_NAME = "sample_part.gcode.3mf"
@@ -39,7 +40,8 @@ print_bp = Blueprint("print", __name__, template_folder="templates",
 
 # Filled by init_print_routes; routes read it at request time (tests swap ctx.pool).
 ctx = types.SimpleNamespace(pool=None, token_manager=None, upload_folder=None, output_folder=None,
-                            metrics=None, log=None, template_context=None, require_session=None)
+                            metrics=None, log=None, template_context=None, require_session=None,
+                            has_onshape_session=None, onshape_client=None, part_store=None)
 
 
 def safe_return_path(value):
@@ -171,8 +173,17 @@ def print_page():
     if ctx.require_session():
         return redirect(_with_verify(return_url))
     context = ctx.template_context(force_defaults=(source == "upload"))
+    # The Onshape ids arrive only inside the return link (the CNC panel's full query).
+    onshape = panel_context_from_return(return_url)
+    onshape_error = None
+    if source == "onshape":
+        try:
+            rest_address(onshape)
+        except NoOnshapeContext:
+            onshape_error = NO_CONTEXT_MESSAGE
     resp = make_response(render_template("print_wizard.html", source=source, theme=theme,
-                                         return_url=return_url, **context))
+                                         return_url=return_url, onshape=onshape,
+                                         onshape_error=onshape_error, **context))
     if source == "onshape":
         resp.headers["Content-Security-Policy"] = FRAME_ANCESTORS
         resp.headers.pop("X-Frame-Options", None)
@@ -283,11 +294,15 @@ def print_deliver_event():
     return "", 204
 
 
-def init_print_routes(app, *, limiter, require_session, token_manager, upload_folder, output_folder,
-                      template_context, metrics, log, pool=None):
+def init_print_routes(app, *, limiter, require_session, has_onshape_session, onshape_client, token_manager,
+                      upload_folder, output_folder, template_context, metrics, log, pool=None, part_store=None):
     """Register the print blueprint. Called once by frc_cam_gui_app after the
-    limiter and temp folders exist. Returns the job pool in use."""
+    limiter and temp folders exist. `has_onshape_session()` is the Onshape sign-in gate and
+    `onshape_client()` returns this browser's OnshapeClient or None. Returns the job pool in use."""
     ctx.require_session = require_session
+    ctx.has_onshape_session = has_onshape_session
+    ctx.onshape_client = onshape_client
+    ctx.part_store = part_store
     ctx.token_manager = token_manager
     ctx.upload_folder = upload_folder
     ctx.output_folder = output_folder

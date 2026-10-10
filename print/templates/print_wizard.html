@@ -113,6 +113,8 @@
         source: {{ source|tojson }},
         theme: {{ theme|tojson }},
         returnUrl: {{ return_url|tojson }},
+        onshape: {{ (onshape if onshape is defined else {})|tojson }},
+        onshapeError: {{ (onshape_error if onshape_error is defined else None)|tojson }},
         driveEnabled: {{ (drive_enabled if drive_enabled is defined else False)|tojson }},
         printerEnabled: {{ (printer_enabled if printer_enabled is defined else False)|tojson }},
       };

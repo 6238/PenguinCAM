@@ -10,10 +10,10 @@ Only part-export makes API calls of its own; run_scenario_api() runs them.
 """
 from dataclasses import dataclass, field
 from typing import Optional
-from urllib.parse import quote, urljoin, urlsplit
+from urllib.parse import quote
 
+from print.onshape_parts import STL_ACCEPT, fetch_following_redirects
 from testbed import settings
-from testbed.scrub import host_is_onshape
 
 # The test documents of spec 5.1, by the name that is their key in documents.json.
 TEST_DOCUMENT_NAMES = ('tb-box', 'tb-two-parts', 'tb-inch', 'tb-sideways', 'tb-oversized',
@@ -26,9 +26,6 @@ ACTIONS = ('ask-part', 'ask-two-parts', 'dialog-part', 'dialog-parts', 'close-di
            'choose-print', 'back')
 
 MM_BINARY = {'units': 'millimeter', 'mode': 'binary'}
-_REDIRECTS = (301, 302, 303, 307, 308)
-_MAX_HOPS = 3
-_STL_ACCEPT = 'application/vnd.onshape.v1+octet-stream'
 
 
 @dataclass
@@ -119,46 +116,16 @@ def scenario_is_recorded(name) -> bool:
     return not SCENARIOS[name].panel or (settings.MESSAGE_DIR / f'{name}.json').is_file()
 
 
-def _auth_for(client):
-    """(requests auth, headers) that authenticate `client` on an *.onshape.com host."""
-    if client.auth_mode == 'apikey':
-        return (client.api_access_key, client.api_secret_key), {}
-    return None, {'Authorization': f'Bearer {client.access_token}'}
-
-
 def export_part_stl(client, doc, part_id, params):
     """One part's STL: (body, the URL of each redirect hop followed).
 
     `doc` holds did and eid, and wid for the workspace or vid for a version. The export
-    answers 307; requests would drop the authentication on a hop to another host, and
-    Onshape requires it, so the hops are followed here, at most three, re-attaching it
-    only on an *.onshape.com host. A later plan moves this to print/onshape_parts.py.
+    answers 307; print/onshape_parts.py follows the hops, at most three, re-attaching the
+    authentication only on an *.onshape.com host.
     """
     where = f"v/{doc['vid']}" if doc.get('vid') else f"w/{doc['wid']}"
     path = f"/parts/d/{doc['did']}/{where}/e/{doc['eid']}/partid/{quote(part_id, safe='')}/stl"
-    response = client._make_api_request('GET', path, params=params, allow_redirects=False,
-                                        headers={'Accept': _STL_ACCEPT})
-    hops = []
-    while response.status_code in _REDIRECTS:
-        if len(hops) == _MAX_HOPS:
-            raise RuntimeError(f'export of part {part_id} still redirects after '
-                               f'{_MAX_HOPS} hops')
-        if 'Location' not in response.headers:
-            raise RuntimeError(f'export of part {part_id} answered {response.status_code} '
-                               'without Location')
-        location = urljoin(response.url, response.headers['Location'])
-        hops.append(location)
-        auth, headers = None, {'Accept': _STL_ACCEPT}
-        # The token is the one _make_api_request just used. A hop gets no refresh on a 401,
-        # which needs the token to expire within one export; the 401 is raised below.
-        if host_is_onshape(urlsplit(location).hostname or ''):
-            auth, extra = _auth_for(client)
-            headers.update(extra)
-        response = client.session.get(location, auth=auth, headers=headers,
-                                      allow_redirects=False)
-    if response.status_code != 200:
-        raise RuntimeError(f'export of part {part_id} answered HTTP {response.status_code}')
-    return response.content, hops
+    return fetch_following_redirects(client, path, params, headers={'Accept': STL_ACCEPT})
 
 
 def run_scenario_api(name: str, client, documents: dict) -> None:
