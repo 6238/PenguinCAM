@@ -10,14 +10,24 @@ import os
 import shutil
 import tempfile
 import time
+import traceback
 import types
+from pathlib import Path
 
 from flask import (Blueprint, Response, g, jsonify, make_response, redirect, render_template, request,
                    send_file, session)
 
+from onshape_integration import OnshapeAuthError
+
+from . import limits
 from .events import configure_print_events, print_event, valid_page_id
 from .jobs import GENERIC_FAILURE, JobFailure, JobPool, QueueFull
-from .onshape_parts import NO_CONTEXT_MESSAGE, NoOnshapeContext, panel_context_from_return, rest_address
+from .mesh import MeshError, orientation_footprints, part_size_mm, read_binary_stl
+from .onshape_parts import (ELEMENT_CACHE, LIMIT_REACHED_MESSAGE, NO_CONTEXT_MESSAGE, VIAS, ExportFailed,
+                            NoOnshapeContext, OnshapeCallFailed, OnshapeLimitReached, PartRefused,
+                            PartTooLarge, export_part_mesh, panel_context_from_return, resolve_selections,
+                            rest_address)
+from .part_store import PartLimit, PartStore
 from .slicer import SAMPLE_STL, SliceError, part_info, slice_stl
 
 DELIVERED_NAME = "sample_part.gcode.3mf"
@@ -31,6 +41,14 @@ DELIVER_ACTIONS = ("download", "drive", "printer")
 DELIVER_OUTCOME_MAX_CHARS = 40
 PAGE_FIELD_MAX_CHARS = 200
 FRAME_ANCESTORS = "frame-ancestors https://*.onshape.com"
+# The parts route's sentences (spec 3.5). LIMIT_REACHED_MESSAGE comes from onshape_parts.
+SIGNIN_EXPIRED_MESSAGE = "Your Onshape sign-in expired. Go back, Connect, and return to 3D Printing."
+EXPORT_FAILED_MESSAGE = limits.EXPORT_FAILED_MESSAGE
+# A resolution call failed before any part had a name: the export sentence, unnamed.
+RESOLVE_FAILED_MESSAGE = EXPORT_FAILED_MESSAGE.format(name="the selected part")
+BAD_PARTS_REQUEST_MESSAGE = "This request could not be read."
+PART_EXPIRED_MESSAGE = "This part has expired; Refresh from Onshape."
+PART_STORE_FOLDER = "print_parts"
 
 # The blueprint carries its own templates and static files, so everything the print
 # path needs lives under print/. static_url_path must not be the default "/static":
@@ -41,7 +59,8 @@ print_bp = Blueprint("print", __name__, template_folder="templates",
 # Filled by init_print_routes; routes read it at request time (tests swap ctx.pool).
 ctx = types.SimpleNamespace(pool=None, token_manager=None, upload_folder=None, output_folder=None,
                             metrics=None, log=None, template_context=None, require_session=None,
-                            has_onshape_session=None, onshape_client=None, part_store=None)
+                            has_onshape_session=None, onshape_client=None, part_store=None,
+                            element_cache=ELEMENT_CACHE)
 
 
 def safe_return_path(value):
@@ -294,14 +313,164 @@ def print_deliver_event():
     return "", 204
 
 
+# ---------------------------------------------------------------------------
+# Parts from Onshape (spec 3.3, 3.4)
+# ---------------------------------------------------------------------------
+
+def _signin_expired():
+    return jsonify({"error": SIGNIN_EXPIRED_MESSAGE, "code": "signin_expired"}), 401
+
+
+def _size_text(size_mm):
+    return f"{size_mm['x']:g}x{size_mm['y']:g}x{size_mm['z']:g}"
+
+
+class _PartsAnswer:
+    """The parts and error sentences of one parts request, and its events."""
+
+    def __init__(self, pid, team):
+        self.pid, self.team = pid, team
+        self.parts, self.errors = [], []
+
+    def error(self, message, name=None):
+        self.errors.append({"name": name, "message": message} if name else {"message": message})
+
+    def failed(self, part, status, reason, message):
+        print_event("export_failed", pid=self.pid, team=self.team, part=part.source.part_id,
+                    status=status, reason=reason)
+        self.error(message, part.name)
+
+    def json(self):
+        return jsonify({"parts": [entry.to_json() for entry in self.parts], "errors": self.errors}), 200
+
+
+def _export_one(client, part, pid, answer):
+    """Export, read and store one resolved part. Raises OnshapeLimitReached and
+    OnshapeAuthError for the caller; every other failure becomes a sentence."""
+    try:
+        result = export_part_mesh(client, part, byte_cap=limits.MAX_PART_BYTES, cache=ctx.element_cache)
+    except PartTooLarge:
+        answer.failed(part, None, "too_large", limits.TOO_DETAILED_MESSAGE.format(name=part.name))
+        return
+    except PartRefused as exc:
+        answer.failed(part, None, "refused", exc.message)
+        return
+    except ExportFailed as exc:
+        answer.failed(part, exc.status, "export", EXPORT_FAILED_MESSAGE.format(name=part.name))
+        return
+    except (OnshapeLimitReached, OnshapeAuthError):
+        raise
+    except Exception:       # a connection error or worse: logged here, a sentence for the student
+        if ctx.log:
+            ctx.log(traceback.format_exc())
+        answer.failed(part, None, "error", EXPORT_FAILED_MESSAGE.format(name=part.name))
+        return
+    source = result.source
+    try:
+        mesh = read_binary_stl(result.stl, part.name)
+        info = {"triangles": mesh.triangles, "size_mm": part_size_mm(mesh),
+                "footprints": orientation_footprints(mesh)}
+    except MeshError as exc:
+        answer.failed(part, 200, "mesh", exc.message)
+        return
+    try:
+        entry = ctx.part_store.add(pid, part.name, source.to_json(), source.key(), result.stl, info)
+    except PartLimit as exc:
+        answer.failed(part, 200, "store", exc.message)
+        return
+    print_event("export", pid=pid, team=answer.team, part=source.part_id, element=source.element_id,
+                bytes=len(result.stl), triangles=mesh.triangles, size_mm=_size_text(info["size_mm"]),
+                calls=result.calls, ms=result.ms, outcome="ok")
+    answer.parts.append(entry)
+
+
+def print_onshape_parts():
+    """Resolve the browser's Onshape selections, export each new part once and store it.
+    The Onshape sign-in gate, then the page id. 20 per minute, added in init_print_routes."""
+    if not ctx.has_onshape_session():
+        return _signin_expired()
+    gate = _page_id_gate()
+    if gate:
+        return gate
+    pid, team = _page_id(), _team_for_events()
+    body = _json_object()
+    if (body is None or body.get("via") not in VIAS or not isinstance(body.get("selections"), list)
+            or not isinstance(body.get("replace", []), list)):
+        return jsonify({"error": BAD_PARTS_REQUEST_MESSAGE}), 400
+    via, selections = body["via"], body["selections"]
+    try:
+        address = rest_address(body.get("context"))
+    except NoOnshapeContext:
+        return jsonify({"error": NO_CONTEXT_MESSAGE}), 400
+    client = ctx.onshape_client()
+    if client is None or getattr(client, "credentials_dead", False):
+        return _signin_expired()
+    answer = _PartsAnswer(pid, team)
+    if via != "refresh":
+        try:
+            ctx.part_store.check_room(pid, len(selections))
+        except PartLimit as exc:
+            answer.error(exc.message)
+            return answer.json()
+    try:
+        resolved, errors = resolve_selections(client, address, selections, via, cache=ctx.element_cache)
+        element_type = ctx.element_cache.element_type(client, address) if via == "selection" else None
+    except OnshapeAuthError:
+        return _signin_expired()
+    except OnshapeLimitReached:
+        answer.error(LIMIT_REACHED_MESSAGE)
+        return answer.json()
+    except Exception as exc:    # OnshapeCallFailed, a connection error: never the upstream body
+        if ctx.log and not isinstance(exc, OnshapeCallFailed):
+            ctx.log(traceback.format_exc())
+        print_event("select", pid=pid, team=team, via=via, count=len(selections), element_type=None)
+        answer.error(RESOLVE_FAILED_MESSAGE)
+        return answer.json()
+    print_event("select", pid=pid, team=team, via=via, count=len(selections), element_type=element_type)
+    answer.errors.extend(errors)
+    for part in resolved:
+        existing = None if via == "refresh" else ctx.part_store.find_source(pid, part.source.key())
+        if existing is not None:
+            answer.parts.append(existing)
+            continue
+        try:
+            _export_one(client, part, pid, answer)
+        except OnshapeLimitReached:
+            # The allowance is spent: no later part can be exported either.
+            answer.failed(part, 402, "limit_reached", LIMIT_REACHED_MESSAGE)
+            break
+        except OnshapeAuthError:
+            return _signin_expired()
+    if via == "refresh":
+        ctx.part_store.supersede(body.get("replace", []), pid)
+    return answer.json()
+
+
+def print_part_stl(ref):
+    """One stored part's STL, for the page id that owns it. 120 per minute, added in
+    init_print_routes."""
+    gate = ctx.require_session() or _page_id_gate()
+    if gate:
+        return gate
+    entry = ctx.part_store.get(ref, _page_id())
+    if entry is None:       # unknown, expired or another page's: the same answer
+        return jsonify({"error": PART_EXPIRED_MESSAGE}), 404
+    return send_file(entry.stl_path, mimetype="model/stl")
+
+
 def init_print_routes(app, *, limiter, require_session, has_onshape_session, onshape_client, token_manager,
                       upload_folder, output_folder, template_context, metrics, log, pool=None, part_store=None):
     """Register the print blueprint. Called once by frc_cam_gui_app after the
     limiter and temp folders exist. `has_onshape_session()` is the Onshape sign-in gate and
-    `onshape_client()` returns this browser's OnshapeClient or None. Returns the job pool in use."""
+    `onshape_client()` returns this browser's OnshapeClient or None. Without `part_store`
+    (tests pass their own), the part store gets its own folder under the upload folder and
+    its sweeper is started. Returns the job pool in use."""
     ctx.require_session = require_session
     ctx.has_onshape_session = has_onshape_session
     ctx.onshape_client = onshape_client
+    if part_store is None:
+        part_store = PartStore(Path(upload_folder) / PART_STORE_FOLDER, log=log)
+        part_store.start_sweeper()
     ctx.part_store = part_store
     ctx.token_manager = token_manager
     ctx.upload_folder = upload_folder
@@ -327,5 +496,9 @@ def init_print_routes(app, *, limiter, require_session, has_onshape_session, ons
                           limiter.limit("30 per minute")(print_client_event), methods=["POST"])
     print_bp.add_url_rule("/print/deliver", "print_deliver_event",
                           limiter.limit("30 per minute")(print_deliver_event), methods=["POST"])
+    print_bp.add_url_rule("/print/onshape/parts", "print_onshape_parts",
+                          limiter.limit("20 per minute")(print_onshape_parts), methods=["POST"])
+    print_bp.add_url_rule("/print/parts/<ref>.stl", "print_part_stl",
+                          limiter.limit("120 per minute")(print_part_stl))
     app.register_blueprint(print_bp)
     return pool

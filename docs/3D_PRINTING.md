@@ -517,6 +517,8 @@ print logs"); without one the route answers 400 with `This page is out of date; 
 | `/print/page` | POST | app session, page id | 10 per minute | 200 `{}`; writes the `page` event |
 | `/print/client-event` | POST | app session, page id | 30 per minute | 204; 400 for any key but `step`, `message`, `code` |
 | `/print/deliver` | POST | app session, page id | 30 per minute | 204; 400 unless `action` is `download`, `drive` or `printer` |
+| `/print/onshape/parts` | POST | Onshape sign-in, page id | 20 per minute | 200 `{parts, errors}`; 401 `{error, code: "signin_expired"}`; 400 without a usable Onshape context |
+| `/print/parts/<ref>.stl` | GET | app session, page id (owner) | 120 per minute | 200 with the part's STL as `model/stl`; 404 for an unknown, expired or other page's `ref` |
 
 The app's limiter is built with `default_limits=["200 per hour"]`, so every route carries
 that budget. Nothing on the print path is exempt. Two error bodies are written for the
@@ -549,6 +551,58 @@ The 200 per hour default is deployment-wide for the same reason. The polling fal
 hits `/print-job/<id>` every 2 s, or 30 requests a minute, and every one of them spends
 that budget. The fallback only runs when the event stream fails, so a normal slice uses a
 handful of requests.
+
+### Parts from Onshape
+
+In Onshape mode the Parts step lists parts exported from Onshape (`print/onshape_parts.py`,
+`print/part_store.py` and `print_onshape_parts` in `print/routes.py`). There are two ways of
+picking a part, and both feed the same list:
+
+- **A click in Onshape.** While the Parts step is open the page keeps a one-body, solid-only
+  selection request armed; each click sends the selection to `POST /print/onshape/parts`
+  with `via: "selection"`. The server resolves it in the open element: in a Part Studio the
+  part id is used directly (the parts list names it), in an Assembly the occurrence is
+  followed through the assembly definition to its source document, element and part.
+- **Add from another document…** opens Onshape's own part picker. Each picked item is sent
+  with `via: "dialog"`; its `idTag` is tried as the part id, and if that export fails the
+  part is matched by name in its element's parts list.
+
+The body is `{context, via, selections, replace?}`, `context` being the panel's Onshape
+ids. The route checks the Onshape sign-in first, then the page id, then the context's
+REST address, then that the page has room for the new parts. **Each part is exported
+once**, one STL export per part with the print tessellation, read with numpy and stored.
+A part whose source (document, version or workspace, element, part, configuration) is
+already stored for this page id is answered from the store with no export.
+
+**The part store** keeps each exported mesh at `<upload folder>/print_parts/<ref>/part.stl`,
+`ref` a random 128-bit id. Only the page id that exported a part can read it back through
+`GET /print/parts/<ref>.stl`; any other gets a 404. Entries expire an hour after their last
+use, and a sweeper removes them and any orphaned directories. The store's index lives in
+process memory, like the job pool's, and assumes one worker.
+
+**Refresh from Onshape** sends every listed part's `source` with `via: "refresh"` and the
+current `ref`s in `replace`. Every part is exported again **under a new `ref`**; the old
+entries are marked superseded but stay readable until they expire, so a queued slice never
+reads a mesh that is being replaced.
+
+The answer is `{"parts": [{ref, name, size_mm, triangles, source, footprints}], "errors":
+[{name?, message}]}`. Every failure is one sentence in `errors`, never an upstream body:
+
+| Cause | Sentence |
+|-------|----------|
+| The Onshape sign-in died mid-wizard (401, `code: "signin_expired"`) | `Your Onshape sign-in expired. Go back, Connect, and return to 3D Printing.` |
+| A selection that is not a solid part | `Only solid parts can be printed: <name> was skipped.` |
+| Standard content in an assembly | `<name> is standard content (hardware) and is not printed.` |
+| A configured Part Studio clicked without a configuration | `This Part Studio has configurations. Use Add from another document… to pick the configuration to print.` |
+| Two parts with the picked name | `Two parts are named <name>; rename one in Onshape.` |
+| A clicked part not in the Part Studio, even after the parts list is fetched again | `Could not find the selected part in this Part Studio; use Add from another document…` |
+| An export, or a call resolving the selection, failed | `Onshape could not export <name>. Try again, or Refresh from Onshape.` (`the selected part` when no name is known yet) |
+| Onshape answered 402 (the development app's allowance) | `Onshape refused the export (API limit reached).` |
+| A limit (`print/limits.py`) | that limit's sentence |
+
+Each request writes a `select` event (`via`, `count`, `element_type`) and, per part, an
+`export` event (`part`, `element`, `bytes`, `triangles`, `size_mm` as `XxYxZ`, `calls`,
+`ms`, `outcome`) or an `export_failed` event (`part`, `status`, `reason`).
 
 ### Support: reading the print logs
 
