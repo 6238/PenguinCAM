@@ -45,8 +45,9 @@ FRAME_ANCESTORS = "frame-ancestors https://*.onshape.com"
 # The parts route's sentences (spec 3.5). LIMIT_REACHED_MESSAGE comes from onshape_parts.
 SIGNIN_EXPIRED_MESSAGE = "Your Onshape sign-in expired. Go back, Connect, and return to 3D Printing."
 EXPORT_FAILED_MESSAGE = limits.EXPORT_FAILED_MESSAGE
-# A resolution call failed before any part had a name: the export sentence, unnamed.
-RESOLVE_FAILED_MESSAGE = EXPORT_FAILED_MESSAGE.format(name="the selected part")
+# A resolution call failed before any part had a name: the export sentence, unnamed, without
+# "Refresh from Onshape", which cannot help a click that did not resolve.
+RESOLVE_FAILED_MESSAGE = "Onshape could not export the selected part. Try again."
 BAD_PARTS_REQUEST_MESSAGE = "This request could not be read."
 PART_EXPIRED_MESSAGE = "This part has expired; Refresh from Onshape."
 PART_STORE_FOLDER = "print_parts"
@@ -347,7 +348,7 @@ class _PartsAnswer:
         return jsonify({"parts": [entry.to_json() for entry in self.parts], "errors": self.errors}), 200
 
 
-def _export_one(client, part, pid, answer):
+def _export_one(client, part, pid, answer, replaces=None):
     """Export, read and store one resolved part. Raises OnshapeLimitReached and
     OnshapeAuthError for the caller; every other failure becomes a sentence."""
     try:
@@ -377,7 +378,8 @@ def _export_one(client, part, pid, answer):
         answer.failed(part, 200, "mesh", exc.message)
         return
     try:
-        entry = ctx.part_store.add(pid, part.name, source.to_json(), source.key(), result.stl, info)
+        entry = ctx.part_store.add(pid, part.name, source.to_json(), source.key(), result.stl, info,
+                                   replaces=replaces)
     except PartLimit as exc:
         answer.failed(part, 200, "store", exc.message)
         return
@@ -409,12 +411,6 @@ def print_onshape_parts():
     if client is None or getattr(client, "credentials_dead", False):
         return _signin_expired()
     answer = _PartsAnswer(pid, team)
-    if via != "refresh":
-        try:
-            ctx.part_store.check_room(pid, len(selections))
-        except PartLimit as exc:
-            answer.error(exc.message)
-            return answer.json()
     try:
         resolved, errors = resolve_selections(client, address, selections, via, cache=ctx.element_cache)
         element_type = ctx.element_cache.element_type(client, address) if via == "selection" else None
@@ -431,21 +427,38 @@ def print_onshape_parts():
         return answer.json()
     print_event("select", pid=pid, team=team, via=via, count=len(selections), element_type=element_type)
     answer.errors.extend(errors)
+    replaced = {}       # a refresh: source key -> the ref it replaces
+    if via == "refresh":
+        for ref in body.get("replace", []):
+            entry = ctx.part_store.get(ref, pid)
+            if entry is not None:
+                replaced[entry.source_key] = ref
+        new_keys = {part.source.key() for part in resolved} - set(replaced)
+    else:
+        # A re-click of a listed part costs nothing: only parts the store does not hold
+        # count against the page's limit, checked after resolving and before any export.
+        new_keys = {part.source.key() for part in resolved
+                    if ctx.part_store.find_source(pid, part.source.key()) is None}
+    try:
+        if new_keys:
+            ctx.part_store.check_room(pid, len(new_keys))
+    except PartLimit as exc:
+        answer.error(exc.message)
+        return answer.json()
     for part in resolved:
         existing = None if via == "refresh" else ctx.part_store.find_source(pid, part.source.key())
         if existing is not None:
-            answer.parts.append(existing)
+            if existing not in answer.parts:
+                answer.parts.append(existing)
             continue
         try:
-            _export_one(client, part, pid, answer)
+            _export_one(client, part, pid, answer, replaces=replaced.get(part.source.key()))
         except OnshapeLimitReached:
             # The allowance is spent: no later part can be exported either.
             answer.failed(part, 402, "limit_reached", LIMIT_REACHED_MESSAGE)
             break
         except OnshapeAuthError:
             return _signin_expired()
-    if via == "refresh":
-        ctx.part_store.supersede(body.get("replace", []), pid)
     return answer.json()
 
 

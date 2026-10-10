@@ -100,6 +100,29 @@ class PartStoreTest(unittest.TestCase):
         self.assertIs(self.store.get(entries[0].ref, PID), entries[0])   # a queued job still reads it
         self.assertIsNone(self.store.find_source(PID, ("k", 0)))
 
+    def test_replacing_entry_is_left_out_of_the_page_sum_and_superseded(self):
+        with mock.patch.object(limits, "MAX_PAGE_BYTES", 150):
+            old = self.add(stl=b"x" * 100)
+            with self.assertRaises(PartLimit):
+                self.add(stl=b"y" * 100, key=("d", "w", "e", "Other"))
+            new = self.store.add(PID, "Box", {"partId": "JHD"}, old.source_key, b"z" * 100, INFO,
+                                 replaces=old.ref)
+        self.assertTrue(old.superseded)
+        self.assertFalse(new.superseded)
+        self.assertIs(self.store.find_source(PID, old.source_key), new)
+        # Another page's ref is never replaced.
+        other = self.add(pid=OTHER, key=("d", "w", "e", "Theirs"))
+        self.store.add(PID, "Box", {}, ("d", "w", "e", "Mine"), b"q", INFO, replaces=other.ref)
+        self.assertFalse(other.superseded)
+
+    def test_find_source_counts_as_a_use(self):
+        entry = self.add()
+        self.clock.now += limits.PART_TTL_S - 10
+        self.assertIs(self.store.find_source(PID, entry.source_key), entry)
+        self.clock.now += 20
+        self.store.sweep()
+        self.assertIsNotNone(self.store.get(entry.ref, PID))
+
     def test_expiry_one_hour_after_last_use(self):
         entry = self.add()
         self.clock.now += 59 * 60

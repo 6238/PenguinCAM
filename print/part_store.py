@@ -78,10 +78,17 @@ class PartStore:
 
     # -- entries --------------------------------------------------------
 
-    def add(self, pid, name, source, source_key, stl, mesh_info):
-        """Store one exported mesh for `pid`; `mesh_info` has triangles, size_mm and footprints."""
+    def add(self, pid, name, source, source_key, stl, mesh_info, replaces=None):
+        """Store one exported mesh for `pid`; `mesh_info` has triangles, size_mm and footprints.
+
+        `replaces` is the ref a refresh re-exported: it is left out of the page's byte sum and
+        superseded in the same step, so a refresh never counts a part twice.
+        """
         with self._lock:
-            if sum(e.bytes for e in self._live(pid)) + len(stl) > limits.MAX_PAGE_BYTES:
+            old = self._entries.get(replaces) if isinstance(replaces, str) else None
+            old = old if old is not None and old.pid == pid else None
+            page_bytes = sum(e.bytes for e in self._live(pid) if e is not old)
+            if page_bytes + len(stl) > limits.MAX_PAGE_BYTES:
                 raise PartLimit(limits.PAGE_BYTES_MESSAGE)
             if self._total_bytes() + len(stl) > limits.MAX_STORE_BYTES:
                 raise PartLimit(limits.STORE_FULL_MESSAGE)
@@ -95,13 +102,19 @@ class PartStore:
                               size_mm=mesh_info['size_mm'], footprints=mesh_info['footprints'],
                               last_used=self._clock(), source_key=tuple(source_key))
             self._entries[ref] = entry
+            if old is not None:
+                old.superseded = True
             return entry
 
     def find_source(self, pid, source_key):
-        """The page's live entry for this source (PartSource.key()), or None."""
+        """The page's live entry for this source (PartSource.key()), or None. A hit counts as
+        a use: a part the student clicks again stays alive."""
         source_key = tuple(source_key)
         with self._lock:
-            return next((e for e in self._live(pid) if e.source_key == source_key), None)
+            entry = next((e for e in self._live(pid) if e.source_key == source_key), None)
+            if entry is not None:
+                entry.last_used = self._clock()
+            return entry
 
     def get(self, ref, pid):
         """The entry if `pid` owns `ref`, touching its last use; None otherwise."""

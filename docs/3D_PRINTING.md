@@ -569,10 +569,14 @@ picking a part, and both feed the same list:
 
 The body is `{context, via, selections, replace?}`, `context` being the panel's Onshape
 ids. The route checks the Onshape sign-in first, then the page id, then the context's
-REST address, then that the page has room for the new parts. **Each part is exported
+REST address. It resolves the selections (cached element calls, no export), then checks
+that the page has room for the parts it does not hold yet. **Each part is exported
 once**, one STL export per part with the print tessellation, read with numpy and stored.
 A part whose source (document, version or workspace, element, part, configuration) is
-already stored for this page id is answered from the store with no export.
+already stored for this page id is answered from the store with no export, and does not
+count against the 20-part limit. A part removed from the list in the browser stays stored
+until it expires and still counts, so a page refused at 20 parts may show fewer rows; a
+reload starts a new page id.
 
 **The part store** keeps each exported mesh at `<upload folder>/print_parts/<ref>/part.stl`,
 `ref` a random 128-bit id. Only the page id that exported a part can read it back through
@@ -581,9 +585,11 @@ use, and a sweeper removes them and any orphaned directories. The store's index 
 process memory, like the job pool's, and assumes one worker.
 
 **Refresh from Onshape** sends every listed part's `source` with `via: "refresh"` and the
-current `ref`s in `replace`. Every part is exported again **under a new `ref`**; the old
-entries are marked superseded but stay readable until they expire, so a queued slice never
-reads a mesh that is being replaced.
+current `ref`s in `replace`. Every part is exported again **under a new `ref`**. As each new
+mesh is stored, the entry it replaces is marked superseded and stops counting against the
+page's limits, so a refresh never counts a part twice; the old file stays readable until it
+expires, so a queued slice never reads a mesh that is being replaced. A part whose re-export
+fails keeps its old entry.
 
 The answer is `{"parts": [{ref, name, size_mm, triangles, source, footprints}], "errors":
 [{name?, message}]}`. Every failure is one sentence in `errors`, never an upstream body:
@@ -596,7 +602,8 @@ The answer is `{"parts": [{ref, name, size_mm, triangles, source, footprints}], 
 | A configured Part Studio clicked without a configuration | `This Part Studio has configurations. Use Add from another document… to pick the configuration to print.` |
 | Two parts with the picked name | `Two parts are named <name>; rename one in Onshape.` |
 | A clicked part not in the Part Studio, even after the parts list is fetched again | `Could not find the selected part in this Part Studio; use Add from another document…` |
-| An export, or a call resolving the selection, failed | `Onshape could not export <name>. Try again, or Refresh from Onshape.` (`the selected part` when no name is known yet) |
+| An export failed | `Onshape could not export <name>. Try again, or Refresh from Onshape.` |
+| A call resolving the selection failed (no name is known yet) | `Onshape could not export the selected part. Try again.` |
 | Onshape answered 402 (the development app's allowance) | `Onshape refused the export (API limit reached).` |
 | A limit (`print/limits.py`) | that limit's sentence |
 

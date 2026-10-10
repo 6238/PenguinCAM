@@ -153,12 +153,47 @@ class PartsRouteTest(PartsRouteBase):
         self.assertEqual(data['errors'], [{'message': print_routes.RESOLVE_FAILED_MESSAGE}])
         self.assertNotIn('cassette', str(data))
 
+    def fill_page(self, count):
+        """`count` stored parts for PID that no cassette knows, as earlier clicks would leave."""
+        info = {'triangles': 12, 'size_mm': {'x': 1.0, 'y': 1.0, 'z': 1.0}, 'footprints': {}}
+        for n in range(count):
+            self.store.add(PID, f'Filler {n}', {'partId': f'F{n}'}, ('d', 'w', 'w1', 'e', f'F{n}', ''), b'x', info)
+
     def test_too_many_parts_refused_before_export(self):
-        sent = self.replay('synthetic-print-none')
-        many = [{'partId': f'P{n}'} for n in range(limits.MAX_PARTS_PER_PAGE + 1)]
-        data = self.post_parts(many).get_json()
+        sent = self.replay('synthetic-print-ps-one')
+        self.fill_page(limits.MAX_PARTS_PER_PAGE)
+        data = self.post_parts([{'partId': 'JHD'}]).get_json()
         self.assertEqual(data, {'parts': [], 'errors': [{'message': limits.TOO_MANY_PARTS_MESSAGE}]})
-        self.assertEqual(sent, [])
+        self.assertFalse([url for url, _headers in sent if '/stl' in url])     # resolved, never exported
+
+    def test_reclick_at_the_part_limit_succeeds(self):
+        self.replay('synthetic-print-ps-one')
+        self.fill_page(limits.MAX_PARTS_PER_PAGE - 1)
+        first = self.post_parts([{'partId': 'JHD'}]).get_json()
+        self.assertEqual(first['errors'], [])
+        set_current_scenario('synthetic-print-none')        # the 20th part is listed; no call now
+        again = self.post_parts([{'partId': 'JHD'}, {'partId': 'JHD'}]).get_json()
+        self.assertEqual(again, {'parts': first['parts'], 'errors': []})
+
+    def test_refresh_of_a_page_over_half_its_budget(self):
+        self.replay('synthetic-print-ps-one')
+        with mock.patch.object(limits, 'MAX_PAGE_BYTES', BOX_BYTES + 100):    # one box is over half
+            old = self.post_parts([{'partId': 'JHD'}]).get_json()['parts']
+            set_current_scenario('synthetic-print-ps-refresh')
+            data = self.post_parts([{'source': old[0]['source'], 'name': 'Box'}], via='refresh',
+                                   replace=[old[0]['ref']]).get_json()
+        self.assertEqual(data['errors'], [])
+        self.assertNotEqual(data['parts'][0]['ref'], old[0]['ref'])
+        self.assertTrue(self.store.get(old[0]['ref'], PID).superseded)
+
+    def test_failed_refresh_keeps_the_old_part(self):
+        self.replay('synthetic-print-ps-one')
+        old = self.post_parts([{'partId': 'JHD'}]).get_json()['parts']
+        set_current_scenario('synthetic-print-none')        # the re-export fails
+        data = self.post_parts([{'source': old[0]['source'], 'name': 'Box'}], via='refresh',
+                               replace=[old[0]['ref']]).get_json()
+        self.assertEqual(data['parts'], [])
+        self.assertFalse(self.store.get(old[0]['ref'], PID).superseded)
 
     def test_402_gives_limit_sentence(self):
         self.replay('synthetic-print-ps-402')
