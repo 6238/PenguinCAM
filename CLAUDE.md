@@ -67,6 +67,10 @@ this project does not use `pyproject.toml`.
 
 `make test` is the gate. Use `make test-quick` while iterating: it runs the unit, system and node tests and skips the real Orca slice.
 
+`make testbed-replay` must pass before a change to the print path's Onshape code is done. It
+runs the test bed's browser scenarios in replay mode, with no live Onshape call; see
+[ONSHAPE_TEST_BED.md](docs/ONSHAPE_TEST_BED.md).
+
 ## G-code Generation Rules
 
 **CRITICAL**: The CNC machines that run our G-code have strict requirements. Violating these rules will cause machine failures:
@@ -149,6 +153,10 @@ G-code Generator (frc_cam_postprocessor.py)
   - `print/scripts/` - `install-orca.sh`, `make_sample_part.py`, `flatten_orca_profiles.py`
   - `print/tests/` - The print tests, including `tests/js/` for the node tests
   - `print/sample_part.stl`, `print/profiles/` - The fixed part and Bambu Lab profiles
+- `testbed/` - The Onshape test bed: recordings of real Onshape traffic, the replay adapter,
+  the fake Onshape host, scenarios, the drift report and the call ledger. Inert unless
+  `PENGUINCAM_TESTBED` is set; Playwright is in `testbed/requirements.txt` only, never in
+  `requirements.txt` or the Docker image.
 
 ## Documentation
 
@@ -167,6 +175,7 @@ Detailed documentation lives in the `docs/` directory. **Read these before modif
 | `quick-reference-card.md` | Changing UI workflows or default settings that affect end users |
 | [3D_PRINTING.md](docs/3D_PRINTING.md) | Changing the print wizard, the slicer wrapper, the job pool, or the Orca install |
 | [PRINTER_SETUP.md](docs/PRINTER_SETUP.md) | Changing the printer relay, the Pi daemon, the pairing flow, or the printer routes |
+| [ONSHAPE_TEST_BED.md](docs/ONSHAPE_TEST_BED.md) | Changing the print path's Onshape code, the test bed, its scenarios or its recordings |
 
 ## Testing
 
@@ -175,4 +184,5 @@ Tests compare PenguinCAM output against Fusion 360 CAM output using the `pygcode
 ```bash
 make test-quick  # The fast tests, for iteration: no Orca slice
 make test        # Everything, including the real Orca slice
+make testbed-replay  # The Onshape test bed's browser scenarios, replayed (no live calls)
 ```
