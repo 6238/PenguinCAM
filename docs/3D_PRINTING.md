@@ -495,21 +495,28 @@ under the delivered name `sample_part.gcode.3mf`, and returns the token, the sum
 `part_info()`. If registering the token fails, the archive is unlinked: without a token
 nothing could ever fetch or expire it. A `SliceError` becomes a `JobFailure`, so the
 record ends `failed` with the student message and the details go only to the log. The
-`finally` block removes the scratch directory and logs the `print_job` metrics event with
-the outcome and the duration. The token manager's cleanup does not remove directories,
-which is why the worker removes its own scratch space.
+`finally` block removes the scratch directory. The worker writes a `slice_done` or
+`slice_failed` print event (see "Support: reading the print logs") with the short job id,
+the seconds taken, Orca's exit code and, on failure, the student's sentence. The token
+manager's cleanup does not remove directories, which is why the worker removes its own
+scratch space.
 
 ## 8. Routes
 
-All five live in `print/routes.py` and are registered by `init_print_routes`.
+All live in `print/routes.py` and are registered by `init_print_routes`. "Page id" in the
+gate column means the request must also carry a valid page id (see "Support: reading the
+print logs"); without one the route answers 400 with `This page is out of date; reload it.`
 
 | Route | Method | Gate | Rate limit | Responses |
 |-------|--------|------|------------|-----------|
 | `/print` | GET | app session | 200 per hour (app default) | 200 with the page; redirect to the validated `return` with `verify=1` when the gate fails |
 | `/print/part` | GET | none | 200 per hour (app default) | 200 JSON from `part_info()`; with `?stl=1`, 200 with the STL bytes as `model/stl` |
-| `/print-job` | POST | app session | 3 per minute | 202 `{job_id}`; 503 `{error}` when the queue is full; 401 from the gate; 429 over the limit |
-| `/print-job/<id>` | GET | app session | 200 per hour (app default) | 200 with the record; 404 `{error}` for an unknown or expired id |
-| `/print-job/<id>/events` | GET | app session | 200 per hour (app default) | 200 `text/event-stream`; 404 `{error}` for an unknown id |
+| `/print-job` | POST | app session, page id | 3 per minute | 202 `{job_id}`; 503 `{error}` when the queue is full; 401 from the gate; 429 over the limit |
+| `/print-job/<id>` | GET | app session, page id | 200 per hour (app default) | 200 with the record; 404 `{error}` for an unknown or expired id |
+| `/print-job/<id>/events` | GET | app session, page id | 200 per hour (app default) | 200 `text/event-stream`; 404 `{error}` for an unknown id |
+| `/print/page` | POST | app session, page id | 10 per minute | 200 `{}`; writes the `page` event |
+| `/print/client-event` | POST | app session, page id | 30 per minute | 204; 400 for any key but `step`, `message`, `code` |
+| `/print/deliver` | POST | app session, page id | 30 per minute | 204; 400 unless `action` is `download`, `drive` or `printer` |
 
 The app's limiter is built with `default_limits=["200 per hour"]`, so every route carries
 that budget. Nothing on the print path is exempt. Two error bodies are written for the
@@ -542,6 +549,63 @@ The 200 per hour default is deployment-wide for the same reason. The polling fal
 hits `/print-job/<id>` every 2 s, or 30 requests a minute, and every one of them spends
 that budget. The fallback only runs when the event stream fails, so a normal slice uses a
 handful of requests.
+
+### Support: reading the print logs
+
+Every print request writes one or more **print events**: one log line each, through the
+app's `log()`, so Railway's log viewer shows them (`print/events.py`). Every event except
+`request` is also counted by the metrics pipeline as `print_<event>`. A line looks like
+
+```
+[PRINT] <event> pid=<page id|-> team=<n|-> job=<id8|-> key=value …
+```
+
+To follow one student's attempt, search Railway's logs for `[PRINT]`, find a line from
+their team or with their error message, then search for its `pid=` value: every request
+from that load of the print page carries it.
+
+- **`pid`** is the page id: 12 lowercase hex characters the print page draws with
+  `crypto.getRandomValues` when it loads, holds in page memory only, and sends with every
+  print request in the `X-Print-Page` header (or as `pid=` on the event stream and polling
+  URLs, which cannot carry a header). A reload or a second tab makes a new one. It is a log
+  correlation key, never an authority.
+- **`team`** is the team number, or `-` when the Flask session holds the default
+  configuration (which reports team 6238 without being that team).
+- **`job`** is the first eight characters of the job id, or `-`.
+
+| Event | When | Fields |
+|---|---|---|
+| `page` | the print page's first call, `POST /print/page` | source, theme, has_onshape_context, wvm, server, configured (yes/no), config (team or default) |
+| `config` | team config resolved for printing | printer, filaments offered, processes offered, skipped names, error |
+| `select` | parts arrive from Onshape | via (selection or dialog), count, element type |
+| `export` | one part exported | part id, element id, bytes, triangles, size_mm, calls, ms, outcome |
+| `export_failed` | export failed | part id, status, reason |
+| `layout` | the student enters Preview | copies, parts, plate fill percent, any rotation not a multiple of 90 |
+| `slice_queued`, `slice_done`, `slice_failed` | job transitions | job, seconds, Orca exit code, reason (and, with multi-part jobs, copies, triangles, filament, process, overrides) |
+| `deliver` | download, Drive or Send to Printer | job, action (`download`, `drive`, `printer`), outcome |
+| `client_error` | an error message shown in the browser | step, message (as shown), code |
+| `request` | every print-blueprint request except static files | method, route rule (for example `/print-job/<job_id>`), status, ms |
+
+Events not yet emitted by this release (`config`, `select`, `export`, `export_failed`,
+`layout`) are reserved names; `print/events.py` refuses any name outside the table.
+
+**One quoting rule.** A value made only of letters, digits and `._:/@+-` is written bare.
+Any other value (a space, a newline, a quote, an `=`, a comma, anything non-ASCII) is
+written JSON-encoded with ASCII escapes, so `message="Bad\nthing"` is one line and no value
+can end a line or forge a `[PRINT]` line. An empty string is `""`, a missing value `-`,
+booleans `yes` and `no`, and a list is joined with commas and then quoted.
+
+**What is never logged.** No Onshape user id, name or email; no token, cookie, key,
+download token, pairing code or full job id. They are never passed to `print/events.py`,
+which also refuses a job value longer than eight characters. The `request` event logs the
+route rule, never the path, because a full job id in `/print-job/<id>` is the bearer of
+that slice's result.
+
+**Browser reports.** Every error the print wizard shows goes through one helper,
+`showError(step, message, code)` in `print/static/print_wizard.js`, which writes the
+sentence to the step's error line and posts it to `/print/client-event`; a node test
+checks that no other code writes an error line. Download, Drive and Send to Printer post
+their outcome to `/print/deliver`.
 
 ### The `return` parameter and `verify=1`
 

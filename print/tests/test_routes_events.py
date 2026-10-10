@@ -172,5 +172,78 @@ class SliceEventsTest(EventRouteBase):
         self.assertIn("print_slice_failed", self.metric_names())
 
 
+class BrowserEventRoutesTest(EventRouteBase):
+    def post(self, url, body, pid=PID):
+        headers = {"X-Print-Page": pid} if pid else {}
+        return self.client.post(url, json=body, headers=headers)
+
+    def lines_for(self, event):
+        return [line for line in self.lines if line.startswith(f"[PRINT] {event} ")]
+
+    def test_browser_routes_are_gated(self):
+        for url in ("/print/page", "/print/client-event", "/print/deliver"):
+            with self.subTest(url=url):
+                self.assertEqual(app.test_client().post(url, json={}).status_code, 401)
+                resp = self.post(url, {}, pid=None)
+                self.assertEqual(resp.status_code, 400)
+                self.assertEqual(resp.get_json()["error"], print_routes.PAGE_ID_MESSAGE)
+
+    def test_client_event_logs_quoted_message(self):
+        resp = self.post("/print/client-event", {"step": "preview", "message": "Bad\nthing", "code": "network"})
+        self.assertEqual(resp.status_code, 204)
+        lines = self.lines_for("client_error")
+        self.assertEqual(len(lines), 1)
+        self.assertNotIn("\n", lines[0])
+        self.assertEqual(lines[0], f'[PRINT] client_error pid={PID} team=- job=- step=preview '
+                                   f'message="Bad\\nthing" code=network')
+        self.metrics.log_event.assert_any_call("print_client_error", team_number=None, metadata=mock.ANY)
+
+    def test_client_event_rejects_extra_keys(self):
+        resp = self.post("/print/client-event", {"step": "preview", "message": "x", "token": "secret"})
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(self.lines_for("client_error"), [])
+        self.assertTrue(all("secret" not in line for line in self.lines))
+        self.assertEqual(self.post("/print/client-event", ["not", "an", "object"]).status_code, 400)
+
+    def test_client_event_cuts_to_300(self):
+        self.post("/print/client-event", {"step": "s" * 400, "message": "m" * 400, "code": "c" * 400})
+        line = self.lines_for("client_error")[0]
+        self.assertIn(" step=" + "s" * 300 + " ", line)
+        self.assertIn(" message=" + "m" * 300 + " ", line)
+        self.assertTrue(line.endswith(" code=" + "c" * 300))
+
+    def test_page_event_fields(self):
+        with self.client.session_transaction() as sess:
+            sess["team_number"] = 1234
+            sess["using_default_config"] = False
+            sess["team_config_data"] = {"team": {"number": 1234}, "printing": {"pairing_code": "x"}}
+        resp = self.post("/print/page", {"source": "onshape", "theme": "dark", "has_onshape_context": True,
+                                         "wvm": "w", "server": "https://cad.onshape.com"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json(), {})
+        self.assertEqual(self.lines_for("page"), [
+            f"[PRINT] page pid={PID} team=1234 job=- source=onshape theme=dark has_onshape_context=yes "
+            "wvm=w server=https://cad.onshape.com configured=yes config=team"])
+        with self.client.session_transaction() as sess:
+            sess["using_default_config"] = True
+            sess["team_number"] = 6238
+            sess.pop("team_config_data")
+        self.post("/print/page", {"source": "upload", "theme": {"x": 1}, "has_onshape_context": False})
+        self.assertEqual(self.lines_for("page")[1],
+                         f"[PRINT] page pid={PID} team=- job=- source=upload theme=- has_onshape_context=no "
+                         "wvm=- server=- configured=no config=default")
+
+    def test_deliver_logs_short_job_id(self):
+        job_id = "AbCdEfGh" + "x" * 35
+        resp = self.post("/print/deliver", {"job_id": job_id, "action": "drive", "outcome": "ok" + "!" * 60})
+        self.assertEqual(resp.status_code, 204)
+        line = self.lines_for("deliver")[0]
+        self.assertTrue(line.startswith(f"[PRINT] deliver pid={PID} team=- job=AbCdEfGh action=drive outcome="))
+        self.assertIn('outcome="ok' + "!" * 38 + '"', line)
+        self.assertTrue(all(job_id not in entry for entry in self.lines))
+        self.assertEqual(self.post("/print/deliver", {"job_id": job_id, "action": "email", "outcome": "ok"}).status_code, 400)
+        self.assertEqual(self.post("/print/deliver", {"job_id": "a b", "action": "drive", "outcome": "ok"}).status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

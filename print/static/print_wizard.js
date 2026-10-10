@@ -2,6 +2,10 @@
  * Separate from the CNC wizard on purpose: same look, own code. Talks to the
  * print blueprint (/print/part, /print-job, /print-job/<id>/events) and reuses
  * the download and Google Drive routes. Pure helpers are exported for node tests.
+ *
+ * Every print request carries this page load's page id (X-Print-Page, or pid= on
+ * the EventSource and polling URLs), which the server writes into its [PRINT] log
+ * lines. Every error the student sees goes through showError, which also reports it.
  */
 (function () {
   'use strict';
@@ -13,8 +17,10 @@
   var EXPIRED_MESSAGE = 'This slice has expired, go back and slice again.';
   var RATE_MESSAGE = 'Too many slices in a minute, try again shortly.';
   var MIN_CANVAS_W = 120;   // floor for the fitted layout canvas, in CSS pixels
+  var STATUS_LINES = { preview: '#gen-status' };   // the status line a step's error replaces
 
   var state = {
+    pid: HAS_DOM && typeof window !== 'undefined' && window.crypto ? makePageId(window.crypto) : null,
     source: CFG.source,
     step: 'setup',
     info: null,          // /print/part response
@@ -39,6 +45,14 @@
   }
 
   /* ----------------------------------------------------------- pure helpers */
+  // The page id: 6 random bytes as 12 lowercase hex characters, new on every page load.
+  function makePageId(cryptoObj) {
+    var bytes = cryptoObj.getRandomValues(new Uint8Array(6));
+    var out = '';
+    for (var i = 0; i < bytes.length; i++) out += (bytes[i] < 16 ? '0' : '') + bytes[i].toString(16);
+    return out;
+  }
+
   function formatDuration(seconds) {
     var s = Math.max(0, Math.round(seconds || 0));
     var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
@@ -94,6 +108,62 @@
            bed.x + ' x ' + bed.y + ' x ' + height + ' mm.';
   }
 
+  /* ------------------------------------------- print requests and errors */
+  // fetch for a print route: the Flask session cookie and the page id header.
+  function printFetch(url, opts) {
+    var o = Object.assign({}, opts || {});
+    o.credentials = 'same-origin';
+    o.headers = Object.assign({}, o.headers || {}, { 'X-Print-Page': state.pid });
+    return fetch(url, o);
+  }
+
+  // For the EventSource and polling URLs, which cannot carry a header.
+  function withPid(url) {
+    return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'pid=' + encodeURIComponent(state.pid);
+  }
+
+  function postJson(url, body) {
+    return printFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                             body: JSON.stringify(body) });
+  }
+
+  // The only code that writes an error line (#<step>-errors; the node test checks).
+  // Shows the sentence, clears the step's status line and reports the message to the
+  // server; the same message already on the line is not reported twice.
+  function showError(step, message, code) {
+    var errLine = $('#' + step + '-errors');
+    var repeated = !!errLine && errLine.textContent === message;
+    if (errLine) errLine.textContent = message;
+    var status = STATUS_LINES[step] ? $(STATUS_LINES[step]) : null;
+    if (status) status.textContent = '';
+    if (repeated) return;
+    postJson('/print/client-event', { step: step, message: message, code: code || null })
+      .catch(function () { /* reporting is best effort */ });
+  }
+
+  function clearError(step) {
+    var errLine = $('#' + step + '-errors');
+    if (errLine) errLine.textContent = '';
+  }
+
+  // Download, Drive or Send to Printer, as a deliver event for the current job.
+  function reportDeliver(action, outcome) {
+    if (!state.jobId) return;
+    postJson('/print/deliver', { job_id: state.jobId, action: action, outcome: outcome })
+      .catch(function () { /* reporting is best effort */ });
+  }
+
+  // How the page was opened, as the page event: the print page's first call.
+  function postPageEvent() {
+    var o = CFG.onshape || null;
+    var isId = function (v) { return typeof v === 'string' && /^[0-9a-f]{24}$/.test(v); };
+    var wvm = !o ? null : isId(o.workspaceId) ? 'w' : isId(o.versionId) ? 'v' : isId(o.microversionId) ? 'm' : null;
+    postJson('/print/page', { source: state.source, theme: CFG.theme || null,
+                              has_onshape_context: !!(o && isId(o.documentId)), wvm: wvm,
+                              server: (o && o.server) || null })
+      .catch(function () { /* reporting is best effort */ });
+  }
+
   /* ----------------------------------------------------------------- setup */
   function fillSetup() {
     var i = state.info;
@@ -138,7 +208,8 @@
     $('#info-printer-name').textContent = i.printer.name;
     $('#info-bed-size').textContent = i.printer.bed_mm.x + ' x ' + i.printer.bed_mm.y + ' mm, ' + i.printer.height_mm + ' mm tall';
     state.fits = fitsBed(i.part.size_mm, i.printer.bed_mm, i.printer.height_mm);
-    $('#layout-errors').textContent = state.fits ? '' : tooBigMessage(i.part.size_mm, i.printer.bed_mm, i.printer.height_mm);
+    if (state.fits) clearError('layout');
+    else showError('layout', tooBigMessage(i.part.size_mm, i.printer.bed_mm, i.printer.height_mm), 'too_big');
   }
 
   // In full-page grid mode the quadrant is a fixed cell, so the stylesheet's
@@ -311,7 +382,7 @@
 
   /* ----------------------------------------------------------- data: part */
   function loadPart() {
-    return fetch('/print/part', { credentials: 'same-origin' })
+    return printFetch('/print/part')
       .then(function (r) { if (!r.ok) throw new Error('part info ' + r.status); return r.json(); })
       .then(function (info) {
         state.info = info;
@@ -329,7 +400,7 @@
         // rather than letting the student walk on to Preview on stale defaults.
         state.fits = false;
         if (state.step === 'layout') $('#btn-next').disabled = true;
-        $('#layout-errors').textContent = 'Could not load the part: ' + e.message;
+        showError('layout', 'Could not load the part: ' + e.message, 'part_info');
       });
   }
 
@@ -343,7 +414,7 @@
 
   function resetPreview() {
     $('#gen-status').textContent = '';
-    $('#preview-errors').textContent = '';
+    clearError('preview');
     $('#preview-notes').textContent = '';
     $('#preview-notes').hidden = true;
     $('#preview-stats').textContent = '';
@@ -367,25 +438,25 @@
     if (prev && prev.state === 'done' && prevToken) { showDone(prev); return; }
     if (prev && prevId && prev.state !== 'failed') { showState(prev); followEvents(); return; }
     $('#gen-status').textContent = 'Queued';
-    fetch('/print-job', { method: 'POST', credentials: 'same-origin' })
+    printFetch('/print-job', { method: 'POST' })
       .then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, j: j }; });
       })
       .then(function (res) {
         if (gen !== state.gen || state.step !== 'preview') return;
-        if (res.status !== 202) { showError(errorForStatus(res.status, res.j)); return; }
+        if (res.status !== 202) { failPreview(errorForStatus(res.status, res.j), 'status_' + res.status); return; }
         state.jobId = res.j.job_id;
         followEvents();
       })
       .catch(function (e) {
         if (gen !== state.gen || state.step !== 'preview') return;
-        showError('Could not reach the server: ' + e.message);
+        failPreview('Could not reach the server: ' + e.message, 'network');
       });
   }
 
   function followEvents() {
     stopFollowing();    // two streams for one panel would fight over the status line
-    var es = new EventSource('/print-job/' + encodeURIComponent(state.jobId) + '/events');
+    var es = new EventSource(withPid('/print-job/' + encodeURIComponent(state.jobId) + '/events'));
     state.events = es;
     es.addEventListener('state', function (e) { showState(JSON.parse(e.data)); });
     es.addEventListener('done', function (e) { stopFollowing(); showDone(JSON.parse(e.data)); });
@@ -401,10 +472,10 @@
 
   function startPolling() {
     state.poll = setInterval(function () {
-      fetch('/print-job/' + encodeURIComponent(state.jobId), { credentials: 'same-origin' })
+      printFetch(withPid('/print-job/' + encodeURIComponent(state.jobId)))
         .then(function (r) {
-          if (r.status === 404) { stopFollowing(); showError(EXPIRED_MESSAGE); return null; }
-          if (!r.ok) { stopFollowing(); showError(errorForStatus(r.status, {})); return null; }
+          if (r.status === 404) { stopFollowing(); failPreview(EXPIRED_MESSAGE, 'expired'); return null; }
+          if (!r.ok) { stopFollowing(); failPreview(errorForStatus(r.status, {}), 'status_' + r.status); return null; }
           return r.json();
         })
         .then(function (rec) {
@@ -427,15 +498,15 @@
     $('#gen-status').textContent = statusText(rec);
   }
 
-  function showError(message) {
-    $('#gen-status').textContent = '';
-    $('#preview-errors').textContent = message;
+  // A slice that cannot be saved: the error, and the save button off.
+  function failPreview(message, code) {
+    showError('preview', message, code);
     $('#btn-do').disabled = true;
   }
 
   function showFailed(rec) {
     state.record = rec;
-    showError(rec.error || 'Slicing failed.');
+    failPreview(rec.error || 'Slicing failed.', 'slice_failed');
   }
 
   function showDone(rec) {
@@ -483,7 +554,7 @@
         return;
       }
     }
-    fetch('/print/part?stl=1', { credentials: 'same-origin' })
+    printFetch('/print/part?stl=1')
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
       .then(function (buf) { viewer.load(buf, state.info.printer); })
       .catch(function (e) {
@@ -500,6 +571,10 @@
       // the split button's label and the localStorage preference.
       window.PenguinCAM.getDownloadToken = function () { return state.token; };
       window.PenguinCAM.choosePrinterAction = function () { chooseAction('printer'); };
+      // For printer_panel.js: its errors go through the one error helper, and its sends
+      // are reported as deliver events.
+      window.PenguinCAM.showError = showError;
+      window.PenguinCAM.reportDeliver = reportDeliver;
     }
   }
 
@@ -561,31 +636,38 @@
   function doDownload(token) {
     window.open('/download/' + token, '_blank');
     $('#gen-status').textContent = 'Download started.';
+    reportDeliver('download', 'started');
   }
 
   function driveSave(token) {
-    var status = $('#gen-status'), errs = $('#preview-errors');
-    errs.textContent = '';
+    var status = $('#gen-status');
+    clearError('preview');
     status.textContent = 'Checking Google Drive…';
     fetch('/drive/status', { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (st) {
-        if (!st.enabled) { errs.textContent = 'Google Drive is not configured for your team.'; status.textContent = ''; return; }
+        if (!st.enabled) { driveFailed('Google Drive is not configured for your team.', 'drive_config'); return; }
         if (!st.authenticated) {
           status.textContent = 'Complete Google sign-in in the popup…';
           var popup = window.open('/auth/login', 'penguincam_gauth', 'width=600,height=700');
-          if (!popup) { errs.textContent = 'Popup blocked — allow popups, then try again.'; status.textContent = ''; return; }
+          if (!popup) { driveFailed('Popup blocked — allow popups, then try again.', 'drive_popup'); return; }
           var iv = setInterval(function () { if (popup.closed) { clearInterval(iv); driveUpload(token); } }, 500);
           setTimeout(function () { clearInterval(iv); }, 180000);
           return;
         }
         driveUpload(token);
       })
-      .catch(function (e) { errs.textContent = 'Drive check failed: ' + e; status.textContent = ''; });
+      .catch(function (e) { driveFailed('Drive check failed: ' + e, 'drive_check'); });
+  }
+
+  // A Drive save that did not happen: the error, and a failed deliver event.
+  function driveFailed(message, code) {
+    showError('preview', message, code);
+    reportDeliver('drive', 'failed');
   }
 
   function driveUpload(token) {
-    var status = $('#gen-status'), errs = $('#preview-errors'), btn = $('#btn-do');
+    var status = $('#gen-status'), btn = $('#btn-do');
     status.textContent = 'Uploading to Google Drive…';
     btn.disabled = true;
     fetch('/drive/upload/' + token, { method: 'POST', credentials: 'same-origin',
@@ -593,10 +675,14 @@
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
         btn.disabled = false;
-        if (res.ok && res.j.success) status.textContent = res.j.message || 'Saved to Google Drive.';
-        else { errs.textContent = (res.j && res.j.message) || 'Drive upload failed.'; status.textContent = ''; }
+        if (res.ok && res.j.success) {
+          status.textContent = res.j.message || 'Saved to Google Drive.';
+          reportDeliver('drive', 'ok');
+        } else {
+          driveFailed((res.j && res.j.message) || 'Drive upload failed.', 'drive_upload');
+        }
       })
-      .catch(function (e) { btn.disabled = false; errs.textContent = 'Drive upload failed: ' + e; status.textContent = ''; });
+      .catch(function (e) { btn.disabled = false; driveFailed('Drive upload failed: ' + e, 'drive_upload'); });
   }
 
   function bindFinalAction() {
@@ -611,6 +697,7 @@
 
   /* ------------------------------------------------------------------ init */
   function init() {
+    postPageEvent();
     bindSetup();
     bindNav();
     bindPreview();
@@ -653,6 +740,6 @@
     module.exports = { formatDuration: formatDuration, fitsBed: fitsBed, summaryLine: summaryLine,
                        fitCanvasSize: fitCanvasSize,
                        printPageUrl: printPageUrl, statusText: statusText, tooBigMessage: tooBigMessage,
-                       errorForStatus: errorForStatus, appendNote: appendNote };
+                       errorForStatus: errorForStatus, appendNote: appendNote, makePageId: makePageId };
   }
 })();

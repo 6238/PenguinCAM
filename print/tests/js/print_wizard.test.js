@@ -83,3 +83,16 @@ test('fitCanvasSize never goes below the 120 px width floor', () => {
   assert.deepEqual(w.fitCanvasSize(-50, -50, 600, 400), { w: 120, h: 80 });
   assert.deepEqual(w.fitCanvasSize(NaN, 400, 600, 400), { w: 120, h: 80 });
 });
+
+test('makePageId returns 12 lowercase hex characters', () => {
+  const fake = {
+    getRandomValues(array) {
+      assert.ok(array instanceof Uint8Array);
+      assert.equal(array.length, 6);
+      [0, 1, 0xab, 0xcd, 0xef, 0xff].forEach((v, i) => { array[i] = v; });
+      return array;
+    },
+  };
+  assert.equal(w.makePageId(fake), '0001abcdefff');
+  assert.match(w.makePageId(globalThis.crypto), /^[0-9a-f]{12}$/);
+});

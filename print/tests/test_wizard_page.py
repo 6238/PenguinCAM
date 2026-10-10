@@ -30,7 +30,8 @@ class PrintWizardPageTest(unittest.TestCase):
         for value in ("2d", "2.5d", "tubing", "print"):
             self.assertIn(f'name="mode" value="{value}" autocomplete="off"', html)
         self.assertRegex(html, r'value="print"[^>]*checked')
-        for el in ("p-printer", "p-filament", "p-process", "parts-list", "layout-info", "layout-canvas",
+        for el in ("p-printer", "p-filament", "p-process", "setup-errors", "parts-list", "parts-errors",
+                   "layout-info", "layout-canvas",
                    "layout-errors", "gen-status", "preview-stats", "print-canvas", "preview-errors",
                    "preview-notes", "btn-do", "btn-do-caret", "do-menu", "btn-reset-view"):
             self.assertIn(f'id="{el}"', html, el)

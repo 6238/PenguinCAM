@@ -18,6 +18,9 @@
  *   - window.PenguinCAM.printerEnabled says whether this session's team config carries a
  *     pairing code; the wizard uses it to show the caret at load and to accept 'printer'
  *     as the remembered choice.
+ *   - window.PenguinCAM.showError(step, message, code) is the wizard's one error helper;
+ *     the panel's refusals go through it. window.PenguinCAM.reportDeliver(action,
+ *     outcome) records how a send ended (queued, refused, unreachable) as a deliver event.
  * With neither getter present nothing runs.
  *
  * Plain ES2017, one IIFE, no dependencies, no build step. The pure parts are exported on
@@ -232,7 +235,20 @@
     }
   }
 
+  /** Tell the wizard how a send ended (a deliver print event); absent in standalone use. */
+  function reportDeliver(outcome) {
+    if (bootstrap && typeof bootstrap.reportDeliver === 'function') {
+      try { bootstrap.reportDeliver('printer', outcome); } catch (e) { /* best effort */ }
+    }
+  }
+
   function errorBox(message) {
+    // The wizard's one error helper shows the sentence and reports it. The panel's own
+    // write below is only the fallback for a page without it (the standalone tests).
+    if (bootstrap && typeof bootstrap.showError === 'function') {
+      bootstrap.showError('preview', message, 'printer');
+      return;
+    }
     var box = $('#preview-errors');
     if (!box || !doc) {
       // Never silently dropped: a refused send has a reason the student needs, so it goes
@@ -407,10 +423,12 @@
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ token: token })
     }).then(function (response) {
-      if (response.status === 202) {
+      if (response.ok) {        // 202 from the relay
+        reportDeliver('queued');
         markSending();          // and the five-second polling takes it from here
         return null;
       }
+      reportDeliver('refused');
       // Repaint first, then the message: with no #preview-errors the message lands on
       // the status line, and painting afterwards would wipe it.
       if (response.status === 404) {
@@ -423,6 +441,7 @@
         errorBox((body && body.error) || 'The printer refused the job');
       });
     })['catch'](function () {
+      reportDeliver('unreachable');
       paint(lastPayload);
       errorBox('Could not reach the server');
     });

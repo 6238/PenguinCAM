@@ -909,3 +909,33 @@ test('adding the item reveals the split button caret the wizard hides by default
   assert.equal(holder.classList.contains('has-caret'), true);
   p.panel.stop();
 });
+
+// --- reporting to the print wizard: the deliver event and the one error helper ----------
+
+test('send reports queued, refused and unreachable through reportDeliver', async () => {
+  const reports = [];
+  const answers = [respond(200, { ok: true }), respond(400, { error: 'No' }),
+                   () => Promise.reject(new Error('offline'))];
+  for (const answer of answers) {
+    const p = previewPanel({ source: 'onshape', getDownloadToken: () => 'tok',
+                             reportDeliver: (action, outcome) => reports.push([action, outcome]) });
+    p.route('/printer/jobs', answer);
+    p.panel.send();
+    await flush();
+    await flush();
+  }
+  assert.deepEqual(reports, [['printer', 'queued'], ['printer', 'refused'],
+                             ['printer', 'unreachable']]);
+});
+
+test('errorBox delegates to showError when it exists', async () => {
+  const shown = [];
+  const p = previewPanel({ source: 'onshape', getDownloadToken: () => 'tok',
+                           showError: (step, message, code) => shown.push([step, message, code]) });
+  p.route('/printer/jobs', respond(409, { error: 'A job is already on its way to the printer' }));
+  p.panel.send();
+  await flush();
+  await flush();
+  assert.deepEqual(shown, [['preview', 'A job is already on its way to the printer', 'printer']]);
+  assert.equal(p.errors.children.length, 0, 'the panel no longer writes the error line itself');
+});

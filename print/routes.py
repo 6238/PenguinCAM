@@ -23,6 +23,12 @@ DELIVERED_NAME = "sample_part.gcode.3mf"
 BUSY_MESSAGE = "The slicer is busy, try again in a minute."
 EXPIRED_MESSAGE = "This slice has expired, go back and slice again."
 PAGE_ID_MESSAGE = "This page is out of date; reload it."
+BAD_REPORT_MESSAGE = "This report could not be read."
+CLIENT_EVENT_KEYS = ("step", "message", "code")
+CLIENT_EVENT_MAX_CHARS = 300
+DELIVER_ACTIONS = ("download", "drive", "printer")
+DELIVER_OUTCOME_MAX_CHARS = 40
+PAGE_FIELD_MAX_CHARS = 200
 FRAME_ANCESTORS = "frame-ancestors https://*.onshape.com"
 
 # The blueprint carries its own templates and static files, so everything the print
@@ -96,6 +102,21 @@ def _log_request_event(response):
                     rule=request.url_rule.rule if request.url_rule else None,
                     status=response.status_code, ms=round((time.monotonic() - started) * 1000))
     return response
+
+
+def _short_text(value, limit):
+    """A browser-supplied field as a print event value: strings cut to `limit`, numbers
+    and booleans as they are, anything else (an object, a list) dropped to None."""
+    if isinstance(value, str):
+        return value[:limit]
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return None
+
+
+def _json_object():
+    body = request.get_json(silent=True)
+    return body if isinstance(body, dict) else None
 
 
 def make_worker(token_manager, upload_folder, output_folder, log):
@@ -207,6 +228,55 @@ def print_job_events(job_id):
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+def print_page_event():
+    """The print page's first call: one `page` event describing how it was opened.
+    10 per minute, added in init_print_routes."""
+    gate = ctx.require_session() or _page_id_gate()
+    if gate:
+        return gate
+    body = _json_object() or {}
+    default_config = bool(session.get("using_default_config"))
+    team_config = {} if default_config else (session.get("team_config_data") or {})
+    fields = {key: _short_text(body.get(key), PAGE_FIELD_MAX_CHARS)
+              for key in ("source", "theme", "has_onshape_context", "wvm", "server")}
+    print_event("page", pid=_page_id(), team=_team_for_events(), **fields,
+                configured=isinstance(team_config.get("printing"), dict),
+                config="default" if default_config or not team_config else "team")
+    return jsonify({}), 200
+
+
+def print_client_event():
+    """An error the browser showed the student (showError). Only step, message and code,
+    each cut to 300 characters. 30 per minute, added in init_print_routes."""
+    gate = ctx.require_session() or _page_id_gate()
+    if gate:
+        return gate
+    body = _json_object()
+    if body is None or any(key not in CLIENT_EVENT_KEYS for key in body):
+        return jsonify({"error": BAD_REPORT_MESSAGE}), 400
+    print_event("client_error", pid=_page_id(), team=_team_for_events(),
+                **{key: _short_text(body.get(key), CLIENT_EVENT_MAX_CHARS) for key in CLIENT_EVENT_KEYS})
+    return "", 204
+
+
+def print_deliver_event():
+    """Download, Drive or Send to Printer, as the browser saw it. Only the first eight
+    characters of the job id are logged. 30 per minute, added in init_print_routes."""
+    gate = ctx.require_session() or _page_id_gate()
+    if gate:
+        return gate
+    body = _json_object() or {}
+    job_id, action = body.get("job_id"), body.get("action")
+    if not isinstance(job_id, str) or action not in DELIVER_ACTIONS:
+        return jsonify({"error": BAD_REPORT_MESSAGE}), 400
+    try:
+        print_event("deliver", pid=_page_id(), team=_team_for_events(), job=job_id[:8], action=action,
+                    outcome=_short_text(body.get("outcome"), DELIVER_OUTCOME_MAX_CHARS))
+    except ValueError:      # not a job id: refused rather than logged
+        return jsonify({"error": BAD_REPORT_MESSAGE}), 400
+    return "", 204
+
+
 def init_print_routes(app, *, limiter, require_session, token_manager, upload_folder, output_folder,
                       template_context, metrics, log, pool=None):
     """Register the print blueprint. Called once by frc_cam_gui_app after the
@@ -230,5 +300,11 @@ def init_print_routes(app, *, limiter, require_session, token_manager, upload_fo
     # definition time.
     print_bp.add_url_rule("/print-job", "print_job_submit",
                           limiter.limit("3 per minute")(print_job_submit), methods=["POST"])
+    print_bp.add_url_rule("/print/page", "print_page_event",
+                          limiter.limit("10 per minute")(print_page_event), methods=["POST"])
+    print_bp.add_url_rule("/print/client-event", "print_client_event",
+                          limiter.limit("30 per minute")(print_client_event), methods=["POST"])
+    print_bp.add_url_rule("/print/deliver", "print_deliver_event",
+                          limiter.limit("30 per minute")(print_deliver_event), methods=["POST"])
     app.register_blueprint(print_bp)
     return pool
