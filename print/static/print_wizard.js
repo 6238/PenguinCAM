@@ -20,6 +20,7 @@
   var STEPS = ['setup', 'parts', 'layout', 'preview'];
   var EXPIRED_MESSAGE = 'This slice has expired, go back and slice again.';
   var RATE_MESSAGE = 'Too many slices in a minute, try again shortly.';
+  var PARTS_RATE_MESSAGE = 'Too many parts added in a minute, try again shortly.';
   var MIN_CANVAS_W = 120;   // floor for the fitted layout canvas, in CSS pixels
   var STATUS_LINES = { preview: '#gen-status' };   // the status line a step's error replaces
   var ONSHAPE = CFG.source === 'onshape';
@@ -353,6 +354,7 @@
           showSigninLink(true);
           return;
         }
+        if (res.status === 429) { showError('parts', PARTS_RATE_MESSAGE, 'status_429'); return; }
         if (res.status !== 200) {
           showError('parts', res.j.error || 'Could not add the part (HTTP ' + res.status + ').', 'status_' + res.status);
           return;

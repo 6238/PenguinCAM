@@ -116,7 +116,9 @@
         if (!data || typeof data !== 'object') return;
         switch (data.messageName) {
           case 'REQUESTED_SELECTION': onRequestedSelection(data); break;
-          case 'itemSelectedInSelectItemDialog': opts.onSelections([dialogItemToSelection(data)], 'dialog'); break;
+          case 'itemSelectedInSelectItemDialog':     // a pick crossing the close after leaving Parts is dropped
+            if (active) opts.onSelections([dialogItemToSelection(data)], 'dialog');
+            break;
           case 'selectItemDialogClosed': dialogOpen = false; if (active) arm(); break;
           default: break;                        // SELECTION and everything else
         }

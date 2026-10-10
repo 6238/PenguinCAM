@@ -150,6 +150,15 @@ test('dialog items arrive with via dialog, and dialog close re-arms', () => {
   assert.deepEqual(h.names().slice(3), ['stopRequest']);
 });
 
+test('a dialog pick after leaving Parts is dropped', () => {
+  const h = harness();
+  h.messenger.enterParts();
+  h.messenger.openDialog();
+  h.messenger.leaveParts();
+  h.deliver(incoming('pick in the dialog'));
+  assert.deepEqual(h.added, []);
+});
+
 test('leaveParts stops the request and closes an open dialog', () => {
   const h = harness();
   h.messenger.enterParts();
