@@ -28,7 +28,8 @@ from .onshape_parts import (ELEMENT_CACHE, LIMIT_REACHED_MESSAGE, NO_CONTEXT_MES
                             PartTooLarge, export_part_mesh, panel_context_from_return, resolve_selections,
                             rest_address)
 from .part_store import PartLimit, PartStore
-from .slicer import SAMPLE_STL, SliceError, part_info, slice_stl
+from .plate import plate_from_printer
+from .slicer import SAMPLE_STL, SliceError, _load_profile, part_info, slice_stl
 
 DELIVERED_NAME = "sample_part.gcode.3mf"
 BUSY_MESSAGE = "The slicer is busy, try again in a minute."
@@ -259,8 +260,9 @@ def print_job_events(job_id):
 
 
 def print_page_event():
-    """The print page's first call: one `page` event describing how it was opened.
-    10 per minute, added in init_print_routes."""
+    """The print page's first call: one `page` event describing how it was opened. Answers
+    the plate (the default printer's, with the margin and spacing) and the limits the
+    browser checks. 10 per minute, added in init_print_routes."""
     gate = ctx.require_session() or _page_id_gate()
     if gate:
         return gate
@@ -278,7 +280,8 @@ def print_page_event():
     print_event("page", pid=_page_id(), team=team, **fields,
                 configured=isinstance(team_config.get("printing"), dict),
                 config="default" if default_config or not team_config else "team")
-    return jsonify({}), 200
+    return jsonify({"plate": plate_from_printer(_load_profile("printer.json")),
+                    "limits": limits.limits_for_browser()}), 200
 
 
 def print_client_event():

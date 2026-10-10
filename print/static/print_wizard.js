@@ -40,6 +40,7 @@
     saveAction: 'download',
     parts: [],           // Onshape mode: [{ref, name, size_mm, triangles, source, footprints, quantity}]
     limits: null,        // limits_for_browser(), once the server sends them
+    plate: null,         // plate_from_printer(), from the /print/page answer
   };
   var viewer = null;
   var resizeTimer = null;   // window.resize debounce for the layout canvas
@@ -212,7 +213,8 @@
       .catch(function () { /* reporting is best effort */ });
   }
 
-  // How the page was opened, as the page event: the print page's first call.
+  // How the page was opened, as the page event: the print page's first call. The answer
+  // carries the plate and the limits the page checks.
   function postPageEvent() {
     var o = CFG.onshape || null;
     var isId = function (v) { return typeof v === 'string' && /^[0-9a-f]{24}$/.test(v); };
@@ -220,7 +222,14 @@
     postJson('/print/page', { source: state.source, theme: CFG.theme || null,
                               has_onshape_context: !!(o && isId(o.documentId)), wvm: wvm,
                               server: (o && o.server) || null })
-      .catch(function () { /* reporting is best effort */ });
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (answer) {
+        if (!answer) return;
+        if (answer.plate) state.plate = answer.plate;
+        if (answer.limits) state.limits = answer.limits;
+        if (ONSHAPE && HAS_DOM && $('#btn-refresh-parts')) renderParts();   // the quantity's max
+      })
+      .catch(function () { /* the page keeps its defaults */ });
   }
 
   /* ----------------------------------------------------------------- setup */

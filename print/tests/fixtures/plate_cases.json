@@ -1,0 +1,762 @@
+{
+ "synthetic": false,
+ "plate": {
+  "min": [
+   0,
+   0
+  ],
+  "max": [
+   340,
+   320
+  ],
+  "height": 340,
+  "margin": 3.0,
+  "spacing": 5.0,
+  "printer": "Bambu Lab H2S 0.6 nozzle"
+ },
+ "parts": {
+  "r-box": {
+   "name": "Box",
+   "footprints": {
+    "+z": {
+     "hull": [
+      [
+       -20.0,
+       -10.0
+      ],
+      [
+       20.0,
+       -10.0
+      ],
+      [
+       20.0,
+       10.0
+      ],
+      [
+       -20.0,
+       10.0
+      ]
+     ],
+     "height": 30,
+     "offset": [
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "+x": {
+     "hull": [
+      [
+       -15.0,
+       -10.0
+      ],
+      [
+       15.0,
+       -10.0
+      ],
+      [
+       15.0,
+       10.0
+      ],
+      [
+       -15.0,
+       10.0
+      ]
+     ],
+     "height": 40,
+     "offset": [
+      15.0,
+      10.0,
+      -40.0
+     ]
+    }
+   }
+  },
+  "r-square": {
+   "name": "Square",
+   "footprints": {
+    "+z": {
+     "hull": [
+      [
+       -10.0,
+       -10.0
+      ],
+      [
+       10.0,
+       -10.0
+      ],
+      [
+       10.0,
+       10.0
+      ],
+      [
+       -10.0,
+       10.0
+      ]
+     ],
+     "height": 10,
+     "offset": [
+      0.0,
+      0.0,
+      0.0
+     ]
+    }
+   }
+  },
+  "r-tall": {
+   "name": "Tall pin",
+   "footprints": {
+    "+z": {
+     "hull": [
+      [
+       -5.0,
+       -5.0
+      ],
+      [
+       5.0,
+       -5.0
+      ],
+      [
+       5.0,
+       5.0
+      ],
+      [
+       -5.0,
+       5.0
+      ]
+     ],
+     "height": 350,
+     "offset": [
+      0.0,
+      0.0,
+      0.0
+     ]
+    }
+   }
+  },
+  "r-bracket-a": {
+   "name": "Bracket",
+   "footprints": {
+    "+z": {
+     "hull": [
+      [
+       -10.0,
+       -10.0
+      ],
+      [
+       10.0,
+       -10.0
+      ],
+      [
+       10.0,
+       10.0
+      ],
+      [
+       -10.0,
+       10.0
+      ]
+     ],
+     "height": 5,
+     "offset": [
+      0.0,
+      0.0,
+      0.0
+     ]
+    }
+   }
+  },
+  "r-bracket-b": {
+   "name": "Bracket",
+   "footprints": {
+    "+z": {
+     "hull": [
+      [
+       -10.0,
+       -10.0
+      ],
+      [
+       10.0,
+       -10.0
+      ],
+      [
+       10.0,
+       10.0
+      ],
+      [
+       -10.0,
+       10.0
+      ]
+     ],
+     "height": 8,
+     "offset": [
+      0.0,
+      0.0,
+      0.0
+     ]
+    }
+   }
+  }
+ },
+ "cases": [
+  {
+   "name": "all_clear",
+   "copies": [
+    {
+     "ref": "r-box",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 100,
+     "y": 100
+    },
+    {
+     "ref": "r-square",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 200,
+     "y": 200
+    }
+   ],
+   "problems": []
+  },
+  {
+   "name": "off_plate_left",
+   "copies": [
+    {
+     "ref": "r-box",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 20,
+     "y": 100
+    }
+   ],
+   "problems": [
+    {
+     "rule": "off_plate",
+     "copies": [
+      0
+     ],
+     "message": "Box #1 is not fully on the plate."
+    }
+   ]
+  },
+  {
+   "name": "off_plate_after_45_rotation",
+   "copies": [
+    {
+     "ref": "r-square",
+     "orientation": "+z",
+     "angle": 45,
+     "x": 15.0,
+     "y": 100.0
+    }
+   ],
+   "problems": [
+    {
+     "rule": "off_plate",
+     "copies": [
+      0
+     ],
+     "message": "Square #1 is not fully on the plate."
+    }
+   ],
+   "note": "reaches 2.142136 mm past the margin"
+  },
+  {
+   "name": "exactly_on_margin",
+   "copies": [
+    {
+     "ref": "r-box",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 23,
+     "y": 13
+    },
+    {
+     "ref": "r-box",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 317,
+     "y": 307
+    }
+   ],
+   "problems": []
+  },
+  {
+   "name": "too_tall",
+   "copies": [
+    {
+     "ref": "r-tall",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 100,
+     "y": 100
+    }
+   ],
+   "problems": [
+    {
+     "rule": "too_tall",
+     "copies": [
+      0
+     ],
+     "message": "Tall_pin #1 is taller than the printer can print (340 mm)."
+    }
+   ]
+  },
+  {
+   "name": "overlap",
+   "copies": [
+    {
+     "ref": "r-box",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 100,
+     "y": 100
+    },
+    {
+     "ref": "r-square",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 110,
+     "y": 100
+    }
+   ],
+   "problems": [
+    {
+     "rule": "too_close",
+     "copies": [
+      0,
+      1
+     ],
+     "message": "Box #1 and Square #1 are closer than 5 mm."
+    }
+   ]
+  },
+  {
+   "name": "four_mm_apart",
+   "copies": [
+    {
+     "ref": "r-box",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 100,
+     "y": 100
+    },
+    {
+     "ref": "r-square",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 134,
+     "y": 100
+    }
+   ],
+   "problems": [
+    {
+     "rule": "too_close",
+     "copies": [
+      0,
+      1
+     ],
+     "message": "Box #1 and Square #1 are closer than 5 mm."
+    }
+   ]
+  },
+  {
+   "name": "exactly_spacing_apart",
+   "copies": [
+    {
+     "ref": "r-box",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 100,
+     "y": 100
+    },
+    {
+     "ref": "r-square",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 135,
+     "y": 100
+    }
+   ],
+   "problems": []
+  },
+  {
+   "name": "rotated_near_miss",
+   "copies": [
+    {
+     "ref": "r-square",
+     "orientation": "+z",
+     "angle": 45,
+     "x": 100.0,
+     "y": 100.0
+    },
+    {
+     "ref": "r-square",
+     "orientation": "+z",
+     "angle": 45,
+     "x": 129.284271,
+     "y": 106.353911
+    }
+   ],
+   "problems": [],
+   "note": "hull distance 5.200000 mm, bounding boxes 1.000000 mm apart"
+  },
+  {
+   "name": "same_name_two_parts",
+   "copies": [
+    {
+     "ref": "r-bracket-a",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 50,
+     "y": 50
+    },
+    {
+     "ref": "r-bracket-b",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 150,
+     "y": 50
+    },
+    {
+     "ref": "r-bracket-a",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 160,
+     "y": 50
+    }
+   ],
+   "problems": [
+    {
+     "rule": "too_close",
+     "copies": [
+      1,
+      2
+     ],
+     "message": "Bracket #2 and Bracket #3 are closer than 5 mm."
+    }
+   ]
+  },
+  {
+   "name": "problems_in_rule_order",
+   "copies": [
+    {
+     "ref": "r-tall",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 100,
+     "y": 100
+    },
+    {
+     "ref": "r-box",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 10,
+     "y": 100
+    },
+    {
+     "ref": "r-square",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 105,
+     "y": 100
+    },
+    {
+     "ref": "r-square",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 300,
+     "y": 300
+    },
+    {
+     "ref": "r-square",
+     "orientation": "+z",
+     "angle": 0,
+     "x": 300,
+     "y": 276
+    }
+   ],
+   "problems": [
+    {
+     "rule": "off_plate",
+     "copies": [
+      1
+     ],
+     "message": "Box #1 is not fully on the plate."
+    },
+    {
+     "rule": "too_tall",
+     "copies": [
+      0
+     ],
+     "message": "Tall_pin #1 is taller than the printer can print (340 mm)."
+    },
+    {
+     "rule": "too_close",
+     "copies": [
+      0,
+      2
+     ],
+     "message": "Tall_pin #1 and Square #1 are closer than 5 mm."
+    },
+    {
+     "rule": "too_close",
+     "copies": [
+      3,
+      4
+     ],
+     "message": "Square #2 and Square #3 are closer than 5 mm."
+    }
+   ]
+  },
+  {
+   "name": "orientation_and_quarter_turn",
+   "copies": [
+    {
+     "ref": "r-box",
+     "orientation": "+x",
+     "angle": 90,
+     "x": 13,
+     "y": 100
+    }
+   ],
+   "problems": []
+  },
+  {
+   "name": "quarter_turn_off_plate",
+   "copies": [
+    {
+     "ref": "r-box",
+     "orientation": "+x",
+     "angle": 0,
+     "x": 13,
+     "y": 100
+    }
+   ],
+   "problems": [
+    {
+     "rule": "off_plate",
+     "copies": [
+      0
+     ],
+     "message": "Box #1 is not fully on the plate."
+    }
+   ]
+  }
+ ],
+ "matrices": [
+  {
+   "orientation": "+z",
+   "angle": 0,
+   "offset": [
+    0,
+    0,
+    0
+   ],
+   "x": 100,
+   "y": 50,
+   "matrix": [
+    [
+     1,
+     0,
+     0,
+     100
+    ],
+    [
+     0,
+     1,
+     0,
+     50
+    ],
+    [
+     0,
+     0,
+     1,
+     0
+    ]
+   ]
+  },
+  {
+   "orientation": "+x",
+   "angle": 90,
+   "offset": [
+    1,
+    2,
+    -5
+   ],
+   "x": 10,
+   "y": 20,
+   "matrix": [
+    [
+     0,
+     -1,
+     0,
+     12
+    ],
+    [
+     0,
+     0,
+     -1,
+     19
+    ],
+    [
+     1,
+     0,
+     0,
+     5
+    ]
+   ]
+  },
+  {
+   "orientation": "-z",
+   "angle": 180,
+   "offset": [
+    3,
+    4,
+    -30
+   ],
+   "x": 100,
+   "y": 100,
+   "matrix": [
+    [
+     -1,
+     0,
+     0,
+     103
+    ],
+    [
+     0,
+     1,
+     0,
+     104
+    ],
+    [
+     0,
+     0,
+     -1,
+     30
+    ]
+   ]
+  },
+  {
+   "orientation": "+y",
+   "angle": 270,
+   "offset": [
+    0,
+    0,
+    2
+   ],
+   "x": 0,
+   "y": 0,
+   "matrix": [
+    [
+     0,
+     0,
+     -1,
+     0
+    ],
+    [
+     -1,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     1,
+     0,
+     -2
+    ]
+   ]
+  },
+  {
+   "orientation": "-x",
+   "angle": 30,
+   "offset": [
+    4.0,
+    -2.0,
+    -12.5
+   ],
+   "x": 60.0,
+   "y": 70.0,
+   "matrix": [
+    [
+     0.0,
+     -0.49999999999999994,
+     0.8660254037844387,
+     55.53589838486224
+    ],
+    [
+     0.0,
+     0.8660254037844387,
+     0.49999999999999994,
+     69.73205080756888
+    ],
+    [
+     -1.0,
+     0.0,
+     0.0,
+     12.5
+    ]
+   ]
+  }
+ ],
+ "labels": [
+  {
+   "names": [
+    "Bracket",
+    "Bracket",
+    "Plate (v2)",
+    "Bracket"
+   ],
+   "labels": [
+    "Bracket #1",
+    "Bracket #2",
+    "Plate__v2_ #1",
+    "Bracket #3"
+   ]
+  },
+  {
+   "names": [
+    "a b",
+    "a_b",
+    "a-b"
+   ],
+   "labels": [
+    "a_b #1",
+    "a_b #2",
+    "a-b #1"
+   ]
+  },
+  {
+   "names": [],
+   "labels": []
+  }
+ ],
+ "sanitize": [
+  {
+   "in": "Bracket (v2) \u2013 left",
+   "out": "Bracket__v2____left"
+  },
+  {
+   "in": "",
+   "out": "part"
+  },
+  {
+   "in": "xxxxxxxxxxxxxxxxxxxxxxxxxyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+   "out": "xxxxxxxxxxxxxxxxxxxxxxxxxyyyyyyyyyyyyyyy"
+  },
+  {
+   "in": "ok-name_1",
+   "out": "ok-name_1"
+  },
+  {
+   "in": "\u65e5\u672c",
+   "out": "__"
+  },
+  {
+   "in": "\ud83d\ude00 gear",
+   "out": "__gear"
+  }
+ ]
+}
