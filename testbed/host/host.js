@@ -14,19 +14,16 @@
 (function () {
   'use strict';
 
+  var shapes = window.TestbedOnshape;               // onshape_shapes.js, loaded first
   var parts = location.pathname.split('/');        // ['', 'documents', did, w|v, id, 'e', eid]
   var query = new URLSearchParams(location.search);
   var scenario = query.get('scenario') || '';
   var panelOrigin = 'http://localhost:' + (query.get('port') || '6240');
   var onVersion = parts[3] === 'v';
 
-  // A panel opened on a version gets versionId, and workspaceId as Onshape's raw,
-  // unsubstituted placeholder.
-  var panelUrl = panelOrigin + '/onshape-panel?documentId=' + encodeURIComponent(parts[2]) +
-    '&workspaceId=' + (onVersion ? '{$workspaceId}' : encodeURIComponent(parts[4])) +
-    (onVersion ? '&versionId=' + encodeURIComponent(parts[4]) : '') +
-    '&elementId=' + encodeURIComponent(parts[6]) +
-    '&server=' + encodeURIComponent(location.origin) + '&theme=light';
+  var panelUrl = shapes.panelUrl(panelOrigin, onVersion
+    ? { did: parts[2], vid: parts[4], eid: parts[6] }
+    : { did: parts[2], wid: parts[4], eid: parts[6] }, location.origin, 'light');
 
   var log = [];            // every message from the panel: {origin, data, t_ms}
   var sent = [];           // every message posted to the panel, for debugging
@@ -54,17 +51,7 @@
     return data && typeof data === 'object' ? Object.keys(data).sort().join(',') : '';
   }
 
-  function copy(data) {
-    return JSON.parse(JSON.stringify(data));
-  }
-
-  function withMessageId(data, messageId) {
-    var reply = copy(data);
-    if (messageId && reply && typeof reply === 'object' && 'messageId' in reply) {
-      reply.messageId = messageId;
-    }
-    return reply;
-  }
+  var withMessageId = shapes.withMessageId;
 
   // The `in` events from `start` up to the next `out`: [replies, index of that out].
   function repliesFrom(events, start) {

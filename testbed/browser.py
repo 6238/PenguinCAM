@@ -143,6 +143,38 @@ class RecordDevServer(ReplayDevServer):
         super().__init__(port)
 
 
+class LocalDevServer(ReplayDevServer):
+    """The development server in local mode on `port` (LOCAL_TEST_PORT by default, so a
+    server already on 6238 is left alone), for the local browser test.
+
+    It gets no Onshape credential of any kind, and `state_home` (when given) as its
+    XDG_STATE_HOME, so its uploads stay out of the real state directory. Its output goes to
+    settings.state_dir()/logs/local-devserver.log.
+    """
+
+    MODE = 'local'
+    DROPPED = _REPLAY_DROPPED + ('ONSHAPE_CLIENT_ID', 'ONSHAPE_CLIENT_SECRET',
+                                 'TESTBED_LOCAL_CONFIG')
+
+    def __init__(self, port=settings.LOCAL_TEST_PORT, state_home=None):
+        super().__init__(port)
+        self.state_home = state_home
+
+    def __enter__(self):
+        if self.state_home is None:
+            return super().__enter__()
+        # The server's environment is copied from this one when it starts.
+        previous = os.environ.get('XDG_STATE_HOME')
+        os.environ['XDG_STATE_HOME'] = str(self.state_home)
+        try:
+            return super().__enter__()
+        finally:
+            if previous is None:
+                os.environ.pop('XDG_STATE_HOME', None)
+            else:
+                os.environ['XDG_STATE_HOME'] = previous
+
+
 def _fulfill_text(route, status, body, content_type='text/plain; charset=utf-8'):
     route.fulfill(status=status, content_type=content_type, body=body)
 
@@ -150,7 +182,8 @@ def _fulfill_text(route, status, body, content_type='text/plain; charset=utf-8')
 def serve_fake_host(route, message_dir=None):
     """Answer a request for the fake Onshape host; anything else it is asked for is a 404.
 
-    /documents/** is the host page, /_testbed/host.js its script and
+    /documents/** is the host page, /_testbed/host.js and /_testbed/onshape_shapes.js its
+    scripts and
     /_testbed/messages/<scenario>.json a message log from `message_dir` (default
     settings.MESSAGE_DIR).
     """
@@ -158,8 +191,8 @@ def serve_fake_host(route, message_dir=None):
     if path.startswith('/documents/'):
         return _fulfill_text(route, 200, (HOST_DIR / 'index.html').read_text(),
                              'text/html; charset=utf-8')
-    if path == '/_testbed/host.js':
-        return _fulfill_text(route, 200, (HOST_DIR / 'host.js').read_text(),
+    if path in ('/_testbed/host.js', '/_testbed/onshape_shapes.js'):
+        return _fulfill_text(route, 200, (HOST_DIR / path.rsplit('/', 1)[1]).read_text(),
                              'text/javascript; charset=utf-8')
     prefix = '/_testbed/messages/'
     if path.startswith(prefix) and path.endswith('.json'):

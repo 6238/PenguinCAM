@@ -1,4 +1,4 @@
-.PHONY: install install-orca test test-quick test-daemon daemon-tarball testbed-replay testbed-record
+.PHONY: install install-orca test test-quick test-daemon daemon-tarball testbed-replay testbed-record testbed-local
 
 # Installs the Python environment and Orca Slicer (tools/orca, pinned in
 # print/scripts/install-orca.sh). Orca is a core dependency: the server refuses to
@@ -67,3 +67,9 @@ testbed-replay:
 # It checks the budget first and is never part of make test.
 testbed-record:
 	@uv run python -m testbed record
+
+# Local mode: the development server on 6238 with a stand-in Onshape Part Studio at
+# http://localhost:6238/testbed/local, made of uploaded STL files. No Onshape account, no
+# credentials and no call to Onshape. Runs in the foreground until stopped.
+testbed-local:
+	PORT=6238 EMBED_COOKIES=1 PENGUINCAM_TESTBED=local uv run python frc_cam_gui_app.py
