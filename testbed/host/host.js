@@ -134,6 +134,7 @@
     selectPart: function (name) { return postStep('select part ' + name); },
     selectParts: function (names) { return postStep('select parts ' + names.join(', ')); },
     deselect: function () { return postStep('deselect'); },
+    dialogClosed: function () { return postStep('dialog closed'); },
     reloadPanel: function () { frame.src = panelUrl; },
     // The replies `message` would get in step `name`, without posting or moving on.
     match: function (message, name) {

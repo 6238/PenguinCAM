@@ -150,6 +150,21 @@ G-code Generator (frc_cam_postprocessor.py)
   - `print/slicer.py` - Orca Slicer command line wrapper (imports no Flask)
   - `print/templates/print_wizard.html` - Print wizard UI, served at `/print`
   - `print/static/` - `print_wizard.js` (page logic) and `print_viewer.js` (Three.js mesh-on-bed viewer)
+  - `print/static/print_onshape.js` - The print page's own Onshape messaging: selections and the part dialog
+  - `print/static/plate_geometry.js` - The browser's twin of `print/plate.py`: placement checks while dragging, and Arrange
+  - `print/static/print_layout.js` - The Layout step's plate editor
+  - `print/static/print_layout.css` - The Layout step's styles
+  - `print/static/printer_panel.js` - Send to Printer: the relay's printer list and the send
+  - `print/onshape_parts.py` - Panel context, selection resolving and the STL export from Onshape
+  - `print/part_store.py` - Exported meshes per page id, on disk, with their caps and expiry
+  - `print/mesh.py` - Binary STL reading: size, triangles and the footprints per orientation
+  - `print/plate.py` - Orientations, copy placement and the rules a placement must pass (the server's check)
+  - `print/plate_3mf.py` - Writes a placed plate as a 3MF for Orca, and the delivered file name
+  - `print/plate_job.py` - One plate slice job: its copies, parts and profiles
+  - `print/print_config.py` - The team's `printing:` configuration, read against the catalog
+  - `print/events.py` - The `[PRINT]` log lines, with the one quoting rule
+  - `print/limits.py` - Every cap of the print path and the sentence that refuses it
+  - `print/profiles/catalog/` - Orca profiles the team configuration can name, flattened, with `index.json`
   - `print/scripts/` - `install-orca.sh`, `make_sample_part.py`, `flatten_orca_profiles.py`
   - `print/tests/` - The print tests, including `tests/js/` for the node tests
   - `print/sample_part.stl`, `print/profiles/` - The fixed part and Bambu Lab profiles

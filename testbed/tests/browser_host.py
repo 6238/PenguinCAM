@@ -163,7 +163,10 @@ class FakeHostTest(_BrowserCase):
             wait_for(page, lambda: frame.evaluate('window.PenguinCAMTestbed.currentStep()') != step,
                      f'the strip to move on from {step}')
         page.evaluate("window.__testbed.setStep('ask for a part')")
-        frame.click('#testbed-strip button:has-text("Ask for a part")')
+        # The print page asks for parts itself, so the strip hides this button; the raw
+        # probe is still sent through the strip's own action.
+        self.assertFalse(frame.is_visible('#testbed-action'))
+        frame.evaluate("window.PenguinCAMTestbed.act('ask-part')")
         page.evaluate("window.__testbed.selectPart('Cylinder')")
 
         def selection_events():

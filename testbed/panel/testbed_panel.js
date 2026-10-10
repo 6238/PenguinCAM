@@ -7,9 +7,13 @@
  *     (POST /testbed/scenario);
  *   - shows the current step's instruction, a button for the step's action, Next step and
  *     Done;
- *   - sends applicationInit itself, since the print page does not yet;
  *   - records every message it sends, and every message the page receives through a
- *     listener added when this script loads, before any of the page's own filters;
+ *     listener added when this script loads, before any of the page's own filters.
+ * When the print page does its own Onshape messaging (window.PenguinCAM.onshapeMessenger,
+ * print_onshape.js), the strip defers to it: it sends no applicationInit, hides its ask and
+ * dialog buttons (only the reference Ask with no count stays), and records the page's own
+ * messages on their way out. Otherwise it sends applicationInit itself.
+ * It also:
  *   - posts what it recorded at Next step and Done (POST /testbed/messages), and at Done
  *     asks the server to save the message log (POST /testbed/done).
  *
@@ -30,8 +34,12 @@
     'ask-two-parts': 'Ask for two parts',
     'dialog-part': 'Open the part dialog',
     'dialog-parts': 'Open the parts dialog',
-    'close-dialog': 'Close the dialog'
+    'close-dialog': 'Close the dialog',
+    'ask-unbounded': 'Ask with no count'
   };
+  // The buttons hidden when the print page asks Onshape for parts itself.
+  var PAGE_ASKS = { 'ask-part': true, 'ask-two-parts': true, 'dialog-part': true,
+                    'dialog-parts': true, 'close-dialog': true };
 
   var pending = [];        // events not yet posted to the server
   var recorded = [];       // every event since the scenario was chosen, with its step
@@ -89,6 +97,9 @@
   }
 
   var cfg = window.PenguinCAM || {};
+  // print_onshape.js loads before this script, so its messenger exists by now.
+  var deferred = !!cfg.onshapeMessenger;
+  var realParent = window.parent;
   var q = parseQuery(cfg.returnUrl);
   var context = {
     documentId: q.documentId || '',
@@ -104,15 +115,30 @@
   var ONSHAPE_ORIGIN = /^https:\/\/([a-z0-9-]+\.)+onshape\.com$/;
 
   function send(message) {
-    if (!ONSHAPE_ORIGIN.test(context.server) || window.parent === window) {
+    if (!ONSHAPE_ORIGIN.test(context.server) || realParent === window) {
       var why = 'Not inside Onshape (server ' + JSON.stringify(context.server) +
         '): nothing sent.';
       if (window.console) window.console.warn('[testbed] ' + why);
       showStatus(why);
       return;
     }
-    window.parent.postMessage(message, context.server);
+    realParent.postMessage(message, context.server);
     record('out', context.server, message);
+  }
+
+  // The print page posts through window.parent.postMessage. The HTML standard makes
+  // window.parent replaceable, so a stand-in records each message and passes it on
+  // unchanged: the message log then holds the page's requests, which the fake Onshape
+  // host matches to answer them.
+  if (deferred && realParent !== window) {
+    try {
+      window.parent = {
+        postMessage: function (message, targetOrigin) {
+          record('out', context.server || targetOrigin, message);
+          realParent.postMessage(message, targetOrigin);
+        }
+      };
+    } catch (e) { /* not replaceable here: the page's messages go out unrecorded */ }
   }
 
   function withContext(message) {
@@ -143,6 +169,11 @@
                              selectMultiple: true });
       case 'close-dialog':
         return withContext({ messageName: 'closeSelectItemDialog' });
+      case 'ask-unbounded':        // for reference (spec 11): no requiredSelectionCount
+        return withContext({
+          messageName: 'requestSelection', messageId: nextMessageId(),
+          entityTypeSpecifier: ['BODY']
+        });
       default:
         return null;
     }
@@ -271,7 +302,7 @@
     ui.instruction.textContent = step
       ? (stepIndex + 1) + '/' + current.steps.length + ' ' + step.name + ': ' + step.instruction
       : 'Choose a scenario.';
-    ui.action.hidden = !(step && LABELS[step.action]);
+    ui.action.hidden = !(step && LABELS[step.action]) || (deferred && !!PAGE_ASKS[step.action]);
     ui.action.textContent = step && LABELS[step.action] ? LABELS[step.action] : '';
     ui.next.disabled = !step || stepIndex >= current.steps.length - 1;
     ui.done.disabled = !current;
@@ -340,11 +371,12 @@
     act: act,
     nextStep: nextStep,
     done: finish,
-    currentStep: currentStepName
+    currentStep: currentStepName,
+    deferred: deferred
   };
 
-  // applicationInit, which the print page does not send yet (spec 12).
-  if (window.parent !== window) {
+  // applicationInit, unless the print page sends its own.
+  if (!deferred && realParent !== window) {
     send(withContext({ messageName: 'applicationInit' }));
   }
 

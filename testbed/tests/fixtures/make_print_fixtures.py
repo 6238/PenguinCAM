@@ -233,6 +233,12 @@ FLOWS = {
                          parts([_part(BOX, 'Box', eid=EID2), _part('JQD', 'Box', eid=EID2)],
                                where=f'd/{DID2}/v/{VID2}/e/{EID2}', query=_q(linkDocumentId=DID))],
     'none': [],
+    # Exactly the calls run_scenario_api makes for print-export (testbed/scenarios), for its
+    # unit test; no scenario replays it.
+    'export-run': [elements('PARTSTUDIO', EID_PS), configuration(), parts(), *export(BOX, BOX_STL),
+                   *export(CYLINDER, CYLINDER_STL),
+                   assembly([LINKED_BOX], occurrences=[_occurrence([LINKED_BOX['id']])]),
+                   elements('ASSEMBLY', EID_ASM), *export(BOX, BOX_STL, **LINKED_EXPORT)],
 }
 
 

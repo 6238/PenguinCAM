@@ -71,6 +71,9 @@ class StubLocator:
     def check(self, **kwargs):
         self.click()
 
+    def evaluate(self, expression, arg=None):
+        self.page.actions.append(('evaluate', self.selector, arg))
+
     def select_option(self, value, **kwargs):
         self._maybe_fail('select_option', value)
         self.page.actions.append(('select', self.selector, value))
@@ -284,8 +287,34 @@ class SignInTest(unittest.TestCase):
         self.assertIn(str(shots[0]), str(caught.exception))
 
     def test_selectors_are_one_table(self):
-        for key in ('email', 'password', 'sign_in_submit', 'panel_frame'):
+        for key in ('email', 'password', 'sign_in_submit', 'panel_frame', 'print_next',
+                    'print_add_from_document'):
             self.assertIn(key, ui_run.SELECTORS)
+
+
+class PrintStepsTest(unittest.TestCase):
+    def test_print_actions_act_inside_the_panel(self):
+        from testbed.scenarios import SCENARIOS
+        page = StubPage(signed_in=True)
+        driver = ui_run._PanelScenario(page, SCENARIOS['print-select-parts'], {})
+        steps = {step.name: step for step in SCENARIOS['print-select-parts'].steps}
+        driver._do(steps['print parts'])
+        driver._do(steps['ask unbounded'])
+        dialog = {step.name: step for step in SCENARIOS['print-dialog-parts'].steps}
+        driver._do(dialog['print dialog'])
+        driver._do(dialog['dialog closed'])
+        S = ui_run.SELECTORS
+        self.assertEqual(page.actions, [
+            ('click', 'panel ' + S['print_next']),
+            ('click', 'panel ' + S['print_back']), ('click', 'panel ' + S['strip_action']),
+            ('click', 'panel ' + S['print_add_from_document']),
+            ('click', S['dialog_close']),
+        ])
+        # A button the strip hides on the print page is sent through its own action.
+        page.actions.clear()
+        driver._do(next(step for step in SCENARIOS['part-select'].steps
+                        if step.action == 'ask-part'))
+        self.assertEqual(page.actions, [('evaluate', 'panel ' + S['strip_action'], 'ask-part')])
 
 
 class UiRunEndToEndTest(unittest.TestCase):

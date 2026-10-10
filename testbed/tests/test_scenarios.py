@@ -88,9 +88,13 @@ class MeshChecksTest(unittest.TestCase):
 
 class DefinitionsTest(unittest.TestCase):
     def test_definitions_reference_known_documents(self):
+        # The print scenarios' own estimates are checked in test_print_scenarios.
         self.assertEqual(set(SCENARIOS), {'panel-load', 'to-print', 'part-select',
-                                          'multi-select', 'assembly-select', 'part-export'})
-        estimates = {name: scenario.estimate for name, scenario in SCENARIOS.items()}
+                                          'multi-select', 'assembly-select', 'part-export',
+                                          'print-select-parts', 'print-dialog-parts',
+                                          'print-assembly-part', 'print-export'})
+        estimates = {name: scenario.estimate for name, scenario in SCENARIOS.items()
+                     if not name.startswith('print-')}
         self.assertEqual(estimates, {'panel-load': 6, 'to-print': 6, 'part-select': 2,
                                      'multi-select': 2, 'assembly-select': 2, 'part-export': 45})
         for name, scenario in SCENARIOS.items():
@@ -98,7 +102,7 @@ class DefinitionsTest(unittest.TestCase):
                 self.assertIsInstance(scenario, Scenario)
                 self.assertEqual(scenario.name, name)
                 self.assertIn(scenario.document, TEST_DOCUMENT_NAMES)
-                self.assertEqual(scenario.panel, name != 'part-export')
+                self.assertEqual(scenario.panel, name not in ('part-export', 'print-export'))
                 names = [step.name for step in scenario.steps]
                 self.assertEqual(len(names), len(set(names)), 'step names must be unique')
                 for step in scenario.steps:

@@ -38,8 +38,12 @@ SIGN_IN_URL = f'{ONSHAPE_ORIGIN}/signin'
 PACE_MS = 1500                     # between actions: human speed, not a load on Onshape
 STEP_TIMEOUT_MS = 30000
 _PRODUCTION_CLIENT_ID_PREFIX = 'VKDK'
-# The strip's buttons; the other actions are done in the panel or in Onshape.
-_STRIP_ACTIONS = ('ask-part', 'ask-two-parts', 'dialog-part', 'dialog-parts', 'close-dialog')
+# The strip's buttons; the other actions are done in the panel, the print page or Onshape.
+_STRIP_ACTIONS = ('ask-part', 'ask-two-parts', 'dialog-part', 'dialog-parts', 'close-dialog',
+                  'ask-unbounded')
+# The strip hides these on the print page, which asks Onshape itself (testbed_panel.js);
+# the run sends them through the strip's own action instead of a click.
+_PAGE_ASKS = ('ask-part', 'ask-two-parts', 'dialog-part', 'dialog-parts', 'close-dialog')
 
 SELECTORS = {
     # cad.onshape.com/signin: email first, then Continue, then the password (seen Fri 10-09;
@@ -57,6 +61,10 @@ SELECTORS = {
     'oauth_allow': 'button:has-text("Allow"), button:has-text("Authorize")',
     # A part by name in the parts list or the feature tree; {name} is filled in.
     'part_in_list': '.os-parts-list [title="{name}"], .os-feature-tree [title="{name}"]',
+    # Onshape's part dialog (Add from another document...): its close button. Guessed, not
+    # yet seen on the live page.
+    'dialog_close': '.os-select-item-dialog button[aria-label="Close"], '
+                    '.modal-dialog button:has-text("Close")',
     # tb-inch's workspace units (spec 5.1: no API sets them): Document menu, Workspace
     # units, Length, Inch, OK. Guessed, not yet seen on the live page.
     'document_menu': '[data-testid="document-menu"], button[aria-label="Document menu"]',
@@ -68,6 +76,9 @@ SELECTORS = {
     'panel_connect': 'a[href*="/onshape/auth"], button:has-text("Connect")',
     'panel_mode_print': 'input[name="mode"][value="print"]',
     'panel_mode_2d': 'input[name="mode"][value="2d"]',
+    'print_next': '#btn-next',
+    'print_back': '#btn-back',
+    'print_add_from_document': '#btn-add-from-document',
     'strip_scenario': '#testbed-scenario',
     'strip_action': '#testbed-action',
     'strip_next': '#testbed-next',
@@ -464,8 +475,20 @@ class _PanelScenario:
             strip = self.panel.locator(SELECTORS['strip_scenario'])
             strip.wait_for(timeout=STEP_TIMEOUT_MS)
             strip.select_option(self.scenario.name)
+        elif step.action in _PAGE_ASKS:
+            self.panel.locator(SELECTORS['strip_action']).evaluate(
+                '(button, action) => window.PenguinCAMTestbed.act(action)', step.action)
+        elif step.action == 'ask-unbounded':
+            # Back on Setup first: the page stops its own request, so only the strip's is open.
+            self.panel.locator(SELECTORS['print_back']).click()
+            self.page.wait_for_timeout(PACE_MS)
+            self.panel.locator(SELECTORS['strip_action']).click()
         elif step.action in _STRIP_ACTIONS:
             self.panel.locator(SELECTORS['strip_action']).click()
+        elif step.action == 'print-parts':
+            self.panel.locator(SELECTORS['print_next']).click()
+        elif step.action == 'print-dialog':
+            self.panel.locator(SELECTORS['print_add_from_document']).click()
         elif step.action == 'back':
             self.panel.locator(SELECTORS['panel_mode_2d']).check()
         elif step.select:
@@ -475,6 +498,8 @@ class _PanelScenario:
                 self.page.wait_for_timeout(PACE_MS)
         elif step.name == 'deselect':
             self.page.keyboard.press('Escape')
+        elif step.name == 'dialog closed':
+            self.page.locator(SELECTORS['dialog_close']).first.click()
         # Anything else (the team config banner) is only looked at.
 
     def _open_panel(self):

@@ -3,8 +3,10 @@
 Each scenario with a panel part opens its test document on the fake Onshape host, against a
 replay development server, and is driven through its steps as the owner drove it while
 recording: the panel's 3D Printing radio for choose-print, the checklist strip's button for
-a step's action, and the fake Onshape host's selectPart/selectParts/deselect for what the
-owner did in Onshape. The strip's recorded events must then equal the scenario's message
+a step's action (its action itself for the buttons the strip hides on the print page), the
+print page's Next and Add from another document... for print-parts and print-dialog, and
+the fake Onshape host's selectPart/selectParts/deselect/dialogClosed for what the owner did
+in Onshape. Steps recorded for reference only are skipped and left out of the comparison. The strip's recorded events must then equal the scenario's message
 log in message names, keys and value types.
 
 A scenario without a recording is skipped with "needs a recording", never passed. The
@@ -22,7 +24,10 @@ from testbed.scenarios import SCENARIOS, scenario_is_recorded
 from testbed.tests.browser_host import (SYNTHETIC_DOCUMENT, panel_frame,
                                         stage_synthetic_fixtures, wait_for)
 
-STRIP_ACTIONS = ('ask-part', 'ask-two-parts', 'dialog-part', 'dialog-parts', 'close-dialog')
+STRIP_ACTIONS = ('ask-part', 'ask-two-parts', 'dialog-part', 'dialog-parts', 'close-dialog',
+                 'ask-unbounded')
+# Hidden by the strip while the print page asks Onshape itself (testbed_panel.js).
+PAGE_ASKS = ('ask-part', 'ask-two-parts', 'dialog-part', 'dialog-parts', 'close-dialog')
 QUIET_S = 0.5            # a step is over once no message has arrived for this long
 
 
@@ -79,13 +84,21 @@ class ScenarioDriver:
         self.frame = None
         panel_frame(self.page)
         for index, step in enumerate(self.scenario.steps):
+            if step.recorded_only:
+                continue
             self.page.evaluate('name => window.__testbed.setStep(name)', step.name)
             if step.action == 'choose-print':
                 self._choose_print()
             if self.frame is not None:
                 self._advance_strip_to(index)
-            if step.action in STRIP_ACTIONS:
+            if step.action in PAGE_ASKS:
+                self.frame.evaluate('a => window.PenguinCAMTestbed.act(a)', step.action)
+            elif step.action in STRIP_ACTIONS:
                 self.frame.click('#testbed-action')
+            elif step.action == 'print-parts':
+                self.frame.click('#btn-next')
+            elif step.action == 'print-dialog':
+                self.frame.click('#btn-add-from-document')
             elif step.action == 'back':
                 self._collect()
                 self.frame.check('input[name="mode"][value="2d"]')
@@ -97,6 +110,8 @@ class ScenarioDriver:
                 self.page.evaluate('names => window.__testbed.selectParts(names)', step.select)
             elif step.name == 'deselect':
                 self.page.evaluate('window.__testbed.deselect()')
+            elif step.name == 'dialog closed':
+                self.page.evaluate('window.__testbed.dialogClosed()')
             self._wait_quiet()
         if self.frame is not None:
             self._collect()
@@ -148,10 +163,18 @@ class ScenarioDriver:
             self.strip_events.setdefault(entry['step'], []).append(entry['event'])
 
 
+def replayed_steps(log, scenario):
+    """The message log without the steps recorded for reference only."""
+    skipped = {step.name for step in scenario.steps if step.recorded_only}
+    return dict(log, steps=[entry for entry in log['steps'] if entry['step'] not in skipped])
+
+
 def run_browser_scenario(name, document, cassette_dir=None, message_dir=None) -> tuple:
-    """Run scenario `name` on `document` in replay mode: (message log, strip events)."""
+    """Run scenario `name` on `document` in replay mode: (message log, strip events).
+
+    The message log comes back without the steps replay skips."""
     scenario = SCENARIOS[name]
-    log = load_message_log(name, message_dir)
+    log = replayed_steps(load_message_log(name, message_dir), scenario)
     with ReplayDevServer(cassette_dir=cassette_dir, message_dir=message_dir):
         playwright, browser, context = launch_test_browser(message_dir=message_dir)
         try:

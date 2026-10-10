@@ -219,6 +219,12 @@ every message it sends and, before any of the panel's own filters, every message
 receives, and posts them to the development server, which saves the message log to
 `testbed/.fresh/messages/`. The CNC page is not touched.
 
+The print page does its own Onshape messaging (`print/static/print_onshape.js`), so the
+strip defers to it: it sends no `applicationInit` of its own and hides its ask and dialog
+buttons. The page's own messages are recorded on their way out through a stand-in for
+`window.parent` (the HTML standard makes that property replaceable), so the fake Onshape
+host can match the page's requests when the scenario is replayed.
+
 ## 8. The automated Onshape UI run and the Onshape checkpoint
 
 `record --ui` runs the scenarios with a panel part inside real Onshape:
@@ -330,15 +336,18 @@ another Chromium or Chrome binary.
    same commit. `document` is a test document's `tb-` name. `estimate` is the counted calls
    a first recording may make, for the budget.
 2. **Write its steps.** Each `Step` has a name, the instruction the checklist strip shows,
-   and optionally an action (one of `ACTIONS`) for the strip's button. A selection step is
+   and optionally an action (one of `ACTIONS`): the strip's button, or for `print-parts` and
+   `print-dialog` the print page's Next and Add from another document… A selection step is
    named `select part <name>` or `select parts <a>, <b>` (use `_select`), because the fake
-   Onshape host finds a selection's answer by the step's name.
+   Onshape host finds a selection's answer by the step's name. A step with
+   `recorded_only=True` is recorded for reference and skipped in replay.
 3. **For a scenario with a panel part**, nothing else is needed: `browser_scenarios.py`
    adds a test for every panel scenario, which is skipped until the scenario is recorded.
    Record it with `record --ui <name>` (or an Onshape checkpoint), read the drift report,
    and `accept <name>`.
 4. **For an API-only scenario**, add its calls to `run_scenario_api` in the same module,
-   through the client's existing `_make_api_request`. Record it with `record <name>` and
+   through the client's existing `_make_api_request` (or, as `print-export` does, through
+   `print/onshape_parts.py`). Record it with `record <name>` and
    `accept <name>`.
 5. **Commit** the cassette, any binary files next to it, and the message log. The scrub
    test checks them before the commit can pass `make test-quick`.
