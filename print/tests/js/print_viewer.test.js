@@ -200,3 +200,56 @@ test('setTheme repaints the bed, grid and part, not just the background', () => 
     if (saved === undefined) delete global.THREE; else global.THREE = saved;
   }
 });
+
+// --- plate preview ------------------------------------------------------------
+
+const G = require(path.join(__dirname, '..', '..', 'static', 'plate_geometry.js'));
+
+test('transformPositions applies rotation and translation', () => {
+  // +x (the part's x axis up), turned 90 degrees, centre at (100, 50): by hand,
+  // M = Rz(90) R_+x = [[0, -1, 0], [0, 0, -1], [1, 0, 0]] and t = (100, 50, 0).
+  const m = G.copyMatrix('+x', 90, [0, 0, 0], 100, 50);
+  const out = v.transformPositions(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), m);
+  assert.ok(out instanceof Float32Array);
+  assert.deepEqual(Array.from(out), [100, 50, 0, 100, 50, 1, 99, 50, 0]);
+  // Any offset: the same as applying copyMatrix's [M | t] to each vertex.
+  const m2 = G.copyMatrix('-y', 37, [5, -3, 2], 120.5, 80);
+  const pts = [3, 4, 5, -2, 7, 1];
+  const got = v.transformPositions(new Float32Array(pts), m2);
+  for (let i = 0; i < pts.length; i += 3) {
+    for (let r = 0; r < 3; r++) {
+      const want = m2[r][0] * pts[i] + m2[r][1] * pts[i + 1] + m2[r][2] * pts[i + 2] + m2[r][3];
+      assert.ok(Math.abs(got[i + r] - want) < 1e-4, `vertex ${i / 3} axis ${r}`);
+    }
+  }
+});
+
+test('loadPlate draws one mesh per copy in plate coordinates, centred on the plate', () => {
+  const saved = global.THREE;
+  global.THREE = stubThree();
+  try {
+    const { viewer, added } = stubViewer();
+    const stl = binaryStl([[[0, 0, 0], [1, 0, 0], [0, 1, 0]]]);
+    const footprints = { '+z': { hull: [], height: 0, offset: [0, 0, 0] }, '+x': { hull: [], height: 1, offset: [0, 0, 0] } };
+    const parts = { r1: { name: 'Tri', footprints } };
+    const plate = { min: [0, 0], max: [200, 100], height: 250, margin: 3, spacing: 5 };
+    const copies = [{ ref: 'r1', orientation: '+x', angle: 90, x: 100, y: 50, placed: true },
+                    { ref: 'r1', orientation: '+z', angle: 0, x: 20, y: 30 }];
+    viewer.loadPlate({ r1: stl }, copies, parts, plate);
+    assert.equal(viewer.plateMeshes.length, 2);
+    // Plate (x, y, z) -> THREE (x - 100, z, -(y - 50)).
+    assert.deepEqual(Array.from(viewer.plateMeshes[0].geometry.attributes.position.array),
+                     [0, 0, 0, 0, 1, 0, -1, 0, 0]);
+    assert.deepEqual(Array.from(viewer.plateMeshes[1].geometry.attributes.position.array),
+                     [-80, 0, 20, -79, 0, 20, -80, 0, 19]);
+    assert.equal(viewer.bed.geometry.w, 200);
+    assert.equal(viewer.bed.geometry.h, 100);
+    assert.ok(viewer.plateMeshes.every((mesh) => added.includes(mesh)));
+    // The sample part's load() takes the plate's meshes away again.
+    viewer.load(stl, null);
+    assert.equal(viewer.plateMeshes.length, 0);
+    assert.equal(added.filter((o) => o.geometry && o.geometry.attributes).length, 1);
+  } finally {
+    if (saved === undefined) delete global.THREE; else global.THREE = saved;
+  }
+});

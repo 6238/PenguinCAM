@@ -1,7 +1,9 @@
 /* Mesh-on-bed viewer for the 3D print wizard. Parses binary or ASCII STL, shows
  * the part on a plane the size of the printer bed, orbit controls, reset view.
  * No scrubber, no animation. Requires THREE and THREE.OrbitControls (loaded by
- * templates/print_wizard.html). parseSTL is exported for node tests.
+ * templates/print_wizard.html). load() shows the sample part; loadPlate() shows a
+ * plate of copies placed in the Layout step, which needs plate_geometry.js (Onshape
+ * mode loads it). parseSTL and transformPositions are exported for node tests.
  */
 (function () {
   'use strict';
@@ -53,6 +55,22 @@
     return { positions: positions, count: count, min: min, max: max };
   }
 
+  // The copy's 3x4 [M | t] (plate_geometry.js copyMatrix) applied to every vertex: part
+  // coordinates in, plate coordinates out.
+  function transformPositions(positions, m) {
+    var out = new Float32Array(positions.length);
+    for (var i = 0; i < positions.length; i += 3) {
+      var x = positions[i], y = positions[i + 1], z = positions[i + 2];
+      for (var r = 0; r < 3; r++) out[i + r] = m[r][0] * x + m[r][1] * y + m[r][2] * z + m[r][3];
+    }
+    return out;
+  }
+
+  function plateGeometry() {
+    return (typeof module !== 'undefined' && module.exports) ? require('./plate_geometry.js')
+                                                             : window.PenguinCAM.plateGeometry;
+  }
+
   function themeColors() {
     var light = typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'light';
     return light ? { bg: 0xf2f4f7, bed: 0xd8dee6, grid: 0xb8c2cc, part: 0x2f81f7 }
@@ -66,9 +84,20 @@
     return Math.max(partSpan * 2.5, Math.max(bedX, bedY) * 0.35);
   }
 
+  var CAMERA_FOV = 45;               // degrees, vertical
+  var PLATE_VIEW_ELEVATION = 55;     // degrees above the plate, looking from the front
+
+  // Camera distance from the plate's centre that keeps a bedX x bedY plate in a view of
+  // this aspect (width over height), with room to spare for the nearer, larger front edge.
+  function plateDistance(bedX, bedY, aspect) {
+    var half = Math.tan(CAMERA_FOV * Math.PI / 360);
+    return 1.3 * Math.max(bedX / 2 / (half * aspect), bedY / 2 / half);
+  }
+
   function PrintViewer(els) {
     this.els = els;
     this.mesh = null;
+    this.plateMeshes = [];   // loadPlate: one mesh per copy
     this.bed = null;
     this.grid = null;
     this.fit = { pos: [200, 200, 200], target: [0, 0, 0] };
@@ -84,7 +113,7 @@
     var w = container.clientWidth || 600, h = container.clientHeight || 320;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(themeColors().bg);
-    this.camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 5000);
+    this.camera = new THREE.PerspectiveCamera(CAMERA_FOV, w / h, 0.1, 5000);
     this.renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
     this.renderer.setSize(w, h);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -120,9 +149,7 @@
     var colors = themeColors();
     var bedX = (printer && printer.bed_mm && printer.bed_mm.x) || 256;
     var bedY = (printer && printer.bed_mm && printer.bed_mm.y) || 256;
-    if (this.mesh) this.scene.remove(this.mesh);
-    if (this.bed) this.scene.remove(this.bed);
-    if (this.grid) this.scene.remove(this.grid);
+    this._clear();
 
     var cx = (stl.min[0] + stl.max[0]) / 2, cy = (stl.min[1] + stl.max[1]) / 2, z0 = stl.min[2];
     var arr = new Float32Array(stl.positions.length);
@@ -136,7 +163,29 @@
     geom.computeVertexNormals();
     this.mesh = new THREE.Mesh(geom, new THREE.MeshPhongMaterial({ color: colors.part, side: THREE.DoubleSide }));
     this.scene.add(this.mesh);
+    this._addBed(bedX, bedY);
 
+    var size = { x: stl.max[0] - stl.min[0], y: stl.max[1] - stl.min[1], z: stl.max[2] - stl.min[2] };
+    var span = fitDistance(Math.max(size.x, size.y, size.z), bedX, bedY);
+    this.fit = { pos: [span * 0.55, span * 0.6, span * 0.75], target: [0, (stl.max[2] - z0) / 2, 0] };
+    this.resetView();
+    if (this.els.emptyState) this.els.emptyState.style.display = 'none';
+    this._resize();
+  };
+
+  PrintViewer.prototype._clear = function () {
+    var scene = this.scene;
+    if (this.mesh) scene.remove(this.mesh);
+    (this.plateMeshes || []).forEach(function (m) { scene.remove(m); });
+    if (this.bed) scene.remove(this.bed);
+    if (this.grid) scene.remove(this.grid);
+    this.mesh = null;
+    this.plateMeshes = [];
+  };
+
+  // A bed plane of bedX x bedY centred on THREE's origin at y = 0, and a 10 mm grid.
+  PrintViewer.prototype._addBed = function (bedX, bedY) {
+    var colors = themeColors();
     this.bed = new THREE.Mesh(new THREE.PlaneGeometry(bedX, bedY),
                               new THREE.MeshPhongMaterial({ color: colors.bed, side: THREE.DoubleSide }));
     this.bed.rotation.x = -Math.PI / 2;
@@ -147,10 +196,41 @@
     this.grid = new THREE.GridHelper(this._gridSpec.size, this._gridSpec.divisions, colors.grid, colors.grid);
     this.grid.position.y = 0.01;
     this.scene.add(this.grid);
+  };
 
-    var size = { x: stl.max[0] - stl.min[0], y: stl.max[1] - stl.min[1], z: stl.max[2] - stl.min[2] };
-    var span = fitDistance(Math.max(size.x, size.y, size.z), bedX, bedY);
-    this.fit = { pos: [span * 0.55, span * 0.6, span * 0.75], target: [0, (stl.max[2] - z0) / 2, 0] };
+  // The plate as sliced: `meshes` {ref: STL ArrayBuffer}, each parsed once; one mesh per
+  // copy through copyMatrix; plate (x, y, z) -> THREE (x - cx, z, cy - y) about the plate
+  // centre (cx, cy); a bed of the plate's size and the camera fitted to the plate.
+  PrintViewer.prototype.loadPlate = function (meshes, copies, parts, plate) {
+    var geometry = plateGeometry(), colors = themeColors(), self = this;
+    var parsed = {};
+    Object.keys(meshes).forEach(function (ref) { parsed[ref] = parseSTL(meshes[ref]); });
+    this._clear();
+    var cx = (plate.min[0] + plate.max[0]) / 2, cy = (plate.min[1] + plate.max[1]) / 2, top = 0;
+    copies.forEach(function (c) {
+      var footprint = parts[c.ref].footprints[c.orientation];
+      var placed = transformPositions(parsed[c.ref].positions,
+                                      geometry.copyMatrix(c.orientation, c.angle, footprint.offset, c.x, c.y));
+      var arr = new Float32Array(placed.length);
+      for (var i = 0; i < placed.length; i += 3) {
+        arr[i] = placed[i] - cx;
+        arr[i + 1] = placed[i + 2];
+        arr[i + 2] = cy - placed[i + 1];
+        if (placed[i + 2] > top) top = placed[i + 2];
+      }
+      var geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+      geom.computeVertexNormals();
+      var mesh = new THREE.Mesh(geom, new THREE.MeshPhongMaterial({ color: colors.part, side: THREE.DoubleSide }));
+      self.plateMeshes.push(mesh);
+      self.scene.add(mesh);
+    });
+    var bedX = plate.max[0] - plate.min[0], bedY = plate.max[1] - plate.min[1];
+    this._addBed(bedX, bedY);
+    var aspect = (this.container.clientWidth || 600) / (this.container.clientHeight || 320);
+    var dist = plateDistance(bedX, bedY, aspect);
+    var up = PLATE_VIEW_ELEVATION * Math.PI / 180;
+    this.fit = { pos: [0, dist * Math.sin(up), dist * Math.cos(up)], target: [0, Math.min(top, 20) / 2, 0] };
     this.resetView();
     if (this.els.emptyState) this.els.emptyState.style.display = 'none';
     this._resize();
@@ -167,6 +247,7 @@
     if (!this.scene) return;
     this.scene.background = new THREE.Color(colors.bg);
     if (this.mesh && this.mesh.material && this.mesh.material.color) this.mesh.material.color.set(colors.part);
+    (this.plateMeshes || []).forEach(function (m) { m.material.color.set(colors.part); });
     if (this.bed && this.bed.material && this.bed.material.color) this.bed.material.color.set(colors.bed);
     // A GridHelper bakes its colours into vertex colours, so it cannot be recoloured in
     // place: build a fresh helper with the same size and divisions.
@@ -180,6 +261,7 @@
 
   if (typeof window !== 'undefined') window.PrintViewer = PrintViewer;
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { parseSTL: parseSTL, PrintViewer: PrintViewer, fitDistance: fitDistance };
+    module.exports = { parseSTL: parseSTL, PrintViewer: PrintViewer, fitDistance: fitDistance,
+                       transformPositions: transformPositions };
   }
 })();

@@ -139,3 +139,25 @@ test('swapRefreshed keeps quantities and order', () => {
   // A part removed while the refresh ran stays removed.
   assert.deepEqual(w.swapRefreshed([sent[1]], sent, fresh).map((p) => p.ref), ['n2']);
 });
+
+test('localTimeStamp pads', () => {
+  assert.equal(w.localTimeStamp(new Date(2026, 0, 5, 7, 3)), '20260105-0703');
+  assert.equal(w.localTimeStamp(new Date(2026, 11, 31, 23, 59)), '20261231-2359');
+});
+
+test('jobBody lists copies in order and drops UI fields', () => {
+  const state = {
+    copies: [{ ref: 'r2', orientation: '+x', angle: 30, x: 50.5, y: 60, placed: true, unplaced: false },
+             { ref: 'r1', orientation: '+z', angle: 0, x: 120, y: 40.25, placed: false }],
+    parts: [{ ref: 'r1', name: 'A' }, { ref: 'r2', name: 'B' }],
+  };
+  const body = w.jobBody(state, new Date(2026, 9, 9, 14, 32));
+  assert.deepEqual(body, {
+    copies: [{ ref: 'r2', orientation: '+x', angle: 30, x: 50.5, y: 60 },
+             { ref: 'r1', orientation: '+z', angle: 0, x: 120, y: 40.25 }],
+    overrides: {},
+    local_time: '20261009-1432',
+  });
+  assert.ok(!('filament' in body) && !('process' in body), 'the server uses the default set');
+  assert.equal(state.copies[0].placed, true, 'the state is not changed');
+});

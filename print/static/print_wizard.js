@@ -45,6 +45,8 @@
     copies: [],          // Onshape mode: the plate's copies (print_layout.js describes them)
     problems: [],        // checkPlacement(copies), after every change
     layoutSentence: '',  // the Layout step's sentence; Next waits while it is not empty
+    jobKey: null,        // what the job in hand was submitted for (jobKey()); a match re-uses it
+    jobCopies: null,     // Onshape mode: the copies that job slices, for the 3D view
   };
   var viewer = null;
   var editor = null;        // print_layout.js's plate editor, Onshape mode only
@@ -179,6 +181,33 @@
     var renamed = {};
     before.forEach(function (p, i) { if (after[i] && after[i].ref !== p.ref) renamed[p.ref] = after[i].ref; });
     return copies.map(function (c) { return renamed[c.ref] ? Object.assign({}, c, { ref: renamed[c.ref] }) : c; });
+  }
+
+  // The browser's local time as YYYYMMDD-HHMM, for the delivered file's name.
+  function localTimeStamp(date) {
+    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    return date.getFullYear() + pad(date.getMonth() + 1) + pad(date.getDate()) + '-' +
+           pad(date.getHours()) + pad(date.getMinutes());
+  }
+
+  // The slice request for the plate: each copy's placement only, in order. Until Setup
+  // offers choices the filament and process are left out and the server uses its default set.
+  function jobBody(st, now) {
+    return {
+      copies: st.copies.map(function (c) {
+        return { ref: c.ref, orientation: c.orientation, angle: c.angle, x: c.x, y: c.y };
+      }),
+      overrides: {},
+      local_time: localTimeStamp(now || new Date()),
+    };
+  }
+
+  // What a finished job is re-used for: the same body, whatever minute it is now.
+  function jobKey(body) {
+    if (!body) return 'sample';
+    var same = Object.assign({}, body);
+    delete same.local_time;
+    return JSON.stringify(same);
   }
 
   function sizeText(size) { return size.x + ' x ' + size.y + ' x ' + size.z + ' mm'; }
@@ -794,28 +823,42 @@
     state.record = null;
   }
 
-  // Entering Preview submits a new slice. A previous job's stream is closed first,
-  // and the generation counter drops a response from a submit we have moved on from.
-  // Coming back to Preview on the same page load re-uses the job already in hand: the
-  // result is good for an hour, and re-slicing would spend the three-a-minute budget.
+  // Entering Preview submits a new slice: the plate's copies in Onshape mode, no body (the
+  // sample part) in upload mode. A previous job's stream is closed first, and the generation
+  // counter drops a response from a submit we have moved on from. Coming back to Preview on
+  // the same page load with the same plate re-uses the job already in hand: the result is
+  // good for an hour, and re-slicing would spend the three-a-minute budget.
   function enterPreview() {
     var gen = ++state.gen;
     stopFollowing();
     state.saveAction = preferredAction();
     setupFinalAction();
     var prev = state.record, prevId = state.jobId, prevToken = state.token;
+    var body = ONSHAPE ? jobBody(state) : null, key = jobKey(body);
     resetPreview();
-    if (prev && prev.state === 'done' && prevToken) { showDone(prev); return; }
-    if (prev && prevId && prev.state !== 'failed') { showState(prev); followEvents(); return; }
+    if (key === state.jobKey) {
+      if (prev && prev.state === 'done' && prevToken) { showDone(prev); return; }
+      if (prev && prevId && prev.state !== 'failed') { showState(prev); followEvents(); return; }
+    }
+    state.jobId = null;
+    state.jobKey = null;
     $('#gen-status').textContent = 'Queued';
-    printFetch('/print-job', { method: 'POST' })
+    var request = body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+                       : { method: 'POST' };
+    printFetch('/print-job', request)
       .then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, j: j }; });
       })
       .then(function (res) {
         if (gen !== state.gen || state.step !== 'preview') return;
-        if (res.status !== 202) { failPreview(errorForStatus(res.status, res.j), 'status_' + res.status); return; }
+        if (res.status !== 202) {
+          var code = res.status === 400 && res.j.rule ? res.j.rule : 'status_' + res.status;
+          failPreview(errorForStatus(res.status, res.j), code);
+          return;
+        }
         state.jobId = res.j.job_id;
+        state.jobKey = key;
+        state.jobCopies = body ? body.copies : null;
         followEvents();
       })
       .catch(function (e) {
@@ -909,7 +952,7 @@
       noteViewerTrouble('3D preview unavailable (three.js failed to load).');
       return;
     }
-    if (!state.info) {
+    if (!ONSHAPE && !state.info) {
       noteViewerTrouble('Part information did not load; no 3D view.');
       return;
     }
@@ -924,9 +967,33 @@
         return;
       }
     }
+    if (ONSHAPE) { showPlate(); return; }
     printFetch('/print/part?stl=1')
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
       .then(function (buf) { viewer.load(buf, state.info.printer); })
+      .catch(function (e) {
+        noteViewerTrouble('Could not load the 3D view: ' + e.message);
+      });
+  }
+
+  // The plate as sliced: each distinct part's STL fetched once, every copy drawn with its
+  // placement.
+  function showPlate() {
+    var copies = state.jobCopies || [], parts = partsMap(), plate = state.plate, refs = [];
+    copies.forEach(function (c) { if (refs.indexOf(c.ref) < 0) refs.push(c.ref); });
+    if (!plate || refs.some(function (ref) { return !parts[ref]; })) {
+      noteViewerTrouble('The plate changed since this slice; no 3D view.');
+      return;
+    }
+    Promise.all(refs.map(function (ref) {
+      return printFetch('/print/parts/' + encodeURIComponent(ref) + '.stl')
+        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); });
+    }))
+      .then(function (buffers) {
+        var meshes = {};
+        refs.forEach(function (ref, i) { meshes[ref] = buffers[i]; });
+        viewer.loadPlate(meshes, copies, parts, plate);
+      })
       .catch(function (e) {
         noteViewerTrouble('Could not load the 3D view: ' + e.message);
       });
@@ -1115,6 +1182,6 @@
                        printPageUrl: printPageUrl, statusText: statusText, tooBigMessage: tooBigMessage,
                        errorForStatus: errorForStatus, appendNote: appendNote, makePageId: makePageId,
                        addParts: addParts, clampQuantity: clampQuantity, swapRefreshed: swapRefreshed,
-                       sourceKey: sourceKey };
+                       sourceKey: sourceKey, localTimeStamp: localTimeStamp, jobBody: jobBody };
   }
 })();
