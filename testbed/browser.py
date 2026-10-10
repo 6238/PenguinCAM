@@ -30,7 +30,7 @@ _SCENARIO_NAME = re.compile(r'[a-z0-9][a-z0-9-]*')
 # Any Onshape host but the fake one; refused before the network.
 _OTHER_ONSHAPE = re.compile(r'^[a-z]+://([^/?#]*\.)?onshape\.com(:\d+)?([/?#]|$)')
 # Variables that would point the server at other recordings, or make it a deployed one,
-# and the Onshape sign-in credentials, which only the UI run's browser needs.
+# and the Onshape sign-in credentials, which only the automated Onshape UI run's browser needs.
 _SERVER_DROPPED = ('TESTBED_CASSETTE_DIR', 'TESTBED_MESSAGE_DIR', 'TESTBED_SYNTHETIC_SCENARIOS',
                    'FLASK_ENV',
                    'RAILWAY_ENVIRONMENT', 'VERCEL', 'BASE_URL', 'ONSHAPE_USERNAME',
@@ -120,7 +120,8 @@ class ReplayDevServer:
             if time.monotonic() > deadline:
                 try:
                     os.killpg(self.process.pid, signal.SIGKILL)
-                except ProcessLookupError:
+                    self.process.wait(10)
+                except (ProcessLookupError, subprocess.TimeoutExpired):
                     pass
                 break
             time.sleep(0.2)

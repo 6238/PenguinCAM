@@ -556,12 +556,25 @@ class ScenarioOutcomesTest(unittest.TestCase):
 
     def test_dialog_picks_need_the_owner_in_an_onshape_checkpoint(self):
         code, out, err = self.run_main('print-dialog-parts', 'panel-load')
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 0, err)
+        self.assertIn('Needs the owner in an Onshape checkpoint:', out)
         self.assertIn('print-dialog-parts: needs the owner in an Onshape checkpoint', out)
         self.assertIn("Onshape's part dialog, in the tb-box document", out)
         self.assertIn('panel-load: recorded', out)
         # The scenario was never opened, so no counted call was spent on it.
         self.assertNotIn(('goto', 'https://cad.onshape.com/documents/d2/w/w2/e/e2'), self.page.actions)
+
+    def test_a_failed_step_still_exits_1_beside_a_dialog_pick(self):
+        real_do = ui_run._PanelScenario._do
+
+        def do(driver, step):
+            if driver.scenario.name == 'panel-load' and step.name == 'team config':
+                raise ui_run.OnshapeStepFailed('team config', 'nope')
+            return real_do(driver, step)
+        self.enterContext(mock.patch.object(ui_run._PanelScenario, '_do', do))
+        code, out, err = self.run_main('print-dialog-parts', 'panel-load')
+        self.assertEqual(code, 1)
+        self.assertIn('panel-load: failed', out)
 
     def test_bot_check_in_a_scenario_still_stops_everything(self):
         real_do = ui_run._PanelScenario._do
@@ -640,6 +653,7 @@ class ReplayServerEnvironmentTest(unittest.TestCase):
                 mock.patch.object(browser.os, 'killpg') as killpg:
             with browser.ReplayDevServer():
                 pass
+        self.popen = popen
         return popen.call_args.kwargs['env'], killpg
 
     def test_replay_server_gets_no_api_keys_and_waits_for_the_port(self):
@@ -653,6 +667,8 @@ class ReplayServerEnvironmentTest(unittest.TestCase):
         _env, killpg = self.run_server(itertools.chain([None, 200], itertools.repeat(200)))
         self.assertEqual([c.args[1] for c in killpg.call_args_list],
                          [signal.SIGTERM, signal.SIGKILL])
+        # The force-killed server is waited for, so the next one finds the port free.
+        self.assertEqual(self.popen.return_value.wait.call_count, 2)
 
 
 class PasswordSavingTest(unittest.TestCase):

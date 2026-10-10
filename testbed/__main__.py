@@ -153,12 +153,19 @@ def _record_ui(names):
     try:
         outcomes = ui_run.run_onshape_ui(names)
         for outcome in outcomes:
-            print(outcome.line())
+            if outcome.outcome != ui_run.NEEDS_OWNER:
+                print(outcome.line())
+        waiting = [o for o in outcomes if o.outcome == ui_run.NEEDS_OWNER]
+        if waiting:
+            print('Needs the owner in an Onshape checkpoint:')
+            for outcome in waiting:
+                print(f'  {outcome.line()}')
         recorded = [o.name for o in outcomes if o.outcome == ui_run.RECORDED]
         if recorded:
             _write_drift_report(recorded)
-        if len(recorded) < len(outcomes):
-            _say(f'{len(outcomes) - len(recorded)} of {len(outcomes)} scenarios were not recorded')
+        failed = [o for o in outcomes if o.outcome == ui_run.FAILED]
+        if failed:
+            _say(f'{len(failed)} of {len(outcomes)} scenarios failed')
             return EXIT_FAILED
     except ui_run.OnshapeCheckStopped as exc:
         _say(f'stopped by an Onshape check: {exc}')
@@ -214,8 +221,14 @@ def command_drift(args):
 
 
 def command_accept(args):
-    from testbed.drift import RecordingNotClean, accept_fresh_recording
-    for name in _known_scenarios(args.scenarios):
+    from testbed.drift import RecordingNotClean, accept_fresh_recording, check_fresh_recording
+    names = _known_scenarios(args.scenarios)
+    try:
+        for name in names:      # scan them all first: one dirty scenario moves nothing
+            check_fresh_recording(name)
+    except (FileNotFoundError, RecordingNotClean) as exc:
+        raise CommandFailed(str(exc)) from None
+    for name in names:
         try:
             moved = accept_fresh_recording(name)
         except (FileNotFoundError, RecordingNotClean) as exc:

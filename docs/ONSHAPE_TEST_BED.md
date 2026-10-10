@@ -88,7 +88,7 @@ The command line is `uv run python -m testbed <command>`:
 | `record [SCENARIO...]` | The live API check for the scenarios without a panel part, then the drift report. |
 | `record --ui [SCENARIO...]` | The automated Onshape UI run for the scenarios with a panel part (by default the print scenarios first), then one outcome line per scenario and the drift report of those recorded. |
 | `drift` | Compares every fresh recording in `testbed/.fresh/` with the stored one and writes `testbed/.fresh/drift-report.md`. |
-| `accept SCENARIO...` | Scans every fresh file of the scenario for secrets and identity leaks (the scan the clean test runs) and, only if none is found, moves the fresh cassette, its binary files and its message log over the stored ones. A hit refuses the scenario, moves nothing and names each `file:line` and kind, never the value. Commit them with a message that says why the recording changed. |
+| `accept SCENARIO...` | Scans every fresh file of the scenario for secrets and identity leaks (the scan the clean test runs) and, only if none is found, moves the fresh cassette, its binary files and its message log over the stored ones. With several scenarios it scans all of them first: a hit in any one moves nothing, and names each `file:line` and kind, never the value. Commit them with a message that says why the recording changed. |
 | `ledger` | The call ledger's counted calls in the current cycle, the budget, and its last ten lines. |
 
 Exit codes: 0 on success; 1 for any other failure; 2 for a missing environment variable,
@@ -257,8 +257,10 @@ since the replayed page's is not recorded either.
 5. It presses Done, prints one line per scenario (`<name>: recorded`, `<name>: failed
    (<why>)` or `<name>: needs the owner in an Onshape checkpoint (<step>)`), writes the
    drift report of the scenarios recorded, and prints the panel URL the development app
-   opened (also kept in `panel-url.txt`) and the counted calls. It exits 1 if any scenario
-   was not recorded.
+   opened (also kept in `panel-url.txt`) and the counted calls. Scenarios that need the
+   owner in an Onshape checkpoint are listed under that heading. It exits 1 only if a
+   scenario failed; a run whose only unrecorded scenarios need the owner exits 0. A bot
+   check exits 3.
 
 With no scenario named, the run takes the print scenarios first, those it can finish
 ahead of the others, so a failure in an older scenario never starves the print path.

@@ -373,13 +373,7 @@ class RecordingNotClean(Exception):
         self.problems = problems
 
 
-def accept_fresh_recording(scenario) -> list:
-    """Move the fresh cassette, its binaries and message log over the stored ones.
-
-    Every fresh file is first scanned for secrets and identity leaks (the clean test's
-    scan); any hit raises RecordingNotClean and nothing is moved. Returns the paths written.
-    The stored binaries go even when the fresh cassette has none, so none is left orphaned.
-    """
+def _fresh_files(scenario):
     if not scenario or '/' in scenario or '\\' in scenario or scenario.startswith('.'):
         raise ValueError(f'not a scenario name: {scenario!r}')
     fresh_cassettes, fresh_messages = settings.fresh_cassette_dir(), settings.fresh_message_dir()
@@ -392,6 +386,22 @@ def accept_fresh_recording(scenario) -> list:
     problems = recording_problems([f for f in files if f.is_file()], settings.FRESH_DIR)
     if problems:
         raise RecordingNotClean(scenario, problems)
+    return cassette, message_log, binaries
+
+
+def check_fresh_recording(scenario) -> None:
+    """Raise FileNotFoundError or RecordingNotClean if `scenario` cannot be accepted; move nothing."""
+    _fresh_files(scenario)
+
+
+def accept_fresh_recording(scenario) -> list:
+    """Move the fresh cassette, its binaries and message log over the stored ones.
+
+    Every fresh file is first scanned for secrets and identity leaks (the clean test's
+    scan); any hit raises RecordingNotClean and nothing is moved. Returns the paths written.
+    The stored binaries go even when the fresh cassette has none, so none is left orphaned.
+    """
+    cassette, message_log, binaries = _fresh_files(scenario)
     moved = []
     if cassette.is_file():
         stored_dir = Path(settings.CASSETTE_DIR)

@@ -207,6 +207,20 @@ class OtherCommandsTest(_CliCase):
         self.assertEqual(code, 1)
         self.assertIn('no fresh recording of part-export', err)
 
+    def test_accept_with_a_dirty_scenario_moves_nothing(self):
+        clean = Cassette('part-export', OWNER_LOOKUPS[1:])
+        clean.save(settings.fresh_cassette_dir())
+        dirty = Cassette('part-select', OWNER_LOOKUPS[1:])
+        dirty.save(settings.fresh_cassette_dir())
+        path = settings.fresh_cassette_dir() / 'part-select.json'
+        path.write_text(path.read_text().replace('"', '"', 1) + '\n{"mail": "someone@team.org"}')
+        code, out, err = self.run_cli('accept', 'part-export', 'part-select')
+        self.assertEqual(code, 1)
+        self.assertNotIn('someone@team.org', err)
+        self.assertTrue((settings.fresh_cassette_dir() / 'part-export.json').exists())
+        self.assertFalse((settings.CASSETTE_DIR / 'part-export.json').exists())
+        self.assertNotIn('accepted', out)
+
     def test_accept_and_drift(self):
         code, out, err = self.run_cli('drift')
         self.assertEqual(code, 1)
