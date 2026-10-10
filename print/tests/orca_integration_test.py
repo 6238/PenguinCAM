@@ -124,6 +124,7 @@ class RealJobRouteTest(unittest.TestCase):
         app.config["TESTING"] = True
         limiter.reset()
         client = app.test_client()
+        client.environ_base["HTTP_X_PRINT_PAGE"] = "abcdef012345"   # the print page's page id
         with client.session_transaction() as sess:
             sess["app_verified"] = True
         resp = client.post("/print-job")
