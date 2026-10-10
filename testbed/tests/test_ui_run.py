@@ -65,6 +65,8 @@ class StubLocator:
     def click(self, **kwargs):
         self._maybe_fail('click')
         self.page.actions.append(('click', self.selector))
+        if self.selector == self.page.navigates_on:
+            self.page.navigating = True
 
     def check(self, **kwargs):
         self.click()
@@ -82,6 +84,10 @@ class StubLocator:
 
     def get_attribute(self, name):
         return self.page.attributes.get((self.selector, name))
+
+    def input_value(self, **kwargs):
+        self._maybe_fail('input_value')
+        return self.page.values.get(self.selector, '')
 
 
 class StubFrame:
@@ -105,6 +111,10 @@ class StubPage:
         self.fail = set(fail)
         self.signed_in = signed_in
         self.counts, self.attributes = {}, {}
+        # input_value() answers; the length unit reads inches unless a test says otherwise.
+        self.values = {ui_run.SELECTORS['units_length']: 'Inch'}
+        # Clicking this selector starts a navigation: page scripts fail until it ends.
+        self.navigates_on, self.navigating = None, False
         self.url = 'https://cad.onshape.com/signin'
         self.keyboard = mock.Mock()
 
@@ -122,6 +132,9 @@ class StubPage:
 
     def eval_on_selector_all(self, selector, expression):
         assert selector == 'iframe', selector
+        if self.navigating:
+            raise RuntimeError('Page.eval_on_selector_all: Execution context was destroyed, '
+                               'most likely because of a navigation')
         return list(self.parsed.iframes)
 
     def inner_text(self, selector, **kwargs):
@@ -256,6 +269,20 @@ class SignInTest(unittest.TestCase):
         for data in files:
             self.assertNotIn(password.encode(), data)
 
+    def test_failure_after_submit_names_the_step(self):
+        page = _page('signin.html')
+        page.navigates_on = ui_run.SELECTORS['sign_in_submit']
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict(os.environ, dict(CREDENTIALS, XDG_STATE_HOME=tmp)), \
+                contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(ui_run.OnshapeStepFailed) as caught:
+                ui_run.sign_in_to_onshape(page)
+            shots = list((settings.state_dir() / 'screenshots').glob('*.png'))
+        self.assertIn("step 'sign-in: after submit' failed", str(caught.exception))
+        self.assertIn('Execution context was destroyed', str(caught.exception))
+        self.assertEqual(len(shots), 1)
+        self.assertIn(str(shots[0]), str(caught.exception))
+
     def test_selectors_are_one_table(self):
         for key in ('email', 'password', 'sign_in_submit', 'panel_frame'):
             self.assertIn(key, ui_run.SELECTORS)
@@ -380,6 +407,104 @@ class UiRunEndToEndTest(unittest.TestCase):
         self.assertTrue(ui_run.tb_inch_units_file().is_file())
         self.assertFalse(ui_run.switch_tb_inch_units(page, {'did': 'd2', 'wid': 'w2',
                                                             'eid': 'e2'}))
+
+
+    def test_tb_inch_marker_only_after_the_units_read_inches(self):
+        page = StubPage(signed_in=True)
+        page.values[ui_run.SELECTORS['units_length']] = 'Millimeter'
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(ui_run.OnshapeStepFailed) as caught:
+                ui_run.switch_tb_inch_units(page, {'did': 'd2', 'wid': 'w2', 'eid': 'e2'})
+        self.assertIn("step 'tb-inch units: check' failed", str(caught.exception))
+        self.assertIn('Millimeter', str(caught.exception))
+        self.assertIn('by hand', str(caught.exception))
+        self.assertFalse(ui_run.tb_inch_units_file().exists())
+        self.assertEqual(len(self.screenshots()), 1)
+
+    def test_pending_documents_refused_before_the_browser(self):
+        documents = json.loads(settings.DOCUMENTS_FILE.read_text())
+        documents['tb-inch'] = {'did': 'd9', 'wid': 'w9', 'parts': {},
+                                'pending': 'not in the test folder'}
+        settings.DOCUMENTS_FILE.write_text(json.dumps(documents))
+        page = StubPage(signed_in=True)
+        code, out, err = self.run_main(page)
+        self.assertEqual(code, 1)
+        self.assertIn('tb-inch (not in the test folder)', err)
+        self.assertIn('build-docs', err)
+        self.assertNotIn("'eid'", err)
+        self.assertEqual(page.actions, [])
+        self.assertEqual(self.screenshots(), [])
+
+    def test_stale_panel_url_is_not_reported(self):
+        ui_run.panel_url_file().write_text('http://localhost:6238/stale-panel\n')
+        code, out, err = self.run_main(StubPage(fail={'goto'}))
+        self.assertEqual(code, 1)
+        self.assertNotIn('stale-panel', out)
+        self.assertFalse(ui_run.panel_url_file().exists())
+
+
+class RedactionTest(unittest.TestCase):
+    def test_stripped_password_redacted_too(self):
+        # required_environment() strips the value, so the stripped form is what is filled.
+        with mock.patch.dict(os.environ, {'ONSHAPE_PASSWORD': ' pw-sentinel-x&y \n'}):
+            self.assertEqual(ui_run.redact_password('a pw-sentinel-x&y b'), 'a *** b')
+            self.assertEqual(ui_run.redact_password('a pw-sentinel-x%26y b'), 'a *** b')
+            self.assertEqual(ui_run.redact_password('a  pw-sentinel-x&y \n b'), 'a *** b')
+
+
+class RecordServerEnvironmentTest(unittest.TestCase):
+    def test_record_server_gets_no_onshape_sign_in_credentials(self):
+        from testbed import browser
+        popen = mock.Mock()
+        popen.return_value.poll.return_value = None
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict(os.environ, dict(CREDENTIALS, XDG_STATE_HOME=tmp,
+                                                 PATH=os.environ.get('PATH', '')),
+                                clear=True), \
+                mock.patch.object(browser.subprocess, 'Popen', popen), \
+                mock.patch.object(browser, '_answers', side_effect=[None, 200]), \
+                mock.patch.object(browser.os, 'killpg'):
+            with browser.RecordDevServer():
+                pass
+        env = popen.call_args.kwargs['env']
+        # Compared as names only, so a failure never prints the environment's values.
+        self.assertEqual({'ONSHAPE_USERNAME', 'ONSHAPE_PASSWORD'} & set(env), set())
+        self.assertEqual(env['ONSHAPE_CLIENT_ID'], CREDENTIALS['ONSHAPE_CLIENT_ID'])
+        self.assertEqual(env['PENGUINCAM_TESTBED'], 'record')
+
+
+class PasswordSavingTest(unittest.TestCase):
+    def test_profile_never_offers_to_save_passwords(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            profile = Path(tmp)
+            (profile / 'Default').mkdir()
+            (profile / 'Default' / 'Preferences').write_text(json.dumps(
+                {'profile': {'name': 'Person 1', 'password_manager_enabled': True},
+                 'browser': {'has_seen_welcome_page': True}}))
+            ui_run.disable_password_saving(profile)
+            prefs = json.loads((profile / 'Default' / 'Preferences').read_text())
+        self.assertIs(prefs['credentials_enable_service'], False)
+        self.assertIs(prefs['profile']['password_manager_enabled'], False)
+        self.assertEqual(prefs['profile']['name'], 'Person 1')
+        self.assertTrue(prefs['browser']['has_seen_welcome_page'])
+
+    def test_new_profile_gets_the_preferences_before_launch(self):
+        seen = {}
+
+        def launch(user_data_dir, **kwargs):
+            seen.update(json.loads((Path(user_data_dir) / 'Default' / 'Preferences')
+                                   .read_text()))
+            return mock.Mock()
+
+        playwright = mock.Mock()
+        playwright.chromium.launch_persistent_context.side_effect = launch
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict(os.environ, {'XDG_STATE_HOME': tmp}), \
+                mock.patch.object(ui_run, 'chrome_executable', return_value=None), \
+                contextlib.redirect_stderr(io.StringIO()):
+            ui_run.launch_persistent_chrome(playwright)
+        self.assertIs(seen['credentials_enable_service'], False)
+        self.assertIs(seen['profile']['password_manager_enabled'], False)
 
 
 class ExecutableTest(unittest.TestCase):

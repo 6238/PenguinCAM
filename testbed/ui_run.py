@@ -25,6 +25,7 @@ from urllib.parse import quote, quote_plus
 
 from testbed import settings
 from testbed.browser import RecordDevServer
+from testbed.documents import pending_documents
 from testbed.scenarios import SCENARIOS
 
 UI_VARIABLES = ('ONSHAPE_USERNAME', 'ONSHAPE_PASSWORD', 'ONSHAPE_CLIENT_ID',
@@ -90,7 +91,8 @@ class OnshapeStepFailed(Exception):
 
 
 class UiRunRefused(RuntimeError):
-    """The run will not start: the production app's client id, or no documents.json."""
+    """The run will not start: the production app's client id, no documents.json, or
+    test documents build-docs has not finished."""
 
 
 class _PasswordFillFailed(Exception):
@@ -106,13 +108,17 @@ def _say(text):
 
 
 def redact_password(text) -> str:
-    """`text` with ONSHAPE_PASSWORD, plain, URL-encoded or JSON-escaped, replaced by ***."""
+    """`text` with ONSHAPE_PASSWORD, plain, URL-encoded or JSON-escaped, replaced by ***.
+
+    Both the raw value and the stripped one, which settings.required_environment() returns
+    and the sign-in form is filled with.
+    """
     text = str(text)
-    password = os.environ.get('ONSHAPE_PASSWORD', '')
-    if not password:
-        return text
-    forms = {password, quote(password, safe=''), quote_plus(password),
-             json.dumps(password)[1:-1]}
+    raw = os.environ.get('ONSHAPE_PASSWORD', '')
+    forms = set()
+    for password in {raw, raw.strip()} - {''}:
+        forms |= {password, quote(password, safe=''), quote_plus(password),
+                  json.dumps(password)[1:-1]}
     for form in sorted(forms, key=len, reverse=True):
         text = text.replace(form, '***')
     return text
@@ -140,6 +146,29 @@ def _profile_dir() -> Path:
     path = settings.state_dir() / 'chrome-profile'
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def disable_password_saving(profile: Path) -> None:
+    """Set the kept profile's preferences so Chrome never offers to save a password.
+
+    The profile is kept between runs; a password saved in it would sit on disk in its
+    Login Data. Merged into profile/Default/Preferences before every launch, keeping
+    Chrome's other preferences.
+    """
+    path = Path(profile) / 'Default' / 'Preferences'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        prefs = json.loads(path.read_text())
+    except (OSError, ValueError):
+        prefs = {}
+    if not isinstance(prefs, dict):
+        prefs = {}
+    prefs['credentials_enable_service'] = False
+    profile_prefs = prefs.get('profile')
+    if not isinstance(profile_prefs, dict):
+        profile_prefs = prefs['profile'] = {}
+    profile_prefs['password_manager_enabled'] = False
+    path.write_text(json.dumps(prefs))
 
 
 def panel_url_file() -> Path:
@@ -210,7 +239,9 @@ def launch_persistent_chrome(playwright, headed=True, extra_args=()):
     Google Chrome when it is installed and starts, else /usr/bin/chromium, which is logged.
     The sandbox is off for both: the container has no user namespaces, so neither starts
     with it, and the run visits only cad.onshape.com and the local development server.
+    The profile's password manager is off (disable_password_saving).
     """
+    disable_password_saving(_profile_dir())
     candidates = []
     chrome = chrome_executable()
     if chrome:
@@ -311,8 +342,9 @@ def sign_in_to_onshape(page) -> None:
     ui_step(page, 'sign-in: password', lambda: _fill_password(page, password))
     ui_step(page, 'sign-in: submit', submit)
     _say('submitted the Onshape sign-in form')
-    _settle(page)
-    stop_on_onshape_check(page, 'after sign-in')
+    # The page navigates now, so the bot check's page script can fail mid-way.
+    ui_step(page, 'sign-in: after submit',
+            lambda: (_settle(page), stop_on_onshape_check(page, 'after sign-in')))
 
 
 def _ensure_signed_in(page):
@@ -341,10 +373,26 @@ def _open_document(page, document, where):
     stop_on_onshape_check(page, where)
 
 
+def _open_workspace_units(page):
+    for key in ('document_menu', 'workspace_units'):
+        page.locator(SELECTORS[key]).first.click()
+        page.wait_for_timeout(PACE_MS)
+
+
+def _length_unit(page) -> str:
+    """What the open Workspace units dialog shows for Length."""
+    field = page.locator(SELECTORS['units_length']).first
+    try:
+        return field.input_value(timeout=STEP_TIMEOUT_MS)
+    except Exception:
+        return field.inner_text(timeout=STEP_TIMEOUT_MS)
+
+
 def switch_tb_inch_units(page, document) -> bool:
     """The first run's extra (spec 5.1): set tb-inch's workspace units to inches.
 
-    Done once; tb_inch_units_file() records it. False when it was already done.
+    Done once: tb_inch_units_file() is written only after the dialog, opened again, reads
+    inches. False when it was already done.
     """
     marker = tb_inch_units_file()
     if marker.is_file():
@@ -355,12 +403,21 @@ def switch_tb_inch_units(page, document) -> bool:
 
     def switch():
         _open_document(page, document, 'tb-inch units')
-        for key in ('document_menu', 'workspace_units', 'units_length', 'units_inch',
-                    'units_ok'):
+        _open_workspace_units(page)
+        for key in ('units_length', 'units_inch', 'units_ok'):
             page.locator(SELECTORS[key]).first.click()
             page.wait_for_timeout(PACE_MS)
 
+    def check():
+        _open_workspace_units(page)
+        unit = _length_unit(page)
+        page.keyboard.press('Escape')               # closes the dialog unchanged
+        page.wait_for_timeout(PACE_MS)
+        if 'inch' not in unit.lower():
+            raise RuntimeError(f'the Length unit reads {unit.strip()!r}, not inches')
+
     ui_step(page, 'tb-inch units', switch, advice)
+    ui_step(page, 'tb-inch units: check', check, advice)
     marker.write_text('inch\n')
     _say("tb-inch's workspace units are now inches")
     return True
@@ -471,6 +528,8 @@ def run_onshape_ui(scenarios, headed=True) -> Path:
     ONSHAPE_CLIENT_SECRET; refuses the production app's client id. Whatever stops the run,
     the error that leaves here has ONSHAPE_PASSWORD redacted and nothing chained to it.
     """
+    # A panel URL left by an earlier run must not be reported as this run's.
+    panel_url_file().unlink(missing_ok=True)
     values = dict(zip(UI_VARIABLES, settings.required_environment(*UI_VARIABLES)))
     if values['ONSHAPE_CLIENT_ID'].startswith(_PRODUCTION_CLIENT_ID_PREFIX):
         raise UiRunRefused('the automated Onshape UI run refuses the production Onshape '
@@ -478,6 +537,12 @@ def run_onshape_ui(scenarios, headed=True) -> Path:
     if not settings.DOCUMENTS_FILE.is_file():
         raise UiRunRefused(f'{settings.DOCUMENTS_FILE} does not exist; run build-docs first')
     documents = json.loads(settings.DOCUMENTS_FILE.read_text())
+    pending = pending_documents(documents)
+    if pending:
+        listed = ', '.join(f'{name} ({why})' for name, why in sorted(pending.items()))
+        raise UiRunRefused(f'documents.json has pending test documents: {listed}; finish '
+                           'build-docs first (move each one into the test folder in Onshape, '
+                           'then run build-docs again)')
     try:
         return _run(scenarios, documents, headed)
     except OnshapeCheckStopped as exc:

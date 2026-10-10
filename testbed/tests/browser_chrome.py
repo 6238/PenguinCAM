@@ -8,6 +8,7 @@ fixtures in a real page. The second runs only with TESTBED_ONLINE=1: it opens On
 sign-in page on the kept profile and waits for the email field. It never fills or submits
 the form.
 """
+import json
 import os
 import sys
 import tempfile
@@ -61,6 +62,11 @@ class ChromeTest(unittest.TestCase):
                             self.assertIsNone(reason, name)
             finally:
                 context.close()
+            # Chrome rewrites its preferences on exit; the password manager stays off.
+            prefs = json.loads((settings.state_dir() / 'chrome-profile' / 'Default' /
+                                'Preferences').read_text())
+            self.assertIs(prefs.get('credentials_enable_service'), False)
+            self.assertIs(prefs.get('profile', {}).get('password_manager_enabled'), False)
 
     def test_chromium_fallback_when_chrome_is_missing(self):
         _needs_display(self)

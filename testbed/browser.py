@@ -28,9 +28,11 @@ SERVER_START_TIMEOUT_S = 120
 _SCENARIO_NAME = re.compile(r'[a-z0-9][a-z0-9-]*')
 # Any Onshape host but the fake one; refused before the network.
 _OTHER_ONSHAPE = re.compile(r'^[a-z]+://([^/?#]*\.)?onshape\.com(:\d+)?([/?#]|$)')
-# Variables that would point the server at other recordings, or make it a deployed one.
+# Variables that would point the server at other recordings, or make it a deployed one,
+# and the Onshape sign-in credentials, which only the UI run's browser needs.
 _SERVER_DROPPED = ('TESTBED_CASSETTE_DIR', 'TESTBED_MESSAGE_DIR', 'FLASK_ENV',
-                   'RAILWAY_ENVIRONMENT', 'VERCEL', 'BASE_URL')
+                   'RAILWAY_ENVIRONMENT', 'VERCEL', 'BASE_URL', 'ONSHAPE_USERNAME',
+                   'ONSHAPE_PASSWORD')
 
 
 def _answers(url):
