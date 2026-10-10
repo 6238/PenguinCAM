@@ -209,6 +209,62 @@ class FullAppReplayTest(unittest.TestCase):
         self.assertIn(429, results['status_burst_statuses'])        # the limiter is on
 
 
+PANEL_RULE = 'frame-ancestors https://*.onshape.com'
+
+
+class FullAppLocalTest(unittest.TestCase):
+    """Local mode in the full app: the stand-in's routes, the panel signed in with the
+    stand-in user, and the print path served from uploaded STL files."""
+
+    def test_routes_and_sign_in(self):
+        results = full_app_results('local')
+        self.assertEqual(results['mode'], 'local')
+        self.assertEqual(results['local_page_status'], 200)
+        self.assertEqual(results['sign_in_status'], 204)
+        self.assertEqual(results['status'], {'available': True, 'connected': True,
+                                             'user': STANDIN_NAME})
+        # The recording routes and the checklist strip are not part of local mode.
+        self.assertEqual(results['scenarios_status'], 404)
+        self.assertEqual(results['panel_js_status'], 404)
+        self.assertFalse(results['strip_in_print'])
+        self.assertEqual(results['oauth_status'], 403)
+
+    def test_origin_relaxation_present_only_here(self):
+        results = full_app_results('local')
+        self.assertEqual(results['cnc_csp'], PANEL_RULE + " 'self'")
+        self.assertEqual(results['print_csp'], PANEL_RULE + " 'self'")
+        self.assertEqual(results['local_origin'], 'http://localhost')
+
+    def test_uploaded_parts_are_selected_and_exported(self):
+        results = full_app_results('local')
+        self.assertEqual(results['uploaded'], ['Box', 'Cylinder'])
+        self.assertEqual(results['selected'], [['Box', 12], ['Cylinder', 256]])
+        self.assertEqual(results['selected_errors'], [])
+        self.assertEqual(results['dialog'], ['Cylinder'])
+
+    def test_existing_print_limits_apply(self):
+        from print import limits
+        results = full_app_results('local')
+        self.assertEqual(results['big_errors'], [limits.TOO_DETAILED_MESSAGE.format(name='Big')])
+        self.assertEqual(results['crowd_errors'], [limits.TOO_MANY_PARTS_MESSAGE])
+
+
+class OriginRelaxationAbsentTest(unittest.TestCase):
+    """Normal and replay modes keep the panel's framing rule and accept no local origin."""
+
+    def test_absent_when_off_and_in_replay(self):
+        for mode in (None, 'replay'):
+            with self.subTest(mode=mode):
+                results = full_app_results(mode)
+                self.assertEqual(results['cnc_csp'], PANEL_RULE)
+                self.assertEqual(results['print_csp'], PANEL_RULE)
+                self.assertIsNone(results['local_origin'])
+                self.assertNotEqual(results['oauth_status'], 403)
+
+    def test_local_routes_absent_when_off(self):
+        self.assertEqual(full_app_results(None)['local_page_status'], 404)
+
+
 class FullAppOffTest(unittest.TestCase):
     def test_flag_cookie_ignored_when_off(self):
         results = full_app_results(None)

@@ -8,6 +8,8 @@ is called from OnshapeClient.__init__ and mounts one adapter per session:
   writes a cassette to testbed/.fresh/cassettes/.
 - replay mode: ReplayAdapter answers every request, on any host, from the current
   scenario's cassette and never opens a connection. A miss is a 599.
+- local mode: testbed.local.LocalAdapter answers every request from the uploaded STL
+  files and never opens a connection. A miss is a 599.
 
 The current scenario is one value per process: every request thread reads it, so each
 Onshape call is filed under the scenario that is current.
@@ -365,6 +367,9 @@ def install_testbed_adapters(session: requests.Session, retry: Retry) -> None:
     if mode == 'record':
         ledger = CallLedger()
         adapter = RecordingAdapter(ledger=ledger, max_retries=LedgerRetry.from_retry(retry, ledger))
+    elif mode == 'local':
+        from testbed.local import LocalAdapter
+        adapter = LocalAdapter(max_retries=retry)      # answers from uploads; never a socket
     else:
         adapter = ReplayAdapter(max_retries=retry)     # carried for symmetry; never used
     session.mount('https://', adapter)

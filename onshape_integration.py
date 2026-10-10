@@ -127,9 +127,12 @@ class OnshapeClient:
         client.auth_mode = 'apikey'
         client.api_access_key = access_key or os.environ.get('ONSHAPE_ACCESS_KEY')
         client.api_secret_key = secret_key or os.environ.get('ONSHAPE_SECRET_KEY')
+        # A replay answers from cassettes and local mode from uploads, so neither needs real
+        # keys; local mode never even holds them, since it never calls Onshape.
+        from testbed.settings import REPLAY_PLACEHOLDER_KEYS, testbed_mode
+        if testbed_mode() == 'local':
+            client.api_access_key, client.api_secret_key = REPLAY_PLACEHOLDER_KEYS
         if not client.api_access_key or not client.api_secret_key:
-            # A replay answers from cassettes, so it needs no real keys; only there.
-            from testbed.settings import REPLAY_PLACEHOLDER_KEYS, testbed_mode
             if testbed_mode() == 'replay':
                 client.api_access_key, client.api_secret_key = REPLAY_PLACEHOLDER_KEYS
         if not client.api_access_key or not client.api_secret_key:
@@ -2386,10 +2389,11 @@ class OnshapeSessionManager:
         except RuntimeError:
             cached = None
 
-        # Development sign-in (testbed/flask_hooks.py): replay mode only, where every call
-        # is answered from cassettes. On any other server the flag is ignored.
+        # Development sign-in (testbed/flask_hooks.py): replay and local modes only, where
+        # every call is answered from cassettes or uploads. Elsewhere the flag is ignored.
         from testbed.settings import testbed_is_on, testbed_mode
-        if testbed_is_on() and testbed_mode() == 'replay' and session.get('testbed_apikey'):
+        if (testbed_is_on() and testbed_mode() in ('replay', 'local')
+                and session.get('testbed_apikey')):
             if cached is not None:
                 return cached
             client = OnshapeClient.from_api_keys()

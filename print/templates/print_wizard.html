@@ -160,6 +160,9 @@
         onshapeError: {{ (onshape_error if onshape_error is defined else None)|tojson }},
         driveEnabled: {{ (drive_enabled if drive_enabled is defined else False)|tojson }},
         printerEnabled: {{ (printer_enabled if printer_enabled is defined else False)|tojson }},
+        // Set only by the Onshape test bed's local mode (testbed/flask_hooks.py): the
+        // stand-in Onshape page's origin, whose messages the page then accepts.
+        testbedLocalOrigin: {{ (testbed_local_origin if testbed_local_origin is defined else None)|tojson }},
       };
     </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>

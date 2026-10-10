@@ -1,6 +1,6 @@
 """The test bed's switch, its import guards and every test bed setting.
 
-The test bed is on only when PENGUINCAM_TESTBED is 'replay' or 'record'. Every test bed
+The test bed is on only when PENGUINCAM_TESTBED is 'replay', 'record' or 'local'. Every test bed
 setting is read here and nowhere else. This module imports only the standard library, so
 importing it can never fail in a way that silently disables the Onshape integration.
 """
@@ -9,10 +9,12 @@ from datetime import date
 from pathlib import Path
 
 MODE_VARIABLE = 'PENGUINCAM_TESTBED'
-MODES = ('replay', 'record')
+MODES = ('replay', 'record', 'local')
 
 RECORD_PORT = 6238            # the development server, pinned by the Onshape dev app
 REPLAY_PORT = 6240            # the replay development server the browser scenarios start
+LOCAL_PORT = 6238             # local mode: the port a browser on another machine reaches
+LOCAL_TEST_PORT = 6241        # the local-mode server the local browser test starts
 FAKE_HOST_ORIGIN = 'https://cad-testbed.onshape.com'
 # The API key pair a replay-mode client gets when none is set; replay never sends it anywhere.
 REPLAY_PLACEHOLDER_KEYS = ('testbed-replay', 'testbed-replay')
@@ -42,12 +44,12 @@ def _read_mode(environ):
     if not value:
         return None
     if value not in MODES:
-        raise ValueError(f"{MODE_VARIABLE} must be 'replay' or 'record', not {value!r}")
+        raise ValueError(f"{MODE_VARIABLE} must be 'replay', 'record' or 'local', not {value!r}")
     return value
 
 
 def testbed_mode():
-    """'replay', 'record' or None. Read once; reset_testbed_settings_for_tests() clears it."""
+    """'replay', 'record', 'local' or None. Read once; reset_testbed_settings_for_tests() clears it."""
     global _cached_mode, _mode_was_read
     if not _mode_was_read:
         _cached_mode = _read_mode(os.environ)
@@ -160,6 +162,22 @@ def budget_settings():
     """(annual budget, cycle start date or None, per-run cap) of counted Onshape calls."""
     return (_env_int('TESTBED_BUDGET', 250), _env_date('TESTBED_CYCLE_START'),
             _env_int('TESTBED_RUN_CAP', 150))
+
+
+def local_parts_dir():
+    """Where local mode keeps uploaded STL files: <state dir>/local-parts, one folder per
+    stand-in Part Studio (its document id)."""
+    path = state_dir() / 'local-parts'
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def local_config_file():
+    """The team config YAML local mode serves as the classroom's PenguinCAM-config.yaml:
+    TESTBED_LOCAL_CONFIG, or the test bed's team config fixture (no printing section, so
+    the print path uses its default printer, filament and process)."""
+    value = os.environ.get('TESTBED_LOCAL_CONFIG', '').strip()
+    return Path(value) if value else FIXTURE_DIR / 'team-config-fixture.yaml'
 
 
 def chromium_executable():

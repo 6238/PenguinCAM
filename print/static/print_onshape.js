@@ -26,10 +26,12 @@
   function text(value) { return typeof value === 'string' && value ? value : null; }
 
   // True for the panel's own server (validated on the server when the page was built), or
-  // for an https origin whose host is onshape.com or ends in .onshape.com.
-  function isOnshapeOrigin(origin, server) {
+  // for an https origin whose host is onshape.com or ends in .onshape.com. `localOrigin` is
+  // the Onshape test bed's local-mode stand-in, rendered by the server only in that mode.
+  function isOnshapeOrigin(origin, server, localOrigin) {
     if (typeof origin !== 'string' || !origin) return false;
     if (server && origin === server) return true;
+    if (localOrigin && origin === localOrigin) return true;
     var m = /^https:\/\/([^/:?#@]+)(:\d+)?$/.exec(origin);
     if (!m) return false;
     var host = m[1].toLowerCase();
@@ -70,7 +72,8 @@
     return selection;
   }
 
-  // post(message, targetOrigin) sends to the Onshape window; onSelections(selections, via)
+  // post(message, targetOrigin) sends to the Onshape window; localOrigin (optional) is one
+  // more origin to accept, the test bed's local mode only; onSelections(selections, via)
   // receives parts, via 'selection' or 'dialog'; onUnreadable() (optional) is told of a
   // non-empty selection answer that names no part.
   function createOnshapeMessenger(opts) {
@@ -119,7 +122,7 @@
       },
       isActive: function () { return active; },
       handleMessage: function (event) {
-        if (!event || !isOnshapeOrigin(event.origin, context.server)) return;
+        if (!event || !isOnshapeOrigin(event.origin, context.server, opts.localOrigin)) return;
         var data = event.data;
         if (!data || typeof data !== 'object') return;
         switch (data.messageName) {
@@ -139,6 +142,7 @@
     // The wizard (print_wizard.js, loaded after this file) sets P.onPartSelections.
     P.onshapeMessenger = createOnshapeMessenger({
       context: P.onshape || {},
+      localOrigin: P.testbedLocalOrigin || null,
       post: function (message, targetOrigin) {
         try { window.parent.postMessage(message, targetOrigin); } catch (e) { /* no parent window */ }
       },

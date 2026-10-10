@@ -87,6 +87,21 @@ class TestbedSettingsTest(unittest.TestCase):
     def test_replay_mode_needs_no_credentials(self):
         settings.assert_testbed_allowed(_clean_env(PENGUINCAM_TESTBED='replay'))
 
+    def test_local_mode_needs_no_credentials_and_is_refused_when_deployed(self):
+        os.environ['PENGUINCAM_TESTBED'] = 'local'
+        self.assertEqual(settings.testbed_mode(), 'local')
+        settings.assert_testbed_allowed(_clean_env(PENGUINCAM_TESTBED='local'))
+        for name, value in DEPLOYED_SIGNALS.items():
+            with self.subTest(signal=name):
+                with self.assertRaises(RuntimeError):
+                    settings.assert_testbed_allowed(
+                        _clean_env(PENGUINCAM_TESTBED='local', **{name: value}))
+
+    def test_local_mode_uses_the_forwarded_port(self):
+        self.assertEqual(settings.LOCAL_PORT, 6238)
+        self.assertEqual(settings.LOCAL_PORT, settings.RECORD_PORT)
+        self.assertNotIn(settings.LOCAL_TEST_PORT, (settings.LOCAL_PORT, settings.REPLAY_PORT))
+
     def test_record_mode_refuses_production_client_id(self):
         environ = _clean_env(PENGUINCAM_TESTBED='record', ONSHAPE_CLIENT_ID='VKDKexample',
                              ONSHAPE_CLIENT_SECRET='s')

@@ -64,6 +64,29 @@ test('isOnshapeOrigin accepts the server and onshape.com hosts only', () => {
   assert.equal(o.isOnshapeOrigin('https://cad-testbed.example', 'https://cad-testbed.example'), true);
 });
 
+test('isOnshapeOrigin accepts the local test bed origin only when it is given', () => {
+  const LOCAL = 'http://localhost:6238';
+  assert.equal(o.isOnshapeOrigin(LOCAL, SERVER), false);
+  assert.equal(o.isOnshapeOrigin(LOCAL, SERVER, null), false);
+  assert.equal(o.isOnshapeOrigin(LOCAL, SERVER, LOCAL), true);
+  assert.equal(o.isOnshapeOrigin('http://localhost:6239', SERVER, LOCAL), false);
+  assert.equal(o.isOnshapeOrigin('https://cad.onshape.com', SERVER, LOCAL), true);
+});
+
+test('the messenger accepts the local origin only when given localOrigin', () => {
+  const LOCAL = 'http://localhost:6238';
+  const answer = { messageName: 'REQUESTED_SELECTION', selections: [{ partId: 'L1' }],
+                   status: { statusCode: 'SUCCESS' } };
+  [[undefined, 0], [LOCAL, 1]].forEach(([localOrigin, expected]) => {
+    const added = [];
+    const m = o.createOnshapeMessenger({ context: CONTEXT, localOrigin: localOrigin, post: () => {},
+                                         onSelections: (s) => added.push(s) });
+    m.enterParts();
+    m.handleMessage({ origin: LOCAL, data: answer });
+    assert.equal(added.length, expected);
+  });
+});
+
 test('enterParts arms a count-1 solid body selection', () => {
   const h = harness();
   h.messenger.enterParts();

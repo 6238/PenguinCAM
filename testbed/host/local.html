@@ -1,0 +1,154 @@
+<!doctype html>
+<!-- PenguinCAM test bed, local mode: a stand-in for an Onshape Part Studio tab. Served by
+     the development server at /testbed/local (same origin as the panel). Laid out like
+     Onshape's window: top bar, toolbar, the feature and parts list on the left, the
+     graphics area in the middle, the right panel with the PenguinCAM panel at Onshape's
+     right-panel width, and the tab bar at the bottom. The parts are uploaded STL files. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Local test bed - Part Studio 1</title>
+  <style>
+    :root {
+      --top: #ffffff; --line: #d4d7dc; --bg: #f3f4f6; --ink: #1f2328; --muted: #6a737d;
+      --accent: #0d6ac1; --select: #ffd75e; --select-ink: #1f2328; --hover: #e8f0fa;
+      --graphics-top: #fdfdfe; --graphics-bottom: #dfe3e8;
+      --panel-width: 320px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+                 font: 13px/18px -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { display: grid; grid-template-rows: 40px 36px 1fr 30px; height: 100vh; overflow: hidden; }
+    button { font: inherit; }
+
+    #topbar { display: flex; align-items: center; gap: 12px; padding: 0 12px; background: var(--top);
+              border-bottom: 1px solid var(--line); }
+    #logo { font-weight: 700; color: var(--accent); letter-spacing: 0.02em; }
+    #doc-name { font-weight: 600; }
+    #badge { margin-left: 4px; padding: 0 8px; border-radius: 9px; background: #fff3cd; color: #7a5a00;
+             font-size: 11px; line-height: 18px; }
+    #topbar .spacer { flex: 1; }
+    #user { color: var(--muted); }
+
+    #toolbar { display: flex; align-items: center; gap: 6px; padding: 0 8px; background: var(--top);
+               border-bottom: 1px solid var(--line); }
+    .tool { height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 3px;
+            background: #fff; color: var(--ink); cursor: pointer; }
+    .tool:hover { background: var(--hover); }
+    .tool.primary { border-color: var(--accent); color: var(--accent); }
+    #toolbar .hint { color: var(--muted); margin-left: 8px; }
+
+    #main { display: flex; min-height: 0; }
+    #left { width: 250px; flex: none; background: #fff; border-right: 1px solid var(--line);
+            display: flex; flex-direction: column; min-height: 0; }
+    .list-head { padding: 8px 10px; font-weight: 600; border-bottom: 1px solid var(--line);
+                 display: flex; justify-content: space-between; }
+    .list-head .count { color: var(--muted); font-weight: 400; }
+    #features { padding: 4px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
+    #features div { padding: 2px 12px; }
+    #parts { list-style: none; margin: 0; padding: 4px 0; overflow-y: auto; flex: 1; user-select: none; }
+    #parts li { display: flex; align-items: center; gap: 8px; padding: 3px 12px; cursor: pointer; }
+    #parts li:hover { background: var(--hover); }
+    #parts li.selected { background: var(--select); color: var(--select-ink); }
+    #parts li .icon { width: 12px; height: 12px; border: 1px solid #8a96a3; border-radius: 2px;
+                      background: linear-gradient(135deg, #c9d3dd, #8a96a3); flex: none; }
+    #parts li .size { margin-left: auto; color: var(--muted); font-size: 11px; }
+    #parts li.selected .size { color: var(--select-ink); }
+    #parts .empty { color: var(--muted); cursor: default; }
+    #parts .empty:hover { background: none; }
+
+    #graphics { flex: 1; min-width: 0; position: relative;
+                background: linear-gradient(var(--graphics-top), var(--graphics-bottom));
+                display: flex; align-items: center; justify-content: center; }
+    #graphics.dragging { outline: 3px dashed var(--accent); outline-offset: -12px; }
+    #drop { text-align: center; color: var(--muted); max-width: 360px; padding: 12px; }
+    #drop strong { color: var(--ink); display: block; font-size: 15px; margin-bottom: 6px; }
+    #messages { position: absolute; left: 12px; bottom: 12px; right: 12px; color: #a1260d;
+                white-space: pre-line; }
+
+    #right { width: var(--panel-width); flex: none; background: #fff; border-left: 1px solid var(--line);
+             display: flex; flex-direction: column; min-height: 0; }
+    #right-head { height: 30px; flex: none; display: flex; align-items: center; padding: 0 10px;
+                  border-bottom: 1px solid var(--line); font-weight: 600; }
+    #panel { flex: 1; width: 100%; border: 0; display: block; background: #fff; }
+    #strip { width: 36px; flex: none; background: #fff; border-left: 1px solid var(--line);
+             display: flex; flex-direction: column; align-items: center; padding-top: 6px; gap: 6px; }
+    #strip .app { width: 26px; height: 26px; border-radius: 4px; background: var(--accent); color: #fff;
+                  font-weight: 700; font-size: 12px; display: flex; align-items: center;
+                  justify-content: center; }
+
+    #tabs { display: flex; align-items: stretch; background: #e9ebee; border-top: 1px solid var(--line); }
+    .tab { padding: 0 14px; display: flex; align-items: center; background: #fff;
+           border-right: 1px solid var(--line); font-weight: 600; }
+
+    #dialog-back { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.3); display: flex;
+                   align-items: center; justify-content: center; }
+    #dialog-back[hidden] { display: none; }
+    #dialog { width: 420px; max-height: 70vh; background: #fff; border-radius: 4px;
+              box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); display: flex; flex-direction: column; }
+    #dialog h2 { margin: 0; padding: 10px 14px; font-size: 14px; border-bottom: 1px solid var(--line); }
+    #dialog p { margin: 8px 14px; color: var(--muted); }
+    #dialog-parts { list-style: none; margin: 0; padding: 4px 0; overflow-y: auto; }
+    #dialog-parts li { padding: 5px 14px; cursor: pointer; display: flex; gap: 8px; }
+    #dialog-parts li:hover { background: var(--hover); }
+    #dialog-parts li.picked::after { content: "added"; margin-left: auto; color: var(--muted); }
+    #dialog footer { padding: 10px 14px; border-top: 1px solid var(--line); text-align: right; }
+  </style>
+</head>
+<body>
+  <header id="topbar">
+    <span id="logo">onshape</span>
+    <span id="doc-name">Test Bed Document</span>
+    <span id="badge">PenguinCAM local test bed, not Onshape</span>
+    <span class="spacer"></span>
+    <span id="user">Test Bed Owner</span>
+  </header>
+
+  <div id="toolbar">
+    <button type="button" class="tool primary" id="btn-upload">Upload STL&hellip;</button>
+    <input type="file" id="file-input" accept=".stl,model/stl" multiple hidden>
+    <button type="button" class="tool" id="btn-clear">Remove all parts</button>
+    <button type="button" class="tool" id="btn-reload">Reload panel</button>
+    <span class="hint">Click a part to select it; Shift or Ctrl click to select several.</span>
+  </div>
+
+  <div id="main">
+    <aside id="left" aria-label="Feature list">
+      <div class="list-head">Features <span class="count">(0)</span></div>
+      <div id="features"><div>Default geometry</div></div>
+      <div class="list-head">Parts <span class="count" id="parts-count">(0)</span></div>
+      <ul id="parts" aria-label="Parts"></ul>
+    </aside>
+
+    <section id="graphics" aria-label="Graphics area">
+      <div id="drop">
+        <strong>Drop STL files here</strong>
+        Each file becomes a part of this Part Studio, named from its file name. STL files are
+        read as millimetres. Then select parts in the Parts list, as you would click them in
+        Onshape.
+      </div>
+      <div id="messages" aria-live="polite"></div>
+    </section>
+
+    <aside id="right" aria-label="Right panel">
+      <div id="right-head">PenguinCAM</div>
+      <!-- the panel iframe is added by local.js once the stand-in user is signed in -->
+    </aside>
+    <nav id="strip" aria-label="Applications"><span class="app" title="PenguinCAM">P</span></nav>
+  </div>
+
+  <footer id="tabs"><span class="tab">Part Studio 1</span></footer>
+
+  <div id="dialog-back" hidden>
+    <div id="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+      <h2 id="dialog-title">Select parts</h2>
+      <p>Pick parts to insert. Each pick is sent at once; Close when done.</p>
+      <ul id="dialog-parts"></ul>
+      <footer><button type="button" class="tool primary" id="dialog-close">Close</button></footer>
+    </div>
+  </div>
+
+  <script src="/testbed/local/onshape_shapes.js"></script>
+  <script src="/testbed/local/local.js"></script>
+</body>
+</html>
