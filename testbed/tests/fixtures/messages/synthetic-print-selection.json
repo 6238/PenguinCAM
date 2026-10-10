@@ -1,0 +1,472 @@
+{
+ "scenario": "synthetic-print-selection",
+ "steps": [
+  {
+   "events": [
+    {
+     "data": {
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "messageName": "applicationInit",
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "out",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 0
+    },
+    {
+     "data": {
+      "bodyTypeSpecifier": [
+       "SOLID"
+      ],
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "entityTypeSpecifier": [
+       "BODY"
+      ],
+      "filterType": "simple",
+      "messageId": "penguincam-print-1",
+      "messageName": "requestSelection",
+      "requiredSelectionCount": 1,
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "out",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 10
+    },
+    {
+     "data": {
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "messageId": "penguincam-print-1",
+      "messageName": "REQUESTED_SELECTION",
+      "selections": [],
+      "status": {
+       "statusCode": "PENDING"
+      },
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "in",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 40
+    }
+   ],
+   "step": "open parts"
+  },
+  {
+   "events": [
+    {
+     "data": {
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "messageId": "penguincam-print-1",
+      "messageName": "REQUESTED_SELECTION",
+      "selections": [
+       {
+        "elementId": "e00000000000000000000001",
+        "entityType": "BODY",
+        "partId": "JHD",
+        "selectionId": "JHD",
+        "selectionType": "ENTITY",
+        "workspaceMicroversionId": "c00000000000000000000001"
+       }
+      ],
+      "status": {
+       "statusCode": "SUCCESS"
+      },
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "in",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 1000
+    },
+    {
+     "data": {
+      "bodyTypeSpecifier": [
+       "SOLID"
+      ],
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "entityTypeSpecifier": [
+       "BODY"
+      ],
+      "filterType": "simple",
+      "messageId": "penguincam-print-2",
+      "messageName": "requestSelection",
+      "requiredSelectionCount": 1,
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "out",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 1010
+    }
+   ],
+   "step": "click a part by part id"
+  },
+  {
+   "events": [
+    {
+     "data": {
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "messageId": "penguincam-print-2",
+      "messageName": "REQUESTED_SELECTION",
+      "selections": [
+       {
+        "elementId": "e00000000000000000000001",
+        "entityType": "BODY",
+        "selectionId": "JKD",
+        "selectionType": "ENTITY",
+        "workspaceMicroversionId": "c00000000000000000000001"
+       }
+      ],
+      "status": {
+       "statusCode": "SUCCESS"
+      },
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "in",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 2000
+    },
+    {
+     "data": {
+      "bodyTypeSpecifier": [
+       "SOLID"
+      ],
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "entityTypeSpecifier": [
+       "BODY"
+      ],
+      "filterType": "simple",
+      "messageId": "penguincam-print-3",
+      "messageName": "requestSelection",
+      "requiredSelectionCount": 1,
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "out",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 2010
+    }
+   ],
+   "step": "click a part by selection id"
+  },
+  {
+   "events": [
+    {
+     "data": {
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "messageId": "penguincam-print-3",
+      "messageName": "REQUESTED_SELECTION",
+      "selections": [
+       {
+        "elementId": "e00000000000000000000001",
+        "entityId": "JKD",
+        "entityType": "BODY",
+        "selectionType": "ENTITY",
+        "workspaceMicroversionId": "c00000000000000000000001"
+       }
+      ],
+      "status": {
+       "statusCode": "SUCCESS"
+      },
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "in",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 3000
+    },
+    {
+     "data": {
+      "bodyTypeSpecifier": [
+       "SOLID"
+      ],
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "entityTypeSpecifier": [
+       "BODY"
+      ],
+      "filterType": "simple",
+      "messageId": "penguincam-print-4",
+      "messageName": "requestSelection",
+      "requiredSelectionCount": 1,
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "out",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 3010
+    }
+   ],
+   "step": "click a part by entity id"
+  },
+  {
+   "events": [
+    {
+     "data": {
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "messageId": "penguincam-print-4",
+      "messageName": "REQUESTED_SELECTION",
+      "selections": [
+       {
+        "bodyId": "JHD",
+        "elementId": "e00000000000000000000001",
+        "entityType": "BODY",
+        "name": "Box",
+        "selectionType": "ENTITY",
+        "workspaceMicroversionId": "c00000000000000000000001"
+       }
+      ],
+      "status": {
+       "statusCode": "SUCCESS"
+      },
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "in",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 4000
+    },
+    {
+     "data": {
+      "bodyTypeSpecifier": [
+       "SOLID"
+      ],
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "entityTypeSpecifier": [
+       "BODY"
+      ],
+      "filterType": "simple",
+      "messageId": "penguincam-print-5",
+      "messageName": "requestSelection",
+      "requiredSelectionCount": 1,
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "out",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 4010
+    }
+   ],
+   "step": "click a part by body id"
+  },
+  {
+   "events": [
+    {
+     "data": {
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "messageId": "penguincam-print-5",
+      "messageName": "REQUESTED_SELECTION",
+      "selections": [
+       {
+        "elementId": "e00000000000000000000001",
+        "entityType": "BODY",
+        "occurrence": {
+         "path": [
+          "MboxInstance1aaaa"
+         ]
+        },
+        "selectionId": "JHD",
+        "selectionType": "ENTITY",
+        "workspaceMicroversionId": "c00000000000000000000001"
+       }
+      ],
+      "status": {
+       "statusCode": "SUCCESS"
+      },
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "in",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 5000
+    },
+    {
+     "data": {
+      "bodyTypeSpecifier": [
+       "SOLID"
+      ],
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "entityTypeSpecifier": [
+       "BODY"
+      ],
+      "filterType": "simple",
+      "messageId": "penguincam-print-6",
+      "messageName": "requestSelection",
+      "requiredSelectionCount": 1,
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "out",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 5010
+    }
+   ],
+   "step": "click a part in an assembly"
+  },
+  {
+   "events": [
+    {
+     "data": {
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "messageId": "penguincam-print-6",
+      "messageName": "REQUESTED_SELECTION",
+      "selections": [],
+      "status": {
+       "statusCode": "SUCCESS"
+      },
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "in",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 6000
+    },
+    {
+     "data": {
+      "bodyTypeSpecifier": [
+       "SOLID"
+      ],
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "entityTypeSpecifier": [
+       "BODY"
+      ],
+      "filterType": "simple",
+      "messageId": "penguincam-print-7",
+      "messageName": "requestSelection",
+      "requiredSelectionCount": 1,
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "out",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 6010
+    }
+   ],
+   "step": "deselect"
+  },
+  {
+   "events": [
+    {
+     "data": {
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "messageName": "SELECTION",
+      "selections": [
+       {
+        "elementId": "e00000000000000000000001",
+        "entityType": "BODY",
+        "partId": "JSD",
+        "selectionType": "ENTITY",
+        "workspaceMicroversionId": "c00000000000000000000001"
+       }
+      ],
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "in",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 6500
+    }
+   ],
+   "step": "a generic selection event"
+  },
+  {
+   "events": [
+    {
+     "data": {
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "messageName": "openSelectItemDialog",
+      "selectMultiple": true,
+      "selectParts": true,
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "out",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 7000
+    }
+   ],
+   "step": "open the part dialog"
+  },
+  {
+   "events": [
+    {
+     "data": {
+      "documentId": "d00000000000000000000002",
+      "elementConfiguration": "",
+      "elementId": "e00000000000000000000003",
+      "elementType": "PARTSTUDIO",
+      "idTag": "idTagBox1",
+      "isComposite": false,
+      "isFlattenedBody": false,
+      "isSketch": false,
+      "isSurface": false,
+      "itemType": "PART",
+      "messageName": "itemSelectedInSelectItemDialog",
+      "partName": "Box",
+      "versionId": "b00000000000000000000002"
+     },
+     "dir": "in",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 8000
+    }
+   ],
+   "step": "pick in the dialog"
+  },
+  {
+   "events": [
+    {
+     "data": {
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "messageName": "selectItemDialogClosed",
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "in",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 9000
+    },
+    {
+     "data": {
+      "bodyTypeSpecifier": [
+       "SOLID"
+      ],
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "entityTypeSpecifier": [
+       "BODY"
+      ],
+      "filterType": "simple",
+      "messageId": "penguincam-print-8",
+      "messageName": "requestSelection",
+      "requiredSelectionCount": 1,
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "out",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 9010
+    }
+   ],
+   "step": "close the dialog"
+  },
+  {
+   "events": [
+    {
+     "data": {
+      "documentId": "d00000000000000000000001",
+      "elementId": "e00000000000000000000001",
+      "messageId": "penguincam-print-8",
+      "messageName": "stopRequest",
+      "workspaceId": "a00000000000000000000001"
+     },
+     "dir": "out",
+     "origin": "https://cad.onshape.com",
+     "t_ms": 10000
+    }
+   ],
+   "step": "leave parts"
+  }
+ ],
+ "synthetic": true
+}

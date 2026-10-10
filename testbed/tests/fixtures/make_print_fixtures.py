@@ -1,4 +1,5 @@
-"""Regenerate the print path's synthetic cassettes: one per end-to-end request flow.
+"""Regenerate the print path's synthetic cassettes, one per end-to-end request flow, and
+the synthetic message log of the print page's Parts step.
 
     uv run python testbed/tests/fixtures/make_print_fixtures.py
 
@@ -21,6 +22,7 @@ from print.onshape_parts import STL_PARAMS  # noqa: E402
 from testbed.cassette import Cassette, Exchange  # noqa: E402
 
 CASSETTE_DIR = HERE / 'cassettes'
+MESSAGE_DIR = HERE / 'messages'
 API = '/api/v13'
 
 DID = 'd00000000000000000000001'                  # the open document
@@ -234,10 +236,78 @@ FLOWS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# The Parts step's messages (print/static/print_onshape.js): answer shapes for its node tests
+# ---------------------------------------------------------------------------
+
+ORIGIN = 'https://cad.onshape.com'
+_IDS = {'documentId': DID, 'workspaceId': WID, 'elementId': EID_PS}
+
+
+def _event(direction, t_ms, data, ids=True):
+    return {'dir': direction, 'origin': ORIGIN, 't_ms': t_ms, 'data': dict(_IDS, **data) if ids else data}
+
+
+def _answer(t_ms, message_id, selections, status='SUCCESS'):
+    return _event('in', t_ms, {'messageName': 'REQUESTED_SELECTION', 'messageId': message_id,
+                               'selections': selections, 'status': {'statusCode': status}})
+
+
+def _body(**fields):
+    return dict({'entityType': 'BODY', 'selectionType': 'ENTITY', 'elementId': EID_PS,
+                 'workspaceMicroversionId': MID}, **fields)
+
+
+def _arm(t_ms, n):
+    return _event('out', t_ms, {'messageName': 'requestSelection', 'messageId': f'penguincam-print-{n}',
+                                'filterType': 'simple', 'entityTypeSpecifier': ['BODY'],
+                                'bodyTypeSpecifier': ['SOLID'], 'requiredSelectionCount': 1})
+
+
+def selection_message_log():
+    """Every answer shape the Parts step must read: the field names the CNC code has seen
+    (selectionId, entityId, partId, bodyId) and an assembly occurrence path."""
+    dialog_item = {'messageName': 'itemSelectedInSelectItemDialog', 'documentId': DID2,
+                   'versionId': VID2, 'elementId': EID2, 'elementConfiguration': '',
+                   'elementType': 'PARTSTUDIO', 'itemType': 'PART', 'partName': 'Box',
+                   'idTag': IDTAG, 'isSurface': False, 'isComposite': False, 'isSketch': False,
+                   'isFlattenedBody': False}
+    steps = [
+        ('open parts', [_event('out', 0, {'messageName': 'applicationInit'}), _arm(10, 1),
+                        _answer(40, 'penguincam-print-1', [], 'PENDING')]),
+        ('click a part by part id', [_answer(1000, 'penguincam-print-1',
+                                             [_body(partId=BOX, selectionId=BOX)]), _arm(1010, 2)]),
+        ('click a part by selection id', [_answer(2000, 'penguincam-print-2',
+                                                  [_body(selectionId=CYLINDER)]), _arm(2010, 3)]),
+        ('click a part by entity id', [_answer(3000, 'penguincam-print-3',
+                                               [_body(entityId=CYLINDER)]), _arm(3010, 4)]),
+        ('click a part by body id', [_answer(4000, 'penguincam-print-4',
+                                             [_body(bodyId=BOX, name='Box')]), _arm(4010, 5)]),
+        ('click a part in an assembly', [_answer(5000, 'penguincam-print-5', [_body(
+            selectionId='JHD', occurrence={'path': ['MboxInstance1aaaa']})]), _arm(5010, 6)]),
+        ('deselect', [_answer(6000, 'penguincam-print-6', []), _arm(6010, 7)]),
+        ('a generic selection event', [_event('in', 6500, {'messageName': 'SELECTION',
+                                                           'selections': [_body(partId=LID)]})]),
+        ('open the part dialog', [_event('out', 7000, {'messageName': 'openSelectItemDialog',
+                                                       'selectParts': True, 'selectMultiple': True})]),
+        ('pick in the dialog', [_event('in', 8000, dialog_item, ids=False)]),        # the item's own ids
+        ('close the dialog', [_event('in', 9000, {'messageName': 'selectItemDialogClosed'}),
+                              _arm(9010, 8)]),
+        ('leave parts', [_event('out', 10000, {'messageName': 'stopRequest',
+                                               'messageId': 'penguincam-print-8'})]),
+    ]
+    return {'scenario': 'synthetic-print-selection', 'synthetic': True,
+            'steps': [{'step': name, 'events': events} for name, events in steps]}
+
+
 def main():
     for flow, exchanges in FLOWS.items():
         path = Cassette(f'synthetic-print-{flow}', exchanges, synthetic=True).save(CASSETTE_DIR)
         print(path.relative_to(HERE.parents[2]))
+    log = selection_message_log()
+    path = MESSAGE_DIR / f"{log['scenario']}.json"
+    path.write_text(json.dumps(log, indent=1, sort_keys=True) + '\n')
+    print(path.relative_to(HERE.parents[2]))
 
 
 if __name__ == '__main__':

@@ -50,6 +50,21 @@ class PrintWizardPageTest(unittest.TestCase):
         self.assertIn('data-source="onshape"', html)
         self.assertIn('source: "onshape"', html)
 
+    def test_onshape_parts_step_has_its_buttons_and_scripts(self):
+        html = self.client.get("/print?source=onshape&theme=dark").get_data(as_text=True)
+        self.assertIn("Click a part in Onshape to add it.", html)
+        for el in ("btn-add-from-document", "btn-refresh-parts", "parts-status", "parts-signin"):
+            self.assertIn(f'id="{el}"', html, el)
+        self.assertLess(html.index("print_onshape.js"), html.index("print_wizard.js"))
+        self.assertLess(html.index("wizard.css"), html.index("print_layout.css"))
+        self.assertNotIn("source_onshape.js", html)
+
+    def test_upload_page_has_no_onshape_messaging(self):
+        html = self.client.get("/print?source=upload").get_data(as_text=True)
+        self.assertNotIn("print_onshape.js", html)
+        self.assertNotIn('id="btn-add-from-document"', html)
+        self.assertIn("print_layout.css", html)
+
 
 class CncSetupRadioTest(unittest.TestCase):
     def setUp(self):

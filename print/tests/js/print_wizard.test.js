@@ -96,3 +96,46 @@ test('makePageId returns 12 lowercase hex characters', () => {
   assert.equal(w.makePageId(fake), '0001abcdefff');
   assert.match(w.makePageId(globalThis.crypto), /^[0-9a-f]{12}$/);
 });
+
+const SOURCE = { documentId: 'd1', wvm: 'w', wvmId: 'w1', elementId: 'e1', partId: 'JHD' };
+function part(ref, source, name) {
+  return { ref, name: name || 'Box', size_mm: { x: 10, y: 20, z: 30 }, triangles: 12, source, footprints: {} };
+}
+
+test('addParts ignores a ref already listed', () => {
+  let list = w.addParts([], [part('r1', SOURCE)]);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].quantity, 1);
+  list[0].quantity = 4;
+  const again = w.addParts(list, [part('r1', SOURCE)]);
+  assert.equal(again.length, 1);
+  // A new ref with an identical source is the same part.
+  assert.equal(w.addParts(list, [part('r2', Object.assign({}, SOURCE))]).length, 1);
+  // A configuration makes a different source.
+  const configured = w.addParts(list, [part('r3', Object.assign({ configuration: 'Size=20+mm' }, SOURCE))]);
+  assert.deepEqual(configured.map((p) => [p.ref, p.quantity]), [['r1', 4], ['r3', 1]]);
+  assert.equal(list.length, 1, 'the list passed in is not changed');
+});
+
+test('clampQuantity clamps to 1..max', () => {
+  assert.equal(w.clampQuantity('3', 25), 3);
+  assert.equal(w.clampQuantity(0, 25), 1);
+  assert.equal(w.clampQuantity(-4, 25), 1);
+  assert.equal(w.clampQuantity(31, 30), 30);
+  assert.equal(w.clampQuantity(26, 25), 25);
+  assert.equal(w.clampQuantity('', 25), 1);
+  assert.equal(w.clampQuantity('abc', 25), 1);
+  assert.equal(w.clampQuantity('2.7', 25), 2);
+  assert.equal(w.clampQuantity(null, 25), 1);
+});
+
+test('swapRefreshed keeps quantities and order', () => {
+  const sent = [Object.assign(part('r1', SOURCE), { quantity: 3 }),
+                Object.assign(part('r2', Object.assign({}, SOURCE, { partId: 'JKD' }), 'Cyl'), { quantity: 2 })];
+  const fresh = [part('n1', SOURCE), part('n2', Object.assign({}, SOURCE, { partId: 'JKD' }), 'Cyl')];
+  assert.deepEqual(w.swapRefreshed(sent, sent, fresh).map((p) => [p.ref, p.quantity]), [['n1', 3], ['n2', 2]]);
+  // One part failed to refresh: matched by source, and the other keeps its old ref.
+  assert.deepEqual(w.swapRefreshed(sent, sent, [fresh[1]]).map((p) => [p.ref, p.quantity]), [['r1', 3], ['n2', 2]]);
+  // A part removed while the refresh ran stays removed.
+  assert.deepEqual(w.swapRefreshed([sent[1]], sent, fresh).map((p) => p.ref), ['n2']);
+});

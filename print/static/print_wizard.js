@@ -3,6 +3,10 @@
  * print blueprint (/print/part, /print-job, /print-job/<id>/events) and reuses
  * the download and Google Drive routes. Pure helpers are exported for node tests.
  *
+ * In Onshape mode the Parts step lists parts exported from Onshape: print_onshape.js
+ * (loaded first) does the messaging and hands selections to onPartSelections, which
+ * posts them to /print/onshape/parts.
+ *
  * Every print request carries this page load's page id (X-Print-Page, or pid= on
  * the EventSource and polling URLs), which the server writes into its [PRINT] log
  * lines. Every error the student sees goes through showError, which also reports it.
@@ -18,6 +22,8 @@
   var RATE_MESSAGE = 'Too many slices in a minute, try again shortly.';
   var MIN_CANVAS_W = 120;   // floor for the fitted layout canvas, in CSS pixels
   var STATUS_LINES = { preview: '#gen-status' };   // the status line a step's error replaces
+  var ONSHAPE = CFG.source === 'onshape';
+  var DEFAULT_MAX_QUANTITY = 25;     // limits.MAX_QUANTITY, until /print/page sends the limits
 
   var state = {
     pid: HAS_DOM && typeof window !== 'undefined' && window.crypto ? makePageId(window.crypto) : null,
@@ -32,6 +38,8 @@
     events: null,        // EventSource
     poll: null,          // polling timer (fallback)
     saveAction: 'download',
+    parts: [],           // Onshape mode: [{ref, name, size_mm, triangles, source, footprints, quantity}]
+    limits: null,        // limits_for_browser(), once the server sends them
   };
   var viewer = null;
   var resizeTimer = null;   // window.resize debounce for the layout canvas
@@ -107,6 +115,59 @@
     return 'Part is larger than the bed: ' + size.x + ' x ' + size.y + ' x ' + size.z + ' mm on ' +
            bed.x + ' x ' + bed.y + ' x ' + height + ' mm.';
   }
+
+  // What makes two listed parts the same part (PartSource.key() on the server).
+  function sourceKey(source) {
+    var s = source || {};
+    return [s.documentId, s.wvmId, s.elementId, s.partId, s.configuration || ''].join('|');
+  }
+
+  // A new list: `list` plus each incoming part whose ref and source are not listed yet,
+  // at quantity 1. The server answers a part already stored with its existing ref.
+  function addParts(list, incoming) {
+    var out = list.slice();
+    var refs = {}, keys = {};
+    out.forEach(function (p) { refs[p.ref] = true; keys[sourceKey(p.source)] = true; });
+    (incoming || []).forEach(function (p) {
+      var key = sourceKey(p.source);
+      if (refs[p.ref] || keys[key]) return;
+      refs[p.ref] = true;
+      keys[key] = true;
+      out.push({ ref: p.ref, name: p.name, size_mm: p.size_mm, triangles: p.triangles, source: p.source,
+                 footprints: p.footprints, quantity: 1 });
+    });
+    return out;
+  }
+
+  // An integer quantity from 1 to max; blank or not a number is 1.
+  function clampQuantity(value, max) {
+    var n = Math.floor(Number(value === '' || value == null ? NaN : value));
+    if (!isFinite(n) || n < 1) return 1;
+    return Math.min(n, max);
+  }
+
+  // After a refresh: each part of `current` that was `sent` takes its new ref, size and
+  // footprints, keeping its quantity. The answer is in the order sent; when a part failed
+  // and the counts differ, parts are matched by source instead, and an unmatched part keeps
+  // its old ref (still readable until it expires). Parts removed meanwhile stay removed.
+  function swapRefreshed(current, sent, incoming) {
+    var byRef = {};
+    if (incoming.length === sent.length) {
+      sent.forEach(function (p, i) { byRef[p.ref] = incoming[i]; });
+    } else {
+      var byKey = {};
+      incoming.forEach(function (p) { byKey[sourceKey(p.source)] = p; });
+      sent.forEach(function (p) { if (byKey[sourceKey(p.source)]) byRef[p.ref] = byKey[sourceKey(p.source)]; });
+    }
+    return current.map(function (p) {
+      var n = byRef[p.ref];
+      if (!n) return p;
+      return { ref: n.ref, name: n.name, size_mm: n.size_mm, triangles: n.triangles, source: n.source,
+               footprints: n.footprints, quantity: p.quantity };
+    });
+  }
+
+  function sizeText(size) { return size.x + ' x ' + size.y + ' x ' + size.z + ' mm'; }
 
   /* ------------------------------------------- print requests and errors */
   // fetch for a print route: the Flask session cookie and the page id header.
@@ -198,6 +259,125 @@
     meta.appendChild(dims);
     li.appendChild(meta);
     list.appendChild(li);
+  }
+
+  function maxQuantity() {
+    return (state.limits && state.limits.max_quantity) || DEFAULT_MAX_QUANTITY;
+  }
+
+  function messenger() {
+    return (typeof window !== 'undefined' && window.PenguinCAM && window.PenguinCAM.onshapeMessenger) || null;
+  }
+
+  // Onshape mode: one row per listed part with its size, a quantity and a remove button.
+  function renderParts() {
+    var list = $('#parts-list');
+    list.innerHTML = '';
+    state.parts.forEach(function (p) {
+      var li = document.createElement('li');
+      li.className = 'part-item';
+      var meta = document.createElement('div');
+      meta.className = 'meta';
+      var name = document.createElement('div');
+      name.className = 'name';
+      name.textContent = p.name;
+      name.title = p.name;
+      var dims = document.createElement('div');
+      dims.className = 'dims';
+      dims.textContent = sizeText(p.size_mm);
+      meta.appendChild(name);
+      meta.appendChild(dims);
+      var qty = document.createElement('input');
+      qty.type = 'number';
+      qty.className = 'part-qty';
+      qty.min = '1';
+      qty.max = String(maxQuantity());
+      qty.step = '1';
+      qty.value = String(p.quantity);
+      qty.setAttribute('aria-label', 'Copies of ' + p.name);
+      qty.addEventListener('change', function () {
+        p.quantity = clampQuantity(qty.value, maxQuantity());
+        qty.value = String(p.quantity);
+        updateSummary();
+      });
+      var remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'remove';
+      remove.textContent = '\u00d7';
+      remove.setAttribute('aria-label', 'Remove ' + p.name);
+      remove.addEventListener('click', function () {
+        state.parts = state.parts.filter(function (q) { return q.ref !== p.ref; });
+        renderParts();
+      });
+      li.appendChild(meta);
+      li.appendChild(qty);
+      li.appendChild(remove);
+      list.appendChild(li);
+    });
+    $('#btn-refresh-parts').disabled = state.parts.length === 0;
+    if (state.step === 'parts') $('#btn-next').disabled = !canLeave('parts');
+    updateSummary();
+  }
+
+  // The sign-in link sits next to the parts error line, never inside it.
+  function showSigninLink(show) {
+    var link = $('#parts-signin');
+    if (!link) return;
+    link.href = CFG.returnUrl;
+    link.hidden = !show;
+  }
+
+  // Post selections to the server. Every error comes back as a sentence; each is shown,
+  // and the last stays visible. A refresh swaps its answer in for the parts it sent.
+  function requestParts(selections, via, sent) {
+    var body = { context: CFG.onshape, via: via, selections: selections };
+    if (via === 'refresh') body.replace = sent.map(function (p) { return p.ref; });
+    $('#parts-status').textContent = via === 'refresh' ? 'Refreshing from Onshape\u2026' : 'Adding\u2026';
+    return postJson('/print/onshape/parts', body)
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, j: j }; });
+      })
+      .then(function (res) {
+        $('#parts-status').textContent = '';
+        if (res.status === 401 && res.j.code === 'signin_expired') {
+          showError('parts', res.j.error, 'signin_expired');
+          showSigninLink(true);
+          return;
+        }
+        if (res.status !== 200) {
+          showError('parts', res.j.error || 'Could not add the part (HTTP ' + res.status + ').', 'status_' + res.status);
+          return;
+        }
+        showSigninLink(false);
+        var errors = res.j.errors || [], parts = res.j.parts || [];
+        if (via === 'refresh') state.parts = swapRefreshed(state.parts, sent, parts);
+        else state.parts = addParts(state.parts, parts);
+        if (errors.length) errors.forEach(function (e) { showError('parts', e.message, 'select'); });
+        else clearError('parts');
+        renderParts();
+      })
+      .catch(function (e) {
+        $('#parts-status').textContent = '';
+        showError('parts', 'Could not reach the server: ' + e.message, 'network');
+      });
+  }
+
+  function refreshParts() {
+    var sent = state.parts.slice();
+    if (!sent.length) return;
+    requestParts(sent.map(function (p) { return { source: p.source, name: p.name }; }), 'refresh', sent);
+  }
+
+  function bindParts() {
+    if (!ONSHAPE) return;
+    window.PenguinCAM.onPartSelections = function (selections, via) { requestParts(selections, via); };
+    $('#btn-add-from-document').addEventListener('click', function () {
+      var m = messenger();
+      if (m) m.openDialog();
+    });
+    $('#btn-refresh-parts').addEventListener('click', refreshParts);
+    renderParts();
+    if (CFG.onshapeError) showError('parts', CFG.onshapeError, 'context');
   }
 
   /* ---------------------------------------------------------------- layout */
@@ -304,7 +484,11 @@
     var box = $('#wiz-summary'), i = state.info, chips = [];
     var idx = STEPS.indexOf(state.step);
     if (i && idx >= STEPS.indexOf('parts')) chips.push(i.printer.name, i.filament.name, i.process.name);
-    if (i && idx >= STEPS.indexOf('layout')) chips.push('1 part');
+    if (ONSHAPE && idx >= STEPS.indexOf('layout') && state.parts.length) {
+      var copies = state.parts.reduce(function (n, p) { return n + p.quantity; }, 0);
+      chips.push(state.parts.length + (state.parts.length === 1 ? ' part, ' : ' parts, ') +
+                 copies + (copies === 1 ? ' copy' : ' copies'));
+    } else if (!ONSHAPE && i && idx >= STEPS.indexOf('layout')) chips.push('1 part');
     if (idx >= STEPS.indexOf('preview') && state.record && state.record.summary) {
       var s = state.record.summary;
       if (s.print_time_s != null) chips.push(formatDuration(s.print_time_s));
@@ -341,17 +525,21 @@
     $('#btn-next').hidden = isPreview;
     $('#final-action').hidden = !isPreview;
     if (leaving === 'preview' && !isPreview) stopFollowing();
+    var m = ONSHAPE ? messenger() : null;
+    if (m && leaving === 'parts' && name !== 'parts') m.leaveParts();
+    if (m && name === 'parts' && (leaving !== 'parts' || !m.isActive())) m.enterParts();
     if (name === 'layout') {
       if (state.info) { fillLayoutInfo(); drawLayout(); }
       $('#btn-next').disabled = !state.fits;
     } else {
-      $('#btn-next').disabled = false;
+      $('#btn-next').disabled = !canLeave(name);
     }
     if (isPreview) enterPreview();
     updateSummary();
   }
 
   function canLeave(name) {
+    if (name === 'parts' && ONSHAPE && state.parts.length === 0) return false;
     if (name === 'layout' && !state.fits) return false;
     return true;
   }
@@ -388,7 +576,7 @@
       .then(function (info) {
         state.info = info;
         fillSetup();
-        fillParts();
+        if (!ONSHAPE) fillParts();      // Onshape mode lists the student's parts instead
         fillLayoutInfo();
         // Part info arrives after gotoStep ran, so the layout gate needs re-applying:
         // a too-big part must disable Next even if the student is already on Layout.
@@ -703,6 +891,7 @@
     bindNav();
     bindPreview();
     bindFinalAction();
+    bindParts();
     if (state.source === 'upload') {
       $('#wizard').classList.add('grid');
       var opt25 = $('#opt-mode-25d'); if (opt25) opt25.hidden = true;
@@ -741,6 +930,8 @@
     module.exports = { formatDuration: formatDuration, fitsBed: fitsBed, summaryLine: summaryLine,
                        fitCanvasSize: fitCanvasSize,
                        printPageUrl: printPageUrl, statusText: statusText, tooBigMessage: tooBigMessage,
-                       errorForStatus: errorForStatus, appendNote: appendNote, makePageId: makePageId };
+                       errorForStatus: errorForStatus, appendNote: appendNote, makePageId: makePageId,
+                       addParts: addParts, clampQuantity: clampQuantity, swapRefreshed: swapRefreshed,
+                       sourceKey: sourceKey };
   }
 })();

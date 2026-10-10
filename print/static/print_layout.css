@@ -1,0 +1,15 @@
+/* The print page's own styles, loaded after the shared static/wizard.css. Uses that
+ * file's theme variables, so both themes follow. */
+
+/* Parts step (Onshape mode) */
+.parts-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+#parts-status:empty { display: none; }
+#parts-status { margin-top: 8px; }
+.part-item .part-qty {
+  width: 56px;
+  flex: 0 0 auto;
+  padding: 4px 6px;
+  font-size: 13px;
+}
+.parts-signin { display: inline-block; margin-top: 6px; font-size: 13px; color: var(--accent); }
+.parts-signin[hidden] { display: none; }

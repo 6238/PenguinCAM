@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PenguinCAM — 3D Printing</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='wizard.css') }}">
+    <link rel="stylesheet" href="{{ url_for('print.static', filename='print_layout.css') }}">
 </head>
 <body data-source="{{ source }}" data-return="{{ return_url }}">
     <div id="wizard">
@@ -57,9 +58,19 @@
             <!-- ===== PARTS ===== -->
             <section class="step" data-step="parts" hidden>
                 <h2>Parts</h2>
+                {% if source == 'onshape' %}
+                <p class="hint">Click a part in Onshape to add it.</p>
+                <div class="parts-actions">
+                    <button type="button" class="btn small" id="btn-add-from-document">Add from another document…</button>
+                    <button type="button" class="btn small" id="btn-refresh-parts" disabled>Refresh from Onshape</button>
+                </div>
+                <div id="parts-status" class="hint" aria-live="polite"></div>
+                {% else %}
                 <p class="hint">This release prints the built-in sample part. Exporting from Onshape comes next.</p>
+                {% endif %}
                 <ul id="parts-list" aria-live="polite"></ul>
                 <div id="parts-errors" class="errors" aria-live="polite"></div>
+                {% if source == 'onshape' %}<a id="parts-signin" class="parts-signin" href="{{ return_url }}" hidden>Back to PenguinCAM to Connect</a>{% endif %}
             </section>
 
             <!-- ===== LAYOUT ===== -->
@@ -122,6 +133,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="{{ url_for('print.static', filename='print_viewer.js') }}"></script>
+    {% if source == 'onshape' %}<script src="{{ url_for('print.static', filename='print_onshape.js') }}"></script>{% endif %}
     <script src="{{ url_for('print.static', filename='print_wizard.js') }}"></script>
     <script src="{{ url_for('print.static', filename='printer_panel.js') }}"></script>
     {% if testbed_mode %}<script src="/testbed/panel.js" data-mode="{{ testbed_mode }}"></script>{% endif %}
