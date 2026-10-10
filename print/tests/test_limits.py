@@ -1,10 +1,8 @@
 """The print path's numeric limits and the plate-measurement script (no Orca run)."""
 import math
-import re
 import sys
 import tempfile
 import unittest
-import zipfile
 from pathlib import Path
 
 from print import limits
@@ -13,7 +11,8 @@ from print.slicer import _binary_triangle_count
 REPO = Path(__file__).resolve().parents[2]        # the repository root
 sys.path.insert(0, str(REPO / "print" / "scripts"))
 
-from measure_plate import hub_mesh, hub_stl, plate_parts, write_measure_3mf  # noqa: E402
+from measure_plate import hub_mesh, hub_stl, plate_layout, plate_parts  # noqa: E402
+from print.plate_3mf import write_plate_3mf  # noqa: E402
 
 
 class LimitsTest(unittest.TestCase):
@@ -71,25 +70,15 @@ class MeasurePlateTest(unittest.TestCase):
         self.assertEqual(copies, math.ceil(limits.MAX_JOB_TRIANGLES / limits.MAX_PART_TRIANGLES))
         self.assertEqual(plate_parts("max-part", part_triangles=50_000), (6, 50_000))
 
-    def test_measure_3mf_one_object_per_copy(self):
-        centres = [(40.0, 40.0), (90.0, 40.0), (140.5, 90.25)]
+    def test_measure_plate_goes_through_the_plate_writer(self):
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "plate.3mf"
-            names = write_measure_3mf(path, hub_stl(200), centres)
-            with zipfile.ZipFile(path) as zf:
-                entries = set(zf.namelist())
-                model = zf.read("3D/3dmodel.model").decode("utf-8")
+            stl_path = Path(tmp) / "hub.stl"
+            stl_path.write_bytes(hub_stl(200))
+            copies, parts = plate_layout(stl_path, 3)
+            names = write_plate_3mf(Path(tmp) / "plate.3mf", copies, parts)
         self.assertEqual(names, ["Hub #1", "Hub #2", "Hub #3"])
-        self.assertTrue({"[Content_Types].xml", "_rels/.rels", "3D/3dmodel.model"} <= entries)
-        self.assertIn('unit="millimeter"', model)
-        objects = re.findall(r'<object id="(\d+)"[^>]*name="([^"]*)"', model)
-        self.assertEqual([n for _id, n in objects], names)
-        items = re.findall(r'<item objectid="(\d+)" transform="([^"]*)"', model)
-        self.assertEqual([i for i, _t in items], [i for i, _n in objects])
-        for (_id, transform), (x, y) in zip(items, centres):
-            values = [float(v) for v in transform.split()]
-            self.assertEqual(values[:9], [1, 0, 0, 0, 1, 0, 0, 0, 1])
-            self.assertEqual(values[9:], [x, y, 0.0])
+        self.assertEqual([(c["x"], c["y"]) for c in copies], [(40.0, 40.0), (90.0, 40.0), (140.0, 40.0)])
+        self.assertTrue(all(c["orientation"] == "+z" and c["angle"] == 0 for c in copies))
 
 
 if __name__ == "__main__":

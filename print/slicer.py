@@ -13,6 +13,8 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .limits import PLATE_SLICE_TIMEOUT_S
+
 PKG = Path(__file__).resolve().parent      # the print/ directory
 REPO = PKG.parent
 ORCA_BIN = REPO / "tools" / "orca" / "orca-slicer"
@@ -26,6 +28,17 @@ DETAIL_LINES = 20
 GCODE_HEAD_BYTES = 4096       # enough for Orca's header block
 BINARY_HEADER_BYTES = 84      # 80-byte comment plus a uint32 triangle count
 BINARY_TRIANGLE_BYTES = 50    # 12 floats plus a uint16 attribute word
+PLATE_ARCHIVE = "plate" + ARCHIVE_SUFFIX
+SLICE_FAILED_MESSAGE = "The slicer could not process this part."
+# Orca's return codes for a plate it refused (observed with Orca 2.4.2, --arrange 0).
+# A part entirely off the plate is not among them: Orca leaves it out silently, which
+# print/plate_3mf.py's name guard catches.
+ORCA_CODE_MESSAGES = {
+    -101: "Parts are too close together; spread them out.",
+    -52: "A part crosses the edge of the plate.",
+    -100: "A part has no flat face on the plate; choose another Lay flat.",
+    -50: "No part is fully on the plate.",
+}
 # Orca gets only these variables from the server's environment; anything else
 # (tokens, client secrets) stays out of the subprocess. The wrapper
 # tools/orca/orca-slicer sets APPDIR and LD_LIBRARY_PATH itself.
@@ -45,7 +58,8 @@ class SliceError(Exception):
 
     `message` is one sentence fit for the student; `details` is the last
     twenty lines of Orca's output (or the archive listing) for the server log;
-    `code` is Orca's exit code, "timeout", or None when Orca did not report one.
+    `code` is Orca's exit code (slice_stl) or its return code (slice_plate), "timeout",
+    or None when Orca did not report one.
     """
 
     def __init__(self, message, details="", code=None):
@@ -70,6 +84,17 @@ class SliceResult:
                 "warnings": list(self.warnings)}
 
 
+@dataclass(frozen=True)
+class SliceProfiles:
+    printer: Path
+    filament: Path
+    process: Path
+
+
+DEFAULT_PROFILES = SliceProfiles(PROFILE_DIR / "printer.json", PROFILE_DIR / "filament.json",
+                                 PROFILE_DIR / "process.json")
+
+
 def build_command(stl_path, output_dir):
     # Orca runs with cwd=output_dir, so every path handed to it must be
     # absolute: a relative one would be read against the wrong directory.
@@ -86,6 +111,25 @@ def build_command(stl_path, output_dir):
         "--export-3mf", archive_name,
         "--outputdir", str(output_dir),
         str(stl_path),
+    ]
+
+
+def build_plate_command(model_3mf, profiles, output_dir):
+    """The plate's command: placement is the 3MF's, so Orca must neither arrange nor orient
+    (leaving --arrange out arranges). Paths absolute, as in build_command."""
+    model_3mf = Path(model_3mf).resolve()
+    output_dir = Path(output_dir).resolve()
+    return [
+        str(ORCA_BIN),
+        "--datadir", str(output_dir / "datadir"),
+        "--load-settings", f"{Path(profiles.printer).resolve()};{Path(profiles.process).resolve()}",
+        "--load-filaments", str(Path(profiles.filament).resolve()),
+        "--arrange", "0",
+        "--orient", "0",
+        "--slice", "0",
+        "--export-3mf", PLATE_ARCHIVE,
+        "--outputdir", str(output_dir),
+        str(model_3mf),
     ]
 
 
@@ -106,13 +150,10 @@ def orca_env(output_dir):
     return env
 
 
-def slice_stl(stl_path, output_dir, timeout_s=DEFAULT_TIMEOUT_S):
-    """Slice `stl_path` into `output_dir/<stem>.gcode.3mf` and return a SliceResult."""
-    stl_path = Path(stl_path).resolve()
-    output_dir = Path(output_dir).resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
+def _run_orca(cmd, output_dir, timeout_s):
+    """Run Orca in output_dir with its private environment; the completed process and its
+    combined output. Raises SliceError when Orca cannot start or runs out of time."""
     env = orca_env(output_dir)
-    cmd = build_command(stl_path, output_dir)
     try:
         proc = subprocess.run(cmd, env=env, cwd=str(output_dir), capture_output=True, text=True,
                               timeout=timeout_s, stdin=subprocess.DEVNULL)
@@ -124,18 +165,58 @@ def slice_stl(stl_path, output_dir, timeout_s=DEFAULT_TIMEOUT_S):
         if isinstance(captured, bytes):
             captured = captured.decode(errors="replace")
         raise SliceError("The slicer took too long on this part.", _tail(captured), code="timeout")
-    output = (proc.stdout or "") + (proc.stderr or "")
-    if proc.returncode != 0:
-        # The exit code leads, then the last DETAIL_LINES - 1 lines of output:
-        # `details` stays at DETAIL_LINES lines and the code is always visible.
-        raise SliceError("The slicer could not process this part.",
-                         f"exit code {proc.returncode}\n" + _tail(output, DETAIL_LINES - 1),
-                         code=proc.returncode)
-    archive = output_dir / (stl_path.stem + ARCHIVE_SUFFIX)
+    return proc, (proc.stdout or "") + (proc.stderr or "")
+
+
+def _failure_details(exit_code, output):
+    # The exit code leads, then the last DETAIL_LINES - 1 lines of output:
+    # `details` stays at DETAIL_LINES lines and the code is always visible.
+    return f"exit code {exit_code}\n" + _tail(output, DETAIL_LINES - 1)
+
+
+def _result(archive, output_dir, output):
     if not archive.is_file():
         raise SliceError("The slicer produced no output file.", _tail(output))
-    summary = read_summary(archive, output_dir)
-    return SliceResult(output_path=archive, **summary)
+    return SliceResult(output_path=archive, **read_summary(archive, output_dir))
+
+
+def slice_stl(stl_path, output_dir, timeout_s=DEFAULT_TIMEOUT_S):
+    """Slice `stl_path` into `output_dir/<stem>.gcode.3mf` and return a SliceResult."""
+    stl_path = Path(stl_path).resolve()
+    output_dir = Path(output_dir).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    proc, output = _run_orca(build_command(stl_path, output_dir), output_dir, timeout_s)
+    if proc.returncode != 0:
+        raise SliceError(SLICE_FAILED_MESSAGE, _failure_details(proc.returncode, output), code=proc.returncode)
+    return _result(output_dir / (stl_path.stem + ARCHIVE_SUFFIX), output_dir, output)
+
+
+def orca_return_code(output_dir, exit_code):
+    """Orca's own return code: result.json's return_code, else the exit status read as a
+    negative byte (exit 155 is -101), else None."""
+    try:
+        data = json.loads((Path(output_dir) / "result.json").read_text(encoding="utf-8"))
+        code = data.get("return_code")
+        if isinstance(code, int) and not isinstance(code, bool) and code != 0:
+            return code
+    except (OSError, ValueError, AttributeError):
+        pass
+    if exit_code > 127:
+        return exit_code - 256
+    return None
+
+
+def slice_plate(model_3mf, profiles, output_dir, timeout_s=PLATE_SLICE_TIMEOUT_S):
+    """Slice a plate 3MF (print/plate_3mf.py) into `output_dir/plate.gcode.3mf` with the
+    placement as written; return a SliceResult."""
+    output_dir = Path(output_dir).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    proc, output = _run_orca(build_plate_command(model_3mf, profiles, output_dir), output_dir, timeout_s)
+    if proc.returncode != 0:
+        code = orca_return_code(output_dir, proc.returncode)
+        raise SliceError(ORCA_CODE_MESSAGES.get(code, SLICE_FAILED_MESSAGE),
+                         _failure_details(proc.returncode, output), code)
+    return _result(output_dir / PLATE_ARCHIVE, output_dir, output)
 
 
 def _float(value):

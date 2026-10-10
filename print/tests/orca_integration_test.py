@@ -115,6 +115,68 @@ class ProfileDriftTest(unittest.TestCase):
                             f"run `uv run python print/scripts/flatten_orca_profiles.py`")
 
 
+class PlateSliceTest(unittest.TestCase):
+    """Plates written by print/plate_3mf.py and sliced with --arrange 0 --orient 0."""
+
+    def setUp(self):
+        from print.tests.test_plate_3mf import make_part
+        self.tmp = Path(tempfile.mkdtemp(prefix="orca-plate-")).resolve()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.stls = self.tmp / "stls"
+        self.stls.mkdir()
+        self.make_part = lambda *args, **kwargs: make_part(self.stls, *args, **kwargs)
+
+    def write(self, copies, parts):
+        from print.plate_3mf import write_plate_3mf
+        model = self.tmp / "plate.3mf"
+        return model, write_plate_3mf(model, copies, parts)
+
+    def test_two_part_placement_slices_with_every_name(self):
+        from print.plate_3mf import plate_object_names
+        from print.slicer import DEFAULT_PROFILES, slice_plate
+        from print.tests.test_plate_3mf import cylinder_part
+        parts = {"a": self.make_part("Bracket", (30, 12, 6)), "b": cylinder_part(self.stls, "Spacer", 8, 10)}
+        copies = [{"ref": "a", "orientation": "+z", "angle": 0, "x": 80.0, "y": 80.0},
+                  {"ref": "a", "orientation": "+x", "angle": 45, "x": 150.0, "y": 80.0},
+                  {"ref": "b", "orientation": "+z", "angle": 0, "x": 220.0, "y": 200.0}]
+        model, names = self.write(copies, parts)
+        result = slice_plate(model, DEFAULT_PROFILES, self.tmp / "out")
+        self.assertEqual(sorted(plate_object_names(result.output_path)), sorted(names))
+        self.assertEqual(names, ["Bracket #1", "Bracket #2", "Spacer #1"])
+        self.assertGreater(result.layer_count, 0)
+
+    def test_rotated_footprint_matches_without_brim(self):
+        from print.plate import copy_hull
+        from print.slicer import PROFILE_DIR, SliceProfiles, slice_plate
+        process = json.loads((PROFILE_DIR / "process.json").read_text())
+        process["brim_type"] = "no_brim"
+        (self.tmp / "process.json").write_text(json.dumps(process, indent=4))
+        profiles = SliceProfiles(PROFILE_DIR / "printer.json", PROFILE_DIR / "filament.json",
+                                 self.tmp / "process.json")
+        parts = {"a": self.make_part("Bar", (40, 10, 10))}
+        copy = {"ref": "a", "orientation": "+z", "angle": 30, "x": 150.0, "y": 150.0}
+        model, _names = self.write([copy], parts)
+        result = slice_plate(model, profiles, self.tmp / "out")
+        with zipfile.ZipFile(result.output_path) as zf:
+            plate = json.loads(zf.read("Metadata/plate_1.json").decode("utf-8"))
+        bbox = plate["bbox_objects"][0]["bbox"]
+        hull = copy_hull(copy, parts["a"]["footprints"]["+z"])
+        expected = [min(p[0] for p in hull), min(p[1] for p in hull), max(p[0] for p in hull), max(p[1] for p in hull)]
+        for got, want in zip(bbox, expected):
+            self.assertAlmostEqual(got, want, delta=0.5)
+
+    def test_overlap_maps_to_too_close_message(self):
+        from print.slicer import DEFAULT_PROFILES, SliceError, slice_plate
+        parts = {"a": self.make_part("Box", (20, 20, 10))}
+        copies = [{"ref": "a", "orientation": "+z", "angle": 0, "x": 100.0, "y": 100.0},
+                  {"ref": "a", "orientation": "+z", "angle": 0, "x": 110.0, "y": 100.0}]
+        model, _names = self.write(copies, parts)
+        with self.assertRaises(SliceError) as ctx:
+            slice_plate(model, DEFAULT_PROFILES, self.tmp / "out")
+        self.assertEqual(ctx.exception.code, -101)
+        self.assertEqual(ctx.exception.message, "Parts are too close together; spread them out.")
+
+
 class RealJobRouteTest(unittest.TestCase):
     """POST /print-job with the real pool and Orca, then read the result and download it."""
 

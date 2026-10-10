@@ -21,6 +21,11 @@ worse peak and the worse time of the two runs are given:
 - 2 copies of a 149,760-triangle hub (299,520 triangles): 214 MB peak
   (219,136 KB), 3.2 s.
 - 3 copies of 124,830 (374,490 triangles): 233 MB (238,280 KB), 4.2 s.
+Re-measured on 2026-10-10 through the shipping code (print/plate_3mf.py writing
+the plate, slice_plate slicing it, the name guard reading it back), two runs each:
+- 25 copies of the 11,968-triangle hub: 768 MB peak (786,884 KB), 7.6 s.
+- 2 copies of the 149,760-triangle hub: 213 MB peak (218,420 KB), 1.7 s.
+Both inside the stop rule; the caps stand.
 An earlier run with sliver-faceted cylinders (37,500-segment cap fans) peaked
 at 1,113 MB for two 150,000-triangle copies; that came from the slivers, not the
 triangle count, so the per-part cap stays at 150,000.

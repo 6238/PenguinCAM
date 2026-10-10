@@ -237,6 +237,98 @@ class CommandTest(unittest.TestCase):
         self.assertEqual(summary["layer_count"], 50)
 
 
+def fake_result_run(returncode, return_code=None):
+    """A stand-in for subprocess.run that writes no archive, and a result.json carrying
+    `return_code` unless it is None."""
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append((cmd, kwargs))
+        if return_code is not None:
+            outdir = Path(cmd[cmd.index("--outputdir") + 1])
+            (outdir / "result.json").write_text(json.dumps({"return_code": return_code, "error_string": "x"}))
+        return subprocess.CompletedProcess(cmd, returncode, stdout="orca says no\n", stderr="")
+
+    fake_run.calls = calls
+    return fake_run
+
+
+class PlateSliceTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="print-plate-")).resolve()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.out = self.tmp / "out"
+        self.model = self.tmp / "plate.3mf"
+        self.model.write_bytes(b"PK")
+
+    def test_plate_command_disables_arrange_and_orient(self):
+        profiles = print_slicer.SliceProfiles(self.tmp / "p.json", self.tmp / "f.json", self.tmp / "q.json")
+        cmd = print_slicer.build_plate_command(self.model, profiles, self.out)
+        self.assertEqual(Path(cmd[0]), print_slicer.ORCA_BIN)
+        self.assertEqual(cmd[cmd.index("--arrange") + 1], "0")
+        self.assertEqual(cmd[cmd.index("--orient") + 1], "0")
+        self.assertEqual(cmd[cmd.index("--load-settings") + 1], f"{self.tmp / 'p.json'};{self.tmp / 'q.json'}")
+        self.assertEqual(cmd[cmd.index("--load-filaments") + 1], str(self.tmp / "f.json"))
+        self.assertEqual(cmd[cmd.index("--slice") + 1], "0")
+        self.assertEqual(cmd[cmd.index("--export-3mf") + 1], "plate.gcode.3mf")
+        self.assertEqual(cmd[cmd.index("--outputdir") + 1], str(self.out))
+        self.assertEqual(cmd[cmd.index("--datadir") + 1], str(self.out / "datadir"))
+        self.assertEqual(cmd[-1], str(self.model))
+        self.assertEqual(print_slicer.DEFAULT_PROFILES, print_slicer.SliceProfiles(
+            print_slicer.PROFILE_DIR / "printer.json", print_slicer.PROFILE_DIR / "filament.json",
+            print_slicer.PROFILE_DIR / "process.json"))
+
+    def test_slice_plate_default_timeout_is_plate_timeout(self):
+        from print.limits import PLATE_SLICE_TIMEOUT_S
+        self.assertEqual(PLATE_SLICE_TIMEOUT_S, 240)
+        fake = fake_run_factory()
+        with mock.patch.object(print_slicer.subprocess, "run", fake):
+            result = print_slicer.slice_plate(self.model, print_slicer.DEFAULT_PROFILES, self.out)
+        self.assertEqual(fake.calls[0][1]["timeout"], 240)
+        self.assertEqual(result.output_path, self.out / "plate.gcode.3mf")
+        self.assertEqual(result.layer_count, 50)
+        self.assertEqual(fake.calls[0][1]["env"]["LC_ALL"], "C")
+        self.assertEqual(fake.calls[0][1]["cwd"], str(self.out))
+        fake = fake_run_factory()
+        with mock.patch.object(print_slicer.subprocess, "run", fake):
+            slice_stl(print_slicer.SAMPLE_STL, self.tmp / "stl")
+        self.assertEqual(fake.calls[0][1]["timeout"], 120)
+        self.assertEqual(print_slicer.DEFAULT_TIMEOUT_S, 120)
+
+    def test_orca_codes_map_to_messages(self):
+        cases = {-101: "Parts are too close together; spread them out.",
+                 -52: "A part crosses the edge of the plate.",
+                 -100: "A part has no flat face on the plate; choose another Lay flat.",
+                 -50: "No part is fully on the plate.",
+                 -6: "The slicer could not process this part."}
+        self.assertEqual(print_slicer.ORCA_CODE_MESSAGES, {k: v for k, v in cases.items() if k != -6})
+        for code, message in cases.items():
+            with self.subTest(code=code):
+                out = self.tmp / f"out{-code}"
+                fake = fake_result_run(returncode=(code + 256) % 256, return_code=code)
+                with mock.patch.object(print_slicer.subprocess, "run", fake):
+                    with self.assertRaises(SliceError) as ctx:
+                        print_slicer.slice_plate(self.model, print_slicer.DEFAULT_PROFILES, out)
+                self.assertEqual(ctx.exception.message, message)
+                self.assertEqual(ctx.exception.code, code)
+                self.assertIn("orca says no", ctx.exception.details)
+
+    def test_return_code_from_exit_status_when_no_result_json(self):
+        self.out.mkdir()
+        self.assertEqual(print_slicer.orca_return_code(self.out, 155), -101)
+        self.assertIsNone(print_slicer.orca_return_code(self.out, 1))
+        (self.out / "result.json").write_text(json.dumps({"return_code": -52}))
+        self.assertEqual(print_slicer.orca_return_code(self.out, 155), -52)
+        (self.out / "result.json").write_text("not json")
+        self.assertEqual(print_slicer.orca_return_code(self.out, 204), -52)
+        fake = fake_result_run(returncode=155)
+        with mock.patch.object(print_slicer.subprocess, "run", fake):
+            with self.assertRaises(SliceError) as ctx:
+                print_slicer.slice_plate(self.model, print_slicer.DEFAULT_PROFILES, self.tmp / "o2")
+        self.assertEqual(ctx.exception.code, -101)
+        self.assertEqual(ctx.exception.message, "Parts are too close together; spread them out.")
+
+
 class PartInfoTest(unittest.TestCase):
     def test_bounds_of_binary_stl(self):
         tri = struct.pack("<12fH", 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0)

@@ -25,18 +25,19 @@ and exits 1 when the verdict is not ok. The verdict is `over` when the slice pas
 MEASURE_MAX_PEAK_KB or MEASURE_MAX_SECONDS (print/limits.py), `failed` when Orca
 exits non-zero or leaves a copy out of Metadata/plate_1.json. The results are
 recorded in print/jobs.py's sizing note.
+
+The plate goes through the code that ships: print/plate_3mf.py writes it and
+print/slicer.py's slice_plate slices it (PLATE_SLICE_TIMEOUT_S), and the names are
+checked against Metadata/plate_1.json as a plate job checks them. `exit` is 0, or
+Orca's return code when slice_plate refused the plate.
 """
 import argparse
-import json
 import math
 import resource
-import subprocess
 import sys
 import tempfile
 import time
-import zipfile
 from pathlib import Path
-from xml.sax.saxutils import quoteattr
 
 import numpy as np
 
@@ -45,8 +46,10 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from print.limits import (MAX_COPIES, MAX_JOB_TRIANGLES, MAX_PART_TRIANGLES,  # noqa: E402
-                          MEASURE_MAX_PEAK_KB, MEASURE_MAX_SECONDS, PLATE_SLICE_TIMEOUT_S)
-from print.slicer import ARCHIVE_SUFFIX, build_command, orca_env  # noqa: E402
+                          MEASURE_MAX_PEAK_KB, MEASURE_MAX_SECONDS)
+from print.mesh import orientation_footprints, read_binary_stl  # noqa: E402
+from print.plate_3mf import plate_object_names, write_plate_3mf  # noqa: E402
+from print.slicer import DEFAULT_PROFILES, SliceError, slice_plate  # noqa: E402
 
 HUB_OUTER_MM = 20.0        # radius: 40 mm across
 HUB_BORE_MM = 6.0          # radius: a 12 mm bore
@@ -56,19 +59,6 @@ PITCH_MM = 50.0            # grid pitch: a 10 mm gap between 40 mm hubs
 GRID_ORIGIN_MM = 40.0
 GRID_COLUMNS = 6           # 6 x 5 covers MAX_COPIES on the 340 x 320 mm plate
 PLATES = ("max-copies", "max-part")
-
-CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
- <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
- <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
-</Types>
-"""
-RELS = """<?xml version="1.0" encoding="UTF-8"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
- <Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
-</Relationships>
-"""
-
 
 def _hub_profile():
     """The hub's cross-section in (r, z): a rounded rectangle, as a dense closed polyline
@@ -146,81 +136,35 @@ def plate_parts(plate, triangles=None, part_triangles=None):
     return math.ceil(MAX_JOB_TRIANGLES / part), part
 
 
-def _indexed_mesh(stl):
-    """Vertices and triangle indices of a binary STL, merging identical vertices."""
-    count = int(np.frombuffer(stl, dtype="<u4", count=1, offset=80)[0])
-    record = np.dtype([("normal", "<f4", 3), ("v", "<f4", (3, 3)), ("attr", "<u2")])
-    tris = np.frombuffer(stl, dtype=record, count=count, offset=84)["v"].reshape(-1, 3)
-    vertices, index = np.unique(tris, axis=0, return_inverse=True)
-    return vertices, index.reshape(-1, 3)
-
-
-def _mesh_xml(vertices, triangles):
-    vertex_lines = "".join(f'<vertex x="{x:.4f}" y="{y:.4f}" z="{z:.4f}"/>' for x, y, z in vertices.tolist())
-    triangle_lines = "".join(f'<triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in triangles.tolist())
-    return f"<mesh><vertices>{vertex_lines}</vertices><triangles>{triangle_lines}</triangles></mesh>"
-
-
-def write_measure_3mf(path, stl, centres):
-    """A minimal 3MF with one named <object> per copy, each translated to its centre.
-
-    One object per copy, not one shared object, because Orca blanks the names of
-    copies that share an object. Returns the object names, "Hub #1" onwards.
-    """
-    mesh = _mesh_xml(*_indexed_mesh(stl))
-    names = [f"Hub #{n}" for n in range(1, len(centres) + 1)]
-    objects, items = [], []
-    for object_id, (name, (x, y)) in enumerate(zip(names, centres), start=1):
-        objects.append(f'<object id="{object_id}" type="model" name={quoteattr(name)}>{mesh}</object>')
-        items.append(f'<item objectid="{object_id}" transform="1 0 0 0 1 0 0 0 1 {float(x)} {float(y)} 0.0"/>')
-    model = ('<?xml version="1.0" encoding="UTF-8"?>\n'
-             '<model unit="millimeter" xml:lang="en-US" '
-             'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">'
-             f'<resources>{"".join(objects)}</resources><build>{"".join(items)}</build></model>\n')
-    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("[Content_Types].xml", CONTENT_TYPES)
-        zf.writestr("_rels/.rels", RELS)
-        zf.writestr("3D/3dmodel.model", model)
-    return names
-
-
-def _plate_command(model_path, output_dir):
-    """print/slicer.py's command with placement kept: --arrange 0 --orient 0."""
-    cmd = build_command(model_path, output_dir)
-    at = cmd.index("--arrange")
-    cmd[at + 1] = "0"
-    cmd[at + 2:at + 2] = ["--orient", "0"]
-    return cmd
-
-
-def _plate_names(archive):
-    with zipfile.ZipFile(archive) as zf:
-        plate = json.loads(zf.read("Metadata/plate_1.json").decode("utf-8"))
-    return [obj.get("name", "") for obj in plate.get("bbox_objects", [])]
+def plate_layout(stl_path, copies):
+    """The plate as print/plate_3mf.py takes it: `copies` hubs, upright, on the grid."""
+    stl = Path(stl_path).read_bytes()
+    parts = {"hub": {"name": "Hub", "stl_path": Path(stl_path),
+                     "footprints": orientation_footprints(read_binary_stl(stl, "Hub"))}}
+    placed = [{"ref": "hub", "orientation": "+z", "angle": 0, "x": x, "y": y} for x, y in grid_centres(copies)]
+    return placed, parts
 
 
 def measure(plate, triangles=None, part_triangles=None):
     copies, per_copy = plate_parts(plate, triangles, part_triangles)
     stl = hub_stl(per_copy)
-    centres = grid_centres(copies)
     total = copies * int(np.frombuffer(stl, dtype="<u4", count=1, offset=80)[0])
+    code, names_ok = 0, False
     with tempfile.TemporaryDirectory(prefix="measure_plate_") as tmp:
         out = Path(tmp)
+        stl_path = out / "hub.stl"
+        stl_path.write_bytes(stl)
+        placed, parts = plate_layout(stl_path, copies)
         model = out / "plate.3mf"
-        names = write_measure_3mf(model, stl, centres)
+        names = write_plate_3mf(model, placed, parts)
         started = time.monotonic()
         try:
-            proc = subprocess.run(_plate_command(model, out), env=orca_env(out), cwd=str(out),
-                                  capture_output=True, text=True, timeout=PLATE_SLICE_TIMEOUT_S,
-                                  stdin=subprocess.DEVNULL)
-            code = proc.returncode
-        except subprocess.TimeoutExpired:
-            code = "timeout"
+            result = slice_plate(model, DEFAULT_PROFILES, out / "slice")
+            names_ok = sorted(plate_object_names(result.output_path)) == sorted(names)
+        except SliceError as exc:
+            code = exc.code if exc.code is not None else "error"
         seconds = time.monotonic() - started
         peak_kb = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
-        archive = out / ("plate" + ARCHIVE_SUFFIX)
-        listed = _plate_names(archive) if code == 0 and archive.is_file() else []
-        names_ok = sorted(listed) == sorted(names)
     if code == "timeout" or peak_kb > MEASURE_MAX_PEAK_KB or seconds > MEASURE_MAX_SECONDS:
         verdict = "over"
     elif code != 0 or not names_ok:
