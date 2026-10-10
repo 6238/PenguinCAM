@@ -4,8 +4,9 @@ Flask-free; imports nothing from onshape_parts (a source's key arrives as a tupl
 part sits at <root>/<ref>/part.stl, `ref` a random 128-bit id; a ref from a request is
 looked up in the index and never joined into a path without it. The index, like
 ElementCache and JobPool, lives in process memory and assumes the one-worker Procfile.
-There is no start-up sweep: the upload folder is a fresh mkdtemp() per process, so
-orphans arise only within a process, and the periodic sweep removes them.
+So on start, as on every periodic sweep, ref-shaped directories under the root with no
+index entry and older than the expiry are removed: a root that outlives a process (a
+restart that reuses the folder) is cleaned too.
 """
 import re
 import secrets
@@ -18,7 +19,7 @@ from pathlib import Path
 
 from . import limits
 
-REF_RE = re.compile(r'^[A-Za-z0-9_-]{22}$')
+REF_RE = re.compile(r'^[A-Za-z0-9_-]{22}\Z')        # \Z: no trailing newline, unlike $
 SWEEP_INTERVAL_S = 600
 
 
@@ -57,6 +58,7 @@ class PartStore:
         self._log = log or (lambda *args: None)
         self._lock = threading.Lock()
         self._entries = {}          # ref -> PartEntry
+        self.sweep()                # the start-up pass: stale directories of an earlier process
 
     # -- limits ---------------------------------------------------------
 
@@ -103,7 +105,7 @@ class PartStore:
 
     def get(self, ref, pid):
         """The entry if `pid` owns `ref`, touching its last use; None otherwise."""
-        if not isinstance(ref, str) or not REF_RE.match(ref):
+        if not isinstance(ref, str) or not REF_RE.fullmatch(ref):
             return None
         with self._lock:
             entry = self._entries.get(ref)
@@ -136,7 +138,7 @@ class PartStore:
             removed += 1
         for path in self.root.iterdir():
             # Only directories the store could have made: a ref's name, not a symlink.
-            if (path.name in known or not REF_RE.match(path.name) or path.is_symlink()
+            if (path.name in known or not REF_RE.fullmatch(path.name) or path.is_symlink()
                     or not path.is_dir()):
                 continue
             try:

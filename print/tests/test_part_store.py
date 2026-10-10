@@ -5,6 +5,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO = Path(__file__).resolve().parents[2]        # the repository root
 sys.path.insert(0, str(REPO))
@@ -48,9 +49,13 @@ class PartStoreTest(unittest.TestCase):
 
     def test_bad_ref_never_touches_disk(self):
         (self.root / ("a" * 22)).mkdir()                 # on disk but not in the index
-        for ref in ("../x", "a" * 22, "", None, "a" * 21, "a" * 22 + "/"):
-            with self.subTest(ref=ref):
-                self.assertIsNone(self.store.get(ref, PID))
+        # Any path built during get() would fail the test: a ref is only ever an index key.
+        with mock.patch.object(Path, "__truediv__", side_effect=AssertionError("path built")), \
+                mock.patch.object(Path, "exists", side_effect=AssertionError("disk read")):
+            for ref in ("../x", "a" * 22, "", None, "a" * 21, "a" * 22 + "/", "a" * 22 + "\n"):
+                with self.subTest(ref=ref):
+                    self.assertIsNone(self.store.get(ref, PID))
+        self.assertIsNone(REF_RE.fullmatch("a" * 22 + "\n"))
 
     def test_twenty_parts_per_page(self):
         for n in range(limits.MAX_PARTS_PER_PAGE):
@@ -123,6 +128,22 @@ class PartStoreTest(unittest.TestCase):
         self.assertTrue(new.exists())
         self.assertTrue(unrelated.exists())
         self.assertTrue(live.stl_path.exists())
+
+
+class StartUpSweepTest(unittest.TestCase):
+    def test_stale_ref_directories_removed_on_start(self):
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        clock = Clock()
+        old, new, other = root / ("o" * 22), root / ("n" * 22), root / "print_job_scratch"
+        for directory in (old, new, other):
+            directory.mkdir()
+        stale = clock.now - limits.PART_TTL_S - 10
+        for directory in (old, other):
+            os.utime(directory, (stale, stale))
+        PartStore(root, clock=clock)
+        self.assertFalse(old.exists())
+        self.assertTrue(new.exists())
+        self.assertTrue(other.exists())             # not a name the store makes
 
 
 if __name__ == "__main__":
