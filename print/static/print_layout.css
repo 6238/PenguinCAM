@@ -13,3 +13,22 @@
 }
 .parts-signin { display: inline-block; margin-top: 6px; font-size: 13px; color: var(--accent); }
 .parts-signin[hidden] { display: none; }
+
+/* Layout step (Onshape mode): the plate editor's controls wrap in the narrow panel. */
+#layout-controls { margin-top: 8px; }
+.layout-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 6px; }
+.layout-copy-name {
+  flex: 1 1 120px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+.layout-copy-name.selected { color: var(--ink); font-weight: 600; }
+.layout-angle, .layout-flat { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+.layout-angle input { width: 64px; padding: 4px 6px; font-size: 13px; }
+.layout-flat select { width: auto; max-width: 190px; padding: 4px 6px; font-size: 13px; }
+#layout-canvas { cursor: pointer; }
+body[data-source="onshape"] #layout-canvas { display: block; margin: 0 auto; }

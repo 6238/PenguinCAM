@@ -76,13 +76,33 @@
             <!-- ===== LAYOUT ===== -->
             <section class="step" data-step="layout" hidden>
                 <h2>Layout</h2>
+                {% if source == 'onshape' %}
+                <p class="hint">Drag a copy to move it. Click a copy to turn it or lay it flat.</p>
+                {% else %}
                 <p class="hint">The part is centred on the bed. Moving and rotating parts comes in a later release.</p>
+                {% endif %}
                 <div id="layout-info">
                     <span><strong id="info-printer-name"></strong></span>
                     <span>Bed: <span id="info-bed-size"></span></span>
                 </div>
                 <canvas id="layout-canvas" width="600" height="400"></canvas>
                 <div id="layout-errors" class="errors" aria-live="polite"></div>
+                {% if source == 'onshape' %}
+                <div id="layout-controls">
+                    <div class="layout-row">
+                        <button type="button" class="btn small" id="btn-arrange">Arrange</button>
+                        <span id="layout-copy-name" class="layout-copy-name">Click a copy to change it.</span>
+                    </div>
+                    <div class="layout-row" id="layout-copy">
+                        <button type="button" class="btn small" id="btn-rot-minus" aria-label="Rotate 90 degrees clockwise">&#8635; 90&deg;</button>
+                        <button type="button" class="btn small" id="btn-rot-plus" aria-label="Rotate 90 degrees counterclockwise">&#8634; 90&deg;</button>
+                        <label class="layout-angle">Angle <input type="number" id="layout-angle" min="0" max="359" step="1" autocomplete="off"></label>
+                        <label class="layout-flat">Lay flat <select id="layout-flat" autocomplete="off"></select></label>
+                        <button type="button" class="btn small" id="btn-copy-dup">Duplicate</button>
+                        <button type="button" class="btn small" id="btn-copy-del">Delete</button>
+                    </div>
+                </div>
+                {% endif %}
             </section>
 
             <!-- ===== PREVIEW ===== -->
@@ -133,7 +153,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="{{ url_for('print.static', filename='print_viewer.js') }}"></script>
-    {% if source == 'onshape' %}<script src="{{ url_for('print.static', filename='print_onshape.js') }}"></script>{% endif %}
+    {% if source == 'onshape' %}
+    <script src="{{ url_for('print.static', filename='print_onshape.js') }}"></script>
+    <script src="{{ url_for('print.static', filename='plate_geometry.js') }}"></script>
+    <script src="{{ url_for('print.static', filename='print_layout.js') }}"></script>
+    {% endif %}
     <script src="{{ url_for('print.static', filename='print_wizard.js') }}"></script>
     <script src="{{ url_for('print.static', filename='printer_panel.js') }}"></script>
     {% if testbed_mode %}<script src="/testbed/panel.js" data-mode="{{ testbed_mode }}"></script>{% endif %}

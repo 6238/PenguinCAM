@@ -42,8 +42,12 @@
     parts: [],           // Onshape mode: [{ref, name, size_mm, triangles, source, footprints, quantity}]
     limits: null,        // limits_for_browser(), once the server sends them
     plate: null,         // plate_from_printer(), from the /print/page answer
+    copies: [],          // Onshape mode: the plate's copies (print_layout.js describes them)
+    problems: [],        // checkPlacement(copies), after every change
+    layoutSentence: '',  // the Layout step's sentence; Next waits while it is not empty
   };
   var viewer = null;
+  var editor = null;        // print_layout.js's plate editor, Onshape mode only
   var resizeTimer = null;   // window.resize debounce for the layout canvas
 
   function $(sel) { return document.querySelector(sel); }
@@ -169,6 +173,14 @@
     });
   }
 
+  // A refresh gives a part a new ref: its copies follow it and keep their places.
+  // `before` and `after` are the part lists, index for index.
+  function renameCopies(copies, before, after) {
+    var renamed = {};
+    before.forEach(function (p, i) { if (after[i] && after[i].ref !== p.ref) renamed[p.ref] = after[i].ref; });
+    return copies.map(function (c) { return renamed[c.ref] ? Object.assign({}, c, { ref: renamed[c.ref] }) : c; });
+  }
+
   function sizeText(size) { return size.x + ' x ' + size.y + ' x ' + size.z + ' mm'; }
 
   /* ------------------------------------------- print requests and errors */
@@ -229,6 +241,7 @@
         if (answer.plate) state.plate = answer.plate;
         if (answer.limits) state.limits = answer.limits;
         if (ONSHAPE && HAS_DOM && $('#btn-refresh-parts')) renderParts();   // the quantity's max
+        if (ONSHAPE && state.step === 'layout') enterLayout();
       })
       .catch(function () { /* the page keeps its defaults */ });
   }
@@ -274,6 +287,10 @@
   function maxQuantity() {
     return (state.limits && state.limits.max_quantity) || DEFAULT_MAX_QUANTITY;
   }
+
+  // The browser-only helpers, loaded before this file in Onshape mode.
+  function geometry() { return window.PenguinCAM.plateGeometry; }
+  function layoutLib() { return window.PenguinCAM.printLayout; }
 
   function messenger() {
     return (typeof window !== 'undefined' && window.PenguinCAM && window.PenguinCAM.onshapeMessenger) || null;
@@ -361,8 +378,13 @@
         }
         showSigninLink(false);
         var errors = res.j.errors || [], parts = res.j.parts || [];
-        if (via === 'refresh') state.parts = swapRefreshed(state.parts, sent, parts);
-        else state.parts = addParts(state.parts, parts);
+        if (via === 'refresh') {
+          var before = state.parts;
+          state.parts = swapRefreshed(before, sent, parts);
+          state.copies = renameCopies(state.copies, before, state.parts);
+        } else {
+          state.parts = addParts(state.parts, parts);
+        }
         if (errors.length) errors.forEach(function (e) { showError('parts', e.message, 'select'); });
         else clearError('parts');
         renderParts();
@@ -396,6 +418,7 @@
     var i = state.info;
     $('#info-printer-name').textContent = i.printer.name;
     $('#info-bed-size').textContent = i.printer.bed_mm.x + ' x ' + i.printer.bed_mm.y + ' mm, ' + i.printer.height_mm + ' mm tall';
+    if (ONSHAPE) return;      // the plate editor checks every copy instead
     state.fits = fitsBed(i.part.size_mm, i.printer.bed_mm, i.printer.height_mm);
     var tooBig = tooBigMessage(i.part.size_mm, i.printer.bed_mm, i.printer.height_mm);
     // This runs on every visit to Layout; a message already shown is not shown (and
@@ -490,13 +513,154 @@
     ctx.fillText(bed.x + ' x ' + bed.y + ' mm bed', bx + 4, by - 6);
   }
 
+  /* ------------------------------------------------ layout: plate editor */
+  // Onshape mode. The copies follow the Parts step's quantities; the first visit arranges
+  // them. Every change re-runs the placement check and the sentence under the canvas.
+  function partsMap() {
+    var out = {};
+    state.parts.forEach(function (p) { out[p.ref] = p; });
+    return out;
+  }
+
+  function enterLayout() {
+    if (!state.plate) {          // /print/page has not answered yet; it calls back here
+      $('#btn-next').disabled = true;
+      return;
+    }
+    state.copies = layoutLib().syncCopies(state.copies, state.parts, state.plate);
+    if (state.copies.length && state.copies.every(function (c) { return c.placed === false; })) arrange();
+    editor.select(-1);           // the copies may have been renumbered on the way
+    layoutChanged('enter');
+  }
+
+  function arrange() {
+    var result = geometry().arrangeCopies(state.copies, partsMap(), state.plate);
+    var left = {};
+    result.unplaced.forEach(function (i) { left[i] = true; });
+    state.copies = result.copies.map(function (c, i) { return Object.assign({}, c, { placed: true, unplaced: !!left[i] }); });
+  }
+
+  // The client-event code for the sentence: the rule it names, or what it is about.
+  function sentenceCode(sentence) {
+    var lim = state.limits || {};
+    if (sentence === lim.too_many_copies_message) return 'too_many_copies';
+    if (sentence === lim.job_triangles_message) return 'job_triangles';
+    if (sentence === (lim.one_plate_message || layoutLib().ONE_PLATE_MESSAGE)) return 'one_plate';
+    if (sentence === layoutLib().PARKED_MESSAGE) return 'parked';
+    return state.problems.length ? state.problems[0].rule : null;
+  }
+
+  // After every change: check, redraw, and (except mid-drag, which would report a sentence
+  // per pointer move) show the sentence and gate Next. A sentence already shown is not
+  // shown, and reported, again.
+  function layoutChanged(kind) {
+    var parts = partsMap();
+    state.problems = state.copies.length ? geometry().checkPlacement(state.copies, parts, state.plate) : [];
+    editor.draw();
+    if (kind === 'move') return;
+    state.layoutSentence = layoutLib().layoutSentence(state.problems, state.copies, state.limits, parts);
+    if (!state.layoutSentence) clearError('layout');
+    else if ($('#layout-errors').textContent !== state.layoutSentence) {
+      showError('layout', state.layoutSentence, sentenceCode(state.layoutSentence));
+    }
+    if (state.step === 'layout') $('#btn-next').disabled = !canLeave('layout');
+    updateCopyControls();
+    updateSummary();
+  }
+
+  function updateCopyControls() {
+    var i = editor.selected(), copy = state.copies[i];
+    var name = $('#layout-copy-name');
+    $all('#layout-copy button, #layout-copy input, #layout-copy select').forEach(function (el) { el.disabled = !copy; });
+    name.classList.toggle('selected', !!copy);
+    if (!copy) {
+      name.textContent = 'Click a copy to change it.';
+      $('#layout-angle').value = '';
+      return;
+    }
+    name.textContent = geometry().copyLabels(state.copies.map(function (c) { return partsMap()[c.ref].name; }))[i];
+    if (document.activeElement !== $('#layout-angle')) $('#layout-angle').value = String(copy.angle);
+    $('#layout-flat').value = copy.orientation;
+  }
+
+  // The selected copy, replaced by change(copy).
+  function editSelected(change) {
+    var i = editor.selected();
+    if (i < 0 || !state.copies[i]) return;
+    state.copies[i] = change(state.copies[i]);
+    layoutChanged('edit');
+  }
+
+  // Duplicate and delete change the part's quantity too, so going back to Parts and
+  // returning keeps the plate as it is.
+  function setQuantity(ref, delta) {
+    state.parts = state.parts.map(function (p) {
+      return p.ref === ref ? Object.assign({}, p, { quantity: p.quantity + delta }) : p;
+    }).filter(function (p) { return p.quantity > 0; });
+    if ($('#btn-refresh-parts')) renderParts();
+  }
+
+  function bindLayout() {
+    if (!ONSHAPE) return;
+    var L = layoutLib(), labels = geometry().ORIENTATION_LABELS;
+    editor = L.createLayoutEditor({
+      canvas: $('#layout-canvas'),
+      getState: function () { return { copies: state.copies, parts: partsMap(), plate: state.plate, problems: state.problems }; },
+      onChange: function (kind) { if (kind === 'select') updateCopyControls(); else layoutChanged(kind); },
+    });
+    var flat = $('#layout-flat');
+    geometry().ORIENTATIONS.forEach(function (o) {
+      var opt = document.createElement('option');
+      opt.value = o;
+      opt.textContent = labels[o];
+      flat.appendChild(opt);
+    });
+    $('#btn-rot-minus').addEventListener('click', function () { editSelected(function (c) { return L.rotateCopy(c, -90); }); });
+    $('#btn-rot-plus').addEventListener('click', function () { editSelected(function (c) { return L.rotateCopy(c, 90); }); });
+    $('#layout-angle').addEventListener('change', function () {
+      var input = this;
+      editSelected(function (c) { return L.setAngle(c, input.value); });
+      var copy = state.copies[editor.selected()];
+      if (copy) input.value = String(copy.angle);
+    });
+    flat.addEventListener('change', function () {
+      var o = flat.value;
+      editSelected(function (c) { return L.setOrientation(c, o); });
+    });
+    $('#btn-copy-dup').addEventListener('click', function () {
+      var i = editor.selected();
+      if (i < 0 || !state.plate) return;
+      var ref = state.copies[i].ref;
+      state.copies = L.duplicateCopy(state.copies, i, state.plate, partsMap());
+      setQuantity(ref, 1);
+      editor.select(state.copies.length - 1);
+      layoutChanged('edit');
+    });
+    $('#btn-copy-del').addEventListener('click', function () {
+      var i = editor.selected();
+      if (i < 0) return;
+      var ref = state.copies[i].ref;
+      state.copies = L.deleteCopy(state.copies, i);
+      setQuantity(ref, -1);
+      editor.select(-1);
+      layoutChanged('edit');
+    });
+    $('#btn-arrange').addEventListener('click', function () {
+      if (!state.plate || !state.copies.length) return;
+      arrange();
+      layoutChanged('arrange');
+    });
+    updateCopyControls();
+  }
+
   /* ---------------------------------------------------------- summary chips */
   function updateSummary() {
     var box = $('#wiz-summary'), i = state.info, chips = [];
     var idx = STEPS.indexOf(state.step);
     if (i && idx >= STEPS.indexOf('parts')) chips.push(i.printer.name, i.filament.name, i.process.name);
     if (ONSHAPE && idx >= STEPS.indexOf('layout') && state.parts.length) {
-      var copies = state.parts.reduce(function (n, p) { return n + p.quantity; }, 0);
+      // On and after Layout the plate's copies; duplicate and delete keep quantities equal.
+      var copies = state.copies.length || state.parts.reduce(function (n, p) { return n + p.quantity; }, 0);
       chips.push(state.parts.length + (state.parts.length === 1 ? ' part, ' : ' parts, ') +
                  copies + (copies === 1 ? ' copy' : ' copies'));
     } else if (!ONSHAPE && i && idx >= STEPS.indexOf('layout')) chips.push('1 part');
@@ -539,7 +703,11 @@
     var m = ONSHAPE ? messenger() : null;
     if (m && leaving === 'parts' && name !== 'parts') m.leaveParts();
     if (m && name === 'parts' && (leaving !== 'parts' || !m.isActive())) m.enterParts();
-    if (name === 'layout') {
+    if (name === 'layout' && ONSHAPE) {
+      if (state.info) fillLayoutInfo();
+      enterLayout();
+      $('#btn-next').disabled = !canLeave('layout');
+    } else if (name === 'layout') {
       if (state.info) { fillLayoutInfo(); drawLayout(); }
       $('#btn-next').disabled = !state.fits;
     } else {
@@ -551,6 +719,7 @@
 
   function canLeave(name) {
     if (name === 'parts' && ONSHAPE && state.parts.length === 0) return false;
+    if (name === 'layout' && ONSHAPE) return !!state.plate && state.copies.length > 0 && !state.layoutSentence;
     if (name === 'layout' && !state.fits) return false;
     return true;
   }
@@ -591,13 +760,14 @@
         fillLayoutInfo();
         // Part info arrives after gotoStep ran, so the layout gate needs re-applying:
         // a too-big part must disable Next even if the student is already on Layout.
-        if (state.step === 'layout') $('#btn-next').disabled = !state.fits;
-        if (state.step === 'layout' || $('#wizard').classList.contains('grid')) drawLayout();
+        if (!ONSHAPE && state.step === 'layout') $('#btn-next').disabled = !state.fits;
+        if (!ONSHAPE && (state.step === 'layout' || $('#wizard').classList.contains('grid'))) drawLayout();
         updateSummary();
       })
       .catch(function (e) {
         // Without part info there is nothing to slice, so Layout's gate stays shut
         // rather than letting the student walk on to Preview on stale defaults.
+        if (ONSHAPE) return;     // the plate editor needs only the plate and the parts
         state.fits = false;
         if (state.step === 'layout') $('#btn-next').disabled = true;
         showError('layout', 'Could not load the part: ' + e.message, 'part_info');
@@ -903,6 +1073,7 @@
     bindPreview();
     bindFinalAction();
     bindParts();
+    bindLayout();
     if (state.source === 'upload') {
       $('#wizard').classList.add('grid');
       var opt25 = $('#opt-mode-25d'); if (opt25) opt25.hidden = true;
@@ -925,7 +1096,8 @@
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(function () {
         resizeTimer = null;
-        if (state.info) drawLayout();
+        if (ONSHAPE) { if (editor && state.step === 'layout') editor.draw(); }
+        else if (state.info) drawLayout();
       }, 100);
     });
     gotoStep('setup');
