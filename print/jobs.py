@@ -5,9 +5,19 @@ of Orca processes allowed at once; the queue beyond it is deliberately small,
 because queued work nobody will wait for is worse than an honest refusal.
 
 Sizing basis (2026-09-13): one slice of print/sample_part.stl peaked at 93 MB
-resident and took 0.23 s wall clock on an aarch64 Linux machine. The
-production Railway plan's vCPU and memory allotment has not been measured yet,
-so MAX_RUNNING stays at its default of one until it is measured on the
+resident and took 0.23 s wall clock on an aarch64 Linux machine.
+
+Plates at the print path's limits (print/limits.py), sliced by
+print/scripts/measure_plate.py on the same kind of machine (2026-10-10):
+- 30 copies, 300,000 triangles: 744 MB peak (761,696 KB), 31.3 s.
+- 2 copies of one 150,000-triangle part, 300,000 triangles: 1,113 MB peak
+  (1,139,680 KB), 63.7 s; a second run 954 MB (976,716 KB), 60.8 s. Both
+  runs are over the 900 MB stop rule (MEASURE_MAX_PEAK_KB), so the
+  per-part triangle cap is under review; MAX_JOB_TRIANGLES stays 300,000
+  because the 30-copy plate is inside both bounds.
+
+The production Railway plan's vCPU and memory allotment has not been measured
+yet, so MAX_RUNNING stays at its default of one until it is measured on the
 production plan. The rule when revisiting:
 min(vCPU count, memory / peak resident memory of one slice), never below one.
 See docs/DEPLOYMENT_GUIDE.md.
