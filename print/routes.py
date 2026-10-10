@@ -12,14 +12,17 @@ import tempfile
 import time
 import types
 
-from flask import Blueprint, Response, jsonify, make_response, redirect, render_template, request, send_file
+from flask import (Blueprint, Response, g, jsonify, make_response, redirect, render_template, request,
+                   send_file, session)
 
-from .jobs import JobFailure, JobPool, QueueFull
+from .events import configure_print_events, print_event, valid_page_id
+from .jobs import GENERIC_FAILURE, JobFailure, JobPool, QueueFull
 from .slicer import SAMPLE_STL, SliceError, part_info, slice_stl
 
 DELIVERED_NAME = "sample_part.gcode.3mf"
 BUSY_MESSAGE = "The slicer is busy, try again in a minute."
 EXPIRED_MESSAGE = "This slice has expired, go back and slice again."
+PAGE_ID_MESSAGE = "This page is out of date; reload it."
 FRAME_ANCESTORS = "frame-ancestors https://*.onshape.com"
 
 # The blueprint carries its own templates and static files, so everything the print
@@ -52,13 +55,59 @@ def _with_verify(path):
     return path + ("&" if "?" in path else "?") + "verify=1" + sep + fragment
 
 
-def make_worker(token_manager, upload_folder, output_folder, metrics, log):
+def _page_id():
+    """The request's page id: the X-Print-Page header, or for a GET (an EventSource or
+    a poll cannot set headers) the pid query parameter. None unless it is valid."""
+    value = request.headers.get("X-Print-Page")
+    if value is None and request.method == "GET":
+        value = request.args.get("pid")
+    return valid_page_id(value)
+
+
+def _page_id_gate():
+    if _page_id() is None:
+        return jsonify({"error": PAGE_ID_MESSAGE}), 400
+    return None
+
+
+def _team_for_events():
+    """The team number for print events; None (logged as -) on the default config,
+    which reports team 6238 without being that team."""
+    if session.get("using_default_config"):
+        return None
+    try:
+        return int(session.get("team_number"))
+    except (TypeError, ValueError):
+        return None
+
+
+@print_bp.before_request
+def _start_request_clock():
+    g.print_request_started = time.monotonic()
+
+
+@print_bp.after_request
+def _log_request_event(response):
+    # The route rule, never the path: a full job id in /print-job/<id> is a bearer
+    # of the download and must not reach a log.
+    if request.endpoint != "print.static":
+        started = g.get("print_request_started", time.monotonic())
+        print_event("request", pid=_page_id(), team=_team_for_events(), method=request.method,
+                    rule=request.url_rule.rule if request.url_rule else None,
+                    status=response.status_code, ms=round((time.monotonic() - started) * 1000))
+    return response
+
+
+def make_worker(token_manager, upload_folder, output_folder, log):
     """Worker for JobPool: slice the sample part, deliver the archive, clean up."""
 
     def run(job_id):
         started = time.monotonic()
         scratch = tempfile.mkdtemp(prefix=f"print_{job_id[:8]}_", dir=upload_folder)
-        outcome = "failed"
+
+        def seconds():
+            return round(time.monotonic() - started, 3)
+
         try:
             result = slice_stl(SAMPLE_STL, scratch)
             final_path = os.path.join(output_folder, f"print_{job_id}.gcode.3mf")
@@ -70,15 +119,17 @@ def make_worker(token_manager, upload_folder, output_folder, metrics, log):
                 with contextlib.suppress(OSError):
                     os.unlink(final_path)
                 raise
-            log(f"🖨️ Print job {job_id[:8]} sliced: {DELIVERED_NAME}")
-            outcome = "done"
+            print_event("slice_done", job=job_id[:8], seconds=seconds(), code=0)
             return {"token": token, "summary": result.summary(), "part": part_info()}
         except SliceError as exc:
+            print_event("slice_failed", job=job_id[:8], seconds=seconds(), code=exc.code, reason=exc.message)
             raise JobFailure(exc.message, exc.details) from exc
+        except Exception:
+            # The pool logs the traceback; the event records that the slice failed.
+            print_event("slice_failed", job=job_id[:8], seconds=seconds(), code=None, reason=GENERIC_FAILURE)
+            raise
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
-            metrics.log_event("print_job", metadata={"outcome": outcome,
-                                                      "duration_s": round(time.monotonic() - started, 3)})
 
     return run
 
@@ -117,20 +168,20 @@ def print_part():
 def print_job_submit():
     """Queue a slice. Rate limited to 3 per minute; the rule is added in
     init_print_routes because the limiter does not exist at import time."""
-    gate = ctx.require_session()
+    gate = ctx.require_session() or _page_id_gate()
     if gate:
         return gate
     try:
         job_id = ctx.pool.submit()
     except QueueFull:
         return jsonify({"error": BUSY_MESSAGE}), 503
-    ctx.log(f"🖨️ Print job {job_id[:8]} queued")
+    print_event("slice_queued", pid=_page_id(), team=_team_for_events(), job=job_id[:8])
     return jsonify({"job_id": job_id}), 202
 
 
 @print_bp.route("/print-job/<job_id>")
 def print_job_status(job_id):
-    gate = ctx.require_session()
+    gate = ctx.require_session() or _page_id_gate()
     if gate:
         return gate
     record = ctx.pool.get(job_id)
@@ -141,7 +192,7 @@ def print_job_status(job_id):
 
 @print_bp.route("/print-job/<job_id>/events")
 def print_job_events(job_id):
-    gate = ctx.require_session()
+    gate = ctx.require_session() or _page_id_gate()
     if gate:
         return gate
     if ctx.pool.get(job_id) is None:
@@ -167,8 +218,9 @@ def init_print_routes(app, *, limiter, require_session, token_manager, upload_fo
     ctx.template_context = template_context
     ctx.metrics = metrics
     ctx.log = log
+    configure_print_events(log, metrics)
     if pool is None:
-        pool = JobPool(make_worker(token_manager, upload_folder, output_folder, metrics, log), log=log)
+        pool = JobPool(make_worker(token_manager, upload_folder, output_folder, log), log=log)
         pool.start_sweeper()
     ctx.pool = pool
     # flask-limiter evaluates a decorated limit only through the wrapper its

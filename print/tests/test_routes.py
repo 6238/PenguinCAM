@@ -10,8 +10,18 @@ REPO = Path(__file__).resolve().parents[2]        # the repository root
 sys.path.insert(0, str(REPO))
 
 from frc_cam_gui_app import app, limiter, file_token_manager  # noqa: E402
+from print import events as events_module  # noqa: E402
 from print import routes as print_routes  # noqa: E402
 from print.jobs import JobFailure, JobPool, QueueFull  # noqa: E402
+
+
+PAGE_ID = "abcdef012345"
+
+
+def with_page_id(client):
+    """Every print API call from this client sends a page id, as the print page does."""
+    client.environ_base["HTTP_X_PRINT_PAGE"] = PAGE_ID
+    return client
 
 
 class ImmediateExecutor:
@@ -28,7 +38,7 @@ def good_worker(job_id):
 class PrintRouteBase(unittest.TestCase):
     def setUp(self):
         app.config["TESTING"] = True
-        self.client = app.test_client()
+        self.client = with_page_id(app.test_client())
         with self.client.session_transaction() as sess:
             sess["app_verified"] = True
         limiter.reset()
@@ -171,7 +181,7 @@ class JobRoutesTest(PrintRouteBase):
 class RateLimitTest(unittest.TestCase):
     def setUp(self):
         app.config["TESTING"] = True
-        self.client = app.test_client()
+        self.client = with_page_id(app.test_client())
         with self.client.session_transaction() as sess:
             sess["app_verified"] = True
         limiter.reset()
@@ -217,7 +227,9 @@ class WorkerTest(unittest.TestCase):
                 events.append((name, kw))
 
         lines = []
-        worker = print_routes.make_worker(Tokens(), str(upload), str(output), Metrics(), lines.append)
+        self.addCleanup(events_module.configure_print_events, events_module._log, events_module._metrics)
+        events_module.configure_print_events(lines.append, Metrics())
+        worker = print_routes.make_worker(Tokens(), str(upload), str(output), lines.append)
         with mock.patch.object(print_routes, "slice_stl", fake_slice):
             result = worker("abcdefgh12345678")
         self.assertEqual(result["token"], "tok123")
@@ -228,9 +240,9 @@ class WorkerTest(unittest.TestCase):
         self.assertEqual(result["summary"]["warnings"], ["w"])
         self.assertEqual(result["part"]["part"]["name"], "sample_part")
         self.assertEqual(os.listdir(upload), [])          # scratch removed
-        self.assertIn("sliced: sample_part.gcode.3mf", lines[0])
-        self.assertEqual(events[0][0], "print_job")
-        self.assertEqual(events[0][1]["metadata"]["outcome"], "done")
+        self.assertTrue(lines[0].startswith("[PRINT] slice_done pid=- team=- job=abcdefgh seconds="))
+        self.assertEqual(events[0][0], "print_slice_done")
+        self.assertEqual(events[0][1]["metadata"]["code"], 0)
 
     def test_worker_turns_slice_error_into_job_failure_and_cleans_scratch(self):
         import tempfile
@@ -250,14 +262,17 @@ class WorkerTest(unittest.TestCase):
             def log_event(name, **kw):
                 logged.append((name, kw))
 
-        worker = print_routes.make_worker(mock.Mock(), str(upload), str(output), Metrics(), lambda *a: logged.append(a))
+        self.addCleanup(events_module.configure_print_events, events_module._log, events_module._metrics)
+        events_module.configure_print_events(lambda *a: None, Metrics())
+        worker = print_routes.make_worker(mock.Mock(), str(upload), str(output), lambda *a: logged.append(a))
         with mock.patch.object(print_routes, "slice_stl", fake_slice):
             with self.assertRaises(JobFailure) as ctx:
                 worker("abcdefgh12345678")
         self.assertEqual(ctx.exception.message, "The slicer could not process this part.")
         self.assertEqual(ctx.exception.details, "exit code 255")
         self.assertEqual(os.listdir(upload), [])
-        self.assertIn(("print_job", {"metadata": {"outcome": "failed", "duration_s": mock.ANY}}), logged)
+        self.assertEqual([name for name, _kw in logged], ["print_slice_failed"])
+        self.assertEqual(logged[0][1]["metadata"]["reason"], "The slicer could not process this part.")
 
 
 class DownloadMimeTest(unittest.TestCase):

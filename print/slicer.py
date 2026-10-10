@@ -44,13 +44,15 @@ class SliceError(Exception):
     """A slice that produced no usable archive.
 
     `message` is one sentence fit for the student; `details` is the last
-    twenty lines of Orca's output (or the archive listing) for the server log.
+    twenty lines of Orca's output (or the archive listing) for the server log;
+    `code` is Orca's exit code, "timeout", or None when Orca did not report one.
     """
 
-    def __init__(self, message, details=""):
+    def __init__(self, message, details="", code=None):
         super().__init__(message)
         self.message = message
         self.details = details
+        self.code = code
 
 
 @dataclass
@@ -114,13 +116,14 @@ def slice_stl(stl_path, output_dir, timeout_s=DEFAULT_TIMEOUT_S):
         captured = exc.stdout or ""
         if isinstance(captured, bytes):
             captured = captured.decode(errors="replace")
-        raise SliceError("The slicer took too long on this part.", _tail(captured))
+        raise SliceError("The slicer took too long on this part.", _tail(captured), code="timeout")
     output = (proc.stdout or "") + (proc.stderr or "")
     if proc.returncode != 0:
         # The exit code leads, then the last DETAIL_LINES - 1 lines of output:
         # `details` stays at DETAIL_LINES lines and the code is always visible.
         raise SliceError("The slicer could not process this part.",
-                         f"exit code {proc.returncode}\n" + _tail(output, DETAIL_LINES - 1))
+                         f"exit code {proc.returncode}\n" + _tail(output, DETAIL_LINES - 1),
+                         code=proc.returncode)
     archive = output_dir / (stl_path.stem + ARCHIVE_SUFFIX)
     if not archive.is_file():
         raise SliceError("The slicer produced no output file.", _tail(output))
