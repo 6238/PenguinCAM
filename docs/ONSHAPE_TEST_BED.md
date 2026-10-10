@@ -84,7 +84,7 @@ The command line is `uv run python -m testbed <command>`:
 | `record [SCENARIO...]` | The live API check for the scenarios without a panel part, then the drift report. |
 | `record --ui [SCENARIO...]` | The automated Onshape UI run for the scenarios with a panel part, then the drift report. |
 | `drift` | Compares every fresh recording in `testbed/.fresh/` with the stored one and writes `testbed/.fresh/drift-report.md`. |
-| `accept SCENARIO...` | Moves the fresh cassette, its binary files and its message log over the stored ones. Commit them with a message that says why the recording changed. |
+| `accept SCENARIO...` | Scans every fresh file of the scenario for secrets and identity leaks (the scan the clean test runs) and, only if none is found, moves the fresh cassette, its binary files and its message log over the stored ones. A hit refuses the scenario, moves nothing and names each `file:line` and kind, never the value. Commit them with a message that says why the recording changed. |
 | `ledger` | The call ledger's counted calls in the current cycle, the budget, and its last ten lines. |
 
 Exit codes: 0 on success; 1 for any other failure; 2 for a missing environment variable,

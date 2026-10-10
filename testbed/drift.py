@@ -17,7 +17,7 @@ from print.slicer import stl_bounds
 from testbed import settings
 from testbed.adapters import VOLATILE_KEYS, _normal_query
 from testbed.cassette import Cassette
-from testbed.scrub import host_is_onshape
+from testbed.scrub import host_is_onshape, recording_problems
 
 # Compared by type only: they change on every rebuild or edit.
 COMPARED_BY_TYPE = VOLATILE_KEYS | {'id'}
@@ -364,11 +364,21 @@ def _replace(source, target):
     return target
 
 
+class RecordingNotClean(Exception):
+    """A fresh recording holds a secret or an identity leak; nothing was moved."""
+
+    def __init__(self, scenario, problems):
+        super().__init__(f'{scenario} was not accepted: the fresh recording holds secret-like text or '
+                         'a real identity (file:line kind):\n  ' + '\n  '.join(problems))
+        self.problems = problems
+
+
 def accept_fresh_recording(scenario) -> list:
     """Move the fresh cassette, its binaries and message log over the stored ones.
 
-    Returns the paths written. The stored binaries go even when the fresh cassette has none,
-    so none is left orphaned.
+    Every fresh file is first scanned for secrets and identity leaks (the clean test's
+    scan); any hit raises RecordingNotClean and nothing is moved. Returns the paths written.
+    The stored binaries go even when the fresh cassette has none, so none is left orphaned.
     """
     if not scenario or '/' in scenario or '\\' in scenario or scenario.startswith('.'):
         raise ValueError(f'not a scenario name: {scenario!r}')
@@ -377,10 +387,15 @@ def accept_fresh_recording(scenario) -> list:
     message_log = fresh_messages / f'{scenario}.json'
     if not cassette.is_file() and not message_log.is_file():
         raise FileNotFoundError(f'no fresh recording of {scenario} in {settings.FRESH_DIR}')
+    binaries = fresh_cassettes / scenario
+    files = [cassette, message_log] + (sorted(binaries.rglob('*')) if binaries.is_dir() else [])
+    problems = recording_problems([f for f in files if f.is_file()], settings.FRESH_DIR)
+    if problems:
+        raise RecordingNotClean(scenario, problems)
     moved = []
     if cassette.is_file():
         stored_dir = Path(settings.CASSETTE_DIR)
-        binaries, stored_binaries = fresh_cassettes / scenario, stored_dir / scenario
+        stored_binaries = stored_dir / scenario
         if binaries.is_dir():
             moved.append(_replace(binaries, stored_binaries))
         elif stored_binaries.is_dir():

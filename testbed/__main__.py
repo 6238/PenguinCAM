@@ -206,11 +206,11 @@ def command_drift(args):
 
 
 def command_accept(args):
-    from testbed.drift import accept_fresh_recording
+    from testbed.drift import RecordingNotClean, accept_fresh_recording
     for name in _known_scenarios(args.scenarios):
         try:
             moved = accept_fresh_recording(name)
-        except FileNotFoundError as exc:
+        except (FileNotFoundError, RecordingNotClean) as exc:
             raise CommandFailed(str(exc)) from None
         for path in moved:
             print(f'accepted {name}: {path}')

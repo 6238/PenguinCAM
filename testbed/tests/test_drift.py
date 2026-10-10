@@ -7,7 +7,7 @@ from unittest import mock
 
 from testbed import settings
 from testbed.cassette import Cassette, Exchange
-from testbed.drift import (Difference, accept_fresh_recording, diff_cassettes,
+from testbed.drift import (Difference, RecordingNotClean, accept_fresh_recording, diff_cassettes,
                            diff_message_logs, json_shape, write_drift_report)
 from testbed.messages import save_message_log
 
@@ -187,6 +187,35 @@ class AcceptTest(unittest.TestCase):
                          _log())
         self.assertEqual(list(settings.fresh_cassette_dir().iterdir()), [])
         self.assertFalse(fresh_log.exists())
+
+    def _assert_refused_and_nothing_moved(self, *expected):
+        with self.assertRaises(RecordingNotClean) as caught:
+            accept_fresh_recording('part-select')
+        message = str(caught.exception)
+        for fragment in expected:
+            self.assertIn(fragment, message)
+        self.assertNotIn('Real Person', message)          # file:line and kind, never the value
+        self.assertFalse((settings.CASSETTE_DIR / 'part-select.json').exists())
+        self.assertFalse((settings.MESSAGE_DIR / 'part-select.json').exists())
+        self.assertTrue((settings.fresh_cassette_dir() / 'part-select.json').exists())
+        self.assertTrue((settings.fresh_message_dir() / 'part-select.json').exists())
+
+    def test_accept_refuses_an_identity_leak_and_moves_nothing(self):
+        owner = {'owner': {'id': 'ab' * 12, 'name': 'Real Person'}}
+        _cassette(_exchange(body=owner), name='part-select').save(settings.fresh_cassette_dir())
+        save_message_log(_log())
+        self._assert_refused_and_nothing_moved('part-select.json:', 'user-id', 'owner-name')
+
+    def test_accept_refuses_a_secret_in_the_message_log_and_moves_nothing(self):
+        _cassette(_exchange(), name='part-select').save(settings.fresh_cassette_dir())
+        save_message_log(_log({'dir': 'in', 'data': {'messageName': 'x', 'mail': 'someone@team.org'}}))
+        self._assert_refused_and_nothing_moved('messages/part-select.json:', 'email')
+
+    def test_accept_refuses_a_secret_from_the_environment(self):
+        _cassette(_exchange(body={'note': 'key-abc-123'}), name='part-select').save(settings.fresh_cassette_dir())
+        save_message_log(_log())
+        with mock.patch.dict('os.environ', {'ONSHAPE_ACCESS_KEY': 'key-abc-123'}):
+            self._assert_refused_and_nothing_moved('literal')
 
     def test_accept_without_fresh_recording_raises(self):
         with self.assertRaisesRegex(FileNotFoundError, 'no fresh recording of part-select'):

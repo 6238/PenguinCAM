@@ -1,13 +1,12 @@
 """Tests for testbed/scrub.py: what a recording loses before it reaches disk."""
 import base64
 import json
-import os
 import subprocess
 import unittest
 from pathlib import Path
 
 from testbed.cassette import Exchange
-from testbed.scrub import (STANDIN_EMAIL, STANDIN_NAME, STANDIN_USER_ID, Scrubber,
+from testbed.scrub import (recording_problems, STANDIN_EMAIL, STANDIN_NAME, STANDIN_USER_ID, Scrubber,
                            find_identity_leaks, find_secrets, standin_company_id)
 from testbed.settings import FIXTURE_DIR
 
@@ -201,23 +200,12 @@ class FixtureTest(unittest.TestCase):
 
 
 RECORDING_DIRS = ('testbed/cassettes', 'testbed/messages', 'testbed/tests/fixtures')
-SECRET_VARIABLES = ('ONSHAPE_ACCESS_KEY', 'ONSHAPE_SECRET_KEY', 'ONSHAPE_PASSWORD')
 
 
 class CommittedRecordingsTest(unittest.TestCase):
     def test_committed_recordings_are_clean(self):
-        extras = [os.environ[name] for name in SECRET_VARIABLES if os.environ.get(name)]
-        access, secret = os.environ.get('ONSHAPE_ACCESS_KEY'), os.environ.get('ONSHAPE_SECRET_KEY')
-        if access and secret:
-            extras.append(f'{access}:{secret}')     # its base64 form is the Basic header
-        problems = []
-        for directory in RECORDING_DIRS:
-            for path in sorted((REPO / directory).rglob('*')):
-                if not path.is_file() or path.suffix == '.bin' or path.name == '.gitkeep':
-                    continue
-                text = path.read_text(encoding='utf-8', errors='replace')
-                for line, kind in find_secrets(text, extras) + find_identity_leaks(text):
-                    problems.append(f'{path.relative_to(REPO)}:{line} {kind}')
+        paths = [path for directory in RECORDING_DIRS for path in sorted((REPO / directory).rglob('*'))]
+        problems = recording_problems(paths, REPO)
         self.assertEqual(problems, [], 'secret-like strings in committed recordings:\n'
                          + '\n'.join(problems))
 

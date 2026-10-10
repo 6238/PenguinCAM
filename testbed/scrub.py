@@ -11,6 +11,7 @@ import base64
 import binascii
 import dataclasses
 import json
+import os
 import re
 from urllib.parse import quote, urlsplit, urlunsplit
 
@@ -241,3 +242,35 @@ def find_identity_leaks(text: str) -> list:
                                     if key in line and (value in line or escaped in line)), 1)
             found.add((line_number, kind))
     return sorted(found)
+
+
+# The environment variables whose values must never appear in a recording.
+SECRET_VARIABLES = ('ONSHAPE_ACCESS_KEY', 'ONSHAPE_SECRET_KEY', 'ONSHAPE_PASSWORD')
+
+
+def secret_literals_from_environment() -> list:
+    """The values of SECRET_VARIABLES that are set, and the API key pair as `access:secret`
+    (whose base64 form is the Basic header)."""
+    extras = [os.environ[name] for name in SECRET_VARIABLES if os.environ.get(name)]
+    access, secret = os.environ.get('ONSHAPE_ACCESS_KEY'), os.environ.get('ONSHAPE_SECRET_KEY')
+    if access and secret:
+        extras.append(f'{access}:{secret}')
+    return extras
+
+
+def recording_problems(paths, root) -> list:
+    """'<path relative to root>:<line> <kind>' for each secret or identity leak in the
+    recording files `paths` (binaries and .gitkeep skipped). Never the matched value.
+
+    The one scan used by the clean test over committed recordings and by accept before a
+    fresh recording is moved into them.
+    """
+    extras = secret_literals_from_environment()
+    problems = []
+    for path in paths:
+        if not path.is_file() or path.suffix == '.bin' or path.name == '.gitkeep':
+            continue
+        text = path.read_text(encoding='utf-8', errors='replace')
+        for line, kind in find_secrets(text, extras) + find_identity_leaks(text):
+            problems.append(f'{path.relative_to(root)}:{line} {kind}')
+    return problems
