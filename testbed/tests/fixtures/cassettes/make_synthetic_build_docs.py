@@ -65,6 +65,10 @@ def answer(method, path, body):
     if m := re.fullmatch(r'/parts/d/(\w+)/w/\w+/e/\w+', p):
         count = len(SPECS[_name_of(m[1])].part_names)
         return [{'partId': f'J{m[1][-2:]}P{i}', 'name': f'Part {i}'} for i in range(1, count + 1)]
+    if re.fullmatch(r'/elements/d/\w+/w/\w+/e/\w+/configuration', p):
+        return {'btType': 'BTConfigurationResponse-2019',
+                'configurationParameters': body['configurationParameters'],
+                'currentConfiguration': body['currentConfiguration']}
     if p.startswith('/metadata/') or p.endswith('/instances'):
         return {}
     if m := re.fullmatch(r'/documents/d/(\w+)/versions', p):

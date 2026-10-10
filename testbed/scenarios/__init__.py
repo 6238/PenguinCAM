@@ -21,9 +21,12 @@ from testbed import settings
 
 # The test documents of spec 5.1, by the name that is their key in documents.json.
 TEST_DOCUMENT_NAMES = ('tb-box', 'tb-two-parts', 'tb-inch', 'tb-sideways', 'tb-oversized',
-                       'tb-assembly')
+                       'tb-assembly', 'tb-configured')
 # Test documents whose element is an assembly, not a Part Studio: no part STL export path.
 ASSEMBLY_DOCUMENTS = ('tb-assembly',)
+# Test documents with a configured Part Studio. part-export leaves them out: without a
+# configuration it would export only the default; print-configured-part exercises them.
+CONFIGURED_DOCUMENTS = ('tb-configured',)
 # What a step's button does. The first five and ask-unbounded send a panel message from
 # the strip; choose-print and back are done in the panel itself, and print-parts (Next to
 # the Parts step, which arms the page's own selection) and print-dialog (Add from another
@@ -155,6 +158,21 @@ SCENARIOS = {scenario.name: scenario for scenario in (
     Scenario('print-assembly-part', 'tb-assembly', True, [
         _open_panel('tb-assembly'), _choose_print(), _print_parts(), _select(['Box <1>']),
     ], estimate=10),
+    # 13: panel 6; the click, refused while the panel URL has no {$configuration}:
+    # elements, configuration (2), or once it is registered elements, parts, export 2 (4);
+    # the dialog pick, which carries its configuration: export by idTag 2, or a failed 4xx
+    # then parts 1 and export 2 (3).
+    Scenario('print-configured-part', 'tb-configured', True, [
+        _open_panel('tb-configured'), _choose_print(), _print_parts(),
+        Step('select part Spacer', 'Select Spacer in the parts list. Until the panel URL '
+                                   'carries {$configuration}, the page refuses it and says to '
+                                   'use Add from another document\u2026', None, ['Spacer']),
+        _print_dialog(),
+        Step('select part Spacer (Large)', "In Onshape's part dialog, pick Spacer from this "
+                                           'document with Size set to Large.', None,
+             ['Spacer (Large)']),
+        _dialog_closed(),
+    ], estimate=13),
     # 12: tb-two-parts elements, configuration, parts, two exports 4 (7); tb-assembly the
     # runner's read of the definition for the path 1, elements 1, the definition again
     # from the cache 0, export 2 (4); 11 in all, plus 1 in case the definition is read twice.
@@ -244,6 +262,8 @@ def run_scenario_api(name: str, client, documents: dict) -> None:
         return
     for name, doc in documents.items():
         if name in ASSEMBLY_DOCUMENTS:      # its parts export through their Part Studio
+            continue
+        if name in CONFIGURED_DOCUMENTS:
             continue
         for part_id in doc.get('parts', {}).values():
             export_part_stl(client, doc, part_id, None)          # Onshape's defaults: inches

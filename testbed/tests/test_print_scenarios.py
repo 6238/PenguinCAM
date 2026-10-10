@@ -26,7 +26,7 @@ SYNTHETIC_DOCUMENTS = {
     'tb-assembly': {'did': DID, 'wid': WID, 'eid': EID_ASM, 'parts': {}},
 }
 PRINT_ESTIMATES = {'print-select-parts': 13, 'print-dialog-parts': 11,
-                   'print-assembly-part': 10, 'print-export': 12}
+                   'print-assembly-part': 10, 'print-export': 12, 'print-configured-part': 13}
 
 
 class PrintScenarioDefinitionsTest(unittest.TestCase):
@@ -38,7 +38,8 @@ class PrintScenarioDefinitionsTest(unittest.TestCase):
         self.assertEqual(documents, {'print-select-parts': 'tb-two-parts',
                                      'print-dialog-parts': 'tb-two-parts',
                                      'print-assembly-part': 'tb-assembly',
-                                     'print-export': 'tb-two-parts'})
+                                     'print-export': 'tb-two-parts',
+                                     'print-configured-part': 'tb-configured'})
         for name in PRINT_ESTIMATES:
             scenario = SCENARIOS[name]
             with self.subTest(scenario=name):
@@ -63,6 +64,12 @@ class PrintScenarioDefinitionsTest(unittest.TestCase):
         self.assertIn('print-dialog', dialog)
         self.assertEqual(SCENARIOS['print-dialog-parts'].steps[-1].name, 'dialog closed')
         self.assertEqual(SCENARIOS['print-assembly-part'].steps[-1].select, ['Box <1>'])
+        # The configured Part Studio both ways: a click, then the dialog with a configuration.
+        configured = SCENARIOS['print-configured-part'].steps
+        self.assertEqual([(s.name, s.action) for s in configured[2:]], [
+            ('print parts', 'print-parts'), ('select part Spacer', None),
+            ('print dialog', 'print-dialog'), ('select part Spacer (Large)', None),
+            ('dialog closed', None)])
 
     def test_unrecorded_print_scenarios_reported(self):
         tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
@@ -76,7 +83,8 @@ class PrintScenarioDefinitionsTest(unittest.TestCase):
         # A panel scenario needs its message log too; print-export is API only.
         self.assertEqual({name: scenario_is_recorded(name) for name in PRINT_ESTIMATES},
                          {'print-select-parts': False, 'print-dialog-parts': False,
-                          'print-assembly-part': False, 'print-export': True})
+                          'print-assembly-part': False, 'print-export': True,
+                          'print-configured-part': False})
 
 
 class PrintExportRunnerTest(unittest.TestCase):

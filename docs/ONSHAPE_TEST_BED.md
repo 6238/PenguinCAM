@@ -160,6 +160,7 @@ creates a folder. Its id goes in `TESTBED_FOLDER_ID`. `build-docs` then builds:
 | `tb-sideways` | A tall thin part modelled lying on its side | Orientation on the plate. |
 | `tb-oversized` | A 400 x 50 x 10 mm slab | Larger than the printer's plate. |
 | `tb-assembly` | An assembly placing two instances of `tb-box` | Parts reached through an assembly. |
+| `tb-configured` | A 20 x 20 mm spacer whose list input Size sets its depth: Small 10 mm, Large 20 mm | A configured Part Studio: the print path passes the configuration through, or refuses a click it cannot configure. `part-export` leaves it out. |
 
 - **Ids.** The document, workspace, element and part ids go into `testbed/documents.json`,
   keyed by the `tb-` name, which the scenarios read.
@@ -223,7 +224,9 @@ The print page does its own Onshape messaging (`print/static/print_onshape.js`),
 strip defers to it: it sends no `applicationInit` of its own and hides its ask and dialog
 buttons. The page's own messages are recorded on their way out through a stand-in for
 `window.parent` (the HTML standard makes that property replaceable), so the fake Onshape
-host can match the page's requests when the scenario is replayed.
+host can match the page's requests when the scenario is replayed. A received message is
+recorded inside the page's own handler, which listens before the strip loads, so it stays
+ahead of the request the page sends in answer to it.
 
 ## 8. The automated Onshape UI run and the Onshape checkpoint
 

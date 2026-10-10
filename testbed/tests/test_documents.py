@@ -16,8 +16,8 @@ from onshape_integration import OnshapeClient
 from testbed import adapters, settings
 from testbed.adapters import set_current_scenario
 from testbed.cassette import Cassette, Exchange
-from testbed.documents import (NOT_IN_FOLDER, TEST_DESCRIPTION, TEST_DOCUMENTS,
-                               NotATestDocument, pending_documents,
+from testbed.documents import (BUILD_DOCS_ESTIMATE, NOT_IN_FOLDER, TEST_DESCRIPTION,
+                               TEST_DOCUMENTS, NotATestDocument, pending_documents,
                                assert_test_document, build_test_documents, extrude_feature,
                                sketch_circle_feature, sketch_rectangle_feature)
 from testbed.scenarios import TEST_DOCUMENT_NAMES
@@ -139,6 +139,23 @@ class BuildTest(_BuildCase):
             self.assertEqual(body['documentId'], box['did'])
             self.assertEqual(body['partId'], box['parts']['Box'])
 
+    def test_configured_part_studio_gets_its_configuration_first(self):
+        built = self.build()
+        configured = built['tb-configured']
+        where = f"d/{configured['did']}/w/{configured['wid']}/e/{configured['eid']}"
+        posts = [(e, kw) for m, e, kw in self.calls if m == 'POST' and e.startswith(
+            ('/elements/', f'/partstudios/{where}'))]
+        configurations = [e for e, _kw in posts if e.endswith('/configuration')]
+        self.assertEqual(configurations, [f'/elements/{where}/configuration'])
+        self.assertEqual(posts[0][0], f'/elements/{where}/configuration')
+        self.assertEqual(posts[0][1]['json']['btType'], 'BTConfigurationUpdateCall-2933')
+        self.assertEqual(len(posts), 3)                     # the configuration, two features
+        self.assertEqual(list(configured['parts']), ['Spacer'])
+
+    def test_estimate_counts_a_full_build(self):
+        # Every exchange of the full build is a counted call; a --rebuild adds its delete.
+        self.assertEqual(self.cassette.counted_calls() + 1, BUILD_DOCS_ESTIMATE)
+
     def test_rebuild_deletes_only_named_test_document(self):
         everything = self.full_documents()
         foreign = _doc('tb-inch-copy', 'd00000000000000000000f99', description='mine')
@@ -257,10 +274,27 @@ class FeatureBodiesTest(unittest.TestCase):
                   if p.get('parameterId') == 'depth']
         self.assertEqual(depths, ['0.5 in'])
 
-    def test_six_documents_of_the_spec(self):
+    def test_documents_of_the_spec(self):
         self.assertEqual([spec.name for spec in TEST_DOCUMENTS], list(TEST_DOCUMENT_NAMES))
         kinds = {spec.name: spec.kind for spec in TEST_DOCUMENTS}
         self.assertEqual(kinds['tb-assembly'], 'assembly')
+        self.assertEqual(kinds['tb-configured'], 'partstudio')
+
+    def test_configured_document_has_a_list_input_driving_its_depth(self):
+        spec = next(spec for spec in TEST_DOCUMENTS if spec.name == 'tb-configured')
+        self.assertEqual([s.name for s in TEST_DOCUMENTS if s.configuration], ['tb-configured'])
+        (parameter,) = spec.configuration['configurationParameters']
+        self.assertEqual(parameter['btType'], 'BTMConfigurationParameterEnum-105')
+        self.assertEqual(parameter['parameterId'], 'Size')
+        self.assertEqual([o['option'] for o in parameter['options']], ['Small', 'Large'])
+        self.assertEqual(spec.configuration['currentConfiguration'][0]['value'], 'Small')
+        depth = next(p for p in spec.features[1]['feature']['parameters']
+                     if p['parameterId'] == 'depth')
+        self.assertEqual(depth['btType'], 'BTMParameterConfigured-2222')
+        self.assertEqual(depth['configurationParameterId'], 'Size')
+        self.assertEqual({v['enumValue']: v['value']['expression'] for v in depth['values']},
+                         {'Small': '10 mm', 'Large': '20 mm'})
+        self.assertEqual({v['enumName'] for v in depth['values']}, {parameter['enumName']})
         self.assertEqual(TEST_DESCRIPTION, 'created by PenguinCAM test bed')
 
 

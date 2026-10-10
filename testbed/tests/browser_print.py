@@ -7,21 +7,32 @@ a real Orca slice of the replayed meshes, and the download. Each is skipped with
 recording" until print-select-parts is recorded, never passed.
 
 The self-tests run on synthetic fixtures (the fake host's own check, spec 8.2 allows it):
-the checklist strip defers to the print page's own messages.
+the checklist strip defers to the print page's own messages, and print-configured-part
+replays its synthetic message log: the click in a configured Part Studio is refused with
+the sentence, and the dialog pick is exported with its configuration.
 """
 import json
+import shutil
 import tempfile
 import unittest
 from urllib.parse import quote
 
+from print.events import quote_value
+from print.onshape_parts import CONFIGURED_MESSAGE
 from testbed import settings
 from testbed.browser import ReplayDevServer, host_url, launch_test_browser, sign_in_for_replay
+from testbed.messages import load_message_log
 from testbed.scenarios import SCENARIOS, scenario_is_recorded
-from testbed.tests.browser_host import (SYNTHETIC_DOCUMENT, messages_named, panel_frame,
-                                        stage_synthetic_fixtures, wait_for)
-from testbed.tests.browser_scenarios import ScenarioDriver
+from testbed.tests.browser_host import (FIXTURES, SYNTHETIC_DOCUMENT, messages_named,
+                                        panel_frame, stage_synthetic_fixtures, wait_for)
+from testbed.tests.browser_scenarios import (ScenarioDriver, _format, replayed_steps,
+                                             shape_differences)
 
 SCENARIO = 'print-select-parts'
+CONFIGURED = 'print-configured-part'
+# The ids make_print_fixtures.py writes the configured Part Studio's fixtures with.
+CONFIGURED_DOCUMENT = {'did': 'd00000000000000000000001', 'wid': 'a00000000000000000000001',
+                       'eid': 'e00000000000000000000001'}
 SLICE_TIMEOUT_S = 300
 # A copy is selected by clicking the plate; these fractions of the canvas are tried in turn.
 _GRID = [(x / 10, y / 8) for y in range(1, 8) for x in range(1, 10)]
@@ -181,6 +192,13 @@ class PrintPageSelfTest(unittest.TestCase):
     def setUpClass(cls):
         cls._tmp = tempfile.TemporaryDirectory()
         cls.cassette_dir, cls.message_dir = stage_synthetic_fixtures(cls._tmp.name)
+        shutil.copy(FIXTURES / 'cassettes' / 'synthetic-print-configured-part.json',
+                    cls.cassette_dir / f'{CONFIGURED}.json')
+        # The cassette names its binaries by its own scenario name.
+        shutil.copytree(FIXTURES / 'cassettes' / 'synthetic-print-configured-part',
+                        cls.cassette_dir / 'synthetic-print-configured-part')
+        shutil.copy(FIXTURES / 'messages' / 'synthetic-print-configured-part.json',
+                    cls.message_dir / f'{CONFIGURED}.json')
         cls.server = ReplayDevServer(cassette_dir=cls.cassette_dir, message_dir=cls.message_dir)
         cls.server.__enter__()
         try:
@@ -216,6 +234,9 @@ class PrintPageSelfTest(unittest.TestCase):
         wait_for(page, lambda: frame.evaluate("!!document.getElementById('testbed-strip')"),
                  'the checklist strip on the print page')
         self.assertTrue(frame.evaluate('window.PenguinCAMTestbed.deferred'))
+        frame.select_option('#testbed-scenario', 'part-select')
+        wait_for(page, lambda: frame.evaluate('window.PenguinCAMTestbed.currentScenario()')
+                 == 'part-select', 'the strip to start part-select')
         # One applicationInit, the print page's own; the strip sends none.
         wait_for(page, lambda: len(messages_named(page, 'applicationInit')) == inits + 1,
                  "the print page's applicationInit")
@@ -247,6 +268,28 @@ class PrintPageSelfTest(unittest.TestCase):
         self.assertEqual(answers[0]['data']['messageId'], 'penguincam-print-1')
         wait_for(page, lambda: len(recorded('out', 'requestSelection')) == 2,
                  'the print page to ask again after the answer')
+
+    def test_configured_part_studio_click_refused_and_dialog_passes_configuration(self):
+        page = self.context.new_page()
+        self.addCleanup(page.close)
+        page.goto(host_url(CONFIGURED_DOCUMENT, CONFIGURED))
+        wait_for(page, lambda: page.evaluate('window.__testbed.ready'), 'the fake Onshape host')
+        driver = ScenarioDriver(page, SCENARIOS[CONFIGURED])
+        strip_events = driver.run()
+        log = replayed_steps(load_message_log(CONFIGURED, self.message_dir), SCENARIOS[CONFIGURED])
+        differences = shape_differences(log, strip_events)
+        self.assertEqual(differences, [], _format(differences))
+        # The dialog pick: exported with configuration=Size=Large, the only export the
+        # cassette holds, so the part is listed only if the configuration went through.
+        frame = driver.frame
+        rows = wait_for(page, lambda: frame.evaluate("""[...document.querySelectorAll(
+            '#parts-list li')].map(li => li.querySelector('.name').textContent + ': ' +
+            li.querySelector('.dims').textContent)"""), 'the dialog pick in the parts list')
+        self.assertEqual(rows, ['Spacer: 20 x 20 x 20 mm'])
+        # The click was refused with the sentence, which the page reported to the server.
+        reported = f'message={quote_value(CONFIGURED_MESSAGE)}'
+        wait_for(page, lambda: reported in self.server.log_path.read_text(errors='replace'),
+                 'the refusal of the click in the server log')
 
 
 if __name__ == '__main__':

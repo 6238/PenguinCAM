@@ -248,7 +248,7 @@ class OtherCommandsTest(_CliCase):
         self.assertEqual(code, 1, err)
         self.assertIn('tb-box was created outside the test folder', out)
         self.assertIn('move it into the test folder in Onshape', out)
-        self.assertIn('counted calls: 8', out)        # two listings and six creations
+        self.assertIn('counted calls: 9', out)        # two listings and seven creations
 
     def test_build_docs_refusal_is_one_line(self):
         self.give_keys()

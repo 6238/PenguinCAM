@@ -1,7 +1,8 @@
 """The test documents builder: `python -m testbed build-docs` (spec 5.1).
 
-Builds the six test documents in the test folder through the API, one `POST .../features`
-per sketch or extrude, and writes their ids to testbed/documents.json:
+Builds the seven test documents in the test folder through the API, one `POST .../features`
+per sketch or extrude (and, for tb-configured, one `POST .../configuration` first), and
+writes their ids to testbed/documents.json:
 
     {name: {did, wid, eid, version_id?, parts: {partName: partId}}}
 
@@ -21,9 +22,9 @@ TEST_PREFIX = 'tb-'
 TEST_DESCRIPTION = 'created by PenguinCAM test bed'
 # The counted calls of a full build, for the budget check: two folder listings; per part
 # document its creation, elements, two features per part, parts list and one rename per
-# part; tb-box's version; the assembly document's creation, its assembly element and two
-# instances. Plus one for a --rebuild's delete.
-BUILD_DOCS_ESTIMATE = 41
+# part; tb-configured's configuration; tb-box's version; the assembly document's creation,
+# its assembly element and two instances. Plus one for a --rebuild's delete.
+BUILD_DOCS_ESTIMATE = 48
 
 # The default planes, found by name with the query string Onshape documents rather than
 # by deterministic ids, which it says must not be hard-coded.
@@ -51,6 +52,8 @@ class DocumentSpec:
     instances: Optional[list] = None
     # The name for each part, in the order the features create them (Part 1, Part 2, ...).
     part_names: list = field(default_factory=list)
+    # A Part Studio's configuration, posted before its features (BTConfigurationUpdateCall).
+    configuration: Optional[dict] = None
 
 
 # ---------------------------------------------------------------------------
@@ -121,11 +124,14 @@ def _enum(parameter_id, enum_name, value):
 
 
 def extrude_feature(sketch_feature_id, depth_expression, name='Extrude'):
-    """A new solid from every region of a sketch, blind to `depth_expression` ('10 mm').
+    """A new solid from every region of a sketch, blind to `depth_expression` ('10 mm'),
+    or to a ready depth parameter (a dict, such as configured_quantity's).
 
     In a DocumentSpec the sketch is named by its feature name; the builder swaps in the
     feature id Onshape gave the sketch.
     """
+    depth = (depth_expression if isinstance(depth_expression, dict)
+             else _quantity('depth', depth_expression))
     return {'btType': _FEATURE_CALL, 'feature': {
         'btType': 'BTMFeature-134', 'featureType': 'extrude', 'name': name, 'parameters': [
             _enum('bodyType', 'ExtendedToolBodyType', 'SOLID'),
@@ -134,7 +140,26 @@ def extrude_feature(sketch_feature_id, depth_expression, name='Extrude'):
              'queries': [{'btType': 'BTMIndividualSketchRegionQuery-140',
                           'featureId': sketch_feature_id}]},
             _enum('endBound', 'BoundingType', 'BLIND'),
-            _quantity('depth', depth_expression)]}}
+            depth]}}
+
+
+def list_configuration(input_id, enum_name, options, default):
+    """A configuration with one list input: the body of POST .../configuration."""
+    return {'btType': 'BTConfigurationUpdateCall-2933', 'configurationParameters': [{
+        'btType': 'BTMConfigurationParameterEnum-105', 'parameterId': input_id,
+        'parameterName': input_id, 'enumName': enum_name, 'defaultValue': default,
+        'options': [{'btType': 'BTMEnumOption-592', 'option': option, 'optionName': option}
+                    for option in options]}],
+        'currentConfiguration': [_enum(input_id, enum_name, default)]}
+
+
+def configured_quantity(parameter_id, input_id, enum_name, expressions):
+    """A feature parameter driven by a list input: {option: expression}."""
+    return {'btType': 'BTMParameterConfigured-2222', 'parameterId': parameter_id,
+            'configurationParameterId': input_id, 'values': [
+                {'btType': 'BTMConfiguredValueByEnum-1923', 'enumName': enum_name,
+                 'enumValue': option, 'value': _quantity(parameter_id, expression)}
+                for option, expression in expressions.items()]}
 
 
 def cube_feature(side_expression, name='Cube'):
@@ -149,6 +174,11 @@ def _rectangle_part(name, plane, width_m, height_m, depth):
     return [sketch_rectangle_feature(plane, width_m, height_m, sketch),
             extrude_feature(sketch, depth, name)]
 
+
+# tb-configured's list input and the depth each of its options gives.
+CONFIGURATION_INPUT = 'Size'
+CONFIGURATION_ENUM = 'Size_conf'
+CONFIGURATION_DEPTHS = {'Small': '10 mm', 'Large': '20 mm'}
 
 # None of the shapes is a cube, so cube_feature is not used here.
 TEST_DOCUMENTS = [
@@ -171,6 +201,13 @@ TEST_DOCUMENTS = [
                  _rectangle_part('Slab', 'Top', 0.400, 0.050, '10 mm'),
                  part_names=['Slab']),
     DocumentSpec('tb-assembly', 'assembly', [], instances=[('tb-box', 2)]),
+    # A 20 x 20 mm spacer whose list input Size sets its depth: Small 10 mm, Large 20 mm.
+    DocumentSpec('tb-configured', 'partstudio', [
+        sketch_rectangle_feature('Top', 0.020, 0.020, 'Spacer sketch'),
+        extrude_feature('Spacer sketch', configured_quantity(
+            'depth', CONFIGURATION_INPUT, CONFIGURATION_ENUM, CONFIGURATION_DEPTHS), 'Spacer'),
+    ], part_names=['Spacer'], configuration=list_configuration(
+        CONFIGURATION_INPUT, CONFIGURATION_ENUM, list(CONFIGURATION_DEPTHS), 'Small')),
 ]
 
 
@@ -267,6 +304,8 @@ def _build_part_studio(client, document, spec):
     if studio is None:
         raise RuntimeError(f'{spec.name} has no Part Studio')
     where = f"d/{did}/w/{wid}/e/{studio['id']}"
+    if spec.configuration:              # features may refer to its inputs, so it goes first
+        _call(client, 'POST', f'/elements/{where}/configuration', json=spec.configuration)
     _post_features(client, where, spec)
     entry = {'did': did, 'wid': wid, 'eid': studio['id'],
              'parts': _name_parts(client, where, spec)}

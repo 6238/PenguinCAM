@@ -1,5 +1,6 @@
-"""Regenerate the print path's synthetic cassettes, one per end-to-end request flow, and
-the synthetic message log of the print page's Parts step.
+"""Regenerate the print path's synthetic cassettes, one per end-to-end request flow, the
+synthetic message log of the print page's Parts step, and the configured Part Studio's
+cassette and message log for the browser self-test.
 
     uv run python testbed/tests/fixtures/make_print_fixtures.py
 
@@ -38,6 +39,8 @@ EID2 = 'e00000000000000000000003'
 BOX, CYLINDER, LID, NEW = 'JHD', 'JKD', 'JSD', 'JND'
 IDTAG = 'idTagBox1'
 CONFIGURATION = 'Size=20+mm'
+SPACER, SPACER_IDTAG = 'JSP', 'idTagSpacer1'    # tb-configured's part
+LARGE = 'Size=Large'
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +123,13 @@ SIZE_PARAMETER = {'btType': 'BTMConfigurationParameterQuantity-1826', 'parameter
                   'parameterName': 'Size', 'quantityType': 'LENGTH',
                   'rangeAndDefault': {'minValue': 10, 'maxValue': 40, 'defaultValue': 20,
                                       'units': 'millimeter'}}
+
+
+# tb-configured's list input (testbed/documents.py).
+SIZE_LIST_PARAMETER = {'btType': 'BTMConfigurationParameterEnum-105', 'parameterId': 'Size',
+                       'parameterName': 'Size', 'enumName': 'Size_conf', 'defaultValue': 'Small',
+                       'options': [{'btType': 'BTMEnumOption-592', 'option': o, 'optionName': o}
+                                   for o in ('Small', 'Large')]}
 
 
 def _part(part_id, name, body_type='solid', eid=EID_PS):
@@ -306,14 +316,58 @@ def selection_message_log():
             'steps': [{'step': name, 'events': events} for name, events in steps]}
 
 
+# ---------------------------------------------------------------------------
+# print-configured-part on synthetic fixtures (testbed/tests/browser_print.py)
+# ---------------------------------------------------------------------------
+
+def configured_part_cassette():
+    """The panel's calls, then the click refused (elements, configuration with a list input)
+    and the dialog pick exported with its configuration."""
+    panel = Cassette.load(CASSETTE_DIR, 'synthetic-panel').exchanges
+    return [*panel, elements('PARTSTUDIO', EID_PS), configuration([SIZE_LIST_PARAMETER]),
+            *export(SPACER_IDTAG, box_stl(20.0, 20.0, 20.0), extra={'configuration': LARGE})]
+
+
+def configured_part_message_log():
+    """The print page's messages in print-configured-part, step by step, as the checklist
+    strip records them: the page's own requests out, Onshape's answers in."""
+    dialog_item = {'messageName': 'itemSelectedInSelectItemDialog', 'documentId': DID,
+                   'workspaceId': WID, 'elementId': EID_PS, 'elementConfiguration': LARGE,
+                   'elementType': 'PARTSTUDIO', 'itemType': 'PART', 'partName': 'Spacer',
+                   'idTag': SPACER_IDTAG, 'isSurface': False, 'isComposite': False,
+                   'isSketch': False, 'isFlattenedBody': False}
+    steps = [
+        ('open panel', []),
+        ('choose print', []),
+        ('print parts', [_arm(10, 1), _answer(40, 'penguincam-print-1', [], 'PENDING')]),
+        ('select part Spacer', [_answer(1000, 'penguincam-print-1',
+                                        [_body(partId=SPACER, selectionId=SPACER)]),
+                                _arm(1010, 2)]),
+        ('print dialog', [_event('out', 2000, {'messageName': 'openSelectItemDialog',
+                                               'selectParts': True, 'selectMultiple': True})]),
+        ('select part Spacer (Large)', [_event('in', 3000, dialog_item, ids=False)]),
+        ('dialog closed', [_event('in', 4000, {'messageName': 'selectItemDialogClosed'}),
+                           _arm(4010, 3)]),
+    ]
+    return {'scenario': 'synthetic-print-configured-part', 'synthetic': True,
+            'steps': [{'step': name, 'events': events} for name, events in steps]}
+
+
+def _write_log(log):
+    path = MESSAGE_DIR / f"{log['scenario']}.json"
+    path.write_text(json.dumps(log, indent=1, sort_keys=True) + '\n')
+    print(path.relative_to(HERE.parents[2]))
+
+
 def main():
     for flow, exchanges in FLOWS.items():
         path = Cassette(f'synthetic-print-{flow}', exchanges, synthetic=True).save(CASSETTE_DIR)
         print(path.relative_to(HERE.parents[2]))
-    log = selection_message_log()
-    path = MESSAGE_DIR / f"{log['scenario']}.json"
-    path.write_text(json.dumps(log, indent=1, sort_keys=True) + '\n')
+    path = Cassette('synthetic-print-configured-part', configured_part_cassette(),
+                    synthetic=True).save(CASSETTE_DIR)
     print(path.relative_to(HERE.parents[2]))
+    _write_log(selection_message_log())
+    _write_log(configured_part_message_log())
 
 
 if __name__ == '__main__':

@@ -92,7 +92,8 @@ class DefinitionsTest(unittest.TestCase):
         self.assertEqual(set(SCENARIOS), {'panel-load', 'to-print', 'part-select',
                                           'multi-select', 'assembly-select', 'part-export',
                                           'print-select-parts', 'print-dialog-parts',
-                                          'print-assembly-part', 'print-export'})
+                                          'print-assembly-part', 'print-export',
+                                          'print-configured-part'})
         estimates = {name: scenario.estimate for name, scenario in SCENARIOS.items()
                      if not name.startswith('print-')}
         self.assertEqual(estimates, {'panel-load': 6, 'to-print': 6, 'part-select': 2,
@@ -144,6 +145,9 @@ class PartExportRunnerTest(unittest.TestCase):
                              'parts': {'Box': 'JAD', 'Cylinder': 'JBD'}},
             # An assembly has no part STL path; its parts are exported from tb-box.
             'tb-assembly': {'did': 'D3', 'wid': 'W3', 'eid': 'E3', 'parts': {'Box <1>': 'JKD'}},
+            # Configured: part-export would export only its default; print-configured-part
+            # exercises it.
+            'tb-configured': {'did': 'D4', 'wid': 'W4', 'eid': 'E4', 'parts': {'Spacer': 'JSD'}},
         }
         client = mock.Mock()
         client._make_api_request.return_value = mock.Mock(status_code=200, text='{}')

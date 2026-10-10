@@ -1,0 +1,124 @@
+{
+ "exchanges": [
+  {
+   "body_file": null,
+   "body_text": "{\"items\": [{\"id\": \"0000000000000000000000c1\", \"name\": \"Test Bed Classroom 1\"}]}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/companies",
+   "query": {
+    "activeOnly": [
+     "true"
+    ],
+    "includeAll": [
+     "false"
+    ]
+   },
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"items\": []}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "POST",
+   "path": "/api/v13/documents/search",
+   "query": {},
+   "request_body": "{\"ownerId\": \"0000000000000000000000c1\", \"foundIn\": \"w\", \"when\": \"latest\", \"documentFilter\": 7, \"rawQuery\": \"_all:PenguinCAM-config.yaml\", \"limit\": 50}",
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"id\": \"000000000000000000000001\", \"email\": \"testbed@example.invalid\", \"name\": \"Test Bed Owner\"}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/users/sessioninfo",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "[{\"id\": \"e00000000000000000000001\", \"name\": \"Part Studio 1\", \"elementType\": \"PARTSTUDIO\", \"dataType\": \"onshape/partstudio\", \"type\": \"Part Studio\"}]",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/documents/d/d00000000000000000000001/w/a00000000000000000000001/elements",
+   "query": {
+    "elementId": [
+     "e00000000000000000000001"
+    ]
+   },
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": "{\"btType\": \"BTConfigurationResponse-2019\", \"configurationParameters\": [{\"btType\": \"BTMConfigurationParameterEnum-105\", \"parameterId\": \"Size\", \"parameterName\": \"Size\", \"enumName\": \"Size_conf\", \"defaultValue\": \"Small\", \"options\": [{\"btType\": \"BTMEnumOption-592\", \"option\": \"Small\", \"optionName\": \"Small\"}, {\"btType\": \"BTMEnumOption-592\", \"option\": \"Large\", \"optionName\": \"Large\"}]}], \"currentConfiguration\": []}",
+   "headers": {
+    "Content-Type": "application/json;charset=UTF-8"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/elements/d/d00000000000000000000001/w/a00000000000000000000001/e/e00000000000000000000001/configuration",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  },
+  {
+   "body_file": null,
+   "body_text": null,
+   "headers": {
+    "Location": "https://cad.onshape.com/api/v13/blob/synthetic/d-d00000000000000000000001-w-a00000000000000000000001-e-e00000000000000000000001-idTagSpacer1.stl"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/parts/d/d00000000000000000000001/w/a00000000000000000000001/e/e00000000000000000000001/partid/idTagSpacer1/stl",
+   "query": {
+    "angleTolerance": [
+     "0.1309"
+    ],
+    "chordTolerance": [
+     "0.00005"
+    ],
+    "configuration": [
+     "Size=Large"
+    ],
+    "mode": [
+     "binary"
+    ],
+    "units": [
+     "millimeter"
+    ]
+   },
+   "request_body": null,
+   "status": 307
+  },
+  {
+   "body_file": "synthetic-print-configured-part/006.bin",
+   "body_text": null,
+   "headers": {
+    "Content-Type": "application/octet-stream"
+   },
+   "host": "cad.onshape.com",
+   "method": "GET",
+   "path": "/api/v13/blob/synthetic/d-d00000000000000000000001-w-a00000000000000000000001-e-e00000000000000000000001-idTagSpacer1.stl",
+   "query": {},
+   "request_body": null,
+   "status": 200
+  }
+ ],
+ "scenario": "synthetic-print-configured-part",
+ "synthetic": true
+}
