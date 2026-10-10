@@ -17,7 +17,7 @@ Each term means one thing everywhere in this guide and in the code.
 | Term | Meaning |
 |---|---|
 | **test bed** | Everything in `testbed/`: test documents, recordings, fakes, scenarios and tools. |
-| **development server** | PenguinCAM's Flask server started locally: on port 6238 in record mode, on port 6240 when a browser scenario starts one in replay mode. |
+| **development server** | PenguinCAM's Flask server started locally: on port 6238 in record mode and in local mode, on port 6240 when a browser scenario starts one in replay mode, on port 6241 when the local mode browser test starts one. |
 | **panel** | PenguinCAM inside Onshape's right panel: `/onshape-panel` first, and the print wizard (`/print`) once 3D Printing is chosen. |
 | **test folder** | The Onshape folder the test documents live in, named by `TESTBED_FOLDER_ID`. |
 | **test documents** | The Onshape documents the test bed builds in the test folder (section 6). |
@@ -29,6 +29,8 @@ Each term means one thing everywhere in this guide and in the code.
 | **recorder** | The transport adapter that saves API traffic in record mode. |
 | **replay adapter** | The transport adapter that answers API calls from cassettes, inside the process, in tests and in the development server alike. |
 | **current scenario** | The one scenario a process is recording or replaying at a time. |
+| **local mode** | The development server with no Onshape at all: parts are uploaded STL files (section 13). |
+| **stand-in Part Studio** | The page at `/testbed/local` that local mode serves in place of an Onshape Part Studio tab, with the panel in its right panel. |
 | **fake Onshape host** | The page at `https://cad-testbed.onshape.com` that embeds the panel the way Onshape does and plays Onshape's side of the panel messages from message logs. |
 | **development sign-in** | Signing the panel in with the API keys instead of OAuth, in replay mode only. |
 | **live API check** | Running the API side of every scenario in record mode with the API keys, unattended. |
@@ -40,7 +42,7 @@ Each term means one thing everywhere in this guide and in the code.
 
 ## 2. Switching the test bed on
 
-One environment variable, `PENGUINCAM_TESTBED`, set to `replay` or `record`. It is read
+One environment variable, `PENGUINCAM_TESTBED`, set to `replay`, `record` or `local`. It is read
 when `frc_cam_gui_app` is imported, through `testbed/settings.py`, which every test bed
 setting goes through and which imports only the standard library.
 
@@ -52,6 +54,8 @@ setting goes through and which imports only the standard library.
   path. `/testbed/sign-in` (the development sign-in) exists only in this mode.
 - **`record`**: every Onshape request goes to real Onshape through the recorder, which
   scrubs it and counts it in the call ledger.
+- **`local`**: local mode (section 13). Every Onshape request is answered from uploaded
+  STL files; nothing leaves the machine and no credential is needed.
 
 The app refuses to import with `PENGUINCAM_TESTBED` set when the server looks deployed
 (`FLASK_ENV=production`, `RAILWAY_ENVIRONMENT` or `VERCEL` set). In record mode it also
@@ -68,6 +72,7 @@ development server with the test bed on, and browser runs call them in bursts.
 | `make test-quick`, `make test` | Include the test bed's unit tests (`testbed/tests/test_*.py`). `make test` also slices `tb-box`'s exported mesh (the fixture until `part-export` is recorded) with Orca. | none |
 | `make testbed-replay` | Installs `testbed/requirements.txt` into the development environment if Playwright is missing, then runs the browser tests (`testbed/tests/browser_*.py`) under `xvfb-run`: the harness self-tests, every browser scenario in replay mode, and the offline launch of the Chromium the automated Onshape UI run drives. | none |
 | `make testbed-record` | The live API check: `python -m testbed record`. | yes, counted |
+| `make testbed-local` | Starts the development server in local mode on 6238, in the foreground (section 13). | none |
 
 `make testbed-replay` must pass before a change to the print path's Onshape code is done.
 A browser scenario with no recording yet is skipped with "needs a recording", never passed.
@@ -106,7 +111,8 @@ and names it; none is ever written to a file or a log.
 
 | Variable | Used by | Meaning |
 |---|---|---|
-| `PENGUINCAM_TESTBED` | the app | `replay` or `record`; unset means off (section 2). |
+| `PENGUINCAM_TESTBED` | the app | `replay`, `record` or `local`; unset means off (section 2). |
+| `TESTBED_LOCAL_CONFIG` | local mode | A team config YAML served as the classroom's `PenguinCAM-config.yaml`. Default: `testbed/fixtures/team-config-fixture.yaml`. |
 | `ONSHAPE_ACCESS_KEY`, `ONSHAPE_SECRET_KEY` | `build-docs`, `record` | The API key pair. Replay mode needs neither. |
 | `ONSHAPE_CLIENT_ID`, `ONSHAPE_CLIENT_SECRET` | record mode, `record --ui` | A private development OAuth app whose redirect URL is `http://localhost:6238/onshape/oauth/callback`. Never the production app. |
 | `ONSHAPE_USERNAME`, `ONSHAPE_PASSWORD` | `record --ui` | The Onshape sign-in. Only the Chromium the automated Onshape UI run drives gets them; the development server the automated Onshape UI run starts does not. |
@@ -388,10 +394,11 @@ another Chromium or Chrome binary.
 | `testbed/documents.py` | The test documents builder. |
 | `testbed/scrub.py`, `testbed/cassette.py` | The recording format, scrubbing and the stand-ins. |
 | `testbed/adapters.py` | The recorder, the replay adapter and the current scenario. |
+| `testbed/local.py` | Local mode: the stand-in Part Studio's uploaded parts and the local adapter. |
 | `testbed/ledger.py` | The call ledger and the budget. |
 | `testbed/flask_hooks.py`, `testbed/messages.py` | The `/testbed/*` routes and the message log format. |
 | `testbed/panel/` | The checklist strip and its message recording script. |
-| `testbed/host/` | The fake Onshape host's page and script. |
+| `testbed/host/` | The fake Onshape host's page and script, the stand-in Part Studio (`local.html`, `local.js`), and the message shapes both use (`onshape_shapes.js`). |
 | `testbed/browser.py` | The Playwright harness and the development servers it starts. |
 | `testbed/scenarios/` | Scenario definitions and the part export runner. |
 | `testbed/mesh.py`, `testbed/drift.py` | Exported mesh checks and the drift report. |
@@ -403,6 +410,63 @@ another Chromium or Chrome binary.
 | `testbed/tests/` | Unit tests (`test_*.py`), browser tests (`browser_*.py`) and fixtures. |
 
 Outside `testbed/`, all inert unless `PENGUINCAM_TESTBED` is set: `OnshapeClient.__init__`,
-`get_client` and `update_session_tokens` in `onshape_integration.py`; the import guards, the
-route registration and `/onshape/status` in `frc_cam_gui_app.py`; and one conditional
-`<script>` tag in `print/templates/print_wizard.html`.
+`from_api_keys`, `get_client` and `update_session_tokens` in `onshape_integration.py`; the
+import guards, the route registration and `/onshape/status` in `frc_cam_gui_app.py`; one
+conditional `<script>` tag and the `testbedLocalOrigin` value in
+`print/templates/print_wizard.html`; and the `localOrigin` check in
+`print/static/print_onshape.js`, which accepts nothing unless that value is set.
+
+## 13. Local mode
+
+Local mode runs the whole print path in a browser with no Onshape account: the parts are
+STL files uploaded to a stand-in Part Studio, and the panel is the real one, at the width
+of Onshape's right panel, loaded with the URL the Onshape extension uses.
+
+**Start it** from the repository root, then open `http://localhost:6238/testbed/local`:
+
+```
+make testbed-local
+```
+
+which runs `PORT=6238 EMBED_COOKIES=1 PENGUINCAM_TESTBED=local uv run python frc_cam_gui_app.py`.
+It refuses to start on a deployed server, like every test bed mode.
+
+**Use it.** Upload STL files with Upload STL… or by dropping them on the page; each becomes
+a part named from its file name. In the panel choose 3D Printing, press Next to reach
+Parts, then click a part in the Parts list on the left (Shift or Ctrl click adds more). Add
+from another document… opens a part picker listing the uploaded parts. Layout, Setup,
+the slice with Orca, Preview and the download then work as in Onshape. Send to Printer
+behaves as for a team without a pairing code unless `TESTBED_LOCAL_CONFIG` names a config
+with one. Remove all parts empties the stand-in Part Studio; Reload panel reloads the panel.
+
+**How it works.**
+
+- **Sign-in.** The stand-in Part Studio signs the browser in through the development
+  sign-in (`/testbed/sign-in`) as the stand-in user, then frames
+  `/onshape-panel?documentId=…&workspaceId=…&elementId=…&server=<its origin>&theme=light`
+  with made-up 24-hex ids, one set per browser session. Onshape's OAuth routes answer 403.
+- **Messages.** It plays Onshape's side of the panel messages live: a `requestSelection`
+  is answered PENDING and remembered, and each change of the selection answers it with
+  `REQUESTED_SELECTION` listing every selected part (or none). `openSelectItemDialog`
+  opens the part picker; each pick sends `itemSelectedInSelectItemDialog` and Close sends
+  `selectItemDialogClosed`. The shapes are those of the fake Onshape host
+  (`testbed/host/onshape_shapes.js`).
+- **Origins.** The stand-in Part Studio is on the server's own origin, so no local network
+  permission is involved. In local mode only, the panel's `frame-ancestors` gains `'self'`
+  and the print page accepts messages from that origin; `OriginRelaxationAbsentTest`
+  checks that neither happens when the test bed is off or in replay mode.
+- **API calls.** The local adapter (`testbed/local.py`) is mounted on every client's
+  session in place of the network. It answers the session info, the classroom and its
+  team config, the element type, the configuration (none), the parts list and the part
+  STL export, which redirects to a stand-in storage host (`testbed-local.invalid`) as a
+  real export redirects to storage. Any other request gets HTTP 599 with a body starting
+  `not answered in local mode: `; nothing ever reaches Onshape.
+- **Uploads** are kept under `local-parts/<document id>/` in the state directory until
+  removed. An uploaded STL is taken to be in millimetres, the unit the print path asks
+  Onshape for; an ASCII STL is converted to binary on upload, since Onshape answers binary.
+  The upload sets no cap of its own: the print path's part size, triangle and part count
+  limits apply when the panel adds a part, through the same code as with Onshape.
+
+`testbed/tests/browser_local.py` (part of `make testbed-replay`) drives the stand-in Part
+Studio on port 6241: it uploads two STL files, selects both, opens the part picker, reaches
+Layout and, when Orca is installed, slices and downloads the `.gcode.3mf`.

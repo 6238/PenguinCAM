@@ -169,7 +169,8 @@ G-code Generator (frc_cam_postprocessor.py)
   - `print/tests/` - The print tests, including `tests/js/` for the node tests
   - `print/sample_part.stl`, `print/profiles/` - The fixed part and Bambu Lab profiles
 - `testbed/` - The Onshape test bed: recordings of real Onshape traffic, the replay adapter,
-  the fake Onshape host, scenarios, the drift report and the call ledger. Inert unless
+  the fake Onshape host, local mode (a stand-in Part Studio of uploaded STL files, started
+  with `make testbed-local`), scenarios, the drift report and the call ledger. Inert unless
   `PENGUINCAM_TESTBED` is set; Playwright is in `testbed/requirements.txt` only, never in
   `requirements.txt` or the Docker image.
 
