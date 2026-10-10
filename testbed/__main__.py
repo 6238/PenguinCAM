@@ -144,14 +144,22 @@ def command_record(args):
 
 def _record_ui(names):
     from testbed import ui_run
-    names = _known_scenarios(names or [n for n, s in SCENARIOS.items() if s.panel])
+    names = _known_scenarios(names or ui_run.default_ui_scenarios())
     settings.required_environment(*ui_run.UI_VARIABLES)
     ledger = CallLedger()
-    ledger.check_budget(sum(_estimate(name) for name in names))
+    ledger.check_budget(sum(_estimate(name) for name in names
+                            if not ui_run.owner_steps(SCENARIOS[name])))
     before = ledger.counted_in_cycle()
     try:
-        ui_run.run_onshape_ui(names)
-        _write_drift_report(names)
+        outcomes = ui_run.run_onshape_ui(names)
+        for outcome in outcomes:
+            print(outcome.line())
+        recorded = [o.name for o in outcomes if o.outcome == ui_run.RECORDED]
+        if recorded:
+            _write_drift_report(recorded)
+        if len(recorded) < len(outcomes):
+            _say(f'{len(outcomes) - len(recorded)} of {len(outcomes)} scenarios were not recorded')
+            return EXIT_FAILED
     except ui_run.OnshapeCheckStopped as exc:
         _say(f'stopped by an Onshape check: {exc}')
         return EXIT_ONSHAPE_CHECK

@@ -104,7 +104,8 @@ class ReplayHooksTest(_MinimalAppCase):
         part_select = listing['scenarios'][names.index('part-select')]
         self.assertEqual(part_select['steps'][2],
                          {'name': 'ask for a part', 'instruction': 'Press Ask for a part.',
-                          'action': 'ask-part', 'select': [], 'recorded_only': False})
+                          'action': 'ask-part', 'select': [], 'recorded_only': False,
+                          'in_dialog': False})
         self.assertIsNone(listing['current'])
 
         response = self.client.post('/testbed/scenario', json={'name': 'part-select'})

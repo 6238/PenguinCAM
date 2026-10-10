@@ -17,10 +17,8 @@ Each skips itself once the real scenario it copies is recorded, so it can never 
 passing on invented data after the recording lands.
 """
 import json
-import shutil
 import tempfile
 import unittest
-from pathlib import Path
 from unittest import mock
 from urllib.parse import quote
 
@@ -29,10 +27,11 @@ from print.onshape_parts import CONFIGURED_MESSAGE
 from testbed import settings
 from testbed.browser import ReplayDevServer, host_url, launch_test_browser, sign_in_for_replay
 from testbed.messages import load_message_log
-from testbed.scenarios import (SCENARIOS, SYNTHETIC_PREFIX, scenario_is_recorded,
-                               synthetic_copy)
-from testbed.tests.browser_host import (FIXTURES, SYNTHETIC_DOCUMENT, messages_named,
-                                        panel_frame, wait_for)
+from testbed.scenarios import SCENARIOS, SYNTHETIC_PREFIX, scenario_is_recorded, synthetic_copy
+from testbed.tests import browser_scenarios, self_test_fixtures
+from testbed.tests.browser_host import COPY as HOST_COPY, messages_named, panel_frame, wait_for
+from testbed.tests.self_test_fixtures import (SYNTHETIC_DOCUMENT, skip_once_recorded,
+                                              stage_self_test_fixtures)
 from testbed.tests.browser_scenarios import (ScenarioDriver, _format, replayed_steps,
                                              shape_differences)
 
@@ -57,22 +56,6 @@ def advance_strip_to(page, frame, name):
         before = _strip_step(frame)
         frame.click('#testbed-next')
         wait_for(page, lambda: _strip_step(frame) != before, f'the strip to move on from {before}')
-
-
-def stage_self_test_fixtures(directory) -> tuple:
-    """(cassette dir, message dir) under `directory`: the synthetic fixtures under the
-    synthetic-... scenario copies' names."""
-    cassettes, messages = Path(directory) / 'cassettes', Path(directory) / 'messages'
-    cassettes.mkdir()
-    messages.mkdir()
-    shutil.copy(FIXTURES / 'cassettes' / 'synthetic-panel.json', cassettes / f'{DEFERS.name}.json')
-    shutil.copy(FIXTURES / 'messages' / 'synthetic-part-select.json',
-                messages / f'{DEFERS.name}.json')
-    # Already named synthetic-print-configured-part; its binaries sit under that name too.
-    shutil.copy(FIXTURES / 'cassettes' / f'{CONFIGURED.name}.json', cassettes)
-    shutil.copytree(FIXTURES / 'cassettes' / CONFIGURED.name, cassettes / CONFIGURED.name)
-    shutil.copy(FIXTURES / 'messages' / f'{CONFIGURED.name}.json', messages)
-    return cassettes, messages
 
 
 class PrintScenarioTest(unittest.TestCase):
@@ -210,24 +193,23 @@ class PrintScenarioTest(unittest.TestCase):
         self.assertIn('.gcode.3mf', answer['disposition'])
 
 
-def skip_once_recorded(test, scenario):
-    """Skip `test` if the real scenario that `scenario` (a synthetic-... copy) stands in for
-    is recorded."""
-    real = scenario.name[len(SYNTHETIC_PREFIX):]
-    if scenario_is_recorded(real):
-        test.skipTest(f'{real} is recorded: this self-test on synthetic input is retired; '
-                      'delete it with the synthetic fixtures')
-
-
 class SelfTestRetirementTest(unittest.TestCase):
+    """Every browser self-test's copy (here, browser_host and browser_scenarios) retires."""
+
     def test_self_tests_skip_once_the_real_scenario_is_recorded(self):
-        for copy in (DEFERS, CONFIGURED):
-            with mock.patch(f'{__name__}.scenario_is_recorded', lambda name: True), \
+        recorded = f'{self_test_fixtures.__name__}.scenario_is_recorded'
+        for copy in (DEFERS, CONFIGURED, HOST_COPY, browser_scenarios.BrowserScenarioSelfTest.COPY):
+            self.assertTrue(copy.name.startswith(SYNTHETIC_PREFIX))
+            with mock.patch(recorded, lambda name: True), \
                     self.assertRaises(unittest.SkipTest) as caught:
-                skip_once_recorded(self, copy)
+                skip_once_recorded(copy)
             self.assertIn(copy.name[len(SYNTHETIC_PREFIX):] + ' is recorded', str(caught.exception))
-            with mock.patch(f'{__name__}.scenario_is_recorded', lambda name: False):
-                skip_once_recorded(self, copy)        # not recorded: runs
+            with mock.patch(recorded, lambda name: False):
+                skip_once_recorded(copy)              # not recorded: runs
+
+    def test_staging_refuses_a_real_scenario_name(self):
+        with tempfile.TemporaryDirectory() as tmp, self.assertRaises(ValueError):
+            stage_self_test_fixtures(tmp, [SCENARIOS['part-select']])
 
 
 class PrintPageSelfTest(unittest.TestCase):
@@ -236,7 +218,7 @@ class PrintPageSelfTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls._tmp = tempfile.TemporaryDirectory()
-        cls.cassette_dir, cls.message_dir = stage_self_test_fixtures(cls._tmp.name)
+        cls.cassette_dir, cls.message_dir = stage_self_test_fixtures(cls._tmp.name, [DEFERS, CONFIGURED])
         cls.server = ReplayDevServer(cassette_dir=cls.cassette_dir, message_dir=cls.message_dir,
                                      synthetic_scenarios=[DEFERS, CONFIGURED])
         cls.server.__enter__()
@@ -258,11 +240,8 @@ class PrintPageSelfTest(unittest.TestCase):
             cls.server.__exit__(None, None, None)
             cls._tmp.cleanup()
 
-    def skip_once_recorded(self, scenario):
-        skip_once_recorded(self, scenario)
-
     def test_strip_defers_to_print_page_messages(self):
-        self.skip_once_recorded(DEFERS)
+        skip_once_recorded(DEFERS)
         page = self.context.new_page()
         self.addCleanup(page.close)
         page.goto(host_url(SYNTHETIC_DOCUMENT, DEFERS.name))
@@ -315,7 +294,7 @@ class PrintPageSelfTest(unittest.TestCase):
     def test_configured_part_studio_click_refused_and_dialog_passes_configuration(self):
         # Provisional, on an invented selection answer: retired once print-configured-part
         # is recorded.
-        self.skip_once_recorded(CONFIGURED)
+        skip_once_recorded(CONFIGURED)
         page = self.context.new_page()
         self.addCleanup(page.close)
         page.goto(host_url(CONFIGURED_DOCUMENT, CONFIGURED.name))

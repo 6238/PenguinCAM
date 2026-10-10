@@ -71,6 +71,10 @@ development server with the test bed on, and browser runs call them in bursts.
 
 `make testbed-replay` must pass before a change to the print path's Onshape code is done.
 A browser scenario with no recording yet is skipped with "needs a recording", never passed.
+Every harness self-test follows one convention (`testbed/tests/self_test_fixtures.py`): it
+runs a `synthetic-<name>` copy of a scenario on synthetic fixtures staged under the copy's
+name, only its own replay server knows the copy, and it skips itself once the real
+scenario `<name>` is recorded, so it never keeps passing on invented data.
 
 Playwright is pinned in `testbed/requirements.txt` (`playwright==1.63.0`). It is a
 development dependency only: it is never in `requirements.txt` or the Docker image, and the
@@ -82,7 +86,7 @@ The command line is `uv run python -m testbed <command>`:
 |---|---|
 | `build-docs [--rebuild NAME]` | Builds the test documents that are missing from the test folder (live, counted). `--rebuild NAME` deletes and rebuilds one. |
 | `record [SCENARIO...]` | The live API check for the scenarios without a panel part, then the drift report. |
-| `record --ui [SCENARIO...]` | The automated Onshape UI run for the scenarios with a panel part, then the drift report. |
+| `record --ui [SCENARIO...]` | The automated Onshape UI run for the scenarios with a panel part (by default the print scenarios first), then one outcome line per scenario and the drift report of those recorded. |
 | `drift` | Compares every fresh recording in `testbed/.fresh/` with the stored one and writes `testbed/.fresh/drift-report.md`. |
 | `accept SCENARIO...` | Scans every fresh file of the scenario for secrets and identity leaks (the scan the clean test runs) and, only if none is found, moves the fresh cassette, its binary files and its message log over the stored ones. A hit refuses the scenario, moves nothing and names each `file:line` and kind, never the value. Commit them with a message that says why the recording changed. |
 | `ledger` | The call ledger's counted calls in the current cycle, the budget, and its last ten lines. |
@@ -250,8 +254,14 @@ since the replayed page's is not recorded either.
    the panel's popup when asked, chooses 3D Printing, and works through the checklist
    strip. Selections are made in Onshape's parts list or select dialog, never in the 3D
    view.
-5. It presses Done, writes the drift report, and prints the panel URL the development app
-   opened (also kept in `panel-url.txt`) and the counted calls.
+5. It presses Done, prints one line per scenario (`<name>: recorded`, `<name>: failed
+   (<why>)` or `<name>: needs the owner in an Onshape checkpoint (<step>)`), writes the
+   drift report of the scenarios recorded, and prints the panel URL the development app
+   opened (also kept in `panel-url.txt`) and the counted calls. It exits 1 if any scenario
+   was not recorded.
+
+With no scenario named, the run takes the print scenarios first, those it can finish
+ahead of the others, so a failure in an older scenario never starves the print path.
 
 Rules for the run:
 
@@ -259,9 +269,17 @@ Rules for the run:
 - **Bot checks.** On a CAPTCHA, a challenge page, an unexpected verification step, or any
   other sign that Onshape is asking whether this is a person, it stops, saves a screenshot
   and exits 3. It never tries to solve, bypass or hide from such a check.
-- **A failed step** stops the run with a screenshot and a message naming the step; exit 1.
-  Every Onshape page selector is in `SELECTORS` in `testbed/ui_run.py`, so a change in
-  Onshape's interface is a one-line fix there.
+- **A failed step** stops its scenario only: a screenshot, a message naming the step, and
+  that scenario's partial recording discarded (any fresh file of it written during the
+  scenario is removed). The run goes on with the next scenario. A failure before the first
+  scenario (sign-in, the documents page, `tb-inch`'s units) still stops the run. Every
+  Onshape page selector is in `SELECTORS` in `testbed/ui_run.py`, so a change in Onshape's
+  interface is a one-line fix there.
+- **Dialog picks.** A pick inside one of Onshape's dialogs (a step with `in_dialog` in
+  `testbed/scenarios`: the select dialog of `part-select`, `multi-select` and
+  `assembly-select`, the part picker of `print-dialog-parts` and `print-configured-part`)
+  is not something the run can do. Such a scenario is not opened, so it spends no counted
+  call, and is reported as needing the owner in an Onshape checkpoint.
 - **Secrets.** The password goes only into Onshape's sign-in form. Every message the run
   prints is redacted, error text from Playwright is cut to its first line, and nothing is
   chained to the error that leaves the run. Never set Playwright's `DEBUG=pw:api` for this

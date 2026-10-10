@@ -107,7 +107,7 @@ class PlacementChecksTest(JobRouteBase):
         self.assert_refused(self.post([copy(self.box.ref, 50, 50), copy(theirs.ref, 100, 50)]),
                             print_routes.REFRESH_PARTS_MESSAGE)
 
-    def test_thirty_one_copies_refused(self):
+    def test_one_over_max_copies_refused(self):
         # The cap is MAX_COPIES (25 by ruling); one over it is refused, the cap itself is not.
         too_many = [copy(self.peg.ref, 20 + 15 * (n % 20), 20 + 40 * (n // 20)) for n in range(limits.MAX_COPIES + 1)]
         self.assert_refused(self.post(too_many), limits.TOO_MANY_COPIES_MESSAGE)

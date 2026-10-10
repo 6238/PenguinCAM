@@ -11,7 +11,8 @@ The strip's recorded events must then equal the scenario's message log in messag
 keys and value types.
 
 A scenario without a recording is skipped with "needs a recording", never passed. The
-self-test runs part-select against the synthetic fixtures.
+self-test runs synthetic-part-select, a copy of part-select, against the synthetic fixtures
+(self_test_fixtures), and retires once part-select is recorded.
 """
 import json
 import tempfile
@@ -21,12 +22,12 @@ import unittest
 from testbed import settings
 from testbed.browser import ReplayDevServer, host_url, launch_test_browser, sign_in_for_replay
 from testbed.messages import load_message_log
-from testbed.scenarios import PAGE_ASKS, SCENARIOS, scenario_is_recorded
-from testbed.tests.browser_host import (SYNTHETIC_DOCUMENT, panel_frame,
-                                        stage_synthetic_fixtures, wait_for)
+from testbed.scenarios import (PAGE_ASKS, SCENARIOS, STRIP_ACTIONS, SYNTHETIC_PREFIX,
+                               scenario_is_recorded, synthetic_copy)
+from testbed.tests.browser_host import panel_frame, wait_for
+from testbed.tests.self_test_fixtures import (SYNTHETIC_DOCUMENT, skip_once_recorded,
+                                              stage_self_test_fixtures)
 
-STRIP_ACTIONS = ('ask-part', 'ask-two-parts', 'dialog-part', 'dialog-parts', 'close-dialog',
-                 'ask-unbounded')
 QUIET_S = 0.5            # a step is over once no message has arrived for this long
 
 
@@ -169,14 +170,17 @@ def replayed_steps(log, scenario):
     return dict(log, steps=[entry for entry in log['steps'] if entry['step'] not in skipped])
 
 
-def run_browser_scenario(name, document, cassette_dir=None, message_dir=None) -> tuple:
-    """Run scenario `name` on `document` in replay mode: (message log, strip events).
+def run_browser_scenario(scenario, document, cassette_dir=None, message_dir=None) -> tuple:
+    """Run `scenario` (a Scenario) on `document` in replay mode: (message log, strip events).
 
-    The message log comes back without the steps replay skips.
+    A synthetic-... copy is made known to this run's replay server only. The message log
+    comes back without the steps replay skips.
     """
-    scenario = SCENARIOS[name]
+    name = scenario.name
     log = replayed_steps(load_message_log(name, message_dir), scenario)
-    with ReplayDevServer(cassette_dir=cassette_dir, message_dir=message_dir):
+    synthetic = [scenario] if name.startswith(SYNTHETIC_PREFIX) else []
+    with ReplayDevServer(cassette_dir=cassette_dir, message_dir=message_dir,
+                         synthetic_scenarios=synthetic):
         playwright, browser, context = launch_test_browser(message_dir=message_dir)
         try:
             sign_in_for_replay(context, settings.REPLAY_PORT, name)
@@ -206,7 +210,7 @@ class BrowserScenarioTest(unittest.TestCase):
         except FileNotFoundError:
             self.fail(f'{name} is recorded but {settings.DOCUMENTS_FILE.name} is missing; '
                       'run build-docs')
-        log, strip_events = run_browser_scenario(name, documents[SCENARIOS[name].document])
+        log, strip_events = run_browser_scenario(SCENARIOS[name], documents[SCENARIOS[name].document])
         differences = shape_differences(log, strip_events)
         self.assertEqual(differences, [], f'{name} replayed differently:\n' + _format(differences))
 
@@ -225,11 +229,13 @@ for _name, _scenario in SCENARIOS.items():
 
 
 class BrowserScenarioSelfTest(unittest.TestCase):
+    COPY = synthetic_copy('part-select')
+
     def test_part_select_replays_the_synthetic_message_log(self):
+        skip_once_recorded(self.COPY)
         with tempfile.TemporaryDirectory() as tmp:
-            cassettes, messages = stage_synthetic_fixtures(tmp)
-            log, strip_events = run_browser_scenario('part-select', SYNTHETIC_DOCUMENT,
-                                                     cassettes, messages)
+            cassettes, messages = stage_self_test_fixtures(tmp, [self.COPY])
+            log, strip_events = run_browser_scenario(self.COPY, SYNTHETIC_DOCUMENT, cassettes, messages)
         self.assertEqual(shape_differences(log, strip_events), [],
                          _format(shape_differences(log, strip_events)))
         # Every recorded event came back, and the selection answered the live request.

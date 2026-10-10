@@ -8,6 +8,7 @@ import io
 import json
 import logging
 import os
+import signal
 import tempfile
 import unittest
 from html.parser import HTMLParser
@@ -472,6 +473,126 @@ class UiRunEndToEndTest(unittest.TestCase):
         self.assertFalse(ui_run.panel_url_file().exists())
 
 
+class ScenarioOutcomesTest(unittest.TestCase):
+    """A failed scenario no longer ends the run: per-scenario outcomes, with stub pages."""
+
+    def setUp(self):
+        self.tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        env = dict(CREDENTIALS, XDG_STATE_HOME=str(self.tmp / 'state'))
+        env.update({k: v for k, v in os.environ.items() if k in ('PATH', 'HOME')})
+        self.enterContext(mock.patch.dict(os.environ, env, clear=True))
+        documents = {name: {'did': f'd{i}', 'wid': f'w{i}', 'eid': f'e{i}', 'parts': {}}
+                     for i, name in enumerate(('tb-box', 'tb-two-parts', 'tb-assembly',
+                                               'tb-configured'), start=1)}
+        (self.tmp / 'documents.json').write_text(json.dumps(documents))
+        for name, sub in (('FRESH_DIR', 'fresh'), ('CASSETTE_DIR', 'cassettes'),
+                          ('MESSAGE_DIR', 'messages'), ('DOCUMENTS_FILE', 'documents.json')):
+            self.enterContext(mock.patch.object(settings, name, self.tmp / sub))
+        self.enterContext(mock.patch.object(ui_run, 'RecordDevServer', StubServer))
+        self.enterContext(mock.patch('playwright.sync_api.sync_playwright',
+                                     lambda: contextlib.nullcontext(object())))
+        self.page = StubPage(signed_in=True)
+        self.page.attributes[(ui_run.SELECTORS['panel_frame'], 'src')] = 'http://localhost:6238/onshape-panel'
+        self.page.counts['panel ' + ui_run.SELECTORS['panel_connect']] = 0
+        self.enterContext(mock.patch.object(ui_run, 'launch_persistent_chrome',
+                                            lambda playwright, headed=True: (StubContext(self.page), 'stub')))
+
+    def run_main(self, *names):
+        from testbed.__main__ import main
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = main(['record', '--ui', *names])
+        return code, out.getvalue(), err.getvalue()
+
+    def fail_step_of(self, scenario, step_name):
+        """Make one named step of one scenario fail, as a missing control would."""
+        real_do = ui_run._PanelScenario._do
+
+        def do(driver, step):
+            if driver.scenario.name == scenario and step.name == step_name:
+                raise RuntimeError('Locator.click: Timeout 30000ms exceeded.')
+            return real_do(driver, step)
+        self.enterContext(mock.patch.object(ui_run._PanelScenario, '_do', do))
+
+    def test_a_failed_scenario_is_reported_and_the_next_runs(self):
+        self.fail_step_of('panel-load', 'choose print')
+        # A partial fresh message log of the failed scenario, as a Done after the failure
+        # point would leave, must not survive.
+        real_discard = ui_run._discard_fresh
+
+        def discard(name, before):
+            settings.fresh_message_dir().mkdir(parents=True, exist_ok=True)
+            (settings.fresh_message_dir() / f'{name}.json').write_text('{}')
+            return real_discard(name, before)
+        self.enterContext(mock.patch.object(ui_run, '_discard_fresh', discard))
+        code, out, err = self.run_main('panel-load', 'to-print')
+        self.assertEqual(code, 1)
+        self.assertIn("step 'panel-load: choose print' failed", err)
+        self.assertIn('panel-load: failed', out)
+        self.assertIn('to-print: recorded', out)
+        self.assertFalse((settings.fresh_message_dir() / 'panel-load.json').exists())
+        self.assertIn(('goto', 'https://cad.onshape.com/documents/d1/w/w1/e/e1'), self.page.actions)
+        shots = sorted((settings.state_dir() / 'screenshots').glob('*.png'))
+        self.assertEqual(len(shots), 1)
+        self.assertIn('panel-load', shots[0].name)
+
+    def test_discard_keeps_an_earlier_complete_recording(self):
+        settings.fresh_message_dir().mkdir(parents=True)
+        earlier = settings.fresh_message_dir() / 'to-print.json'
+        earlier.write_text('{}')
+        before = ui_run._fresh_state('to-print')
+        ui_run._discard_fresh('to-print', before)
+        self.assertTrue(earlier.exists())
+        settings.fresh_cassette_dir().mkdir(parents=True)
+        (settings.fresh_cassette_dir() / 'to-print').mkdir()
+        ui_run._discard_fresh('to-print', before)
+        self.assertFalse((settings.fresh_cassette_dir() / 'to-print').exists())
+
+    def test_all_recorded_exits_0(self):
+        code, out, err = self.run_main('panel-load', 'to-print')
+        self.assertEqual(code, 0, err)
+        self.assertIn('panel-load: recorded', out)
+        self.assertIn('to-print: recorded', out)
+
+    def test_dialog_picks_need_the_owner_in_an_onshape_checkpoint(self):
+        code, out, err = self.run_main('print-dialog-parts', 'panel-load')
+        self.assertEqual(code, 1)
+        self.assertIn('print-dialog-parts: needs the owner in an Onshape checkpoint', out)
+        self.assertIn("Onshape's part dialog, in the tb-box document", out)
+        self.assertIn('panel-load: recorded', out)
+        # The scenario was never opened, so no counted call was spent on it.
+        self.assertNotIn(('goto', 'https://cad.onshape.com/documents/d2/w/w2/e/e2'), self.page.actions)
+
+    def test_bot_check_in_a_scenario_still_stops_everything(self):
+        real_do = ui_run._PanelScenario._do
+
+        def do(driver, step):
+            if driver.scenario.name == 'panel-load' and step.name == 'team config':
+                raise ui_run.OnshapeCheckStopped('Onshape asked to verify a human; screenshot: x.png')
+            return real_do(driver, step)
+        self.enterContext(mock.patch.object(ui_run._PanelScenario, '_do', do))
+        code, out, err = self.run_main('panel-load', 'to-print')
+        self.assertEqual(code, 3)
+        self.assertIn('stopped by an Onshape check', err)
+        # to-print (the same document) was never opened.
+        self.assertEqual(self.page.actions.count(('goto', 'https://cad.onshape.com/documents/d1/w/w1/e/e1')), 1)
+
+    def test_dialog_pick_steps_are_marked(self):
+        from testbed.scenarios import SCENARIOS
+        marked = {name for name, s in SCENARIOS.items() if ui_run.owner_steps(s)}
+        self.assertEqual(marked, {'part-select', 'multi-select', 'assembly-select',
+                                  'print-dialog-parts', 'print-configured-part'})
+
+    def test_default_order_puts_print_scenarios_first(self):
+        from testbed.scenarios import SCENARIOS
+        order = ui_run.default_ui_scenarios()
+        self.assertEqual(sorted(order), sorted(n for n, s in SCENARIOS.items() if s.panel))
+        prints = [n for n in order if n.startswith('print-')]
+        self.assertEqual(order[:len(prints)], prints)
+        # Among the print scenarios, the automatable ones come first.
+        self.assertEqual(prints[:2], ['print-select-parts', 'print-assembly-part'])
+
+
 class RedactionTest(unittest.TestCase):
     def test_stripped_password_redacted_too(self):
         # required_environment() strips the value, so the stripped form is what is filled.
@@ -491,7 +612,7 @@ class RecordServerEnvironmentTest(unittest.TestCase):
                                                  PATH=os.environ.get('PATH', '')),
                                 clear=True), \
                 mock.patch.object(browser.subprocess, 'Popen', popen), \
-                mock.patch.object(browser, '_answers', side_effect=[None, 200]), \
+                mock.patch.object(browser, '_answers', side_effect=[None, 200, None]), \
                 mock.patch.object(browser.os, 'killpg'):
             with browser.RecordDevServer():
                 pass
@@ -500,6 +621,38 @@ class RecordServerEnvironmentTest(unittest.TestCase):
         self.assertEqual({'ONSHAPE_USERNAME', 'ONSHAPE_PASSWORD'} & set(env), set())
         self.assertEqual(env['ONSHAPE_CLIENT_ID'], CREDENTIALS['ONSHAPE_CLIENT_ID'])
         self.assertEqual(env['PENGUINCAM_TESTBED'], 'record')
+
+
+class ReplayServerEnvironmentTest(unittest.TestCase):
+    def run_server(self, answers):
+        from testbed import browser
+        popen = mock.Mock()
+        popen.return_value.poll.return_value = None
+        popen.return_value.pid = 4242
+        keys = {'ONSHAPE_ACCESS_KEY': 'access-0000', 'ONSHAPE_SECRET_KEY': 'secret-0000'}
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict(os.environ, dict(keys, XDG_STATE_HOME=tmp,
+                                                 PATH=os.environ.get('PATH', '')), clear=True), \
+                mock.patch.object(browser.subprocess, 'Popen', popen), \
+                mock.patch.object(browser, '_answers', side_effect=answers), \
+                mock.patch.object(browser, 'PORT_FREE_TIMEOUT_S', 0.3), \
+                mock.patch.object(browser.time, 'sleep'), \
+                mock.patch.object(browser.os, 'killpg') as killpg:
+            with browser.ReplayDevServer():
+                pass
+        return popen.call_args.kwargs['env'], killpg
+
+    def test_replay_server_gets_no_api_keys_and_waits_for_the_port(self):
+        env, killpg = self.run_server([None, 200, 200, None])
+        self.assertEqual({'ONSHAPE_ACCESS_KEY', 'ONSHAPE_SECRET_KEY'} & set(env), set())
+        # SIGTERM only: the port freed on the second poll.
+        self.assertEqual([c.args[1] for c in killpg.call_args_list], [signal.SIGTERM])
+
+    def test_port_still_held_gets_sigkill(self):
+        import itertools
+        _env, killpg = self.run_server(itertools.chain([None, 200], itertools.repeat(200)))
+        self.assertEqual([c.args[1] for c in killpg.call_args_list],
+                         [signal.SIGTERM, signal.SIGKILL])
 
 
 class PasswordSavingTest(unittest.TestCase):

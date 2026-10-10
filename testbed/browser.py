@@ -35,6 +35,9 @@ _SERVER_DROPPED = ('TESTBED_CASSETTE_DIR', 'TESTBED_MESSAGE_DIR', 'TESTBED_SYNTH
                    'FLASK_ENV',
                    'RAILWAY_ENVIRONMENT', 'VERCEL', 'BASE_URL', 'ONSHAPE_USERNAME',
                    'ONSHAPE_PASSWORD')
+# A replay server answers from recordings and has no use for the real API keys.
+_REPLAY_DROPPED = _SERVER_DROPPED + ('ONSHAPE_ACCESS_KEY', 'ONSHAPE_SECRET_KEY')
+PORT_FREE_TIMEOUT_S = 10
 
 
 def _answers(url):
@@ -55,6 +58,7 @@ class ReplayDevServer:
     """
 
     MODE = 'replay'
+    DROPPED = _REPLAY_DROPPED
 
     def __init__(self, port=REPLAY_PORT, cassette_dir=None, message_dir=None,
                  synthetic_scenarios=()):
@@ -70,7 +74,7 @@ class ReplayDevServer:
         if _answers(f'http://127.0.0.1:{self.port}/') is not None:
             raise RuntimeError(f'something already answers on port {self.port}; '
                                'stop it before running the browser scenarios')
-        env = {k: v for k, v in os.environ.items() if k not in _SERVER_DROPPED}
+        env = {k: v for k, v in os.environ.items() if k not in self.DROPPED}
         env.update(PORT=str(self.port), PENGUINCAM_TESTBED=self.MODE, EMBED_COOKIES='1')
         if self.cassette_dir:
             env['TESTBED_CASSETTE_DIR'] = str(self.cassette_dir)
@@ -110,6 +114,16 @@ class ReplayDevServer:
                 self.process.wait(10)
         except ProcessLookupError:
             pass
+        # The next server refuses a busy port, so wait until this one has let go of it.
+        deadline = time.monotonic() + PORT_FREE_TIMEOUT_S
+        while _answers(f'http://127.0.0.1:{self.port}/') is not None:
+            if time.monotonic() > deadline:
+                try:
+                    os.killpg(self.process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                break
+            time.sleep(0.2)
         self.process = None
 
 
@@ -122,6 +136,7 @@ class RecordDevServer(ReplayDevServer):
     """
 
     MODE = 'record'
+    DROPPED = _SERVER_DROPPED
 
     def __init__(self, port=settings.RECORD_PORT):
         super().__init__(port)

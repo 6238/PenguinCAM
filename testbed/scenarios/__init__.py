@@ -30,6 +30,9 @@ CONFIGURED_DOCUMENTS = ('tb-configured',)
 # The strip's buttons it hides on the print page, which asks Onshape for parts itself
 # (testbed_panel.js); the drivers send these through the strip's own action instead.
 PAGE_ASKS = ('ask-part', 'ask-two-parts', 'dialog-part', 'dialog-parts', 'close-dialog')
+# The strip's buttons (testbed_panel.js LABELS); the other actions are done in the panel,
+# the print page or Onshape.
+STRIP_ACTIONS = PAGE_ASKS + ('ask-unbounded',)
 # A browser self-test's copy of a scenario, run on synthetic fixtures, is named with this
 # prefix and never added to SCENARIOS (spec 8.2: no scenario replays a synthetic log).
 SYNTHETIC_PREFIX = 'synthetic-'
@@ -51,6 +54,9 @@ class Step:
     select: list = field(default_factory=list)      # the part names to select in Onshape
     # Recorded for reference only: replay skips the step and leaves it out of the comparison.
     recorded_only: bool = False
+    # A pick inside one of Onshape's dialogs, which the automated Onshape UI run cannot
+    # make: the scenario needs the owner in an Onshape checkpoint.
+    in_dialog: bool = False
 
 
 @dataclass
@@ -72,10 +78,11 @@ def _choose_print():
                                 'print page.', 'choose-print')
 
 
-def _select(parts, where="Onshape's parts list or feature tree"):
+def _select(parts, where="Onshape's parts list or feature tree", in_dialog=False):
     noun = 'part' if len(parts) == 1 else 'parts'
     shown = ', '.join(parts)
-    return Step(f'select {noun} {shown}', f'Select {shown} in {where}.', None, list(parts))
+    return Step(f'select {noun} {shown}', f'Select {shown} in {where}.', None, list(parts),
+                in_dialog=in_dialog)
 
 
 def _close_dialog():
@@ -103,7 +110,7 @@ def _ask_part(document, first, second):
         Step('ask for a part', 'Press Ask for a part.', 'ask-part'),
         _select([first]),
         Step('open part dialog', "Press Open the part dialog.", 'dialog-part'),
-        _select([second], "Onshape's select dialog"),
+        _select([second], "Onshape's select dialog", in_dialog=True),
         _close_dialog(),
     ]
 
@@ -128,7 +135,7 @@ SCENARIOS = {scenario.name: scenario for scenario in (
         Step('deselect', 'Clear the selection in Onshape.'),
         Step('open parts dialog', 'Press Open the parts dialog.', 'dialog-parts'),
         # The other order, so the step name differs and the order Onshape reports shows.
-        _select(['Cylinder', 'Box'], "Onshape's select dialog"),
+        _select(['Cylinder', 'Box'], "Onshape's select dialog", in_dialog=True),
         _close_dialog(),
     ], estimate=2),
     Scenario('assembly-select', 'tb-assembly', True,
@@ -157,7 +164,7 @@ SCENARIOS = {scenario.name: scenario for scenario in (
     # a 4xx (not counted), then the parts list 1 and the export 2.
     Scenario('print-dialog-parts', 'tb-two-parts', True, [
         _open_panel('tb-two-parts'), _choose_print(), _print_parts(), _print_dialog(),
-        _select(['Box'], "Onshape's part dialog, in the tb-box document"),
+        _select(['Box'], "Onshape's part dialog, in the tb-box document", in_dialog=True),
         _dialog_closed(),
     ], estimate=11),
     # 10: panel 6; elements, the assembly definition, export 2.
@@ -176,7 +183,7 @@ SCENARIOS = {scenario.name: scenario for scenario in (
         _print_dialog(),
         Step('select part Spacer (Large)', "In Onshape's part dialog, pick Spacer from this "
                                            'document with Size set to Large.', None,
-             ['Spacer (Large)']),
+             ['Spacer (Large)'], in_dialog=True),
         _dialog_closed(),
     ], estimate=13),
     # 12: tb-two-parts elements, configuration, parts, two exports 4 (7); tb-assembly the

@@ -10,14 +10,22 @@ or a verification step it saves a screenshot to settings.state_dir()/screenshots
 raises OnshapeCheckStopped, which the command line turns into exit 3. ONSHAPE_PASSWORD goes
 only into Onshape's sign-in form; it is never logged or written anywhere.
 
+A failed step ends only its scenario: the run saves a screenshot, discards that
+scenario's partial recording, and goes on with the next. A scenario with a pick inside one
+of Onshape's dialogs (owner_steps), which the run cannot make, is not opened at all and is
+reported as needing the owner in an Onshape checkpoint. run_onshape_ui returns one
+ScenarioOutcome per scenario.
+
 Every Onshape page selector is in SELECTORS, so a change in Onshape's interface is a
 one-line fix there.
 """
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -26,7 +34,7 @@ from urllib.parse import quote, quote_plus
 from testbed import settings
 from testbed.browser import RecordDevServer
 from testbed.documents import pending_documents
-from testbed.scenarios import PAGE_ASKS, SCENARIOS
+from testbed.scenarios import PAGE_ASKS, SCENARIOS, STRIP_ACTIONS
 
 UI_VARIABLES = ('ONSHAPE_USERNAME', 'ONSHAPE_PASSWORD', 'ONSHAPE_CLIENT_ID',
                 'ONSHAPE_CLIENT_SECRET')
@@ -38,9 +46,8 @@ SIGN_IN_URL = f'{ONSHAPE_ORIGIN}/signin'
 PACE_MS = 1500                     # between actions: human speed, not a load on Onshape
 STEP_TIMEOUT_MS = 30000
 _PRODUCTION_CLIENT_ID_PREFIX = 'VKDK'
-# The strip's buttons; the other actions are done in the panel, the print page or Onshape.
-_STRIP_ACTIONS = ('ask-part', 'ask-two-parts', 'dialog-part', 'dialog-parts', 'close-dialog',
-                  'ask-unbounded')
+# A scenario's outcome in the run's report.
+RECORDED, FAILED, NEEDS_OWNER = 'recorded', 'failed', 'needs the owner in an Onshape checkpoint'
 
 SELECTORS = {
     # cad.onshape.com/signin: email first, then Continue, then the password (seen Fri 10-09;
@@ -101,6 +108,59 @@ class OnshapeStepFailed(Exception):
 class UiRunRefused(RuntimeError):
     """The run will not start: the production app's client id, no documents.json, or
     test documents build-docs has not finished."""
+
+
+@dataclass(frozen=True)
+class ScenarioOutcome:
+    name: str
+    outcome: str            # RECORDED, FAILED or NEEDS_OWNER
+    detail: str = ''        # why, for FAILED and NEEDS_OWNER (redacted)
+
+    def line(self) -> str:
+        return f'{self.name}: {self.outcome}' + (f' ({self.detail})' if self.detail else '')
+
+
+def owner_steps(scenario) -> list:
+    """The steps of `scenario` the run cannot do: picks inside Onshape's dialogs."""
+    return [step for step in scenario.steps if step.in_dialog]
+
+
+def default_ui_scenarios() -> list:
+    """The panel scenarios in the order the run takes them when none are named: the print
+    scenarios first, those it can finish ahead of those that need the owner, so a failure
+    elsewhere never starves the print path."""
+    panel = [name for name, scenario in SCENARIOS.items() if scenario.panel]
+    return sorted(panel, key=lambda name: (not name.startswith('print-'),
+                                           bool(owner_steps(SCENARIOS[name])), panel.index(name)))
+
+
+def _fresh_paths(name) -> list:
+    return [settings.fresh_cassette_dir() / f'{name}.json', settings.fresh_cassette_dir() / name,
+            settings.fresh_message_dir() / f'{name}.json']
+
+
+def _fresh_state(name) -> dict:
+    """{path: mtime in ns} of the fresh recording files of `name` that exist."""
+    state = {}
+    for path in _fresh_paths(name):
+        try:
+            state[path] = path.stat().st_mtime_ns
+        except FileNotFoundError:
+            pass
+    return state
+
+
+def _discard_fresh(name, before):
+    """Remove the fresh recording files of `name` that are new or changed since `before`
+    (a _fresh_state): a scenario that stopped part way must not reach the drift report. The
+    development server drops its in-memory buffer when the next scenario is chosen."""
+    for path, mtime in _fresh_state(name).items():
+        if before.get(path) == mtime:
+            continue
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
 
 
 class _PasswordFillFailed(Exception):
@@ -480,7 +540,7 @@ class _PanelScenario:
             self.panel.locator(SELECTORS['print_back']).click()
             self.page.wait_for_timeout(PACE_MS)
             self.panel.locator(SELECTORS['strip_action']).click()
-        elif step.action in _STRIP_ACTIONS:
+        elif step.action in STRIP_ACTIONS:
             self.panel.locator(SELECTORS['strip_action']).click()
         elif step.action == 'print-parts':
             self.panel.locator(SELECTORS['print_next']).click()
@@ -521,9 +581,31 @@ class _PanelScenario:
             _settle(self.page)
 
 
-def _run(scenarios, documents, headed):
+def _run_scenario(page, name, documents) -> ScenarioOutcome:
+    """One scenario's outcome. A bot check stop passes through and ends the run."""
+    scenario = SCENARIOS[name]
+    needs = owner_steps(scenario)
+    if needs:
+        detail = f"step {needs[0].name!r}: {needs[0].instruction}"
+        _say(f'{name}: {NEEDS_OWNER}, {detail}')
+        return ScenarioOutcome(name, NEEDS_OWNER, detail)
+    before = _fresh_state(name)
+    try:
+        _PanelScenario(page, scenario, documents[scenario.document]).run()
+    except OnshapeStepFailed as exc:
+        detail = redact_password(exc)
+    else:
+        _say(f'{name}: done')
+        return ScenarioOutcome(name, RECORDED)
+    _discard_fresh(name, before)
+    _say(f'{name} stopped: {detail}; its partial recording was discarded, going on')
+    return ScenarioOutcome(name, FAILED, detail)
+
+
+def _run(scenarios, documents, headed) -> list:
     from playwright.sync_api import sync_playwright
 
+    outcomes = []
     with RecordDevServer() as server, sync_playwright() as playwright:
         _say(f'development server log: {server.log_path}')
         context, _executable = launch_persistent_chrome(playwright, headed)
@@ -535,16 +617,19 @@ def _run(scenarios, documents, headed):
             if 'tb-inch' in documents:
                 switch_tb_inch_units(page, documents['tb-inch'])
             for name in scenarios:
-                scenario = SCENARIOS[name]
-                _PanelScenario(page, scenario, documents[scenario.document]).run()
-                _say(f'{name}: done')
+                try:
+                    outcomes.append(_run_scenario(page, name, documents))
+                except OnshapeCheckStopped:
+                    done = ', '.join(o.line() for o in outcomes) or 'none'
+                    _say(f'stopped during {name}; outcomes before it: {done}')
+                    raise
         finally:
             context.close()
-    return settings.fresh_message_dir()
+    return outcomes
 
 
-def run_onshape_ui(scenarios, headed=True) -> Path:
-    """Run the panel scenarios in real Onshape; return the fresh message log directory.
+def run_onshape_ui(scenarios, headed=True) -> list:
+    """Run the panel scenarios in real Onshape; return one ScenarioOutcome per scenario.
 
     Needs ONSHAPE_USERNAME, ONSHAPE_PASSWORD and the dev app's ONSHAPE_CLIENT_ID and
     ONSHAPE_CLIENT_SECRET; refuses the production app's client id. Whatever stops the run,

@@ -1,43 +1,30 @@
 """Browser tests of the fake Onshape host and the harness (spec 5.4); run by make testbed-replay.
 
 One replay development server and one test browser serve the whole module. They use the
-synthetic fixtures, staged under the part-select scenario's name: the server answers the
-panel's Onshape calls from synthetic-panel.json, and the fake Onshape host answers the
-panel's messages from synthetic-part-select.json.
+synthetic fixtures under synthetic-part-select, a copy of part-select that only this
+module's replay server knows (self_test_fixtures): the server answers the panel's Onshape
+calls from synthetic-panel.json, and the fake Onshape host answers the panel's messages
+from synthetic-part-select.json. Every test skips itself once part-select is recorded.
 
 A failure to frame the panel is spec 10's "cannot frame the panel" row: the assertion
 messages name the check that failed.
 """
 import json
-import shutil
 import tempfile
 import time
 import unittest
-from pathlib import Path
 from urllib.parse import quote
 
 from testbed import settings
 from testbed.browser import (ReplayDevServer, grant_local_network, host_url,
                              launch_test_browser, serve_fake_host, sign_in_for_replay)
+from testbed.scenarios import synthetic_copy
+from testbed.tests.self_test_fixtures import (FIXTURES, SYNTHETIC_DOCUMENT,  # noqa: F401
+                                              skip_once_recorded, stage_self_test_fixtures)
 
-FIXTURES = Path(__file__).resolve().parent / 'fixtures'
-SCENARIO = 'part-select'
-# The ids the synthetic fixtures were written with.
-SYNTHETIC_DOCUMENT = {'did': '0000000000000000000000d1', 'wid': '0000000000000000000000a1',
-                      'eid': '0000000000000000000000e1'}
+COPY = synthetic_copy('part-select')
+SCENARIO = COPY.name
 WAIT_S = 20
-
-
-def stage_synthetic_fixtures(directory) -> tuple:
-    """(cassette dir, message dir) under `directory`, holding the synthetic fixtures as the
-    part-select scenario's cassette and message log."""
-    cassettes, messages = Path(directory) / 'cassettes', Path(directory) / 'messages'
-    cassettes.mkdir()
-    messages.mkdir()
-    shutil.copy(FIXTURES / 'cassettes' / 'synthetic-panel.json', cassettes / f'{SCENARIO}.json')
-    shutil.copy(FIXTURES / 'messages' / 'synthetic-part-select.json',
-                messages / f'{SCENARIO}.json')
-    return cassettes, messages
 
 
 def wait_for(page, probe, what, timeout=WAIT_S):
@@ -86,10 +73,11 @@ class _BrowserCase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls._stack = []
+        skip_once_recorded(COPY)       # retired once part-select is recorded
         cls._tmp = tempfile.TemporaryDirectory()
-        cls.cassette_dir, cls.message_dir = stage_synthetic_fixtures(cls._tmp.name)
-        cls.server = ReplayDevServer(cassette_dir=cls.cassette_dir, message_dir=cls.message_dir)
+        cls.cassette_dir, cls.message_dir = stage_self_test_fixtures(cls._tmp.name, [COPY])
+        cls.server = ReplayDevServer(cassette_dir=cls.cassette_dir, message_dir=cls.message_dir,
+                                     synthetic_scenarios=[COPY])
         cls.server.__enter__()
         try:
             cls.playwright, cls.browser, cls.context = launch_test_browser(
@@ -97,6 +85,7 @@ class _BrowserCase(unittest.TestCase):
             sign_in_for_replay(cls.context, settings.REPLAY_PORT, SCENARIO)
         except BaseException:
             cls.server.__exit__(None, None, None)
+            cls._tmp.cleanup()
             raise
 
     @classmethod
