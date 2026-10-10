@@ -476,6 +476,10 @@ The names are Orca's own profile names, as listed in `index.json`. The rules:
   is an error that disables slicing ("The team configuration lists no filament that fits
   printer '<printer>'. Ask a mentor to fix printing.filaments."), because the default
   filament and process belong to the 0.6 mm nozzle.
+- **`allow_overrides` must be a real `true` or `false`.** Anything else (a quoted
+  `"false"`, `no`, a number) is treated as false, so the overrides are hidden, with a
+  warning on Setup ("printing.allow_overrides is not true or false, so students may not
+  change print settings. Write it as true or false without quotes.").
 
 Orca profile names are name-derived: when an Orca upgrade renames a profile, the team's
 key stops resolving, and the message above names the key to fix.
@@ -777,6 +781,9 @@ picking a part, and both feed the same list:
   with `via: "selection"`. The server resolves it in the open element: in a Part Studio the
   part id is used directly (the parts list names it), in an Assembly the occurrence is
   followed through the assembly definition to its source document, element and part.
+  If Onshape answers with a selection none of whose items names a part, the page shows
+  `Onshape sent a selection PenguinCAM could not read; try Add from another document… to
+  pick the part.` and reports it as a `client_error` with code `selection_shape`.
 - **Add from another document…** opens Onshape's own part picker. Each picked item is sent
   with `via: "dialog"`; its `idTag` is tried as the part id, and if that export fails the
   part is matched by name in its element's parts list.

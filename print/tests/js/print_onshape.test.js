@@ -184,3 +184,29 @@ test('partSelectionsFromMessage accepts the known field names', () => {
   assert.deepEqual(o.partSelectionsFromMessage({}), []);
   assert.deepEqual(o.partSelectionsFromMessage(null), []);
 });
+
+test('a non-empty selection answer that names no part is reported, not dropped', () => {
+  const posted = [];
+  const added = [];
+  let unreadable = 0;
+  const messenger = o.createOnshapeMessenger({
+    context: CONTEXT,
+    post: (message) => posted.push(message),
+    onSelections: (selections, via) => added.push({ selections, via }),
+    onUnreadable: () => { unreadable++; },
+  });
+  messenger.enterParts();
+  const deliver = (data) => messenger.handleMessage({ origin: SERVER, data });
+  // An empty answer (a deselection or a timeout) is still silent.
+  deliver({ messageName: 'REQUESTED_SELECTION', selections: [], status: { statusCode: 'SUCCESS' } });
+  assert.equal(unreadable, 0);
+  // Items with an id field the page does not know.
+  deliver({ messageName: 'REQUESTED_SELECTION', selections: [{ bodyKey: 'JHD', name: 'Box' }],
+            status: { statusCode: 'SUCCESS' } });
+  assert.equal(unreadable, 1);
+  assert.deepEqual(added, []);
+  // Re-armed after each answer.
+  assert.deepEqual(posted.map((m) => m.messageName), ['requestSelection', 'requestSelection', 'requestSelection']);
+  assert.match(o.UNREADABLE_SELECTION_MESSAGE, /could not read/);
+  assert.match(o.UNREADABLE_SELECTION_MESSAGE, /Add from another document/);
+});

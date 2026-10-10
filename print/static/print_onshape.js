@@ -4,8 +4,10 @@
  *
  * While the Parts step is active a one-body, solid-only requestSelection stays armed. Only
  * REQUESTED_SELECTION answers count (Onshape's generic SELECTION events are ignored); a
- * PENDING answer is ignored, an empty one (a deselection or a timeout) re-arms, and any
- * other is handed to onSelections and re-arms. "Add from another document…" opens
+ * PENDING answer is ignored, an empty one (a deselection or a timeout) re-arms, one with
+ * items none of which partSelectionsFromMessage can read goes to onUnreadable (the wizard
+ * shows UNREADABLE_SELECTION_MESSAGE) and re-arms, and any other is handed to onSelections
+ * and re-arms. "Add from another document…" opens
  * Onshape's part picker; each picked item is handed on, and its close re-arms the click.
  *
  * partSelectionsFromMessage is the one place that knows the shape of Onshape's selection
@@ -16,6 +18,10 @@
 
   var DIALOG_FIELDS = ['documentId', 'workspaceId', 'versionId', 'elementId', 'elementConfiguration',
                        'partName', 'idTag', 'isSurface', 'isComposite', 'isSketch', 'isFlattenedBody'];
+
+  // Shown when Onshape answers a selection with items none of which name a part.
+  var UNREADABLE_SELECTION_MESSAGE = 'Onshape sent a selection PenguinCAM could not read; '
+    + 'try Add from another document\u2026 to pick the part.';
 
   function text(value) { return typeof value === 'string' && value ? value : null; }
 
@@ -65,7 +71,8 @@
   }
 
   // post(message, targetOrigin) sends to the Onshape window; onSelections(selections, via)
-  // receives parts, via 'selection' or 'dialog'.
+  // receives parts, via 'selection' or 'dialog'; onUnreadable() (optional) is told of a
+  // non-empty selection answer that names no part.
   function createOnshapeMessenger(opts) {
     var context = opts.context || {};
     var active = false, dialogOpen = false, counter = 0, lastId = null;
@@ -94,6 +101,7 @@
       if (status === 'PENDING') return;          // the student has not picked yet
       var selections = partSelectionsFromMessage(data);
       if (selections.length) opts.onSelections(selections, 'selection');
+      else if (items.length && typeof opts.onUnreadable === 'function') opts.onUnreadable();
       arm();
     }
 
@@ -137,6 +145,9 @@
       onSelections: function (selections, via) {
         if (typeof P.onPartSelections === 'function') P.onPartSelections(selections, via);
       },
+      onUnreadable: function () {
+        if (typeof P.onUnreadableSelection === 'function') P.onUnreadableSelection(UNREADABLE_SELECTION_MESSAGE);
+      },
     });
     window.addEventListener('message', function (e) { P.onshapeMessenger.handleMessage(e); });
     P.onshapeMessenger.init();
@@ -145,6 +156,7 @@
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { partSelectionsFromMessage: partSelectionsFromMessage,
                        dialogItemToSelection: dialogItemToSelection,
-                       createOnshapeMessenger: createOnshapeMessenger, isOnshapeOrigin: isOnshapeOrigin };
+                       createOnshapeMessenger: createOnshapeMessenger, isOnshapeOrigin: isOnshapeOrigin,
+                       UNREADABLE_SELECTION_MESSAGE: UNREADABLE_SELECTION_MESSAGE };
   }
 })();

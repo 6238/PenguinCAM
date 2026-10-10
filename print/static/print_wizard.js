@@ -545,6 +545,7 @@
   function bindParts() {
     if (!ONSHAPE) return;
     window.PenguinCAM.onPartSelections = function (selections, via) { requestParts(selections, via); };
+    window.PenguinCAM.onUnreadableSelection = function (message) { showError('parts', message, 'selection_shape'); };
     $('#btn-add-from-document').addEventListener('click', function () {
       var m = messenger();
       if (m) m.openDialog();

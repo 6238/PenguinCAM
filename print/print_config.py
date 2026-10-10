@@ -28,6 +28,8 @@ EMPTY_LIST_MESSAGE = ("The team configuration lists no {what} that fits printer 
                       "Ask a mentor to fix printing.{key}.")
 BAD_OVERRIDES_MESSAGE = "These print settings could not be read; choose them from the lists."
 OVERRIDES_NOT_ALLOWED_MESSAGE = "Your team does not allow changing print settings."
+BAD_ALLOW_OVERRIDES_MESSAGE = ("printing.allow_overrides is not true or false, so students may not change "
+                               "print settings. Write it as true or false without quotes.")
 
 # Catalog kind -> index.json list name.
 _LISTS = {'printer': 'printers', 'filament': 'filaments', 'process': 'processes'}
@@ -131,14 +133,18 @@ def resolve_print_config(printing, catalog):
     """PrintChoices for a raw `printing:` section (or None)."""
     if not isinstance(printing, dict) or 'printer' not in printing:
         return default_choices()
+    # A permission: anything but a real boolean is refused (fail closed) with a warning.
     allow = printing.get('allow_overrides', True)
-    allow = allow if isinstance(allow, bool) else True
+    warnings = []
+    if not isinstance(allow, bool):
+        allow = False
+        warnings.append(BAD_ALLOW_OVERRIDES_MESSAGE)
     printer = printing['printer']
     if not catalog.has_printer(printer):
         name = printer if isinstance(printer, str) else str(printer)
-        return PrintChoices(printer=name, filaments=[], processes=[], allow_overrides=allow,
+        return PrintChoices(printer=name, filaments=[], processes=[], allow_overrides=allow, warnings=warnings,
                             error=UNKNOWN_PRINTER_MESSAGE.format(name=name))
-    choices = PrintChoices(printer=printer, filaments=[], processes=[], allow_overrides=allow,
+    choices = PrintChoices(printer=printer, filaments=[], processes=[], allow_overrides=allow, warnings=warnings,
                            paths={('printer', printer): catalog.profile_path('printer', printer)})
     for kind, key, target, what in (('filament', 'filaments', choices.filaments, 'filament'),
                                     ('process', 'processes', choices.processes, 'process')):

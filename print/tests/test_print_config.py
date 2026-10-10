@@ -13,7 +13,7 @@ sys.path.insert(0, str(REPO))
 
 from print import print_config  # noqa: E402
 from print.print_config import (  # noqa: E402
-    DROPPED_MESSAGE, EMPTY_LIST_MESSAGE, OVERRIDE_CHOICES, UNKNOWN_PRINTER_MESSAGE, Catalog, OverrideError,
+    BAD_ALLOW_OVERRIDES_MESSAGE, DROPPED_MESSAGE, EMPTY_LIST_MESSAGE, OVERRIDE_CHOICES, UNKNOWN_PRINTER_MESSAGE, Catalog, OverrideError,
     choices_for_request, default_choices, load_catalog, resolve_print_config, validate_overrides,
     write_process_with_overrides,
 )
@@ -127,6 +127,19 @@ class ResolveTest(unittest.TestCase):
         printing = {k: v for k, v in SPEC_PRINTING.items() if k != "allow_overrides"}
         self.assertTrue(resolve_print_config(printing, self.catalog).allow_overrides)
         self.assertFalse(resolve_print_config(dict(printing, allow_overrides=False), self.catalog).allow_overrides)
+
+    def test_non_boolean_allow_overrides_fails_closed_with_a_warning(self):
+        for value in ("false", "no", "yes", 1, 0, None, "true"):
+            with self.subTest(value=value):
+                choices = resolve_print_config(dict(SPEC_PRINTING, allow_overrides=value), self.catalog)
+                self.assertFalse(choices.allow_overrides)
+                self.assertEqual(choices.warnings, [BAD_ALLOW_OVERRIDES_MESSAGE])
+                self.assertIn("printing.allow_overrides", choices.warnings[0])
+        # The unknown-printer answer carries it too.
+        choices = resolve_print_config(dict(SPEC_PRINTING, printer="No Such Printer", allow_overrides="no"),
+                                       self.catalog)
+        self.assertFalse(choices.allow_overrides)
+        self.assertIn(BAD_ALLOW_OVERRIDES_MESSAGE, choices.warnings)
 
     def test_catalog_loaded_once(self):
         load_catalog.cache_clear()
