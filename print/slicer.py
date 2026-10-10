@@ -93,11 +93,9 @@ def _tail(text, n=DETAIL_LINES):
     return "\n".join(text.splitlines()[-n:])
 
 
-def slice_stl(stl_path, output_dir, timeout_s=DEFAULT_TIMEOUT_S):
-    """Slice `stl_path` into `output_dir/<stem>.gcode.3mf` and return a SliceResult."""
-    stl_path = Path(stl_path).resolve()
-    output_dir = Path(output_dir).resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
+def orca_env(output_dir):
+    """Orca's environment: the allowlist, plus private XDG directories under output_dir."""
+    output_dir = Path(output_dir)
     config_home = output_dir / "xdg-config"
     runtime_dir = output_dir / "xdg-runtime"
     config_home.mkdir(exist_ok=True)
@@ -105,6 +103,15 @@ def slice_stl(stl_path, output_dir, timeout_s=DEFAULT_TIMEOUT_S):
     os.chmod(runtime_dir, 0o700)
     env = {name: os.environ[name] for name in ENV_ALLOWLIST if name in os.environ}
     env.update({"XDG_CONFIG_HOME": str(config_home), "XDG_RUNTIME_DIR": str(runtime_dir), "LC_ALL": "C"})
+    return env
+
+
+def slice_stl(stl_path, output_dir, timeout_s=DEFAULT_TIMEOUT_S):
+    """Slice `stl_path` into `output_dir/<stem>.gcode.3mf` and return a SliceResult."""
+    stl_path = Path(stl_path).resolve()
+    output_dir = Path(output_dir).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    env = orca_env(output_dir)
     cmd = build_command(stl_path, output_dir)
     try:
         proc = subprocess.run(cmd, env=env, cwd=str(output_dir), capture_output=True, text=True,

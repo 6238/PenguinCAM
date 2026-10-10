@@ -13,7 +13,7 @@ from print.slicer import _binary_triangle_count
 REPO = Path(__file__).resolve().parents[2]        # the repository root
 sys.path.insert(0, str(REPO / "print" / "scripts"))
 
-from measure_plate import cylinder_stl, write_measure_3mf  # noqa: E402
+from measure_plate import hub_mesh, hub_stl, plate_parts, write_measure_3mf  # noqa: E402
 
 
 class LimitsTest(unittest.TestCase):
@@ -35,16 +35,31 @@ class LimitsTest(unittest.TestCase):
 
 
 class MeasurePlateTest(unittest.TestCase):
-    def test_cylinder_triangle_count(self):
-        data = cylinder_stl(18.0, 20.0, 2500)
-        self.assertEqual(_binary_triangle_count(data), 10_000)
-        self.assertEqual(len(data), 84 + 50 * 10_000)
+    def test_hub_triangle_count_and_closed_shell(self):
+        data = hub_stl(10_000)
+        count = _binary_triangle_count(data)
+        self.assertIsNotNone(count)                      # the binary length rule holds
+        self.assertTrue(9_500 <= count <= 10_000, count)
+        _vertices, faces = hub_mesh(10_000)
+        edges = {}
+        for a, b, c in faces.tolist():
+            for edge in ((a, b), (b, c), (c, a)):
+                edges[edge] = edges.get(edge, 0) + 1
+        # Closed and consistently wound: every directed edge once, its reverse once.
+        self.assertTrue(all(n == 1 and edges.get((y, x)) == 1 for (x, y), n in edges.items()))
+
+    def test_plates_follow_the_limits(self):
+        self.assertEqual(plate_parts("thirty"), (limits.MAX_COPIES, limits.MAX_JOB_TRIANGLES // limits.MAX_COPIES))
+        copies, part = plate_parts("max-part")
+        self.assertEqual(part, limits.MAX_PART_TRIANGLES)
+        self.assertEqual(copies, math.ceil(limits.MAX_JOB_TRIANGLES / limits.MAX_PART_TRIANGLES))
+        self.assertEqual(plate_parts("max-part", part_triangles=50_000), (6, 50_000))
 
     def test_measure_3mf_one_object_per_copy(self):
         centres = [(40.0, 40.0), (90.0, 40.0), (140.5, 90.25)]
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "plate.3mf"
-            names = write_measure_3mf(path, cylinder_stl(18.0, 20.0, 16), centres)
+            names = write_measure_3mf(path, hub_stl(200), centres)
             with zipfile.ZipFile(path) as zf:
                 entries = set(zf.namelist())
                 model = zf.read("3D/3dmodel.model").decode("utf-8")

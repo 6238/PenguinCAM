@@ -8,13 +8,19 @@ Sizing basis (2026-09-13): one slice of print/sample_part.stl peaked at 93 MB
 resident and took 0.23 s wall clock on an aarch64 Linux machine.
 
 Plates at the print path's limits (print/limits.py), sliced by
-print/scripts/measure_plate.py on the same kind of machine (2026-10-10):
-- 30 copies, 300,000 triangles: 744 MB peak (761,696 KB), 31.3 s.
-- 2 copies of one 150,000-triangle part, 300,000 triangles: 1,113 MB peak
-  (1,139,680 KB), 63.7 s; a second run 954 MB (976,716 KB), 60.8 s. Both
-  runs are over the 900 MB stop rule (MEASURE_MAX_PEAK_KB), so the
-  per-part triangle cap is under review; MAX_JOB_TRIANGLES stays 300,000
-  because the 30-copy plate is inside both bounds.
+print/scripts/measure_plate.py on the same kind of machine (2026-10-10). The part
+is a 40 x 20 mm hub with a bore and 3 mm fillets, revolved into near-square
+facets, as a finely tessellated exported part is; each plate ran twice and the
+worse peak and the worse time of the two runs are given:
+- 30 copies of a 9,882-triangle hub (296,460 triangles): 886 MB peak
+  (907,524 KB), 16.2 s. Copies, not triangles, drive this one: it sits just
+  inside the 900 MB stop rule (MEASURE_MAX_PEAK_KB).
+- 2 copies of a 149,760-triangle hub (299,520 triangles): 214 MB peak
+  (219,136 KB), 3.2 s.
+- 3 copies of 124,830 (374,490 triangles): 233 MB (238,280 KB), 4.2 s.
+An earlier run with sliver-faceted cylinders (37,500-segment cap fans) peaked
+at 1,113 MB for two 150,000-triangle copies; that came from the slivers, not the
+triangle count, so the per-part cap stays at 150,000.
 
 The production Railway plan's vCPU and memory allotment has not been measured
 yet, so MAX_RUNNING stays at its default of one until it is measured on the
