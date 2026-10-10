@@ -156,6 +156,10 @@ class BuildTest(_BuildCase):
         # Every exchange of the full build is a counted call; a --rebuild adds its delete.
         self.assertEqual(self.cassette.counted_calls() + 1, BUILD_DOCS_ESTIMATE)
 
+    def test_guide_states_the_estimate(self):
+        guide = (Path(__file__).resolve().parents[2] / 'docs' / 'ONSHAPE_TEST_BED.md').read_text()
+        self.assertIn(f'about {BUILD_DOCS_ESTIMATE} counted calls', guide)
+
     def test_rebuild_deletes_only_named_test_document(self):
         everything = self.full_documents()
         foreign = _doc('tb-inch-copy', 'd00000000000000000000f99', description='mine')

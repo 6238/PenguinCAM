@@ -66,7 +66,7 @@ development server with the test bed on, and browser runs call them in bursts.
 | Target | What it does | Live calls |
 |---|---|---|
 | `make test-quick`, `make test` | Include the test bed's unit tests (`testbed/tests/test_*.py`). `make test` also slices `tb-box`'s exported mesh (the fixture until `part-export` is recorded) with Orca. | none |
-| `make testbed-replay` | Installs `testbed/requirements.txt` into the development environment if Playwright is missing, then runs the browser tests (`testbed/tests/browser_*.py`) under `xvfb-run`: the harness self-tests, every browser scenario in replay mode, and the offline launch of the UI run's browser. | none |
+| `make testbed-replay` | Installs `testbed/requirements.txt` into the development environment if Playwright is missing, then runs the browser tests (`testbed/tests/browser_*.py`) under `xvfb-run`: the harness self-tests, every browser scenario in replay mode, and the offline launch of the Chromium the automated Onshape UI run drives. | none |
 | `make testbed-record` | The live API check: `python -m testbed record`. | yes, counted |
 
 `make testbed-replay` must pass before a change to the print path's Onshape code is done.
@@ -105,18 +105,19 @@ and names it; none is ever written to a file or a log.
 | `PENGUINCAM_TESTBED` | the app | `replay` or `record`; unset means off (section 2). |
 | `ONSHAPE_ACCESS_KEY`, `ONSHAPE_SECRET_KEY` | `build-docs`, `record` | The API key pair. Replay mode needs neither. |
 | `ONSHAPE_CLIENT_ID`, `ONSHAPE_CLIENT_SECRET` | record mode, `record --ui` | A private development OAuth app whose redirect URL is `http://localhost:6238/onshape/oauth/callback`. Never the production app. |
-| `ONSHAPE_USERNAME`, `ONSHAPE_PASSWORD` | `record --ui` | The Onshape sign-in. Only the UI run's browser gets them; the development server it starts does not. |
+| `ONSHAPE_USERNAME`, `ONSHAPE_PASSWORD` | `record --ui` | The Onshape sign-in. Only the Chromium the automated Onshape UI run drives gets them; the development server the automated Onshape UI run starts does not. |
 | `TESTBED_FOLDER_ID` | `build-docs` | The test folder's id: the last segment of the folder's URL in Onshape. |
 | `TESTBED_BUDGET` | every live command | Counted calls the test bed may spend per cycle. Default 250. |
 | `TESTBED_CYCLE_START` | every live command | The allowance's cycle start, `YYYY-MM-DD`. Default: a rolling year ending today. |
 | `TESTBED_RUN_CAP` | every live command | Counted calls one command may spend. Default 150. |
 | `TESTBED_CHROMIUM` | `make testbed-replay` | The Chromium the browser scenarios drive. Default `/usr/bin/chromium`. |
 | `TESTBED_CASSETTE_DIR`, `TESTBED_MESSAGE_DIR` | replay development server | Other recordings to replay; the harness self-tests point them at synthetic fixtures. |
+| `TESTBED_SYNTHETIC_SCENARIOS` | replay development server | A JSON file naming the scenario copies (each `synthetic-<name>`) a self-test runs on its synthetic fixtures. Set only by the self-tests; the server rejects any name without the `synthetic-` prefix. |
 | `TESTBED_ONLINE` | `browser_chrome.py` | `1` runs the one browser test that loads Onshape's sign-in page (it never fills the form). |
 | `XDG_STATE_HOME` | everything | The state directory is `$XDG_STATE_HOME/penguincam-testbed`, default `~/.local/state/penguincam-testbed`. |
 
 The state directory, outside the repository and outside any Docker build context, holds
-the call ledger, the development servers' logs (`logs/`), the UI run's Chrome profile
+the call ledger, the development servers' logs (`logs/`), the automated Onshape UI run's Chrome profile
 (`chrome-profile/`) and its screenshots (`screenshots/`).
 
 ## 5. The budget and the call ledger
@@ -182,7 +183,8 @@ creates a folder. Its id goes in `TESTBED_FOLDER_ID`. `build-docs` then builds:
   again to check that they read inches, and only then writes `tb-inch-units.txt` in the
   state directory so later runs skip the step. If it cannot, it stops with a screenshot
   and says how to do it by hand.
-- **Cost.** A full build is about 40 counted calls.
+- **Cost.** A full build is about 48 counted calls (`BUILD_DOCS_ESTIMATE` in
+  `testbed/documents.py`, which `build-docs` checks against the budget before it starts).
 
 ## 7. Recording, scrubbing and replay
 
