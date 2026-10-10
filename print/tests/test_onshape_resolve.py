@@ -14,7 +14,7 @@ sys.path.insert(0, str(REPO))
 
 from print.limits import MAX_PART_BYTES  # noqa: E402
 from print.onshape_parts import (CONFIGURED_MESSAGE, DUPLICATE_NAME_MESSAGE,  # noqa: E402
-                                 NOT_IN_ASSEMBLY_MESSAGE, NOT_SOLID_MESSAGE,
+                                 NOT_IN_ASSEMBLY_MESSAGE, NOT_IN_PART_STUDIO_MESSAGE, NOT_SOLID_MESSAGE,
                                  STANDARD_CONTENT_MESSAGE, ElementCache, OnshapeAddress,
                                  OnshapeLimitReached, PartRefused, PartSource, ResolvedPart,
                                  export_part_mesh, resolve_selections)
@@ -54,11 +54,51 @@ class PartSourceTest(unittest.TestCase):
         self.assertEqual(PartSource.from_json(data), source)
         self.assertNotIn('configuration', PartSource(DID, 'w', WID, EID_PS, 'JHD').to_json())
         for bad in ({'documentId': 'nothex'}, {'wvm': 'x'}, {'partId': ''}, {'elementId': None},
-                    {'linkDocumentId': '../x'}, {'partId': 'a/../b' * 30}):
+                    {'linkDocumentId': '../x'}, {'partId': 'a/../b' * 30}, {'partId': '..'},
+                    {'partId': '.'}, {'partId': 'a/b'}, {'partId': 'a?b'}, {'partId': 'a#b'},
+                    {'partId': 'a%2Fb'}, {'partId': 'a b'}, {'partId': 'JHD\n'}, {'documentId': DID + '\n'},
+                    {'wvmId': 'zz?x=1'}):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 PartSource.from_json(dict(data, **bad))
         self.assertEqual(len(PartSource.from_json(dict(data, configuration='x' * 2500)).configuration), 2000)
         self.assertEqual(source.key(), PartSource.from_json(data).key())
+
+
+class ElementCacheTest(unittest.TestCase):
+    def test_expired_entries_dropped_and_size_capped(self):
+        now = [1000.0]
+        cache = ElementCache(clock=lambda: now[0], max_entries=3)
+        addresses = [OnshapeAddress(DID, 'w', WID, f'e{n:023d}') for n in range(5)]
+        for address in addresses[:2]:
+            cache._get('parts', address, lambda: [], False)
+        self.assertEqual(len(cache), 2)
+        now[0] += 601
+        cache._get('parts', addresses[2], lambda: ['new'], False)
+        self.assertEqual(len(cache), 1)                 # the two expired entries are gone
+        for address in addresses[3:]:
+            now[0] += 1
+            cache._get('parts', address, lambda: [], False)
+        now[0] += 1
+        cache._get('parts', addresses[0], lambda: [], False)
+        self.assertEqual(len(cache), 3)                 # the oldest went past the cap
+        fetched = []
+        cache._get('parts', addresses[2], lambda: fetched.append(1) or [], False)
+        self.assertEqual(fetched, [1])                  # addresses[2] was the oldest
+
+    def test_wrong_answer_shape_is_a_call_failure(self):
+        from unittest import mock
+        from print.onshape_parts import OnshapeCallFailed
+        client = mock.Mock()
+        for answer, method in (([1, 2], 'configuration_parameters'), ({'a': 1}, 'parts_list'),
+                               ({'a': 1}, 'element_type'), ([], 'assembly_definition')):
+            client._make_api_request.return_value = mock.Mock(status_code=200, json=lambda a=answer: a)
+            with self.subTest(method=method), self.assertRaises(OnshapeCallFailed):
+                getattr(ElementCache(), method)(client, PS)
+        client._make_api_request.return_value = mock.Mock(status_code=200, json=mock.Mock(side_effect=ValueError))
+        with self.assertRaises(OnshapeCallFailed):
+            ElementCache().parts_list(client, PS)
+        client._make_api_request.return_value = mock.Mock(status_code=200, json=lambda: ['x', {'partId': 'JHD'}])
+        self.assertEqual(ElementCache().parts_list(client, PS), [{'partId': 'JHD'}])
 
 
 class ResolvePartStudioTest(unittest.TestCase):
@@ -77,6 +117,22 @@ class ResolvePartStudioTest(unittest.TestCase):
                                                cache=ElementCache())
         self.assertEqual(errors, [])
         self.assertEqual([(p.name, p.source.part_id) for p in parts], [('Cylinder', 'JKD')])
+
+    def test_partstudio_junk_part_id_refused_without_a_refetch(self):
+        with replay_client('ps-one') as (client, sent):
+            parts, errors = resolve_selections(client, PS, [{'partId': '..'}, {'selectionId': 'a/b'}],
+                                               'selection', cache=ElementCache())
+        self.assertEqual(parts, [])
+        self.assertEqual(errors, [{'message': NOT_IN_PART_STUDIO_MESSAGE}] * 2)
+        self.assertEqual(len(sent), 3)          # elements, configuration, parts: no refetch
+
+    def test_part_id_is_quoted_in_the_export_path(self):
+        from print.onshape_parts import _export_source
+        from unittest import mock
+        client = mock.Mock()
+        with mock.patch('print.onshape_parts.fetch_following_redirects', return_value=(b'', [])) as fetch:
+            _export_source(client, PartSource(DID, 'w', WID, EID_PS, 'a+b:c='), None)
+        self.assertTrue(fetch.call_args.args[1].endswith('/partid/a%2Bb%3Ac%3D/stl'))
 
     def test_partstudio_sheet_body_refused(self):
         with replay_client('ps-one') as (client, _sent):
@@ -176,6 +232,27 @@ class ResolveAssemblyTest(unittest.TestCase):
         self.assertEqual(parts, [])
         self.assertEqual(errors, [{'message': NOT_IN_ASSEMBLY_MESSAGE}] * 3)
         self.assertEqual(len(sent), 3)          # one refetch, however many selections miss
+
+    def test_string_path_does_not_spend_the_refetch(self):
+        selections = [{'occurrencePath': 'MboxInstance1aaaa'}, {'occurrencePath': ['MboxInstance1aaaa']}]
+        with replay_client('asm-cache-miss') as (client, sent):
+            parts, errors = resolve_selections(client, ASM, selections, 'selection', cache=ElementCache())
+        self.assertEqual(errors, [{'message': NOT_IN_ASSEMBLY_MESSAGE}])
+        self.assertEqual([p.name for p in parts], ['Box'])      # the list path still got the refetch
+        self.assertEqual(len(sent), 3)
+
+    def test_subassembly_matched_on_full_configuration(self):
+        from print.onshape_parts import _walk_occurrence
+        part = {'id': 'P', 'type': 'Part', 'partId': 'JKD', 'name': 'Pin <1>'}
+        definition = {'rootAssembly': {'instances': [
+            {'id': 'S', 'type': 'Assembly', 'documentId': DID, 'elementId': EID_ASM,
+             'documentMicroversion': MID, 'configuration': '', 'fullConfiguration': 'Size=Large'}]},
+            'subAssemblies': [
+                {'documentId': DID, 'elementId': EID_ASM, 'documentMicroversion': MID,
+                 'fullConfiguration': 'Size=Small', 'instances': [dict(part, partId='JSM')]},
+                {'documentId': DID, 'elementId': EID_ASM, 'documentMicroversion': MID,
+                 'fullConfiguration': 'Size=Large', 'instances': [part]}]}
+        self.assertEqual(_walk_occurrence(definition, ['S', 'P'])['partId'], 'JKD')
 
 
 class ResolveDialogTest(unittest.TestCase):

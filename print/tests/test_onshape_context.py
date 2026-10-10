@@ -97,6 +97,28 @@ class RestAddressTest(unittest.TestCase):
                 self.assertEqual(caught.exception.message, NO_CONTEXT_MESSAGE)
 
 
+    def test_junk_ids_raise_no_context_never_a_bare_error(self):
+        good = {'documentId': DID, 'workspaceId': WID, 'elementId': EID}
+        for junk in ('x/../../users', 'zz?x=1', '..', DID + '\n', DID[:23] + '/', DID + 'a', ' ' + DID[1:],
+                     DID[:23] + 'g', 42):
+            for field in ('documentId', 'workspaceId', 'elementId'):
+                with self.subTest(field=field, junk=junk), self.assertRaises(NoOnshapeContext):
+                    rest_address(dict(good, **{field: junk}))
+        for field in ('versionId', 'microversionId'):
+            with self.subTest(field=field), self.assertRaises(NoOnshapeContext):
+                rest_address({'documentId': DID, 'workspaceId': '{$workspaceId}', field: 'zz?x=1',
+                              'elementId': EID})
+        with self.assertRaises(NoOnshapeContext):
+            rest_address('not a dict')
+        self.assertEqual(rest_address(dict(good, documentId=DID.upper())).document_id, DID.upper())
+
+    def test_address_refuses_junk_ids_itself(self):
+        from print.onshape_parts import OnshapeAddress
+        for args in ((DID, 'w', '..', EID), (DID, 'x', WID, EID), (DID + '\n', 'w', WID, EID)):
+            with self.subTest(args=args), self.assertRaises(NoOnshapeContext):
+                OnshapeAddress(*args)
+
+
 class FetchFollowingRedirectsTest(unittest.TestCase):
     def setUp(self):
         self.cassettes = Path(self.enterContext(tempfile.TemporaryDirectory()))
@@ -118,6 +140,12 @@ class FetchFollowingRedirectsTest(unittest.TestCase):
                      headers={'Location': 'https://cad.onshape.com' + api + STL_PATH.replace('JHD', 'LOOP')}),
             exchange(api + STL_PATH.replace('JHD', 'NOWHERE'), status=307),
             exchange(api + STL_PATH.replace('JHD', 'FAIL'), status=500),
+            # Redirects it must not follow: Onshape over http, and a scheme requests cannot fetch.
+            exchange(api + STL_PATH.replace('JHD', 'PLAIN'), status=307,
+                     headers={'Location': 'http://cad.onshape.com/plain'}),
+            exchange('/plain', 'never'),
+            exchange(api + STL_PATH.replace('JHD', 'FTP'), status=307,
+                     headers={'Location': 'ftp://example.com/x'}),
         ], synthetic=True).save(self.cassettes)
 
     def client(self):
@@ -167,6 +195,15 @@ class FetchFollowingRedirectsTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'HTTP 500') as caught:
                 fetch_following_redirects(client, STL_PATH.replace('JHD', 'FAIL'))
             self.assertEqual(caught.exception.status, 500)
+
+    def test_credentials_never_sent_over_http_and_odd_schemes_refused(self):
+        with self.client() as (client, sent):
+            for part in ('PLAIN', 'FTP'):
+                with self.subTest(part=part):
+                    sent.clear()
+                    with self.assertRaisesRegex(ExportHTTPError, 'will not follow'):
+                        fetch_following_redirects(client, STL_PATH.replace('JHD', part))
+                    self.assertEqual(len(sent), 1)          # the request only, no hop sent
 
 
 class PrintPageContextTest(unittest.TestCase):

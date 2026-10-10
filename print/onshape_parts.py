@@ -94,11 +94,19 @@ class NoOnshapeContext(Exception):
 
 @dataclass(frozen=True)
 class OnshapeAddress:
+    """A REST address. Every id is exactly 24 hex characters, so nothing else can reach a
+    REST path through it; anything else raises NoOnshapeContext."""
     document_id: str
     wvm: str                    # 'w', 'v' or 'm'
     wvm_id: str
     element_id: str
     configuration: str | None = None
+
+    def __post_init__(self):
+        if self.wvm not in ('w', 'v', 'm') or not all(
+                isinstance(value, str) and _ID_RE.fullmatch(value)
+                for value in (self.document_id, self.wvm_id, self.element_id)):
+            raise NoOnshapeContext()
 
     @property
     def document_path(self):
@@ -110,20 +118,30 @@ class OnshapeAddress:
         return f'{self.document_path}/e/{self.element_id}'
 
 
+def _context_id(value):
+    """'' for an absent id or an unsubstituted {$...} placeholder, the id itself when it is
+    exactly 24 hex characters; anything else raises NoOnshapeContext."""
+    if not clean_onshape_id(value):
+        return ''
+    if not isinstance(value, str) or not _ID_RE.fullmatch(value):
+        raise NoOnshapeContext()
+    return value
+
+
 def rest_address(context):
     """The REST address of a panel context, exactly as the CNC export resolves it.
 
     Prefers the workspace, then the version, then the microversion (OnshapeClient._wvm_path).
-    Raises NoOnshapeContext without a document, an element or any of the three.
+    Raises NoOnshapeContext without a document, an element or any of the three, and for
+    any id that is not exactly 24 hex characters.
     """
-    did = clean_onshape_id(context.get('documentId'))
-    eid = clean_onshape_id(context.get('elementId'))
+    if not isinstance(context, dict):
+        raise NoOnshapeContext()
+    did, wid, vid, mid, eid = (_context_id(context.get(name)) for name in CONTEXT_IDS)
     if not did or not eid:
         raise NoOnshapeContext()
     try:
-        path = OnshapeClient._wvm_path(did, clean_onshape_id(context.get('workspaceId')),
-                                       clean_onshape_id(context.get('versionId')),
-                                       clean_onshape_id(context.get('microversionId')))
+        path = OnshapeClient._wvm_path(did, wid, vid, mid)
     except ValueError:
         raise NoOnshapeContext() from None
     _d, _did, wvm, wvm_id = path.split('/')
@@ -183,7 +201,12 @@ def fetch_following_redirects(client, path, params=None, *, headers=None, byte_c
         url = urljoin(response.url, location)
         response.close()
         hops.append(url)
-        if is_onshape_host(urlsplit(url).hostname):
+        target = urlsplit(url)
+        onshape = is_onshape_host(target.hostname)
+        if target.scheme != 'https' and (onshape or target.scheme != 'http'):
+            # Credentials only ever go over https; and no scheme requests cannot fetch.
+            raise ExportHTTPError(310, 'export redirects to a URL it will not follow', len(hops))
+        if onshape:
             response = client.request_absolute('GET', url, headers=headers,
                                                allow_redirects=False, stream=True)
         else:
@@ -204,6 +227,7 @@ def fetch_following_redirects(client, path, params=None, *, headers=None, byte_c
 # ---------------------------------------------------------------------------
 
 ELEMENT_CACHE_TTL_S = 600
+ELEMENT_CACHE_MAX_ENTRIES = 256
 
 NOT_SOLID_MESSAGE = "Only solid parts can be printed: {name} was skipped."
 STANDARD_CONTENT_MESSAGE = "{name} is standard content (hardware) and is not printed."
@@ -217,7 +241,13 @@ NOT_IN_PART_STUDIO_MESSAGE = ("Could not find the selected part in this Part Stu
 LIMIT_REACHED_MESSAGE = "Onshape refused the export (API limit reached)."
 
 VIAS = ('selection', 'dialog', 'refresh')
-_PART_ID_RE = re.compile(r'[A-Za-z0-9_.:+=-]{1,100}')
+# Onshape's part ids are short letters-and-digits strings ("JHD"). No dot, slash, query,
+# fragment, percent or space: a dot-only id would be removed from the path as a dot segment.
+_PART_ID_RE = re.compile(r'[A-Za-z0-9_:+=-]{1,100}')
+
+
+def valid_part_id(value):
+    return isinstance(value, str) and _PART_ID_RE.fullmatch(value) is not None
 _SELECTION_ID_KEYS = ('selectionId', 'bodyId', 'entityId')
 _NOT_SOLID_FLAGS = ('isSurface', 'isComposite', 'isSketch', 'isFlattenedBody')
 _INSTANCE_NUMBER_RE = re.compile(r' <\d+>$')
@@ -265,7 +295,7 @@ class PartSource:
         wvm, part_id = data.get('wvm'), data.get('partId')
         if wvm not in ('w', 'v', 'm'):
             raise ValueError('wvm is not w, v or m')
-        if not isinstance(part_id, str) or not _PART_ID_RE.fullmatch(part_id):
+        if not valid_part_id(part_id):
             raise ValueError('partId is not a part id')
         configuration = data.get('configuration')
         if configuration is not None and not isinstance(configuration, str):
@@ -295,10 +325,11 @@ class PartRefused(Exception):
 
 
 class OnshapeCallFailed(RuntimeError):
-    """A resolution call (elements, configuration, parts, assembly) did not answer 200."""
+    """A resolution call (elements, configuration, parts, assembly) did not answer 200 with
+    the expected JSON shape."""
 
-    def __init__(self, what, status):
-        super().__init__(f'{what} answered HTTP {status}')
+    def __init__(self, what, status, detail=None):
+        super().__init__(f'{what} answered {detail or f"HTTP {status}"}')
         self.status = status
 
 
@@ -320,13 +351,22 @@ class OnshapeLimitReached(Exception):
         self.name = name
 
 
-def _get_json(client, what, path, params=None):
+def _get_json(client, what, path, params=None, shape=dict):
+    """The JSON answer, which must be a `shape`; OnshapeCallFailed otherwise."""
     response = client._make_api_request('GET', path, params=params or None)
     if response.status_code == 402:
         raise OnshapeLimitReached()
     if response.status_code != 200:
         raise OnshapeCallFailed(what, response.status_code)
-    return response.json()
+    try:
+        answer = response.json()
+    except ValueError:
+        answer = None
+    if not isinstance(answer, shape):
+        raise OnshapeCallFailed(what, response.status_code, 'an unexpected answer')
+    if shape is list:
+        answer = [item for item in answer if isinstance(item, dict)]
+    return answer
 
 
 class ElementCache:
@@ -334,33 +374,49 @@ class ElementCache:
 
     In process memory, never in the Flask session cookie; it assumes the one-worker
     Procfile, like the part store. Thread-safe. `fresh=True` fetches past the cache and
-    stores the new answer.
+    stores the new answer. Expired entries are dropped on every access, and past
+    `max_entries` the oldest go, so assembly definitions cannot pile up in the worker.
+
+    The key holds no user (spec 3.3, an accepted choice): one user's cached element type,
+    configuration parameters and part names can answer another user's resolve for the
+    same ids. Exports always use each user's own credentials.
     """
 
-    def __init__(self, ttl_s=ELEMENT_CACHE_TTL_S, clock=time.time):
+    def __init__(self, ttl_s=ELEMENT_CACHE_TTL_S, clock=time.time, max_entries=ELEMENT_CACHE_MAX_ENTRIES):
         self.ttl_s = ttl_s
         self.clock = clock
+        self.max_entries = max_entries
         self._entries = {}
         self._lock = threading.Lock()
 
     def _get(self, kind, address, fetch, fresh, extra=()):
         key = (kind, address.document_id, address.wvm_id, address.element_id,
                address.configuration, *extra)
-        if not fresh:
-            with self._lock:
-                entry = self._entries.get(key)
-                if entry and self.clock() - entry[0] < self.ttl_s:
-                    return entry[1]
+        with self._lock:
+            self._drop_expired()
+            entry = None if fresh else self._entries.get(key)
+            if entry:
+                return entry[1]
         value = fetch()
         with self._lock:
             self._entries[key] = (self.clock(), value)
+            while len(self._entries) > self.max_entries:
+                del self._entries[min(self._entries, key=lambda k: self._entries[k][0])]
         return value
+
+    def _drop_expired(self):
+        now = self.clock()
+        for key in [k for k, (stored, _value) in self._entries.items() if now - stored >= self.ttl_s]:
+            del self._entries[key]
+
+    def __len__(self):
+        with self._lock:
+            return len(self._entries)
 
     def element_type(self, client, address, fresh=False):
         def fetch():
             items = _get_json(client, 'elements', f'/documents/{address.document_path}/elements',
-                              {'elementId': address.element_id})
-            items = items if isinstance(items, list) else []
+                              {'elementId': address.element_id}, shape=list)
             match = next((e for e in items if e.get('id') == address.element_id), None)
             return (match or (items[0] if items else {})).get('elementType', '')
         return self._get('type', address, fetch, fresh)
@@ -368,7 +424,8 @@ class ElementCache:
     def configuration_parameters(self, client, address, fresh=False):
         def fetch():
             answer = _get_json(client, 'configuration', f'/elements/{address.element_path}/configuration')
-            return list(answer.get('configurationParameters') or [])
+            parameters = answer.get('configurationParameters') or []
+            return list(parameters) if isinstance(parameters, list) else []
         return self._get('configuration', address, fetch, fresh)
 
     def assembly_definition(self, client, address, fresh=False):
@@ -384,8 +441,7 @@ class ElementCache:
                 params['configuration'] = address.configuration
             if link_document_id:
                 params['linkDocumentId'] = link_document_id
-            answer = _get_json(client, 'parts', f'/parts/{address.element_path}', params)
-            return answer if isinstance(answer, list) else []
+            return _get_json(client, 'parts', f'/parts/{address.element_path}', params, shape=list)
         return self._get('parts', address, fetch, fresh, (link_document_id,))
 
 
@@ -410,8 +466,8 @@ def _resolve_partstudio(client, address, selections, cache):
     for selection in selections:
         part_id = selection.get('partId') or next(
             (selection.get(k) for k in _SELECTION_ID_KEYS if selection.get(k)), None)
-        part = _find_part(parts_list, part_id) if isinstance(part_id, str) else None
-        if part is None and isinstance(part_id, str) and not refetched:
+        part = _find_part(parts_list, part_id) if valid_part_id(part_id) else None
+        if part is None and valid_part_id(part_id) and not refetched:
             parts_list, refetched = cache.parts_list(client, address, fresh=True), True
             part = _find_part(parts_list, part_id)
         if part is None:
@@ -426,6 +482,17 @@ def _resolve_partstudio(client, address, selections, cache):
     return resolved, errors
 
 
+def _sub_matches(sub, instance):
+    """The subassembly definition an assembly instance stands for."""
+    if (sub.get('documentId'), sub.get('elementId')) != (instance.get('documentId'), instance.get('elementId')):
+        return False
+    if sub.get('documentMicroversion', instance.get('documentMicroversion')) != instance.get('documentMicroversion'):
+        return False
+    if 'fullConfiguration' in sub and 'fullConfiguration' in instance:
+        return sub['fullConfiguration'] == instance['fullConfiguration']
+    return (sub.get('configuration') or '') in ('', instance.get('configuration') or '')
+
+
 def _walk_occurrence(definition, path):
     """The part instance an occurrence path names, or None."""
     if not isinstance(path, list) or not path:
@@ -434,17 +501,12 @@ def _walk_occurrence(definition, path):
     subs = definition.get('subAssemblies') or []
     instance = None
     for depth, instance_id in enumerate(path):
-        instance = next((i for i in instances if i.get('id') == instance_id), None)
+        instance = next((i for i in instances if isinstance(i, dict) and i.get('id') == instance_id), None)
         if instance is None:
             return None
         if depth == len(path) - 1:
             break
-        sub = next((s for s in subs if s.get('documentId') == instance.get('documentId')
-                    and s.get('elementId') == instance.get('elementId')
-                    and s.get('documentMicroversion', instance.get('documentMicroversion'))
-                    == instance.get('documentMicroversion')
-                    and (s.get('configuration') or '') in ('', instance.get('configuration') or '')),
-                   None)
+        sub = next((s for s in subs if isinstance(s, dict) and _sub_matches(s, instance)), None)
         if sub is None:
             return None
         instances = sub.get('instances') or []
@@ -458,7 +520,7 @@ def _resolve_assembly(client, address, selections, cache):
     for selection in selections:
         path = selection.get('occurrencePath')
         instance = _walk_occurrence(definition, path)
-        if instance is None and path and not refetched:
+        if instance is None and isinstance(path, list) and path and not refetched:
             definition, refetched = cache.assembly_definition(client, address, fresh=True), True
             instance = _walk_occurrence(definition, path)
         if instance is None:
@@ -605,14 +667,14 @@ def export_part_mesh(client, part, *, byte_cap, cache=ELEMENT_CACHE):
             calls += 1
             raise ExportFailed(part.name, failed.status, str(failed)) from None
         calls += 1
-        matches = [p for p in listed if p.get('name') == part.fallback_name and p.get('partId')]
+        matches = [p for p in listed if p.get('name') == part.fallback_name and valid_part_id(p.get('partId'))]
         if len(matches) > 1:
             raise PartRefused(DUPLICATE_NAME_MESSAGE.format(name=part.fallback_name),
                               part.fallback_name) from None
         if not matches:
             raise ExportFailed(part.name, exc.status, f'{exc}; no part named so') from None
         source = PartSource(source.document_id, source.wvm, source.wvm_id, source.element_id,
-                            str(matches[0]['partId']), source.configuration, source.link_document_id)
+                            matches[0]['partId'], source.configuration, source.link_document_id)
         try:
             stl, hops = export(source)
         except ExportHTTPError as retry:
