@@ -45,6 +45,22 @@ def mesh_stl(vertices, faces):
     return b'part'.ljust(80, b'\0') + np.uint32(len(tris)).tobytes() + body.tobytes()
 
 
+def l_prism_stl(origin=(0.0, 0.0, 0.0)):
+    """An L-shaped prism with unequal arms and its top sheared in x and y, so that no view of
+    it is symmetric: a reversed angle or a wrong orientation changes its footprint."""
+    outline = [(0, 0), (30, 0), (30, 8), (8, 8), (8, 18), (0, 18)]
+    x0, y0, z0 = origin
+    bottom = [(x0 + x, y0 + y, z0) for x, y in outline]
+    top = [(x0 + x + 4, y0 + y + 2, z0 + 12) for x, y in outline]
+    n = len(outline)
+    faces = [(0, i + 1, i) for i in range(1, n - 1)]                 # the bottom, a fan from (0, 0)
+    faces += [(n, n + i, n + i + 1) for i in range(1, n - 1)]        # the top
+    for i in range(n):
+        j = (i + 1) % n
+        faces += [(i, j, n + j), (i, n + j, n + i)]
+    return mesh_stl(bottom + top, faces)
+
+
 def cylinder_stl(radius, height, segments=48):
     """A closed upright cylinder on z = 0, centred on the z axis."""
     angles = np.linspace(0.0, 2 * np.pi, segments, endpoint=False)
@@ -142,6 +158,28 @@ class WriterTest(unittest.TestCase):
             self.assertAlmostEqual((low[0] + high[0]) / 2, x, delta=1e-3)
             self.assertAlmostEqual((low[1] + high[1]) / 2, y, delta=1e-3)
             self.assertAlmostEqual(low[2], 0.0, delta=1e-3)
+
+    def test_asymmetric_part_footprint_matches_placement_in_every_orientation(self):
+        # The 3MF must put the part where print/plate.py's check sees it: the hull of the
+        # transformed vertices equals copy_hull, which pins the rotation direction and R2.
+        from shapely.geometry import MultiPoint, Polygon
+        from print.plate import ORIENTATIONS, copy_hull
+        part = _part(self.stls, 'Ell', l_prism_stl(origin=(7.0, -4.0, 3.0)))
+        copies = [self.copy('a', 60.0 + 40 * k, 90.0 + 15 * k, o, 37) for k, o in enumerate(ORIENTATIONS)]
+        write_plate_3mf(self.tmp / 'plate.3mf', copies, {'a': part})
+        _entries, root = read_model(self.tmp / 'plate.3mf')
+        objects = {o.get('id'): o for o in root.findall('m:resources/m:object', NS)}
+        for item, copy in zip(root.findall('m:build/m:item', NS), copies):
+            with self.subTest(orientation=copy['orientation']):
+                matrix = np.array([float(v) for v in item.get('transform').split()]).reshape(4, 3)
+                vertices = np.array([[float(v.get(k)) for k in 'xyz']
+                                     for v in objects[item.get('objectid')].findall('m:mesh/m:vertices/m:vertex', NS)])
+                placed = np.hstack([vertices, np.ones((len(vertices), 1))]) @ matrix
+                written = MultiPoint(placed[:, :2].tolist()).convex_hull
+                expected = Polygon(copy_hull(copy, part['footprints'][copy['orientation']]))
+                self.assertGreater(expected.area, 100)
+                self.assertLess(written.symmetric_difference(expected).area, 0.05)
+                self.assertAlmostEqual(placed[:, 2].min(), 0.0, delta=1e-3)
 
     def test_names_xml_escaped_and_sanitized(self):
         parts = {'a': make_part(self.stls, 'A&B "q" <x>', (10, 10, 10))}
