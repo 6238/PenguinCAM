@@ -25,6 +25,18 @@ class LimitsTest(unittest.TestCase):
         self.assertEqual(limits.MAX_COPIES, 25)
         self.assertEqual(limits.MAX_QUANTITY, limits.MAX_COPIES)
 
+    def test_sentences_follow_the_caps(self):
+        self.assertEqual(limits.TOO_DETAILED_MESSAGE.format(name="Gear"),
+                         "Gear is too detailed to print here (over 150,000 triangles).")
+        self.assertEqual(limits.TOO_MANY_PARTS_MESSAGE, "Up to 20 different parts per print.")
+        self.assertEqual(limits.TOO_MANY_COPIES_MESSAGE,
+                         "Up to 25 copies per plate; print the rest in a second job.")
+        self.assertEqual(limits.limits_for_browser(), {
+            "max_copies": 25, "max_quantity": 25, "max_job_triangles": limits.MAX_JOB_TRIANGLES,
+            "too_many_copies_message": limits.TOO_MANY_COPIES_MESSAGE,
+            "job_triangles_message": limits.JOB_TRIANGLES_MESSAGE,
+            "one_plate_message": limits.ONE_PLATE_MESSAGE})
+
     def test_one_part_always_fits_a_job(self):
         self.assertGreaterEqual(limits.MAX_JOB_TRIANGLES, limits.MAX_PART_TRIANGLES)
 

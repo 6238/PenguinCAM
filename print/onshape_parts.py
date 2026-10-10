@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, quote, urljoin, urlsplit
 
 from onshape_integration import OnshapeClient
 
-from .limits import STL_ANGLE_TOLERANCE_RAD, STL_CHORD_TOLERANCE_M
+from .limits import EXPORT_FAILED_MESSAGE, STL_ANGLE_TOLERANCE_RAD, STL_CHORD_TOLERANCE_M
 
 NO_CONTEXT_MESSAGE = "Open this panel from a Part Studio or Assembly tab."
 DEFAULT_SERVER = 'https://cad.onshape.com'
@@ -214,7 +214,6 @@ NOT_IN_ASSEMBLY_MESSAGE = ("Could not find the selected part in this assembly; "
                            "use Add from another document\u2026")
 NOT_IN_PART_STUDIO_MESSAGE = ("Could not find the selected part in this Part Studio; "
                               "use Add from another document\u2026")
-EXPORT_FAILED_MESSAGE = "Onshape could not export {name}. Try again, or Refresh from Onshape."
 LIMIT_REACHED_MESSAGE = "Onshape refused the export (API limit reached)."
 
 VIAS = ('selection', 'dialog', 'refresh')
