@@ -1,6 +1,16 @@
 /* The print page's own styles, loaded after the shared static/wizard.css. Uses that
  * file's theme variables, so both themes follow. */
 
+/* Setup step: the filament and print settings menus, and the four overrides. */
+.step[data-step="setup"] select { max-width: 100%; }
+.print-overrides { display: flex; flex-wrap: wrap; gap: 6px 12px; border: 0; padding: 0; }
+.print-overrides[hidden] { display: none; }
+.print-overrides legend { margin-bottom: 4px; }
+.print-overrides label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+.print-overrides select { width: auto; padding: 4px 6px; font-size: 13px; }
+#setup-notes { margin-top: 8px; }
+#setup-notes[hidden] { display: none; }
+
 /* Parts step (Onshape mode) */
 .parts-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 #parts-status:empty { display: none; }

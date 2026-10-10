@@ -3,6 +3,11 @@
  * print blueprint (/print/part, /print-job, /print-job/<id>/events) and reuses
  * the download and Google Drive routes. Pure helpers are exported for node tests.
  *
+ * Setup shows the team's printing configuration as /print/page answers it: the printer,
+ * the filament and print settings menus and, when the team allows them, the four
+ * overrides. A configuration error stops every step. The upload mode shows the default
+ * set read-only.
+ *
  * In Onshape mode the Parts step lists parts exported from Onshape: print_onshape.js
  * (loaded first) does the messaging and hands selections to onPartSelections, which
  * posts them to /print/onshape/parts.
@@ -25,6 +30,14 @@
   var STATUS_LINES = { preview: '#gen-status' };   // the status line a step's error replaces
   var ONSHAPE = CFG.source === 'onshape';
   var DEFAULT_MAX_QUANTITY = 25;     // limits.MAX_QUANTITY, until /print/page sends the limits
+  var OVERRIDE_KEYS = ['infill', 'walls', 'supports', 'brim'];
+  var NUMERIC_OVERRIDES = { infill: true, walls: true };
+  var OVERRIDE_LABELS = {
+    infill: function (v) { return v + ' %'; },
+    walls: function (v) { return String(v); },
+    supports: function (v) { return v === 'on' ? 'On (tree, auto)' : 'Off'; },
+    brim: function (v) { return { auto: 'Auto', off: 'Off', outer: 'Outer only' }[v] || v; },
+  };
 
   var state = {
     pid: HAS_DOM && typeof window !== 'undefined' && window.crypto ? makePageId(window.crypto) : null,
@@ -47,6 +60,11 @@
     layoutSentence: '',  // the Layout step's sentence; Next waits while it is not empty
     jobKey: null,        // what the job in hand was submitted for (jobKey()); a match re-uses it
     jobCopies: null,     // Onshape mode: the copies that job slices, for the 3D view
+    config: null,        // /print/page's `config`: printer, filaments, processes, warnings, error
+    overrideChoices: null,   // /print/page's `overrides`: the values each override offers
+    filament: null,      // the Setup choices sent with the slice
+    process: null,
+    overrides: {},       // overridesFromForm(), "Profile default" left out
   };
   var viewer = null;
   var editor = null;        // print_layout.js's plate editor, Onshape mode only
@@ -190,16 +208,37 @@
            pad(date.getHours()) + pad(date.getMinutes());
   }
 
-  // The slice request for the plate: each copy's placement only, in order. Until Setup
-  // offers choices the filament and process are left out and the server uses its default set.
+  // The slice request for the plate: each copy's placement only, in order, with the Setup
+  // choices. Before /print/page has answered there is no choice, and the server takes the
+  // first filament and process the team offers.
   function jobBody(st, now) {
-    return {
+    var body = {
       copies: st.copies.map(function (c) {
         return { ref: c.ref, orientation: c.orientation, angle: c.angle, x: c.x, y: c.y };
       }),
-      overrides: {},
+      overrides: Object.assign({}, st.overrides || {}),
       local_time: localTimeStamp(now || new Date()),
     };
+    if (st.filament) body.filament = st.filament;
+    if (st.process) body.process = st.process;
+    return body;
+  }
+
+  // The four override menus' values as the server takes them: "Profile default" ('') sends
+  // nothing, infill and walls are numbers, supports and brim strings.
+  function overridesFromForm(values) {
+    var out = {};
+    OVERRIDE_KEYS.forEach(function (key) {
+      var v = values ? values[key] : '';
+      if (v === '' || v == null) return;
+      out[key] = NUMERIC_OVERRIDES[key] ? Number(v) : String(v);
+    });
+    return out;
+  }
+
+  // A configuration error (an unknown printer, an empty list) stops every step and the slice.
+  function canSlice(st) {
+    return !(st && st.config && st.config.error);
   }
 
   // What a finished job is re-used for: the same body, whatever minute it is now.
@@ -269,6 +308,8 @@
         if (!answer) return;
         if (answer.plate) state.plate = answer.plate;
         if (answer.limits) state.limits = answer.limits;
+        if (answer.overrides) state.overrideChoices = answer.overrides;
+        if (answer.config) { state.config = answer.config; fillSetup(); }
         if (ONSHAPE && HAS_DOM && $('#btn-refresh-parts')) renderParts();   // the quantity's max
         if (ONSHAPE && state.step === 'layout') enterLayout();
       })
@@ -276,11 +317,77 @@
   }
 
   /* ----------------------------------------------------------------- setup */
-  function fillSetup() {
+  // What Setup shows: /print/page's configuration, or, until it answers (or if it never
+  // does), the default names from /print/part.
+  function setupConfig() {
+    if (state.config) return state.config;
     var i = state.info;
-    $('#p-printer').textContent = i.printer.name;
-    $('#p-filament').textContent = i.filament.name;
-    $('#p-process').textContent = i.process.name;
+    if (!i) return null;
+    return { printer: i.printer.name, filaments: [i.filament.name], processes: [i.process.name],
+             allow_overrides: false, warnings: [], error: null, is_default: true };
+  }
+
+  function fillSelect(select, options, keep) {
+    select.innerHTML = '';
+    options.forEach(function (o) {
+      var opt = document.createElement('option');
+      opt.value = o.value;
+      opt.textContent = o.text;
+      select.appendChild(opt);
+    });
+    if (keep != null && options.some(function (o) { return o.value === keep; })) select.value = keep;
+  }
+
+  function nameOptions(names) { return names.map(function (n) { return { value: n, text: n }; }); }
+
+  // Fills Setup from setupConfig(). Safe to call again: a choice still offered is kept.
+  function fillSetup() {
+    var c = setupConfig();
+    if (!c || !HAS_DOM) return;
+    $('#p-printer').textContent = c.printer;
+    if (c.filaments.indexOf(state.filament) < 0) state.filament = c.filaments[0] || null;
+    if (c.processes.indexOf(state.process) < 0) state.process = c.processes[0] || null;
+    fillSelect($('#p-filament'), nameOptions(c.filaments), state.filament);
+    fillSelect($('#p-process'), nameOptions(c.processes), state.process);
+    // The upload mode slices the sample part with the default set: nothing to choose (R8).
+    $('#p-filament').disabled = !ONSHAPE || !c.filaments.length;
+    $('#p-process').disabled = !ONSHAPE || !c.processes.length;
+    fillOverrides(ONSHAPE && c.allow_overrides && !c.error ? state.overrideChoices : null);
+    var notes = $('#setup-notes');
+    notes.innerHTML = '';
+    (c.warnings || []).forEach(function (w) {
+      var line = document.createElement('div');
+      line.textContent = w;
+      notes.appendChild(line);
+    });
+    notes.hidden = !(c.warnings && c.warnings.length);
+    if (c.error) {
+      if ($('#setup-errors').textContent !== c.error) showError('setup', c.error, 'config');
+    } else clearError('setup');
+    if (state.step !== 'preview') $('#btn-next').disabled = !canLeave(state.step);
+    updateSummary();
+  }
+
+  // The four override menus, each starting at "Profile default"; hidden without choices.
+  function fillOverrides(choices) {
+    var box = $('#p-overrides');
+    if (!box) return;
+    box.hidden = !choices;
+    if (!choices) { state.overrides = {}; return; }
+    OVERRIDE_KEYS.forEach(function (key) {
+      var select = $('#ov-' + key), keep = select.value;
+      var options = [{ value: '', text: 'Profile default' }].concat((choices[key] || []).map(function (v) {
+        return { value: String(v), text: OVERRIDE_LABELS[key](v) };
+      }));
+      fillSelect(select, options, keep);
+    });
+    state.overrides = overridesFromForm(overrideValues());
+  }
+
+  function overrideValues() {
+    var values = {};
+    OVERRIDE_KEYS.forEach(function (key) { values[key] = $('#ov-' + key).value; });
+    return values;
   }
 
   function bindSetup() {
@@ -290,6 +397,11 @@
         // with its default mode selected.
         if (this.value !== 'print') location.href = CFG.returnUrl;
       });
+    });
+    $('#p-filament').addEventListener('change', function () { state.filament = this.value; updateSummary(); });
+    $('#p-process').addEventListener('change', function () { state.process = this.value; updateSummary(); });
+    OVERRIDE_KEYS.forEach(function (key) {
+      $('#ov-' + key).addEventListener('change', function () { state.overrides = overridesFromForm(overrideValues()); });
     });
   }
 
@@ -444,10 +556,15 @@
 
   /* ---------------------------------------------------------------- layout */
   function fillLayoutInfo() {
-    var i = state.info;
+    var i = state.info, p = state.plate;
+    if (ONSHAPE) {            // the configured printer's plate; the plate editor checks every copy
+      if (!p) return;
+      $('#info-printer-name').textContent = p.printer;
+      $('#info-bed-size').textContent = (p.max[0] - p.min[0]) + ' x ' + (p.max[1] - p.min[1]) + ' mm, ' + p.height + ' mm tall';
+      return;
+    }
     $('#info-printer-name').textContent = i.printer.name;
     $('#info-bed-size').textContent = i.printer.bed_mm.x + ' x ' + i.printer.bed_mm.y + ' mm, ' + i.printer.height_mm + ' mm tall';
-    if (ONSHAPE) return;      // the plate editor checks every copy instead
     state.fits = fitsBed(i.part.size_mm, i.printer.bed_mm, i.printer.height_mm);
     var tooBig = tooBigMessage(i.part.size_mm, i.printer.bed_mm, i.printer.height_mm);
     // This runs on every visit to Layout; a message already shown is not shown (and
@@ -556,6 +673,7 @@
       $('#btn-next').disabled = true;
       return;
     }
+    fillLayoutInfo();
     state.copies = layoutLib().syncCopies(state.copies, state.parts, state.plate);
     if (state.copies.length && state.copies.every(function (c) { return c.placed === false; })) arrange();
     editor.select(-1);           // the copies may have been renumbered on the way
@@ -684,9 +802,11 @@
 
   /* ---------------------------------------------------------- summary chips */
   function updateSummary() {
-    var box = $('#wiz-summary'), i = state.info, chips = [];
+    var box = $('#wiz-summary'), i = state.info, c = setupConfig(), chips = [];
     var idx = STEPS.indexOf(state.step);
-    if (i && idx >= STEPS.indexOf('parts')) chips.push(i.printer.name, i.filament.name, i.process.name);
+    if (c && idx >= STEPS.indexOf('parts')) {
+      [c.printer, state.filament, state.process].forEach(function (name) { if (name) chips.push(name); });
+    }
     if (ONSHAPE && idx >= STEPS.indexOf('layout') && state.parts.length) {
       // On and after Layout the plate's copies; duplicate and delete keep quantities equal.
       var copies = state.copies.length || state.parts.reduce(function (n, p) { return n + p.quantity; }, 0);
@@ -733,7 +853,6 @@
     if (m && leaving === 'parts' && name !== 'parts') m.leaveParts();
     if (m && name === 'parts' && (leaving !== 'parts' || !m.isActive())) m.enterParts();
     if (name === 'layout' && ONSHAPE) {
-      if (state.info) fillLayoutInfo();
       enterLayout();
       $('#btn-next').disabled = !canLeave('layout');
     } else if (name === 'layout') {
@@ -747,6 +866,7 @@
   }
 
   function canLeave(name) {
+    if (!canSlice(state)) return false;
     if (name === 'parts' && ONSHAPE && state.parts.length === 0) return false;
     if (name === 'layout' && ONSHAPE) return !!state.plate && state.copies.length > 0 && !state.layoutSentence;
     if (name === 'layout' && !state.fits) return false;
@@ -784,7 +904,7 @@
       .then(function (r) { if (!r.ok) throw new Error('part info ' + r.status); return r.json(); })
       .then(function (info) {
         state.info = info;
-        fillSetup();
+        fillSetup();                    // a no-op on the choices once /print/page has answered
         if (!ONSHAPE) fillParts();      // Onshape mode lists the student's parts instead
         fillLayoutInfo();
         // Part info arrives after gotoStep ran, so the layout gate needs re-applying:
@@ -836,6 +956,7 @@
     var prev = state.record, prevId = state.jobId, prevToken = state.token;
     var body = ONSHAPE ? jobBody(state) : null, key = jobKey(body);
     resetPreview();
+    if (!canSlice(state)) return;     // Setup shows why; Next and the step bar are blocked too
     if (key === state.jobKey) {
       if (prev && prev.state === 'done' && prevToken) { showDone(prev); return; }
       if (prev && prevId && prev.state !== 'failed') { showState(prev); followEvents(); return; }
@@ -1182,6 +1303,7 @@
                        printPageUrl: printPageUrl, statusText: statusText, tooBigMessage: tooBigMessage,
                        errorForStatus: errorForStatus, appendNote: appendNote, makePageId: makePageId,
                        addParts: addParts, clampQuantity: clampQuantity, swapRefreshed: swapRefreshed,
-                       sourceKey: sourceKey, localTimeStamp: localTimeStamp, jobBody: jobBody };
+                       sourceKey: sourceKey, localTimeStamp: localTimeStamp, jobBody: jobBody,
+                       jobKey: jobKey, overridesFromForm: overridesFromForm, canSlice: canSlice };
   }
 })();

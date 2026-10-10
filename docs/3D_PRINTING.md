@@ -1,59 +1,90 @@
-# 3D Printing: the print path (stage 1)
+# 3D Printing: the print path
 
 Developer guide for PenguinCAM's 3D print path.
-Deployment numbers live in [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md). The fixed assets
-are described in [print/README.md](../print/README.md).
+Deployment numbers live in [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md). The sample part and
+the default profiles are described in [print/README.md](../print/README.md).
 
-## 1. What stage 1 does
+## 1. What the print path does
 
-Stage 1 proves the slicing pipeline end to end. It slices one part, with one profile
-set, through Orca Slicer's command line, on a wizard page of its own.
+The print path slices parts with Orca Slicer's command line, on a wizard page of its own
+(`/print`), and hands the result to Download, Google Drive or the team's printer. The page
+opens in one of two modes.
 
-- **One fixed part.** `print/sample_part.stl`, an L bracket of 40 x 30 x 12 mm. Nothing
-  is exported from Onshape yet.
-- **One fixed profile set.** Three flattened Bambu Lab profiles in `print/profiles/`.
-  Team configuration does not choose them yet.
+**From the Onshape panel** (`source=onshape`) the student walks four steps:
+
+- **Setup.** The printer, a Filament menu and a Print settings menu from the team's
+  `printing:` configuration (or the default set), and, when the team allows them, four
+  overrides: infill, walls, supports and brim. A configuration error stops every step.
+- **Parts.** A click on a part in Onshape, or Add from another document…, adds it to the
+  list. Each part is exported once, as an STL, and kept in the part store for the page.
+  Each part has a quantity.
+- **Layout.** A top-down plate editor: every copy drawn as its footprint, to drag, turn,
+  lay on another face, duplicate or delete, with Arrange to place them all. The browser
+  and the server check the same rules (on the plate, not too tall, 5 mm apart).
+- **Preview.** The plate is written as a 3MF with one object per copy and sliced in
+  place; the 3D view shows every copy as sliced, and the archive is saved under a name
+  made of the first part and the time.
+
+**Full page** (`source=upload`) keeps the original behaviour: it slices the built-in
+sample part, `print/sample_part.stl` (an L bracket of 40 x 30 x 12 mm), with the default
+profile set, and saves `sample_part.gcode.3mf`. Setup shows the default names read-only.
+
+Both modes share the same pieces:
+
 - **Orca Slicer's command line.** A pinned release at a fixed path, run headless as a
   subprocess. No GUI, no display server.
+- **Flattened Bambu Lab profiles.** Three defaults in `print/profiles/` and a catalog of the
+  H2S family in `print/profiles/catalog/` (section 4).
 - **A separate wizard page.** `/print` has the same look as the CNC wizard and none of
   its code. It shares the stylesheet, the session gate, the file token manager, the
   download route and the Drive route.
-
-The student picks 3D Printing on the Setup screen, walks Setup, Parts, Layout and
-Preview, and saves `sample_part.gcode.3mf`.
 
 ## 2. Architecture
 
 ```mermaid
 flowchart TB
     A["Setup radio<br/>3D Printing"] --> B["/print page"]
-    B --> C["GET /print/part<br/>names, bed, STL"]
+    B --> K["POST /print/page<br/>config, plate, limits"]
+    K --> Q["print/print_config.py<br/>catalog"]
+    B --> O["POST /print/onshape/parts"]
+    O --> R["print/onshape_parts.py"]
+    O --> T[("print/part_store.py")]
+    B --> C["GET /print/part<br/>sample part only"]
     B --> D["POST /print-job"]
     B --> S["GET /print-job/id/events"]
     D --> P["print/jobs.py<br/>pool and job table"]
     S --> P
-    P --> E["print/slicer.py"]
+    P --> U["print/plate_job.py<br/>3MF, process file"]
+    U --> E["print/slicer.py"]
     E --> F["tools/orca/orca-slicer"]
-    F --> G[("sample_part.gcode.3mf")]
+    F --> G[("archive .gcode.3mf")]
     G --> H["file token manager"]
     H --> I["/download/token"]
     H --> J["/drive/upload/token"]
 ```
 
+The upload mode skips Parts from Onshape and the plate job: its `POST /print-job` has no
+body, and the worker slices the sample part directly.
+
 ### Where the files live
 
 Everything the print path owns sits under the top-level `print/` directory, so a future
-fabrication technology can take its own directory beside it. Five things outside it know
+fabrication technology can take its own directory beside it. These things outside it know
 the print path exists:
 
 - the `init_print_routes(...)` and `init_printer_routes(...)` calls in
   `frc_cam_gui_app.py`, which also reads `printer_enabled` for the wizard's bootstrap;
 - the "3D Printing" radio in `templates/wizard.html`;
 - its handler in `static/wizard.js`;
-- `team_config.py`, for the `pairing_code` property;
-- `config_validation.py`, for the same key.
+- `onshape_integration.py`, for `OnshapeClient.request_absolute`, through which
+  `print/onshape_parts.py` makes its Onshape calls with the client's credentials;
+- `team_config.py`, for `printing_section()` (the raw `printing:` section, read by the
+  `pairing_code` property and by `print/print_config.py`);
+- `config_validation.py`, for the `pairing_code` key;
+- `testbed/`, the Onshape test bed, which drives the print page in a browser (see
+  [ONSHAPE_TEST_BED.md](ONSHAPE_TEST_BED.md)).
 
-The last two import `normalize_code` from `print.printer_relay`, because a pairing code is
+`team_config.py` and `config_validation.py` import `normalize_code` from `print.printer_relay`, because a pairing code is
 printer vocabulary and hoisting the helper to a root module would put printer knowledge in
 the CNC configuration layer. The cost is a real constraint, and it is deliberate:
 **`print/` is a hard dependency of the CNC configuration path**, so the directory can no
@@ -65,17 +96,28 @@ YAML. What keeps that cheap is that `normalize_code` is a pure function and
 print/
   __init__.py          the package docstring and the import caveat below
   routes.py            the Flask blueprint
+  events.py            print events: the [PRINT] log lines and metrics rows
+  onshape_parts.py     resolving Onshape selections and exporting parts, no Flask
+  limits.py            every cap and its sentence
+  mesh.py              the numpy STL reader and the orientation footprints
+  part_store.py        exported parts on disk, per page id
+  plate.py             the plate, copy placement and its rules
+  plate_3mf.py         the plate's 3MF writer, the delivered name, the name guard
+  plate_job.py         one plate job and running its slice
+  print_config.py      the team's printing configuration against the catalog, overrides
   jobs.py              the pool and the job table, no Flask
   slicer.py            the Orca wrapper, no Flask
   printer_relay.py     the printer relay's in-memory records and tokens, no Flask
   printer_routes.py    the printer relay's Flask blueprint
   printer_daemon/      the Raspberry Pi daemon, its own requirements.txt and installer
   templates/           print_wizard.html
-  static/              print_wizard.js, print_viewer.js, printer_panel.js
-  scripts/             install-orca.sh, make_sample_part.py, flatten_orca_profiles.py
+  static/              print_wizard.js, print_onshape.js, plate_geometry.js,
+                       print_layout.js, print_layout.css, print_viewer.js, printer_panel.js
+  scripts/             install-orca.sh, make_sample_part.py, flatten_orca_profiles.py,
+                       measure_plate.py
   tests/               the Python tests, tests/js/ and tests/printer_panel/ for node
-  profiles/            the flattened Bambu Lab profiles
-  sample_part.stl      the fixed part
+  profiles/            the three default profiles; catalog/ holds the H2S family
+  sample_part.stl      the upload mode's sample part
 ```
 
 The printer relay and the daemon are documented on their own, in
@@ -506,7 +548,30 @@ constant `ORCA_BIN`. It returns, verbatim:
 ```
 
 `--arrange 1` centres the part on the plate, which matches the Layout drawing. `--slice 0`
-slices every plate; the sample has one.
+slices every plate; the sample has one. `--arrange 1` is used **only for the sample
+part**.
+
+A plate is sliced by `slice_plate(model_3mf, profiles, output_dir)` with
+`build_plate_command`: the three files of the job's `SliceProfiles` (the chosen printer and
+filament, and the job's own process file with the overrides merged) and the plate's 3MF,
+with `--arrange 0 --orient 0`, because leaving `--arrange` out arranges and arranging also
+turns parts:
+
+```
+<repo>/tools/orca/orca-slicer
+    --datadir <output_dir>/datadir
+    --load-settings "<printer.json>;<process.json>"
+    --load-filaments <filament.json>
+    --arrange 0
+    --orient 0
+    --slice 0
+    --export-3mf plate.gcode.3mf
+    --outputdir <output_dir>
+    <plate.3mf>
+```
+
+The sample part's slice keeps a 120 s timeout (`DEFAULT_TIMEOUT_S`); a plate gets 240 s
+(`PLATE_SLICE_TIMEOUT_S` in `print/limits.py`).
 
 The pinned binary creates one missing level of `--outputdir` itself. It fails when the
 parent is missing too: exit code 156, with a `boost::filesystem::create_directory` error.
@@ -563,7 +628,8 @@ archive, so the output directory is scratch space and only the archive is kept.
 
 ### `part_info()`
 
-`part_info()` returns the names and numbers the wizard shows before slicing: the part's
+`part_info()` returns the names and numbers the upload mode shows for the sample part
+before slicing (the Onshape mode reads its names from `POST /print/page`): the part's
 stem, file name, bounding box in millimetres and triangle count, computed by
 `stl_bounds()` from the STL bytes; the printer name, bed size and printable height; and
 the filament and process names with the layer height. Every value in an Orca profile is a
@@ -616,7 +682,8 @@ disappears. `expire()` pops the condition and deletes the record, then calls
 
 ### The worker
 
-`make_worker(...)` in `print/routes.py` builds the function the pool runs. It creates a
+`make_worker(...)` in `print/routes.py` builds the function the pool runs, as
+`worker(job_id, payload)`. Without a payload (the upload mode's sample part) it creates a
 scratch directory under the upload folder, calls `slice_stl`, moves the archive to
 `<output_folder>/print_<job_id>.gcode.3mf`, registers that path with the token manager
 under the delivered name `sample_part.gcode.3mf`, and returns the token, the summary and
@@ -631,10 +698,13 @@ scratch space.
 
 The pool calls the worker as `worker(job_id, payload)` (`JobPool.submit(payload=None)`).
 With no payload it slices the sample part as above. With a `PlateJob` it calls
-`run_plate_job` in the scratch directory (write the 3MF, `slice_plate`, the name guard;
-see "Placement"), registers the archive under the job's delivered name, and returns
-`part` as `{"name": <delivered name>, "copies": n}`. Its `slice_done` and `slice_failed`
-events carry the job's page id and team, the copies and the triangles.
+`run_plate_job` in the scratch directory (write the 3MF, write `process.json` with the
+overrides merged, `slice_plate`, the name guard; see "Placement"), registers the archive
+under the job's delivered name, and returns `part` as
+`{"name": <delivered name>, "copies": n}`. Its `slice_done` and `slice_failed` events
+carry the job's page id and team, the copies and the triangles. There is no `print_job`
+event any more: a job is logged as `slice_queued` (by the route), then `slice_done` or
+`slice_failed` (by the worker).
 
 ## 8. Routes
 
@@ -645,11 +715,11 @@ print logs"); without one the route answers 400 with `This page is out of date; 
 | Route | Method | Gate | Rate limit | Responses |
 |-------|--------|------|------------|-----------|
 | `/print` | GET | app session | 200 per hour (app default) | 200 with the page; redirect to the validated `return` with `verify=1` when the gate fails |
-| `/print/part` | GET | none | 200 per hour (app default) | 200 JSON from `part_info()`; with `?stl=1`, 200 with the STL bytes as `model/stl` |
-| `/print-job` | POST | app session, page id | 3 per minute | 202 `{job_id}`; 400 `{error}` (and `rule` for a placement) when a plate job fails a check (see "Placement"); 503 `{error}` when the queue is full; 401 from the gate; 429 over the limit |
+| `/print/part` | GET | none (no page id either) | 200 per hour (app default) | 200 JSON from `part_info()`; with `?stl=1`, 200 with the sample part's STL bytes as `model/stl` |
+| `/print-job` | POST | app session, page id | 3 per minute | 202 `{job_id}`; 400 `{error}` (and `rule` for a placement) when a plate job fails a check (see "Placement" and "Team printing configuration"); 503 `{error}` when the queue is full; 401 from the gate; 429 over the limit |
 | `/print-job/<id>` | GET | app session, page id | 200 per hour (app default) | 200 with the record; 404 `{error}` for an unknown or expired id |
 | `/print-job/<id>/events` | GET | app session, page id | 200 per hour (app default) | 200 `text/event-stream`; 404 `{error}` for an unknown id |
-| `/print/page` | POST | app session, page id | 10 per minute | 200 `{}`; writes the `page` event |
+| `/print/page` | POST | app session, page id | 10 per minute | 200 `{plate, limits, config, overrides}`: the configured printer's plate, the limits the browser checks, the printing configuration and the override choices; writes the `page` and `config` events |
 | `/print/client-event` | POST | app session, page id | 30 per minute | 204; 400 for any key but `step`, `message`, `code` |
 | `/print/deliver` | POST | app session, page id | 30 per minute | 204; 400 unless `action` is `download`, `drive` or `printer` |
 | `/print/onshape/parts` | POST | Onshape sign-in, page id | 20 per minute | 200 `{parts, errors}`; 401 `{error, code: "signin_expired"}`; 400 without a usable Onshape context |
@@ -664,8 +734,17 @@ student, as the constants `BUSY_MESSAGE` and `EXPIRED_MESSAGE` in `print/routes.
 | 503 | `The slicer is busy, try again in a minute.` | `BUSY_MESSAGE` |
 | 404 | `This slice has expired, go back and slice again.` | `EXPIRED_MESSAGE` |
 
-`/print/part` is deliberately ungated: it serves only the sample part's metadata and STL,
-neither of which is a secret.
+`/print/part` is deliberately ungated, with no session gate and no page id: it serves only
+the sample part's metadata and STL, for the upload mode, and neither is a secret. It is the
+one print route exempt from the page id gate (a test pins that), and the Onshape flow never
+calls it: Preview fetches each part from `/print/parts/<ref>.stl`.
+
+**The page id rule.** Every other print API route answers 400
+`This page is out of date; reload it.` unless the request carries a page id matching
+`^[0-9a-f]{12}$`, in the `X-Print-Page` header or, for a GET (the event stream and the
+polling URL cannot set headers), as the `pid` query parameter. `GET /print` and static
+files need none. The page id is a log key and, for `/print/parts/<ref>.stl` and
+`POST /print-job`, the owner of the stored parts; it is never a credential.
 
 `/print` reads `source` (`upload` or `onshape`, default `upload`) and `theme` (`dark` or
 `light`, default `dark`), falling back to the default on anything else. When
@@ -774,16 +853,18 @@ answers 400 with one sentence at the first failure:
    page's ref gets `A part is no longer on the server; press Refresh from Onshape on the
    Parts step.`;
 4. the copies' triangles, summed, at most `MAX_JOB_TRIANGLES`;
-5. `check_placement` (`print/plate.py`) against the plate of the default printer profile:
+5. the printing configuration: a configuration error, a filament or process the team does
+   not offer, or an override outside the lists is refused (see "Team printing
+   configuration");
+6. `check_placement` (`print/plate.py`) against the plate of the chosen printer profile:
    every footprint inside `printable_area` less a 3 mm margin, no copy taller than
    `printable_height`, no two footprints closer than 5 mm. The body is
    `{"error": <first problem's sentence>, "rule": "off_plate" | "too_tall" | "too_close"}`.
    The browser runs the same rules while the student drags (`print/static/plate_geometry.js`,
    tested against the same cases); the server's check is the authority.
 
-The job then carries a `PlateJob` (`print/plate_job.py`) to the pool as its payload. The
-body's `filament`, `process` and `overrides` are not read yet: every plate slices with the
-checked-in profiles.
+The job then carries a `PlateJob` (`print/plate_job.py`) to the pool as its payload, with
+the chosen profiles, the overrides as Orca keys and the filament and process names.
 
 **The 3MF** (`print/plate_3mf.py`) has one `<object>` per copy, named
 `<sanitized part name> #<n>`, n counting each sanitized name from 1, so two different
@@ -794,9 +875,8 @@ row-vector order (`M` column by column, then `t`). Part names are reduced to let
 digits, `-` and `_`, at most 40 characters (`part` if nothing is left), and every attribute
 is XML-escaped.
 
-`slice_plate` runs Orca with the plate's profiles and `--arrange 0 --orient 0`: leaving
-`--arrange` out arranges, and arranging also turns parts. Orca drops every part to the bed
-and keeps x, y and rotation exactly.
+`slice_plate` runs Orca with the job's profiles and `--arrange 0 --orient 0` (see "The
+command line"). Orca drops every part to the bed and keeps x, y and rotation exactly.
 
 **The name guard.** Orca leaves a part that lies entirely off the plate out of the slice
 with exit code 0 and no warning. So after every plate slice the object names in the
@@ -980,8 +1060,11 @@ chips. In full-page mode (`source=upload`) `print_wizard.js` adds the `grid` cla
 four steps show at once with the current one highlighted, the chips stay hidden, and the
 2.5D radio is hidden and disabled, as on the CNC page.
 
-The page carries `window.PenguinCAM` with five fields: `source`, `theme`, `returnUrl`,
-`driveEnabled` and `printerEnabled`. `print_wizard.js` adds three at run time:
+The page carries `window.PenguinCAM` with `source`, `theme`, `returnUrl`, `onshape` (the
+panel's Onshape ids, from the return link), `onshapeError`, `driveEnabled` and
+`printerEnabled`. In Onshape mode the template also loads `print_onshape.js`,
+`plate_geometry.js` and `print_layout.js` before `print_wizard.js`; the upload mode loads
+none of them. `print_wizard.js` adds three at run time:
 `getJobState()`, which returns the last state seen and exists for the acceptance run, and
 `getDownloadToken()` and `choosePrinterAction()`, which are the contract with
 `print/static/printer_panel.js`, the printer half of the Preview step. That script, the
@@ -990,14 +1073,53 @@ The page carries `window.PenguinCAM` with five fields: `source`, `theme`, `retur
 
 ### `print/static/print_wizard.js`
 
-Owns step navigation, the summary chips and the three data calls. Named parts worth
-knowing:
+Owns step navigation, the summary chips, the page id, `showError()` and the data calls.
+Named parts worth knowing, for both modes:
 
-- `loadPart()` fetches `/print/part` once on load and fills Setup, Parts and Layout
-  through `fillSetup()`, `fillParts()` and `fillLayoutInfo()`. Part info can arrive after
-  the first `gotoStep()`, so it re-applies the Layout gate.
-- `drawLayout()` draws the bed, a 50 mm grid and the part footprint centred on it, on a
-  2D canvas, in theme colours read from CSS custom properties.
+- `postPageEvent()` is the page's first call, `POST /print/page`. Its answer sets
+  `state.plate`, `state.limits`, `state.config` and the override choices, and calls
+  `fillSetup()`.
+- **Setup.** `fillSetup()` shows the printer read-only and fills `#p-filament` and
+  `#p-process` from `config`, first entry selected; the four override menus in
+  `#p-overrides` (`#ov-infill`, `#ov-walls`, `#ov-supports`, `#ov-brim`) start at
+  "Profile default" and show only when the team allows overrides. Each config warning is a
+  line in `#setup-notes`. `config.error` goes through `showError('setup', …, 'config')`,
+  and `canSlice()` then keeps Next shut on every step and stops the slice.
+  `overridesFromForm()` turns the menus into the body's `overrides` (numbers for infill and
+  walls, strings for supports and brim, "Profile default" left out). The upload mode shows
+  the default names with the menus disabled and no overrides. The summary chips show the
+  printer and the chosen filament and process.
+- `jobBody()` is the Onshape mode's slice request: the copies' placements in order, the
+  chosen `filament` and `process`, `overrides` and `local_time`. `jobKey()` is that body
+  without the time; a matching key re-uses the job in hand.
+
+The Onshape mode's steps:
+
+- **Parts.** `print_onshape.js` does the page's own messaging with Onshape (it never
+  loads `static/source_onshape.js`): a one-body selection request stays armed while Parts
+  is open, and Add from another document… opens Onshape's part picker. Both hand
+  selections to `requestParts()`, which posts them to `/print/onshape/parts`; `addParts()`
+  lists each part once with a quantity, and Refresh from Onshape swaps the new refs in
+  (`swapRefreshed()`, `renameCopies()`).
+- **Layout.** `print_layout.js` is the plate editor: a top-down canvas with every copy
+  drawn as its footprint and labelled where its label fits (`fitLabel()` shortens it to a
+  number on a small copy), drag to move, click to select; the controls turn a copy 90°
+  left or right, set its angle, lay it on another face, duplicate or delete it, and
+  Arrange places them all. `syncCopies()` follows the Parts step's quantities, keeping
+  placed copies and parking new ones beside the plate. `plate_geometry.js` is the
+  browser's twin of `print/plate.py` (`checkPlacement`, `arrangeCopies`, the orientation
+  labels); every change re-runs the check, and the first problem's sentence under the
+  canvas keeps Next shut.
+- **Preview.** `showPlate()` fetches each distinct part from `/print/parts/<ref>.stl` once
+  and hands the copies, as sliced, to the viewer's `loadPlate()`.
+
+The upload mode's path:
+
+- `loadPart()` fetches `/print/part` once on load and fills Parts and Layout through
+  `fillParts()` and `fillLayoutInfo()` (and Setup, until `/print/page` answers). Part info
+  can arrive after the first `gotoStep()`, so it re-applies the Layout gate.
+- `drawLayout()` draws the bed, a 50 mm grid and the sample part's footprint centred on
+  it, on a 2D canvas, in theme colours read from CSS custom properties.
 - `fitsBed()` and `tooBigMessage()` gate Layout: a part larger than the bed in any axis
   shows the error and leaves Next disabled, and `canLeave()` refuses to move past it.
 - `gotoStep()` and `navigateTo()` drive the steps and the step bar. Leaving Preview calls
@@ -1009,8 +1131,9 @@ knowing:
   `startPolling()`, which polls `/print-job/<id>` every two seconds, so a proxy that
   cannot stream still finishes the job.
 - `showDone()` fills the summary line, shows warnings in the notes box, enables the save
-  button and calls `showMesh()`, which fetches `/print/part?stl=1` and hands the bytes to
-  the viewer. A browser with no WebGL adds a note instead of losing the numbers.
+  button and calls `showMesh()`, which in the upload mode fetches `/print/part?stl=1` and
+  hands the bytes to the viewer, and in the Onshape mode calls `showPlate()`. A browser
+  with no WebGL adds a note instead of losing the numbers.
 - `errorForStatus()` maps 429 and 404 to the student messages and otherwise shows the
   server's `error` field.
 - `setupFinalAction()`, `chooseAction()` and `performAction()` implement the split button,
@@ -1094,14 +1217,34 @@ import, so every test module that imports the app fails without it.
 | Test file | Runs Orca | Covers |
 |-----------|-----------|--------|
 | `print/tests/test_install_orca.py` | No | `print/scripts/install-orca.sh` with `uname` and `curl` faked on `PATH`: refusing an unknown platform, the idempotent exit, replacing another architecture's install, the checksum mismatch, and the asset chosen per platform |
-| `print/tests/test_flatten_orca_profiles.py` | No | The flattening algorithm against a tiny fake profile tree: child over parent, self-contained output, a missing profile named in the error, the output format, and the three default sources |
+| `print/tests/test_flatten_orca_profiles.py` | No | The flattening algorithm against a tiny fake profile tree: child over parent, self-contained output, a missing profile named in the error, the output format, and the three default sources; the catalog against `print/tests/fixtures/orca_tree/`: the name index over subfolders and the library, a duplicate inside one tree, the BBL tree shadowing the library, a BBL filament inheriting a library base, skipped and dropped profiles, library bases never listed, `index.json`, file stems |
 | `print/tests/test_make_sample_part.py` | No | Twenty triangles, a closed mesh, and the checked-in STL equal to the generator's output |
 | `print/tests/test_slicer.py` | No | `subprocess.run` replaced: the command line and flags, the created output directory and the XDG environment, absolute paths, summary parsing from fixtures, warnings from `result.json`, the header read without decompressing the whole entry, missing fields as `None`, timeout, non-zero exit, missing or corrupt archive, `stl_bounds()`, `part_info()`, the import guard, and the profile key checks |
 | `print/tests/test_jobs.py` | No | A synchronous stand-in for the executor: ids and state order, the queue cap, failure paths, subscriber wake-up on change and on cadence, `follow()`, expiry, and the documented constants |
 | `print/tests/test_routes.py` | No | Through the Flask test client: the page with `source`, `theme` and `return`, a foreign `return`, the `verify=1` redirect, the Onshape frame header, part JSON and STL bytes, 202 and 503 on submit, the record route and its 404, the event stream to its `done`, the 429 on the fourth submit, the worker's move, register and cleanup, and the download MIME type for `.gcode.3mf` |
 | `print/tests/test_wizard_page.py` | No | The rendered page carries the header, step bar, radios, print fields and no machine dropdown, the theme and source reach the document, and the CNC Setup offers 3D Printing |
-| `print/tests/test_js_units.py` | No | Runs `node --test` over `print/tests/js/*.test.js`, which unit-test the pure helpers of `print_wizard.js` and `print_viewer.js` (`formatDuration`, `fitsBed`, `summaryLine`, `printPageUrl`, `statusText`, `tooBigMessage`, `errorForStatus`, `appendNote`, `parseSTL`, `fitDistance`, and the viewer's `load` and `setTheme`). Skipped when node is absent |
-| `print/tests/orca_integration_test.py` | Yes | The wrapper runs, the `VERSION` stamp matches the pinned release, the sample part slices to a valid archive with positive time, filament and layer count, the checked-in profiles still match the installed Orca, and a job runs to `done` with a downloadable zip |
+| `print/tests/test_layout.py` | No | The `print/` package layout: no bare `import print` |
+| `print/tests/test_events.py` | No | Print event lines: the quoting rule, the line format and the guards |
+| `print/tests/test_routes_events.py` | No | The page id gate on every print API route (and `/print/part`'s exemption), the `page`, `request`, `client_error` and `deliver` events through the Flask test client |
+| `print/tests/test_onshape_context.py` | No | The panel context, the REST address and the export transport of `print/onshape_parts.py` |
+| `print/tests/test_onshape_resolve.py` | No | Resolving Onshape selections to part sources and exporting them, over synthetic cassettes |
+| `print/tests/test_limits.py` | No | The numeric limits and their sentences, and `print/scripts/measure_plate.py` |
+| `print/tests/test_mesh.py` | No | The numpy STL reader, its limits and the six orientation footprints |
+| `print/tests/test_part_store.py` | No | The part store: page id ownership, limits, superseding, expiry and the orphan sweep |
+| `print/tests/test_routes_parts.py` | No | `POST /print/onshape/parts` and `GET /print/parts/<ref>.stl` through the Flask test client |
+| `print/tests/test_plate.py` | No | `print/plate.py` against `print/tests/fixtures/plate_cases.json`, the cases `plate_geometry.js` is also tested against, and the plate `/print/page` answers |
+| `print/tests/test_plate_3mf.py` | No | The plate 3MF writer, the delivered name and the name guard |
+| `print/tests/test_plate_job.py` | No | `run_plate_job` with `slice_plate` replaced: the 3MF, the job's process file, the name guard |
+| `print/tests/test_routes_jobs.py` | No | `POST /print-job` with a placement: every check, the plate job it queues, the worker and Send to Printer |
+| `print/tests/test_print_config.py` | No | `printing_section()`, the default set, the fail-closed printer, dropped and empty lists, the catalog read once, the overrides and their Orca keys, and the two routes that read the configuration |
+| `print/tests/test_js_units.py` | No | Runs `node --test` over `print/tests/js/*.test.js`: `print_wizard.test.js` (the wizard's pure helpers, `jobBody`, `overridesFromForm`, `canSlice`), `print_viewer.test.js` (`parseSTL`, `fitDistance`, the viewer's `load`, `loadPlate` and `setTheme`), `print_onshape.test.js` (the selection messages and origins), `plate_geometry.test.js` (the shared plate cases, `arrangeCopies`), `print_layout.test.js` (the plate editor's helpers, `syncCopies`, `fitLabel`) and `error_paths.test.js` (no code but `showError` writes an error line). Skipped when node is absent |
+| `print/tests/test_printer_panel.py` | No | Runs `print/tests/printer_panel/printer_panel.test.mjs`, the Preview step's printer panel |
+| `print/tests/orca_integration_test.py` | Yes | The wrapper runs, the `VERSION` stamp matches the pinned release, the sample part slices to a valid archive with positive time, filament and layer count, the checked-in profiles and the catalog still match the installed Orca, plates slice with every copy's name, a rotated footprint matches Orca's, overlapping copies map to their sentence, a plate job and a team's catalog profiles with all four overrides slice end to end, and a job runs to `done` with a downloadable zip |
+
+The printer relay's own tests (`test_printer_relay.py`, `test_printer_routes.py`,
+`test_slice_daemon_contract.py`) are described with the relay in
+[PRINTER_SETUP.md](PRINTER_SETUP.md). The Onshape test bed's tests are described in
+[ONSHAPE_TEST_BED.md](ONSHAPE_TEST_BED.md).
 
 `.github/workflows/integration.yaml` provisions uv and a 3.11 venv, caches `tools/orca`
 keyed on the runner image and a hash of `print/scripts/install-orca.sh`, runs the install
@@ -1110,13 +1253,11 @@ script, then runs `make test`. The cache key includes the image identity because
 
 ## 12. Open items and later stages
 
-Open items in stage 1:
+Open items:
 
 - **No thumbnails.** The headless run writes no thumbnail into the archive: Orca's log
   says the OpenGL context is unavailable and it skips thumbnail generation. The printer
-  screen and the Bambu apps therefore show no preview image for these files. Whether the
-  team's printer otherwise accepts a `.gcode.3mf` without thumbnails is unverified. The
-  acceptance step for this stage is printing the sample part from the produced file.
+  screen and the Bambu apps therefore show no preview image for these files.
 - **Pool sizing.** `MAX_RUNNING` stays at one until peak resident memory and the Railway
   plan's vCPU and memory allotment are measured on production. See
   [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md).
@@ -1128,16 +1269,14 @@ Open items in stage 1:
   section 9.
 - **The 3D view needs WebGL.** A browser without WebGL, such as a headless browser with
   no GPU, still shows the summary numbers and a note, but no mesh.
-- **Vercel is unsupported** from this stage on: the serverless build has no Orca binary
+- **Vercel is unsupported** with the print path: the serverless build has no Orca binary
   and a 60-second function limit. `app.py` and `vercel.json` are untouched but no longer
   describe a working deployment.
 
 Later stages:
 
-- Exporting the part from Onshape instead of the fixed STL.
-- Printer, filament and process profiles chosen from team configuration.
-- More than one printer or printer brand.
+- More than one printer family or printer brand: the catalog flattens only the Bambu Lab
+  H2S family today (section 4).
+- Whether a team chooses the nozzle volume type (High Flow) or the plate (Textured PEI),
+  which the flatten script fixes today.
 - Layer-by-layer toolpath preview from the sliced G-code.
-- Moving, rotating or duplicating parts on the bed.
-- Sending the job to the printer over the network: done by the printer relay, see
-  [PRINTER_SETUP.md](PRINTER_SETUP.md).

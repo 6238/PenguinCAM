@@ -150,6 +150,21 @@
     return problems.length ? problems[0].message : '';
   }
 
+  // The longest form of a copy label ("<name> #<n>") that is no wider than `width` by
+  // measure(text): the whole label, then the name cut short with an ellipsis, then "#<n>";
+  // '' when even that does not fit. Small copies in the narrow panel keep a number at least.
+  function fitLabel(label, width, measure) {
+    if (measure(label) <= width) return label;
+    var at = label.lastIndexOf(' #');
+    if (at < 0) return '';
+    var name = label.slice(0, at), number = label.slice(at + 1);
+    for (var k = name.length - 1; k >= 1; k--) {
+      var short = name.slice(0, k) + '\u2026 ' + number;
+      if (measure(short) <= width) return short;
+    }
+    return measure(number) <= width ? number : '';
+  }
+
   /* ------------------------------------------------------------------ editor */
   // The plate and every copy, so a copy waiting beside the plate is in view too.
   function viewBounds(copies, parts, plate) {
@@ -267,9 +282,10 @@
         var centre = plateToCanvas(view, cp.x, cp.y);
         var xs = hull.map(function (p) { return p[0]; });
         var width = (Math.max.apply(null, xs) - Math.min.apply(null, xs)) * view.scale;
-        if (ctx.measureText(labels[i]).width + 4 <= width) {
+        var text = fitLabel(labels[i], width - 4, function (t) { return ctx.measureText(t).width; });
+        if (text) {
           ctx.fillStyle = ink;
-          ctx.fillText(labels[i], centre[0], centre[1]);
+          ctx.fillText(text, centre[0], centre[1]);
         }
       });
       ctx.textAlign = 'left';
@@ -339,7 +355,7 @@
               plateView: plateView, plateToCanvas: plateToCanvas, canvasToPlate: canvasToPlate,
               hitCopy: hitCopy, rotateCopy: rotateCopy, setAngle: setAngle, setOrientation: setOrientation,
               duplicateCopy: duplicateCopy, deleteCopy: deleteCopy, syncCopies: syncCopies,
-              layoutSentence: layoutSentence, createLayoutEditor: createLayoutEditor };
+              layoutSentence: layoutSentence, fitLabel: fitLabel, createLayoutEditor: createLayoutEditor };
   if (typeof window !== 'undefined') {
     window.PenguinCAM = window.PenguinCAM || {};
     window.PenguinCAM.printLayout = api;

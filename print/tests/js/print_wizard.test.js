@@ -158,6 +158,32 @@ test('jobBody lists copies in order and drops UI fields', () => {
     overrides: {},
     local_time: '20261009-1432',
   });
-  assert.ok(!('filament' in body) && !('process' in body), 'the server uses the default set');
+  assert.ok(!('filament' in body) && !('process' in body), 'before /print/page answers, the server picks');
   assert.equal(state.copies[0].placed, true, 'the state is not changed');
+});
+
+test('jobBody carries the Setup choices and overrides', () => {
+  const state = { copies: [{ ref: 'r1', orientation: '+z', angle: 0, x: 10, y: 20 }],
+                  filament: 'Bambu PLA Basic @BBL H2S', process: '0.20mm Standard @BBL H2S',
+                  overrides: { infill: 40, brim: 'off' } };
+  const body = w.jobBody(state, new Date(2026, 9, 9, 14, 32));
+  assert.equal(body.filament, 'Bambu PLA Basic @BBL H2S');
+  assert.equal(body.process, '0.20mm Standard @BBL H2S');
+  assert.deepEqual(body.overrides, { infill: 40, brim: 'off' });
+  assert.notEqual(w.jobKey(body), w.jobKey(Object.assign({}, body, { process: 'x' })), 'another process is another job');
+});
+
+test('overridesFromForm drops profile defaults', () => {
+  assert.deepEqual(w.overridesFromForm({ infill: '', walls: '', supports: '', brim: '' }), {});
+  assert.deepEqual(w.overridesFromForm({ infill: '40', walls: '4', supports: 'on', brim: 'outer' }),
+                   { infill: 40, walls: 4, supports: 'on', brim: 'outer' });
+  assert.deepEqual(w.overridesFromForm({ infill: '100', walls: '', supports: 'off', brim: '' }),
+                   { infill: 100, supports: 'off' });
+  assert.deepEqual(w.overridesFromForm({}), {});
+});
+
+test('a config error blocks Next', () => {
+  assert.equal(w.canSlice({ config: { error: "The team configuration names printer 'X', which PenguinCAM does not know. Ask a mentor to fix printing.printer." } }), false);
+  assert.equal(w.canSlice({ config: { error: null, filaments: ['F'], processes: ['P'] } }), true);
+  assert.equal(w.canSlice({ config: null }), true, 'before /print/page answers');
 });

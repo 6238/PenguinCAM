@@ -151,3 +151,11 @@ test('duplicate and delete', () => {
   assert.deepEqual(del.map((c) => c.ref), ['a', 'a']);
   assert.equal(dup.length, 3);
 });
+
+test('fitLabel shortens a copy label to fit, keeping its number', () => {
+  const measure = (t) => t.length * 6;      // 6 px a character
+  assert.equal(L.fitLabel('Long_Bar #1', 100, measure), 'Long_Bar #1');
+  assert.equal(L.fitLabel('Long_Bar #1', 48, measure), 'Long\u2026 #1');
+  assert.equal(L.fitLabel('Hub #12', 20, measure), '#12');
+  assert.equal(L.fitLabel('Hub #12', 10, measure), '');
+});

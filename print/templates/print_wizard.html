@@ -46,12 +46,24 @@
                     <label class="radio"><input type="radio" name="mode" value="tubing" autocomplete="off"> Tubing — machine both faces of a tube</label>
                     <label class="radio"><input type="radio" name="mode" value="print" autocomplete="off" checked> 3D Printing — slice a part for the Bambu Lab printer</label>
                 </fieldset>
-                <!-- Stage 1: one fixed printer, filament and process. Read-only; later stages
-                     take these from the team configuration. -->
+                <!-- Filled from POST /print/page's `config`: the team's printer, filaments and
+                     processes (print/print_config.py), or the default set. -->
                 <div class="field"><span>Printer</span><output id="p-printer" class="print-value">…</output></div>
-                <div class="field"><span>Filament</span><output id="p-filament" class="print-value">…</output></div>
-                <div class="field"><span>Process</span><output id="p-process" class="print-value">…</output></div>
-                <p class="hint">These come from the team's fixed Bambu Lab profile set in this release.</p>
+                <label class="field"><span>Filament</span><select id="p-filament" autocomplete="off" disabled></select></label>
+                <label class="field"><span>Print settings</span><select id="p-process" autocomplete="off" disabled></select></label>
+                <fieldset id="p-overrides" class="field print-overrides" hidden>
+                    <legend>Change for this print</legend>
+                    <label>Infill <select id="ov-infill" autocomplete="off"></select></label>
+                    <label>Walls <select id="ov-walls" autocomplete="off"></select></label>
+                    <label>Supports <select id="ov-supports" autocomplete="off"></select></label>
+                    <label>Brim <select id="ov-brim" autocomplete="off"></select></label>
+                </fieldset>
+                {% if source == 'onshape' %}
+                <p class="hint">Your team's configuration lists these choices; a mentor changes them there.</p>
+                {% else %}
+                <p class="hint">The sample part prints with PenguinCAM's default printer, filament and print settings.</p>
+                {% endif %}
+                <div id="setup-notes" class="notes" aria-live="polite" hidden></div>
                 <div id="setup-errors" class="errors" aria-live="polite"></div>
             </section>
 
@@ -66,7 +78,7 @@
                 </div>
                 <div id="parts-status" class="hint" aria-live="polite"></div>
                 {% else %}
-                <p class="hint">This release prints the built-in sample part. Exporting from Onshape comes next.</p>
+                <p class="hint">This page prints the built-in sample part. Open 3D Printing from the Onshape panel to print your own parts.</p>
                 {% endif %}
                 <ul id="parts-list" aria-live="polite"></ul>
                 <div id="parts-errors" class="errors" aria-live="polite"></div>
@@ -79,7 +91,7 @@
                 {% if source == 'onshape' %}
                 <p class="hint">Drag a copy to move it. Click a copy to turn it or lay it flat.</p>
                 {% else %}
-                <p class="hint">The part is centred on the bed. Moving and rotating parts comes in a later release.</p>
+                <p class="hint">The sample part is centred on the bed. In the Onshape panel you place your own parts.</p>
                 {% endif %}
                 <div id="layout-info">
                     <span><strong id="info-printer-name"></strong></span>
@@ -94,8 +106,8 @@
                         <span id="layout-copy-name" class="layout-copy-name">Click a copy to change it.</span>
                     </div>
                     <div class="layout-row" id="layout-copy">
-                        <button type="button" class="btn small" id="btn-rot-minus" aria-label="Rotate 90 degrees clockwise">&#8635; 90&deg;</button>
-                        <button type="button" class="btn small" id="btn-rot-plus" aria-label="Rotate 90 degrees counterclockwise">&#8634; 90&deg;</button>
+                        <button type="button" class="btn small" id="btn-rot-plus" aria-label="Rotate 90 degrees counterclockwise">&#8634; Left 90&deg;</button>
+                        <button type="button" class="btn small" id="btn-rot-minus" aria-label="Rotate 90 degrees clockwise">&#8635; Right 90&deg;</button>
                         <label class="layout-angle">Angle <input type="number" id="layout-angle" min="0" max="359" step="1" autocomplete="off"></label>
                         <label class="layout-flat">Lay flat <select id="layout-flat" autocomplete="off"></select></label>
                         <button type="button" class="btn small" id="btn-copy-dup">Duplicate</button>
