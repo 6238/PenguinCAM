@@ -29,7 +29,7 @@ class ImmediateExecutor:
         fn(*args)
 
 
-def good_worker(job_id):
+def good_worker(job_id, payload):
     return {"token": "tok-" + job_id[:4], "summary": {"print_time_s": 790.0, "filament_g": 3.31,
                                                       "filament_m": 1.09, "layer_count": 60, "warnings": []},
             "part": {"name": "sample_part"}}
@@ -124,7 +124,7 @@ class JobRoutesTest(PrintRouteBase):
 
     def test_submit_503_when_queue_full(self):
         class FullPool:
-            def submit(self):
+            def submit(self, payload=None):
                 raise QueueFull()
         print_routes.ctx.pool = FullPool()
         resp = self.client.post("/print-job")
@@ -147,7 +147,7 @@ class JobRoutesTest(PrintRouteBase):
         self.assertEqual(resp.get_json()["error"], "This slice has expired, go back and slice again.")
 
     def test_failed_job_carries_message_not_details(self):
-        def bad_worker(job_id):
+        def bad_worker(job_id, payload):
             raise JobFailure("The slicer could not process this part.", "exit code 255 secret")
         print_routes.ctx.pool = JobPool(bad_worker, executor=ImmediateExecutor())
         job_id = self.client.post("/print-job").get_json()["job_id"]

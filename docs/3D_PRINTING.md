@@ -501,6 +501,13 @@ the seconds taken, Orca's exit code and, on failure, the student's sentence. The
 manager's cleanup does not remove directories, which is why the worker removes its own
 scratch space.
 
+The pool calls the worker as `worker(job_id, payload)` (`JobPool.submit(payload=None)`).
+With no payload it slices the sample part as above. With a `PlateJob` it calls
+`run_plate_job` in the scratch directory (write the 3MF, `slice_plate`, the name guard;
+see "Placement"), registers the archive under the job's delivered name, and returns
+`part` as `{"name": <delivered name>, "copies": n}`. Its `slice_done` and `slice_failed`
+events carry the job's page id and team, the copies and the triangles.
+
 ## 8. Routes
 
 All live in `print/routes.py` and are registered by `init_print_routes`. "Page id" in the
@@ -511,7 +518,7 @@ print logs"); without one the route answers 400 with `This page is out of date; 
 |-------|--------|------|------------|-----------|
 | `/print` | GET | app session | 200 per hour (app default) | 200 with the page; redirect to the validated `return` with `verify=1` when the gate fails |
 | `/print/part` | GET | none | 200 per hour (app default) | 200 JSON from `part_info()`; with `?stl=1`, 200 with the STL bytes as `model/stl` |
-| `/print-job` | POST | app session, page id | 3 per minute | 202 `{job_id}`; 503 `{error}` when the queue is full; 401 from the gate; 429 over the limit |
+| `/print-job` | POST | app session, page id | 3 per minute | 202 `{job_id}`; 400 `{error}` (and `rule` for a placement) when a plate job fails a check (see "Placement"); 503 `{error}` when the queue is full; 401 from the gate; 429 over the limit |
 | `/print-job/<id>` | GET | app session, page id | 200 per hour (app default) | 200 with the record; 404 `{error}` for an unknown or expired id |
 | `/print-job/<id>/events` | GET | app session, page id | 200 per hour (app default) | 200 `text/event-stream`; 404 `{error}` for an unknown id |
 | `/print/page` | POST | app session, page id | 10 per minute | 200 `{}`; writes the `page` event |
@@ -611,6 +618,121 @@ Each request writes a `select` event (`via`, `count`, `element_type`) and, per p
 `export` event (`part`, `element`, `bytes`, `triangles`, `size_mm` as `XxYxZ`, `calls`,
 `ms`, `outcome`) or an `export_failed` event (`part`, `status`, `reason`).
 
+### Placement
+
+A plate job is a list of **copies**. Each copy is `{ref, orientation, angle, x, y}`:
+
+- `ref`, a part in the part store that belongs to this page id;
+- `orientation`, one of `+z`, `-z`, `+x`, `-x`, `+y`, `-y`, named by the part axis that
+  points **up** (`+z` is as modelled; `+x` rests on its -x face);
+- `angle`, whole degrees about the vertical axis, 0 to 359;
+- `x`, `y`, where the centre of the copy's footprint goes on the plate, in millimetres.
+
+For each stored part the server keeps a **footprint** per orientation
+(`print/mesh.py`): the convex hull of the rotated part seen from above, centred on its
+bounding-box centre, the height, and the `offset`, that centre and the lowest z after the
+rotation. The offset is the copy's pivot: the angle turns the copy about its footprint
+centre, not about the part's modelling origin, so the browser and the slicer put the copy
+in the same place. `copy_matrix` in `print/plate.py` builds `M = Rz(angle) R_o` and
+`t = (x, y, 0) - Rz(angle) offset`.
+
+`POST /print-job` with a `copies` key is a plate job; a body without one is the sample
+part's job, as before. Before anything is queued the server checks, in this order, and
+answers 400 with one sentence at the first failure:
+
+1. every copy's fields (`This request could not be read.`);
+2. at most `MAX_COPIES` copies (`Up to 25 copies per plate; print the rest in a second job.`);
+3. every `ref` is held by the part store for this page id. An unknown, expired or other
+   page's ref gets `A part is no longer on the server; press Refresh from Onshape on the
+   Parts step.`;
+4. the copies' triangles, summed, at most `MAX_JOB_TRIANGLES`;
+5. `check_placement` (`print/plate.py`) against the plate of the default printer profile:
+   every footprint inside `printable_area` less a 3 mm margin, no copy taller than
+   `printable_height`, no two footprints closer than 5 mm. The body is
+   `{"error": <first problem's sentence>, "rule": "off_plate" | "too_tall" | "too_close"}`.
+   The browser runs the same rules while the student drags (`print/static/plate_geometry.js`,
+   tested against the same cases); the server's check is the authority.
+
+The job then carries a `PlateJob` (`print/plate_job.py`) to the pool as its payload. The
+body's `filament`, `process` and `overrides` are not read yet: every plate slices with the
+checked-in profiles.
+
+**The 3MF** (`print/plate_3mf.py`) has one `<object>` per copy, named
+`<sanitized part name> #<n>`, n counting each sanitized name from 1, so two different
+parts both named `Bracket` give `Bracket #1` and `Bracket #2`. Orca blanks the names of
+copies that share one object, so every copy gets its own; each part's STL is read once and
+its mesh written once per copy. Each `<build><item>` carries the copy's transform in 3MF
+row-vector order (`M` column by column, then `t`). Part names are reduced to letters,
+digits, `-` and `_`, at most 40 characters (`part` if nothing is left), and every attribute
+is XML-escaped.
+
+`slice_plate` runs Orca with the plate's profiles and `--arrange 0 --orient 0`: leaving
+`--arrange` out arranges, and arranging also turns parts. Orca drops every part to the bed
+and keeps x, y and rotation exactly.
+
+**The name guard.** Orca leaves a part that lies entirely off the plate out of the slice
+with exit code 0 and no warning. So after every plate slice the object names in the
+archive's `Metadata/plate_1.json` must be exactly the names the 3MF holds, each once and
+none blank; otherwise the job fails with `A part was left off the plate`.
+
+**Orca's return codes.** On a non-zero exit, `orca_return_code` reads `return_code` from
+Orca's `result.json`, or else takes the exit status as a negative byte (exit 155 is -101):
+
+| Code | Sentence |
+|---|---|
+| -101 | `Parts are too close together; spread them out.` |
+| -52 | `A part crosses the edge of the plate.` |
+| -100 | `A part has no flat face on the plate; choose another Lay flat.` |
+| -50 | `No part is fully on the plate.` |
+| other | `The slicer could not process this part.` |
+
+**The delivered name** is `<first part>[_plus<N>]-<YYYYMMDD-HHMM>.gcode.3mf`, for example
+`Bracket_plus2-20261009-1432.gcode.3mf` for three distinct parts. The time is the
+browser's `local_time` when it matches `^\d{8}-\d{4}$`, otherwise the server's UTC time.
+The name never ends in the relay's `-j<hex>` job suffix. The worker registers the archive
+with the token manager under this name, so Download, Drive and Send to Printer all use it:
+`POST /printer/jobs` queues whatever file the token names, under that name.
+
+### Limits
+
+Every cap and its sentence is in `print/limits.py`; each sentence that names a number is
+formatted from the cap.
+
+| Limit | Value | Sentence |
+|---|---|---|
+| Triangles per part | 150,000 | `<name> is too detailed to print here (over 150,000 triangles).` |
+| Download per part | 7.5 MB (7,500,084 bytes), streamed | the same |
+| Distinct parts per page id | 20 | `Up to 20 different parts per print.` |
+| Mesh bytes per page id | 50 MB | `These parts are too large to slice together.` |
+| Copies per plate | 25, quantity 1 to 25 each | `Up to 25 copies per plate; print the rest in a second job.` |
+| Triangles per job, summed over copies | 300,000 | `These copies are too detailed to slice together; lower the quantities.` |
+| Plate slice time | 240 s (`PLATE_SLICE_TIMEOUT_S`); the sample part keeps 120 s | `The slicer took too long on this part.` |
+| Part store on disk, all page ids | 500 MB | `The print service is busy; try again in a few minutes.` |
+
+Every STL export asks Onshape for an explicit tessellation rather than its undocumented
+defaults: `chordTolerance=0.00005` (metres, 0.05 mm) and `angleTolerance=0.1309`
+(radians, 7.5 degrees, 48 segments on every hole).
+
+The caps come from plates sliced at the limits by `print/scripts/measure_plate.py` with
+Orca 2.4.2 on an aarch64 Linux machine with 6 cores. The part is a 40 x 20 mm hub with a
+12 mm bore and 3 mm fillets, revolved into near-square facets as a finely tessellated
+exported part is. The stop rule is 900 MB peak (921,600 KB) and 180 s: a plate over
+either brings `MAX_JOB_TRIANGLES` down.
+
+| Plate | Triangles | Peak | Time |
+|---|---|---|---|
+| 30 copies of 9,882 | 296,460 | 886 MB (907,524 KB) | 16.2 s |
+| 25 copies of 11,968 | 299,200 | 779 MB (797,408 KB) | 14.1 s |
+| 2 copies of 149,760 | 299,520 | 214 MB (219,136 KB) | 3.2 s |
+| 3 copies of 124,830 | 374,490 | 233 MB (238,280 KB) | 4.2 s |
+| 25 copies of 11,968, through the plate writer and `slice_plate` | 299,200 | 768 MB (786,884 KB) | 7.6 s |
+| 2 copies of 149,760, through the plate writer and `slice_plate` | 299,520 | 213 MB (218,420 KB) | 1.7 s |
+
+The copy count, not the triangle count, drives memory: the 30-copy plate came within 1.5%
+of the 900 MB line, so the copy cap is 25. The last two rows run the code that ships:
+`write_plate_3mf`, `slice_plate` and the name guard. Each plate ran twice; the worse peak
+and time are given.
+
 ### Support: reading the print logs
 
 Every print request writes one or more **print events**: one log line each, through the
@@ -641,14 +763,13 @@ from that load of the print page carries it.
 | `select` | parts arrive from Onshape | via (selection or dialog), count, element type |
 | `export` | one part exported | part id, element id, bytes, triangles, size_mm, calls, ms, outcome |
 | `export_failed` | export failed | part id, status, reason |
-| `layout` | the student enters Preview | copies, parts, plate fill percent, any rotation not a multiple of 90 |
-| `slice_queued`, `slice_done`, `slice_failed` | job transitions | job, seconds, Orca exit code, reason (and, with multi-part jobs, copies, triangles, filament, process, overrides) |
+| `layout` | a plate job passes the server's checks, `POST /print-job` | copies, parts, fill (the copies' hull area as a whole percent of the plate), free_angles (copies whose angle is not a multiple of 90) |
+| `slice_queued`, `slice_done`, `slice_failed` | job transitions | job, seconds, code (Orca's exit code for the sample part, its return code for a plate), reason; a plate job adds copies and triangles, and on `slice_queued` filament and process |
 | `deliver` | download, Drive or Send to Printer | job, action (`download`, `drive`, `printer`), outcome |
 | `client_error` | an error message shown in the browser | step, message (as shown), code |
 | `request` | every print-blueprint request except static files | method, route rule (for example `/print-job/<job_id>`), status, ms |
 
-Events not yet emitted by this release (`config`, `select`, `export`, `export_failed`,
-`layout`) are reserved names; `print/events.py` refuses any name outside the table.
+Events not yet emitted by this release (`config`) are reserved names; `print/events.py` refuses any name outside the table.
 
 **One quoting rule.** A value made only of letters, digits and `._:/@+-` is written bare.
 Any other value (a space, a newline, a quote, an `=`, a comma, anything non-ASCII) is

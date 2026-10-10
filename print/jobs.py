@@ -80,7 +80,8 @@ class JobPool:
 
     # -- public ---------------------------------------------------------
 
-    def submit(self):
+    def submit(self, payload=None):
+        """Queue a job; the worker is called worker(job_id, payload)."""
         now = self._clock()
         job_id = secrets.token_urlsafe(32)
         with self._lock:
@@ -89,7 +90,7 @@ class JobPool:
             self._jobs[job_id] = {"id": job_id, "state": "queued", "created": now, "updated": now,
                                   "token": None, "summary": None, "part": None, "error": None}
             self._conds[job_id] = threading.Condition(self._lock)
-        self._executor.submit(self._run, job_id)
+        self._executor.submit(self._run, job_id, payload)
         return job_id
 
     def get(self, job_id):
@@ -165,10 +166,10 @@ class JobPool:
             record["updated"] = self._clock()
             self._conds[job_id].notify_all()
 
-    def _run(self, job_id):
+    def _run(self, job_id, payload=None):
         self._update(job_id, state="running")
         try:
-            result = self._worker(job_id)
+            result = self._worker(job_id, payload)
             fields = {"token": result.get("token"), "summary": result.get("summary"),
                       "part": result.get("part")}
         except JobFailure as exc:

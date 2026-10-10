@@ -39,7 +39,7 @@ class FakeClock:
         return self.now
 
 
-def good_worker(job_id):
+def good_worker(job_id, payload):
     return {"token": "tok-" + job_id[:4], "summary": {"layer_count": 3}, "part": {"name": "sample_part"}}
 
 
@@ -55,13 +55,27 @@ class SubmitAndRunTest(unittest.TestCase):
         self.assertEqual(rec["part"], {"name": "sample_part"})
         self.assertIsNone(rec["error"])
 
+    def test_payload_reaches_worker(self):
+        seen = []
+
+        def worker(job_id, payload):
+            seen.append(payload)
+            return good_worker(job_id, payload)
+
+        pool = JobPool(worker, executor=ImmediateExecutor())
+        plate = object()
+        self.assertEqual(pool.get(pool.submit(payload=plate))["state"], "done")
+        pool.submit()
+        self.assertIs(seen[0], plate)
+        self.assertIsNone(seen[1])
+
     def test_states_go_queued_running_done_in_order(self):
         seen = []
         holder = {}
 
-        def worker(job_id):
+        def worker(job_id, payload):
             seen.append(holder["pool"].get(job_id)["state"])
-            return good_worker(job_id)
+            return good_worker(job_id, payload)
 
         executor = NeverExecutor()
         pool = JobPool(worker, executor=executor)
@@ -90,7 +104,7 @@ class SubmitAndRunTest(unittest.TestCase):
 
 class FailureTest(unittest.TestCase):
     def test_job_failure_ends_failed_with_message_only(self):
-        def worker(job_id):
+        def worker(job_id, payload):
             raise JobFailure("The slicer could not process this part.", "exit code 255\nsecret details")
         pool = JobPool(worker, executor=ImmediateExecutor())
         rec = pool.get(pool.submit())
@@ -99,7 +113,7 @@ class FailureTest(unittest.TestCase):
         self.assertNotIn("secret details", str(rec))
 
     def test_unexpected_exception_ends_failed_with_generic_message(self):
-        def worker(job_id):
+        def worker(job_id, payload):
             raise RuntimeError("boom with a path /tmp/x")
         pool = JobPool(worker, executor=ImmediateExecutor())
         rec = pool.get(pool.submit())
@@ -108,7 +122,7 @@ class FailureTest(unittest.TestCase):
         self.assertNotIn("/tmp/x", str(rec))
 
     def test_worker_returning_a_non_dict_ends_failed_without_raising(self):
-        def worker(job_id):
+        def worker(job_id, payload):
             return None
         pool = JobPool(worker, executor=ImmediateExecutor())
         job_id = pool.submit()          # a synchronous executor must not raise out of submit
@@ -133,10 +147,10 @@ class QueueCapTest(unittest.TestCase):
         started = threading.Event()
         release = threading.Event()
 
-        def slow_worker(job_id):
+        def slow_worker(job_id, payload):
             started.set()
             release.wait(5)
-            return good_worker(job_id)
+            return good_worker(job_id, payload)
 
         pool = JobPool(slow_worker, max_running=1, max_queued=1)   # real thread pool
         self.addCleanup(pool._executor.shutdown, wait=True)
@@ -197,7 +211,7 @@ class SubscriberTest(unittest.TestCase):
         self.assertTrue(all(e == "state" for e, _ in rest[:-1]))
 
     def test_follow_failed_job_ends_with_failed(self):
-        def worker(job_id):
+        def worker(job_id, payload):
             raise JobFailure("The slicer could not process this part.", "x")
         pool = JobPool(worker, executor=ImmediateExecutor())
         events = list(pool.follow(pool.submit(), wait_s=0.01))

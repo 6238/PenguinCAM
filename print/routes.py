@@ -6,6 +6,7 @@ init_print_routes(...). See docs/3D_PRINTING.md.
 """
 import contextlib
 import json
+import math
 import os
 import shutil
 import tempfile
@@ -16,6 +17,7 @@ from pathlib import Path
 
 from flask import (Blueprint, Response, g, jsonify, make_response, redirect, render_template, request,
                    send_file, session)
+from shapely.geometry import Polygon
 
 from onshape_integration import OnshapeAuthError
 
@@ -27,9 +29,12 @@ from .onshape_parts import (ELEMENT_CACHE, LIMIT_REACHED_MESSAGE, NO_CONTEXT_MES
                             NoOnshapeContext, OnshapeCallFailed, OnshapeLimitReached, PartRefused,
                             PartTooLarge, export_part_mesh, panel_context_from_return, resolve_selections,
                             rest_address)
-from .part_store import PartLimit, PartStore
-from .plate import plate_from_printer
-from .slicer import SAMPLE_STL, SliceError, default_printer_profile, part_info, slice_stl
+from .part_store import REF_RE, PartLimit, PartStore
+from .plate import ORIENTATIONS, check_placement, plate_from_printer
+from .plate_3mf import delivered_file_name
+from .plate_job import JobPart, PlateJob, run_plate_job
+from .slicer import (DEFAULT_PROFILES, SAMPLE_STL, SliceError, default_printer_profile, part_info,
+                     slice_stl)
 
 DELIVERED_NAME = "sample_part.gcode.3mf"
 BUSY_MESSAGE = "The slicer is busy, try again in a minute."
@@ -51,6 +56,9 @@ RESOLVE_FAILED_MESSAGE = "Onshape could not export the selected part. Try again.
 BAD_PARTS_REQUEST_MESSAGE = "This request could not be read."
 PART_EXPIRED_MESSAGE = "This part has expired; Refresh from Onshape."
 PART_STORE_FOLDER = "print_parts"
+# The plate job's sentences (spec 4.6). The limits' sentences come from print/limits.py.
+REFRESH_PARTS_MESSAGE = "A part is no longer on the server; press Refresh from Onshape on the Parts step."
+BAD_JOB_MESSAGE = "This request could not be read."
 
 # The blueprint carries its own templates and static files, so everything the print
 # path needs lives under print/. static_url_path must not be the default "/static":
@@ -143,34 +151,47 @@ def _json_object():
 
 
 def make_worker(token_manager, upload_folder, output_folder, log):
-    """Worker for JobPool: slice the sample part, deliver the archive, clean up."""
+    """Worker for JobPool: slice the sample part (no payload) or a PlateJob, deliver the
+    archive, clean up."""
 
-    def run(job_id):
+    def deliver(job_id, result, name):
+        final_path = os.path.join(output_folder, f"print_{job_id}.gcode.3mf")
+        shutil.move(str(result.output_path), final_path)
+        try:
+            return token_manager.register_file(final_path, name)
+        except Exception:
+            # No token means nothing can ever fetch or expire this archive.
+            with contextlib.suppress(OSError):
+                os.unlink(final_path)
+            raise
+
+    def run(job_id, payload=None):
         started = time.monotonic()
         scratch = tempfile.mkdtemp(prefix=f"print_{job_id[:8]}_", dir=upload_folder)
+        job8 = job_id[:8]
+        who = {} if payload is None else {"pid": payload.pid, "team": payload.team}
 
         def seconds():
             return round(time.monotonic() - started, 3)
 
         try:
-            result = slice_stl(SAMPLE_STL, scratch)
-            final_path = os.path.join(output_folder, f"print_{job_id}.gcode.3mf")
-            shutil.move(str(result.output_path), final_path)
-            try:
-                token = token_manager.register_file(final_path, DELIVERED_NAME)
-            except Exception:
-                # No token means nothing can ever fetch or expire this archive.
-                with contextlib.suppress(OSError):
-                    os.unlink(final_path)
-                raise
-            print_event("slice_done", job=job_id[:8], seconds=seconds(), code=0)
-            return {"token": token, "summary": result.summary(), "part": part_info()}
+            if payload is None:
+                result = slice_stl(SAMPLE_STL, scratch)
+                token = deliver(job_id, result, DELIVERED_NAME)
+                print_event("slice_done", job=job8, seconds=seconds(), code=0)
+                return {"token": token, "summary": result.summary(), "part": part_info()}
+            result = run_plate_job(payload, Path(scratch))
+            token = deliver(job_id, result, payload.delivered_name)
+            print_event("slice_done", **who, job=job8, copies=len(payload.copies),
+                        triangles=payload.triangles(), seconds=seconds())
+            return {"token": token, "summary": result.summary(),
+                    "part": {"name": payload.delivered_name, "copies": len(payload.copies)}}
         except SliceError as exc:
-            print_event("slice_failed", job=job_id[:8], seconds=seconds(), code=exc.code, reason=exc.message)
+            print_event("slice_failed", **who, job=job8, seconds=seconds(), code=exc.code, reason=exc.message)
             raise JobFailure(exc.message, exc.details) from exc
         except Exception:
             # The pool logs the traceback; the event records that the slice failed.
-            print_event("slice_failed", job=job_id[:8], seconds=seconds(), code=None, reason=GENERIC_FAILURE)
+            print_event("slice_failed", **who, job=job8, seconds=seconds(), code=None, reason=GENERIC_FAILURE)
             raise
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
@@ -218,17 +239,88 @@ def print_part():
     return jsonify(part_info())
 
 
+def _is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _valid_copy(copy):
+    return (isinstance(copy, dict) and isinstance(copy.get("ref"), str) and REF_RE.fullmatch(copy["ref"]) is not None
+            and copy.get("orientation") in ORIENTATIONS
+            and isinstance(copy.get("angle"), int) and not isinstance(copy["angle"], bool)
+            and 0 <= copy["angle"] <= 359
+            and _is_number(copy.get("x")) and _is_number(copy.get("y")))
+
+
+def _profile_name(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh).get("name")
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def _plate_job(body, pid, team):
+    """The PlateJob for a body with `copies`, or the (response, status) that refuses it.
+    Every check runs here, before anything reaches the pool or Orca."""
+    copies = body.get("copies")
+    if not isinstance(copies, list) or not copies or not all(_valid_copy(c) for c in copies):
+        return None, (jsonify({"error": BAD_JOB_MESSAGE}), 400)
+    if len(copies) > limits.MAX_COPIES:
+        return None, (jsonify({"error": limits.TOO_MANY_COPIES_MESSAGE}), 400)
+    copies = [{key: c[key] for key in ("ref", "orientation", "angle", "x", "y")} for c in copies]
+    entries = {}
+    for c in copies:
+        if c["ref"] not in entries:
+            entry = ctx.part_store.get(c["ref"], pid)
+            if entry is None:       # unknown, expired or another page's: the same answer
+                return None, (jsonify({"error": REFRESH_PARTS_MESSAGE}), 400)
+            entries[c["ref"]] = entry
+    triangles = sum(entries[c["ref"]].triangles for c in copies)
+    if triangles > limits.MAX_JOB_TRIANGLES:
+        return None, (jsonify({"error": limits.JOB_TRIANGLES_MESSAGE}), 400)
+    plate = plate_from_printer(default_printer_profile())
+    parts = {ref: {"name": e.name, "footprints": e.footprints} for ref, e in entries.items()}
+    problems = check_placement(copies, parts, plate)
+    if problems:
+        return None, (jsonify({"error": problems[0]["message"], "rule": problems[0]["rule"]}), 400)
+    hull_area = sum(Polygon(parts[c["ref"]]["footprints"][c["orientation"]]["hull"]).area for c in copies)
+    plate_area = (plate["max"][0] - plate["min"][0]) * (plate["max"][1] - plate["min"][1])
+    print_event("layout", pid=pid, team=team, copies=len(copies), parts=len(entries),
+                fill=round(100 * hull_area / plate_area), free_angles=sum(1 for c in copies if c["angle"] % 90))
+    profiles = DEFAULT_PROFILES      # the body's filament, process and overrides are not read yet
+    job = PlateJob(copies=copies,
+                   parts={ref: JobPart(name=e.name, stl_path=Path(e.stl_path), footprints=e.footprints,
+                                       triangles=e.triangles) for ref, e in entries.items()},
+                   profiles=profiles, overrides={}, filament=_profile_name(profiles.filament),
+                   process=_profile_name(profiles.process),
+                   delivered_name=delivered_file_name([e.name for e in entries.values()], body.get("local_time")),
+                   pid=pid, team=team)
+    return job, None
+
+
 def print_job_submit():
-    """Queue a slice. Rate limited to 3 per minute; the rule is added in
-    init_print_routes because the limiter does not exist at import time."""
+    """Queue a slice: the sample part when the body has no `copies`, otherwise a plate job
+    whose placement the server checks first. Rate limited to 3 per minute; the rule is
+    added in init_print_routes because the limiter does not exist at import time."""
     gate = ctx.require_session() or _page_id_gate()
     if gate:
         return gate
+    pid, team = _page_id(), _team_for_events()
+    body = _json_object() or {}
+    job = None
+    if "copies" in body:
+        job, refusal = _plate_job(body, pid, team)
+        if refusal:
+            return refusal
     try:
-        job_id = ctx.pool.submit()
+        job_id = ctx.pool.submit(payload=job)
     except QueueFull:
         return jsonify({"error": BUSY_MESSAGE}), 503
-    print_event("slice_queued", pid=_page_id(), team=_team_for_events(), job=job_id[:8])
+    if job is None:
+        print_event("slice_queued", pid=pid, team=team, job=job_id[:8])
+    else:
+        print_event("slice_queued", pid=pid, team=team, job=job_id[:8], copies=len(job.copies),
+                    triangles=job.triangles(), filament=job.filament, process=job.process)
     return jsonify({"job_id": job_id}), 202
 
 

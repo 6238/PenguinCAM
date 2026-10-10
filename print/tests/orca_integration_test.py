@@ -177,6 +177,33 @@ class PlateSliceTest(unittest.TestCase):
         self.assertEqual(ctx.exception.message, "Parts are too close together; spread them out.")
 
 
+class PlateJobTest(unittest.TestCase):
+    def test_plate_job_end_to_end(self):
+        """Two synthetic parts in a temporary part store, through run_plate_job and real Orca."""
+        from print.part_store import PartStore
+        from print.plate_3mf import plate_object_names
+        from print.plate_job import JobPart, PlateJob, run_plate_job
+        from print.slicer import DEFAULT_PROFILES
+        from print.tests.test_routes_jobs import store_part
+        tmp = Path(tempfile.mkdtemp(prefix="orca-plate-job-")).resolve()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        store = PartStore(tmp / "parts")
+        box = store_part(store, "abcdef012345", "Box", (20, 20, 10))
+        peg = store_part(store, "abcdef012345", "Peg", (8, 8, 30))
+        copies = [{"ref": box.ref, "orientation": "+z", "angle": 0, "x": 60.0, "y": 60.0},
+                  {"ref": box.ref, "orientation": "-z", "angle": 30, "x": 120.0, "y": 60.0},
+                  {"ref": peg.ref, "orientation": "+x", "angle": 90, "x": 200.0, "y": 150.0}]
+        job = PlateJob(copies=copies,
+                       parts={e.ref: JobPart(e.name, e.stl_path, e.footprints, e.triangles) for e in (box, peg)},
+                       profiles=DEFAULT_PROFILES, overrides={}, filament="PETG", process="0.24mm",
+                       delivered_name="Box_plus1-20261009-1432.gcode.3mf", pid="abcdef012345", team=None)
+        scratch = tmp / "scratch"
+        scratch.mkdir()
+        result = run_plate_job(job, scratch)
+        self.assertEqual(sorted(plate_object_names(result.output_path)), ["Box #1", "Box #2", "Peg #1"])
+        self.assertGreater(result.layer_count, 0)
+
+
 class RealJobRouteTest(unittest.TestCase):
     """POST /print-job with the real pool and Orca, then read the result and download it."""
 
