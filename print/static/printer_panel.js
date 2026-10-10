@@ -423,7 +423,7 @@
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ token: token })
     }).then(function (response) {
-      if (response.ok) {        // 202 from the relay
+      if (response.status === 202) {
         reportDeliver('queued');
         markSending();          // and the five-second polling takes it from here
         return null;

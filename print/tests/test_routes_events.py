@@ -198,6 +198,22 @@ class BrowserEventRoutesTest(EventRouteBase):
                                    f'message="Bad\\nthing" code=network')
         self.metrics.log_event.assert_any_call("print_client_error", team_number=None, metadata=mock.ANY)
 
+    def test_trailing_newlines_stay_inside_one_line(self):
+        resp = self.client.get(f"/print-job/nope?pid={PID}%0A")
+        self.assertEqual(resp.status_code, 400)            # not a page id
+        self.post("/print/client-event", {"step": "s\n", "message": "m\n", "code": "c"})
+        self.assertEqual(self.lines_for("client_error"),
+                         [f'[PRINT] client_error pid={PID} team=- job=- step="s\\n" message="m\\n" code=c'])
+        resp = self.post("/print/deliver", {"job_id": "abcdefg\n", "action": "drive", "outcome": "x\n"})
+        self.assertEqual(resp.status_code, 400)            # a job value with a newline is refused
+        resp = self.post("/print/deliver", {"job_id": "abcdefgh\n", "action": "drive", "outcome": "x\n"})
+        self.assertEqual(resp.status_code, 204)            # cut to eight characters, outcome quoted
+        self.assertEqual(self.lines_for("deliver"),
+                         [f'[PRINT] deliver pid={PID} team=- job=abcdefgh action=drive outcome="x\\n"'])
+        for line in self.lines:
+            self.assertNotIn("\n", line)
+        self.assertIn("[PRINT] request pid=- ", self.request_lines()[0])
+
     def test_client_event_rejects_extra_keys(self):
         resp = self.post("/print/client-event", {"step": "preview", "message": "x", "token": "secret"})
         self.assertEqual(resp.status_code, 400)
@@ -224,13 +240,18 @@ class BrowserEventRoutesTest(EventRouteBase):
         self.assertEqual(self.lines_for("page"), [
             f"[PRINT] page pid={PID} team=1234 job=- source=onshape theme=dark has_onshape_context=yes "
             "wvm=w server=https://cad.onshape.com configured=yes config=team"])
+        # Upload mode in the same browser: the Onshape sign-in's team config is never read.
+        self.post("/print/page", {"source": "upload", "theme": "dark", "has_onshape_context": False})
+        self.assertEqual(self.lines_for("page")[1],
+                         f"[PRINT] page pid={PID} team=- job=- source=upload theme=dark has_onshape_context=no "
+                         "wvm=- server=- configured=no config=default")
         with self.client.session_transaction() as sess:
             sess["using_default_config"] = True
             sess["team_number"] = 6238
             sess.pop("team_config_data")
-        self.post("/print/page", {"source": "upload", "theme": {"x": 1}, "has_onshape_context": False})
-        self.assertEqual(self.lines_for("page")[1],
-                         f"[PRINT] page pid={PID} team=- job=- source=upload theme=- has_onshape_context=no "
+        self.post("/print/page", {"source": "onshape", "theme": {"x": 1}, "has_onshape_context": False})
+        self.assertEqual(self.lines_for("page")[2],
+                         f"[PRINT] page pid={PID} team=- job=- source=onshape theme=- has_onshape_context=no "
                          "wvm=- server=- configured=no config=default")
 
     def test_deliver_logs_short_job_id(self):

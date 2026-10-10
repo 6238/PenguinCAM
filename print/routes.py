@@ -235,11 +235,17 @@ def print_page_event():
     if gate:
         return gate
     body = _json_object() or {}
-    default_config = bool(session.get("using_default_config"))
-    team_config = {} if default_config else (session.get("team_config_data") or {})
     fields = {key: _short_text(body.get(key), PAGE_FIELD_MAX_CHARS)
               for key in ("source", "theme", "has_onshape_context", "wvm", "server")}
-    print_event("page", pid=_page_id(), team=_team_for_events(), **fields,
+    if body.get("source") == "onshape":
+        default_config = bool(session.get("using_default_config"))
+        team_config = {} if default_config else (session.get("team_config_data") or {})
+        team = _team_for_events()
+    else:
+        # The upload page never reads the Onshape sign-in's team config, as the app's
+        # template context does not (force_defaults): it prints with the defaults.
+        default_config, team_config, team = True, {}, None
+    print_event("page", pid=_page_id(), team=team, **fields,
                 configured=isinstance(team_config.get("printing"), dict),
                 config="default" if default_config or not team_config else "team")
     return jsonify({}), 200

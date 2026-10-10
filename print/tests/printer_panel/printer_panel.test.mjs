@@ -914,7 +914,7 @@ test('adding the item reveals the split button caret the wizard hides by default
 
 test('send reports queued, refused and unreachable through reportDeliver', async () => {
   const reports = [];
-  const answers = [respond(200, { ok: true }), respond(400, { error: 'No' }),
+  const answers = [respond(202, { ok: true }), respond(400, { error: 'No' }),
                    () => Promise.reject(new Error('offline'))];
   for (const answer of answers) {
     const p = previewPanel({ source: 'onshape', getDownloadToken: () => 'tok',

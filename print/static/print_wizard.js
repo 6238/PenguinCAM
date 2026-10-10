@@ -129,14 +129,12 @@
 
   // The only code that writes an error line (#<step>-errors; the node test checks).
   // Shows the sentence, clears the step's status line and reports the message to the
-  // server; the same message already on the line is not reported twice.
+  // server.
   function showError(step, message, code) {
     var errLine = $('#' + step + '-errors');
-    var repeated = !!errLine && errLine.textContent === message;
     if (errLine) errLine.textContent = message;
     var status = STATUS_LINES[step] ? $(STATUS_LINES[step]) : null;
     if (status) status.textContent = '';
-    if (repeated) return;
     postJson('/print/client-event', { step: step, message: message, code: code || null })
       .catch(function () { /* reporting is best effort */ });
   }
@@ -208,8 +206,11 @@
     $('#info-printer-name').textContent = i.printer.name;
     $('#info-bed-size').textContent = i.printer.bed_mm.x + ' x ' + i.printer.bed_mm.y + ' mm, ' + i.printer.height_mm + ' mm tall';
     state.fits = fitsBed(i.part.size_mm, i.printer.bed_mm, i.printer.height_mm);
+    var tooBig = tooBigMessage(i.part.size_mm, i.printer.bed_mm, i.printer.height_mm);
+    // This runs on every visit to Layout; a message already shown is not shown (and
+    // reported) again.
     if (state.fits) clearError('layout');
-    else showError('layout', tooBigMessage(i.part.size_mm, i.printer.bed_mm, i.printer.height_mm), 'too_big');
+    else if ($('#layout-errors').textContent !== tooBig) showError('layout', tooBig, 'too_big');
   }
 
   // In full-page grid mode the quadrant is a fixed cell, so the stylesheet's

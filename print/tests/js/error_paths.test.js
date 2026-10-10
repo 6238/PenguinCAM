@@ -36,7 +36,9 @@ function errorHandles(source) {
   while ((m = assign.exec(source))) {
     if (m[2].indexOf('-errors') >= 0) handles.add('\\b' + escapeRe(m[1]));
   }
-  const direct = /(?:\$|document\.querySelector|document\.getElementById)\(\s*(['"])#?[\w-]*-errors\1\s*\)/g;
+  // Any $( / querySelector( / getElementById( call whose argument mentions -errors, so a
+  // selector built by concatenation ($('#' + step + '-errors')) counts too.
+  const direct = /(?:\$|document\.querySelector|document\.getElementById)\([^()]*-errors[^()]*\)/g;
   while ((m = direct.exec(source))) handles.add(escapeRe(m[0]));
   return Array.from(handles);
 }
@@ -68,6 +70,7 @@ test('the scanner finds a stray write (self-check)', () => {
   ].join('\n');
   assert.deepEqual(violations(snippet, 'snippet'), ['snippet:4: errs.textContent =']);
   assert.equal(violations("$('#parts-errors').innerHTML = 'y';", 's').length, 1);
+  assert.equal(violations("$('#' + step + '-errors').textContent = 'z';", 's').length, 1);
 });
 
 test('only showError and clearError write an error line', () => {
