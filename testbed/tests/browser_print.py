@@ -6,15 +6,22 @@ both parts listed with sizes, quantity 2 giving three copies, rotate and lay on 
 a real Orca slice of the replayed meshes, and the download. Each is skipped with "needs a
 recording" until print-select-parts is recorded, never passed.
 
-The self-tests run on synthetic fixtures (the fake host's own check, spec 8.2 allows it):
-the checklist strip defers to the print page's own messages, and print-configured-part
-replays its synthetic message log: the click in a configured Part Studio is refused with
-the sentence, and the dialog pick is exported with its configuration.
+The self-tests run on synthetic fixtures, each under a synthetic-... copy of a scenario
+that only their own replay server knows (testbed/scenarios synthetic_copy; never in
+SCENARIOS, since no scenario replays a synthetic log):
+- synthetic-part-select: the checklist strip defers to the print page's own messages;
+- synthetic-print-configured-part, provisional: the click in a configured Part Studio is
+  refused with the sentence and the dialog pick is exported with its configuration, on an
+  invented REQUESTED_SELECTION answer.
+Each skips itself once the real scenario it copies is recorded, so it can never keep
+passing on invented data after the recording lands.
 """
 import json
 import shutil
 import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 from urllib.parse import quote
 
 from print.events import quote_value
@@ -22,14 +29,16 @@ from print.onshape_parts import CONFIGURED_MESSAGE
 from testbed import settings
 from testbed.browser import ReplayDevServer, host_url, launch_test_browser, sign_in_for_replay
 from testbed.messages import load_message_log
-from testbed.scenarios import SCENARIOS, scenario_is_recorded
+from testbed.scenarios import (SCENARIOS, SYNTHETIC_PREFIX, scenario_is_recorded,
+                               synthetic_copy)
 from testbed.tests.browser_host import (FIXTURES, SYNTHETIC_DOCUMENT, messages_named,
-                                        panel_frame, stage_synthetic_fixtures, wait_for)
+                                        panel_frame, wait_for)
 from testbed.tests.browser_scenarios import (ScenarioDriver, _format, replayed_steps,
                                              shape_differences)
 
 SCENARIO = 'print-select-parts'
-CONFIGURED = 'print-configured-part'
+DEFERS = synthetic_copy('part-select')
+CONFIGURED = synthetic_copy('print-configured-part')
 # The ids make_print_fixtures.py writes the configured Part Studio's fixtures with.
 CONFIGURED_DOCUMENT = {'did': 'd00000000000000000000001', 'wid': 'a00000000000000000000001',
                        'eid': 'e00000000000000000000001'}
@@ -38,16 +47,32 @@ SLICE_TIMEOUT_S = 300
 _GRID = [(x / 10, y / 8) for y in range(1, 8) for x in range(1, 10)]
 
 
-def _strip_index(frame):
+def _strip_step(frame):
     return frame.evaluate('window.PenguinCAMTestbed.currentStep()')
 
 
 def advance_strip_to(page, frame, name):
     """Press the strip's Next step until its current step is `name`."""
-    while _strip_index(frame) != name:
-        before = _strip_index(frame)
+    while _strip_step(frame) != name:
+        before = _strip_step(frame)
         frame.click('#testbed-next')
-        wait_for(page, lambda: _strip_index(frame) != before, f'the strip to move on from {before}')
+        wait_for(page, lambda: _strip_step(frame) != before, f'the strip to move on from {before}')
+
+
+def stage_self_test_fixtures(directory) -> tuple:
+    """(cassette dir, message dir) under `directory`: the synthetic fixtures under the
+    synthetic-... scenario copies' names."""
+    cassettes, messages = Path(directory) / 'cassettes', Path(directory) / 'messages'
+    cassettes.mkdir()
+    messages.mkdir()
+    shutil.copy(FIXTURES / 'cassettes' / 'synthetic-panel.json', cassettes / f'{DEFERS.name}.json')
+    shutil.copy(FIXTURES / 'messages' / 'synthetic-part-select.json',
+                messages / f'{DEFERS.name}.json')
+    # Already named synthetic-print-configured-part; its binaries sit under that name too.
+    shutil.copy(FIXTURES / 'cassettes' / f'{CONFIGURED.name}.json', cassettes)
+    shutil.copytree(FIXTURES / 'cassettes' / CONFIGURED.name, cassettes / CONFIGURED.name)
+    shutil.copy(FIXTURES / 'messages' / f'{CONFIGURED.name}.json', messages)
+    return cassettes, messages
 
 
 class PrintScenarioTest(unittest.TestCase):
@@ -185,26 +210,40 @@ class PrintScenarioTest(unittest.TestCase):
         self.assertIn('.gcode.3mf', answer['disposition'])
 
 
+def skip_once_recorded(test, scenario):
+    """Skip `test` if the real scenario that `scenario` (a synthetic-... copy) stands in for
+    is recorded."""
+    real = scenario.name[len(SYNTHETIC_PREFIX):]
+    if scenario_is_recorded(real):
+        test.skipTest(f'{real} is recorded: this self-test on synthetic input is retired; '
+                      'delete it with the synthetic fixtures')
+
+
+class SelfTestRetirementTest(unittest.TestCase):
+    def test_self_tests_skip_once_the_real_scenario_is_recorded(self):
+        for copy in (DEFERS, CONFIGURED):
+            with mock.patch(f'{__name__}.scenario_is_recorded', lambda name: True), \
+                    self.assertRaises(unittest.SkipTest) as caught:
+                skip_once_recorded(self, copy)
+            self.assertIn(copy.name[len(SYNTHETIC_PREFIX):] + ' is recorded', str(caught.exception))
+            with mock.patch(f'{__name__}.scenario_is_recorded', lambda name: False):
+                skip_once_recorded(self, copy)        # not recorded: runs
+
+
 class PrintPageSelfTest(unittest.TestCase):
-    """The strip on the print page, against synthetic fixtures."""
+    """The strip and the print page on synthetic fixtures, under synthetic-... copies."""
 
     @classmethod
     def setUpClass(cls):
         cls._tmp = tempfile.TemporaryDirectory()
-        cls.cassette_dir, cls.message_dir = stage_synthetic_fixtures(cls._tmp.name)
-        shutil.copy(FIXTURES / 'cassettes' / 'synthetic-print-configured-part.json',
-                    cls.cassette_dir / f'{CONFIGURED}.json')
-        # The cassette names its binaries by its own scenario name.
-        shutil.copytree(FIXTURES / 'cassettes' / 'synthetic-print-configured-part',
-                        cls.cassette_dir / 'synthetic-print-configured-part')
-        shutil.copy(FIXTURES / 'messages' / 'synthetic-print-configured-part.json',
-                    cls.message_dir / f'{CONFIGURED}.json')
-        cls.server = ReplayDevServer(cassette_dir=cls.cassette_dir, message_dir=cls.message_dir)
+        cls.cassette_dir, cls.message_dir = stage_self_test_fixtures(cls._tmp.name)
+        cls.server = ReplayDevServer(cassette_dir=cls.cassette_dir, message_dir=cls.message_dir,
+                                     synthetic_scenarios=[DEFERS, CONFIGURED])
         cls.server.__enter__()
         try:
             cls.playwright, cls.browser, cls.context = launch_test_browser(
                 message_dir=cls.message_dir)
-            sign_in_for_replay(cls.context, settings.REPLAY_PORT, 'part-select')
+            sign_in_for_replay(cls.context, settings.REPLAY_PORT, DEFERS.name)
         except BaseException:
             cls.server.__exit__(None, None, None)
             cls._tmp.cleanup()
@@ -219,10 +258,14 @@ class PrintPageSelfTest(unittest.TestCase):
             cls.server.__exit__(None, None, None)
             cls._tmp.cleanup()
 
+    def skip_once_recorded(self, scenario):
+        skip_once_recorded(self, scenario)
+
     def test_strip_defers_to_print_page_messages(self):
+        self.skip_once_recorded(DEFERS)
         page = self.context.new_page()
         self.addCleanup(page.close)
-        page.goto(host_url(SYNTHETIC_DOCUMENT, 'part-select'))
+        page.goto(host_url(SYNTHETIC_DOCUMENT, DEFERS.name))
         wait_for(page, lambda: page.evaluate('window.__testbed.ready'), 'the fake Onshape host')
         frame = panel_frame(page)
         wait_for(page, lambda: messages_named(page, 'applicationInit'), "the panel's applicationInit")
@@ -234,9 +277,9 @@ class PrintPageSelfTest(unittest.TestCase):
         wait_for(page, lambda: frame.evaluate("!!document.getElementById('testbed-strip')"),
                  'the checklist strip on the print page')
         self.assertTrue(frame.evaluate('window.PenguinCAMTestbed.deferred'))
-        frame.select_option('#testbed-scenario', 'part-select')
+        frame.select_option('#testbed-scenario', DEFERS.name)
         wait_for(page, lambda: frame.evaluate('window.PenguinCAMTestbed.currentScenario()')
-                 == 'part-select', 'the strip to start part-select')
+                 == DEFERS.name, f'the strip to start {DEFERS.name}')
         # One applicationInit, the print page's own; the strip sends none.
         wait_for(page, lambda: len(messages_named(page, 'applicationInit')) == inits + 1,
                  "the print page's applicationInit")
@@ -270,13 +313,16 @@ class PrintPageSelfTest(unittest.TestCase):
                  'the print page to ask again after the answer')
 
     def test_configured_part_studio_click_refused_and_dialog_passes_configuration(self):
+        # Provisional, on an invented selection answer: retired once print-configured-part
+        # is recorded.
+        self.skip_once_recorded(CONFIGURED)
         page = self.context.new_page()
         self.addCleanup(page.close)
-        page.goto(host_url(CONFIGURED_DOCUMENT, CONFIGURED))
+        page.goto(host_url(CONFIGURED_DOCUMENT, CONFIGURED.name))
         wait_for(page, lambda: page.evaluate('window.__testbed.ready'), 'the fake Onshape host')
-        driver = ScenarioDriver(page, SCENARIOS[CONFIGURED])
+        driver = ScenarioDriver(page, CONFIGURED)
         strip_events = driver.run()
-        log = replayed_steps(load_message_log(CONFIGURED, self.message_dir), SCENARIOS[CONFIGURED])
+        log = replayed_steps(load_message_log(CONFIGURED.name, self.message_dir), CONFIGURED)
         differences = shape_differences(log, strip_events)
         self.assertEqual(differences, [], _format(differences))
         # The dialog pick: exported with configuration=Size=Large, the only export the

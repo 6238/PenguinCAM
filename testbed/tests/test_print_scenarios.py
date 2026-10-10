@@ -12,8 +12,8 @@ from onshape_integration import OnshapeClient
 from testbed import adapters, settings
 from testbed.adapters import ReplayAdapter, set_current_scenario
 from testbed.cassette import Cassette
-from testbed.scenarios import (ACTIONS, SCENARIOS, TEST_DOCUMENT_NAMES, run_print_export,
-                               run_scenario_api, scenario_is_recorded)
+from testbed.scenarios import (ACTIONS, PAGE_ASKS, SCENARIOS, TEST_DOCUMENT_NAMES,
+                               run_print_export, run_scenario_api, scenario_is_recorded)
 
 FIXTURE_CASSETTES = Path(__file__).resolve().parent / 'fixtures' / 'cassettes'
 # The ids make_print_fixtures.py writes the synthetic cassettes with.
@@ -51,8 +51,7 @@ class PrintScenarioDefinitionsTest(unittest.TestCase):
                     actions = [step.action for step in scenario.steps]
                     self.assertEqual(actions[1:3], ['choose-print', 'print-parts'])
                     # The print page asks for parts itself: no strip ask or dialog button.
-                    self.assertFalse(set(actions) & {'ask-part', 'ask-two-parts', 'dialog-part',
-                                                     'dialog-parts', 'close-dialog'})
+                    self.assertFalse(set(actions) & set(PAGE_ASKS))
         select = SCENARIOS['print-select-parts'].steps
         self.assertEqual([s.name for s in select if not s.recorded_only],
                          ['open panel', 'choose print', 'print parts', 'select part Box',

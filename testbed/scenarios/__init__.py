@@ -10,7 +10,7 @@ The print scenarios drive the print page's own Onshape messaging (print_onshape.
 strip only shows their instructions. Only part-export and print-export make API calls of
 their own; run_scenario_api() runs them.
 """
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Optional
 from urllib.parse import quote
 
@@ -27,6 +27,12 @@ ASSEMBLY_DOCUMENTS = ('tb-assembly',)
 # Test documents with a configured Part Studio. part-export leaves them out: without a
 # configuration it would export only the default; print-configured-part exercises them.
 CONFIGURED_DOCUMENTS = ('tb-configured',)
+# The strip's buttons it hides on the print page, which asks Onshape for parts itself
+# (testbed_panel.js); the drivers send these through the strip's own action instead.
+PAGE_ASKS = ('ask-part', 'ask-two-parts', 'dialog-part', 'dialog-parts', 'close-dialog')
+# A browser self-test's copy of a scenario, run on synthetic fixtures, is named with this
+# prefix and never added to SCENARIOS (spec 8.2: no scenario replays a synthetic log).
+SYNTHETIC_PREFIX = 'synthetic-'
 # What a step's button does. The first five and ask-unbounded send a panel message from
 # the strip; choose-print and back are done in the panel itself, and print-parts (Next to
 # the Parts step, which arms the page's own selection) and print-dialog (Add from another
@@ -182,6 +188,27 @@ SCENARIOS = {scenario.name: scenario for scenario in (
                                    'No panel.'),
     ], estimate=12),
 )}
+
+
+def synthetic_copy(name) -> Scenario:
+    """Scenario `name` renamed synthetic-<name>, for a self-test on synthetic fixtures."""
+    return replace(SCENARIOS[name], name=SYNTHETIC_PREFIX + name)
+
+
+def scenarios_to_json(scenarios) -> list:
+    return [asdict(scenario) for scenario in scenarios]
+
+
+def scenarios_from_json(data) -> dict:
+    """{name: Scenario} from scenarios_to_json's list; only synthetic-... names."""
+    scenarios = {}
+    for entry in data:
+        steps = [Step(**step) for step in entry['steps']]
+        scenario = Scenario(**dict(entry, steps=steps))
+        if not scenario.name.startswith(SYNTHETIC_PREFIX):
+            raise ValueError(f'{scenario.name!r} is not a synthetic- scenario copy')
+        scenarios[scenario.name] = scenario
+    return scenarios
 
 
 def scenario_is_recorded(name) -> bool:

@@ -226,7 +226,9 @@ buttons. The page's own messages are recorded on their way out through a stand-i
 `window.parent` (the HTML standard makes that property replaceable), so the fake Onshape
 host can match the page's requests when the scenario is replayed. A received message is
 recorded inside the page's own handler, which listens before the strip loads, so it stays
-ahead of the request the page sends in answer to it.
+ahead of the request the page sends in answer to it. The page's `applicationInit` goes out
+before the strip loads, so a print page message log never holds it; replay is unaffected,
+since the replayed page's is not recorded either.
 
 ## 8. The automated Onshape UI run and the Onshape checkpoint
 

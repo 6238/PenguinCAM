@@ -6,8 +6,9 @@ recording: the panel's 3D Printing radio for choose-print, the checklist strip's
 a step's action (its action itself for the buttons the strip hides on the print page), the
 print page's Next and Add from another document... for print-parts and print-dialog, and
 the fake Onshape host's selectPart/selectParts/deselect/dialogClosed for what the owner did
-in Onshape. Steps recorded for reference only are skipped and left out of the comparison. The strip's recorded events must then equal the scenario's message
-log in message names, keys and value types.
+in Onshape. Steps recorded for reference only are skipped and left out of the comparison.
+The strip's recorded events must then equal the scenario's message log in message names,
+keys and value types.
 
 A scenario without a recording is skipped with "needs a recording", never passed. The
 self-test runs part-select against the synthetic fixtures.
@@ -20,14 +21,12 @@ import unittest
 from testbed import settings
 from testbed.browser import ReplayDevServer, host_url, launch_test_browser, sign_in_for_replay
 from testbed.messages import load_message_log
-from testbed.scenarios import SCENARIOS, scenario_is_recorded
+from testbed.scenarios import PAGE_ASKS, SCENARIOS, scenario_is_recorded
 from testbed.tests.browser_host import (SYNTHETIC_DOCUMENT, panel_frame,
                                         stage_synthetic_fixtures, wait_for)
 
 STRIP_ACTIONS = ('ask-part', 'ask-two-parts', 'dialog-part', 'dialog-parts', 'close-dialog',
                  'ask-unbounded')
-# Hidden by the strip while the print page asks Onshape itself (testbed_panel.js).
-PAGE_ASKS = ('ask-part', 'ask-two-parts', 'dialog-part', 'dialog-parts', 'close-dialog')
 QUIET_S = 0.5            # a step is over once no message has arrived for this long
 
 
@@ -173,7 +172,8 @@ def replayed_steps(log, scenario):
 def run_browser_scenario(name, document, cassette_dir=None, message_dir=None) -> tuple:
     """Run scenario `name` on `document` in replay mode: (message log, strip events).
 
-    The message log comes back without the steps replay skips."""
+    The message log comes back without the steps replay skips.
+    """
     scenario = SCENARIOS[name]
     log = replayed_steps(load_message_log(name, message_dir), scenario)
     with ReplayDevServer(cassette_dir=cassette_dir, message_dir=message_dir):

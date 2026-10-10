@@ -26,7 +26,7 @@ from urllib.parse import quote, quote_plus
 from testbed import settings
 from testbed.browser import RecordDevServer
 from testbed.documents import pending_documents
-from testbed.scenarios import SCENARIOS
+from testbed.scenarios import PAGE_ASKS, SCENARIOS
 
 UI_VARIABLES = ('ONSHAPE_USERNAME', 'ONSHAPE_PASSWORD', 'ONSHAPE_CLIENT_ID',
                 'ONSHAPE_CLIENT_SECRET')
@@ -41,9 +41,6 @@ _PRODUCTION_CLIENT_ID_PREFIX = 'VKDK'
 # The strip's buttons; the other actions are done in the panel, the print page or Onshape.
 _STRIP_ACTIONS = ('ask-part', 'ask-two-parts', 'dialog-part', 'dialog-parts', 'close-dialog',
                   'ask-unbounded')
-# The strip hides these on the print page, which asks Onshape itself (testbed_panel.js);
-# the run sends them through the strip's own action instead of a click.
-_PAGE_ASKS = ('ask-part', 'ask-two-parts', 'dialog-part', 'dialog-parts', 'close-dialog')
 
 SELECTORS = {
     # cad.onshape.com/signin: email first, then Continue, then the password (seen Fri 10-09;
@@ -475,7 +472,7 @@ class _PanelScenario:
             strip = self.panel.locator(SELECTORS['strip_scenario'])
             strip.wait_for(timeout=STEP_TIMEOUT_MS)
             strip.select_option(self.scenario.name)
-        elif step.action in _PAGE_ASKS:
+        elif step.action in PAGE_ASKS:          # hidden by the strip on the print page
             self.panel.locator(SELECTORS['strip_action']).evaluate(
                 '(button, action) => window.PenguinCAMTestbed.act(action)', step.action)
         elif step.action == 'ask-unbounded':

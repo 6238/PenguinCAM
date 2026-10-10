@@ -10,6 +10,7 @@ on any other server none of these routes exists (spec 5.5, 5.6 and 6):
 - POST /testbed/done      save the message log and, in record mode, the cassette
 - GET  /testbed/panel.js  the checklist strip
 """
+import json
 import threading
 from dataclasses import asdict
 
@@ -19,7 +20,7 @@ from onshape_integration import session_manager
 from testbed import settings
 from testbed.adapters import begin_recording, current_scenario, finish_recording, set_current_scenario
 from testbed.messages import save_message_log
-from testbed.scenarios import SCENARIOS
+from testbed.scenarios import SCENARIOS, scenarios_from_json
 from testbed.scrub import STANDIN_EMAIL
 
 PANEL_SCRIPT = settings.TESTBED_DIR / 'panel' / 'testbed_panel.js'
@@ -45,16 +46,25 @@ def sign_in():
     return '', 204
 
 
+def known_scenarios() -> dict:
+    """SCENARIOS, and in replay mode the browser self-tests' synthetic copies, if a self-test
+    started this server with TESTBED_SYNTHETIC_SCENARIOS."""
+    if settings.testbed_mode() != 'replay' or not settings.SYNTHETIC_SCENARIOS_FILE:
+        return SCENARIOS
+    with open(settings.SYNTHETIC_SCENARIOS_FILE) as f:
+        return {**SCENARIOS, **scenarios_from_json(json.load(f))}
+
+
 def list_scenarios():
     return jsonify({'current': current_scenario(), 'scenarios': [
         {'name': s.name, 'document': s.document, 'panel': s.panel,
-         'steps': [asdict(step) for step in s.steps]} for s in SCENARIOS.values()]})
+         'steps': [asdict(step) for step in s.steps]} for s in known_scenarios().values()]})
 
 
 def choose_scenario():
     global _message_log
     name = (request.get_json(silent=True) or {}).get('name')
-    if name not in SCENARIOS:
+    if name not in known_scenarios():
         return _error(f'no scenario {name!r}', 400)
     if settings.testbed_mode() == 'record':
         client = session_manager.get_client(session.get('user_email', 'default_user'))

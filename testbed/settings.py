@@ -22,6 +22,9 @@ TESTBED_DIR = Path(__file__).resolve().parent
 # development server at other recordings: the browser self-tests' synthetic fixtures.
 CASSETTE_DIR = Path(os.environ.get('TESTBED_CASSETTE_DIR') or TESTBED_DIR / 'cassettes')
 MESSAGE_DIR = Path(os.environ.get('TESTBED_MESSAGE_DIR') or TESTBED_DIR / 'messages')
+# TESTBED_SYNTHETIC_SCENARIOS names a JSON file of the scenario copies a browser self-test
+# runs on its synthetic fixtures, each named synthetic-...; a replay server only.
+SYNTHETIC_SCENARIOS_FILE = os.environ.get('TESTBED_SYNTHETIC_SCENARIOS') or None
 FRESH_DIR = TESTBED_DIR / '.fresh'
 FIXTURE_DIR = TESTBED_DIR / 'fixtures'
 # The test documents' ids, written by the documents builder and read by the scenarios.

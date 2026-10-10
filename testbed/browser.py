@@ -9,6 +9,7 @@ nothing reaches Onshape.
 Playwright comes from testbed/requirements.txt and drives the system Chromium; it never
 downloads a browser.
 """
+import json
 import os
 import re
 import signal
@@ -30,7 +31,8 @@ _SCENARIO_NAME = re.compile(r'[a-z0-9][a-z0-9-]*')
 _OTHER_ONSHAPE = re.compile(r'^[a-z]+://([^/?#]*\.)?onshape\.com(:\d+)?([/?#]|$)')
 # Variables that would point the server at other recordings, or make it a deployed one,
 # and the Onshape sign-in credentials, which only the UI run's browser needs.
-_SERVER_DROPPED = ('TESTBED_CASSETTE_DIR', 'TESTBED_MESSAGE_DIR', 'FLASK_ENV',
+_SERVER_DROPPED = ('TESTBED_CASSETTE_DIR', 'TESTBED_MESSAGE_DIR', 'TESTBED_SYNTHETIC_SCENARIOS',
+                   'FLASK_ENV',
                    'RAILWAY_ENVIRONMENT', 'VERCEL', 'BASE_URL', 'ONSHAPE_USERNAME',
                    'ONSHAPE_PASSWORD')
 
@@ -47,16 +49,19 @@ class ReplayDevServer:
     """The development server in replay mode on `port`, for as long as the `with` lasts.
 
     `cassette_dir` and `message_dir`, when given, replace testbed/cassettes and
-    testbed/messages (the self-tests' synthetic fixtures). Its output goes to
-    settings.state_dir()/logs/replay-devserver.log.
+    testbed/messages (the self-tests' synthetic fixtures). `synthetic_scenarios`, the
+    synthetic-... scenario copies a self-test runs on those fixtures, are known to this
+    server only. Its output goes to settings.state_dir()/logs/replay-devserver.log.
     """
 
     MODE = 'replay'
 
-    def __init__(self, port=REPLAY_PORT, cassette_dir=None, message_dir=None):
+    def __init__(self, port=REPLAY_PORT, cassette_dir=None, message_dir=None,
+                 synthetic_scenarios=()):
         self.port = port
         self.cassette_dir = cassette_dir
         self.message_dir = message_dir
+        self.synthetic_scenarios = list(synthetic_scenarios)
         self.url = f'http://localhost:{port}'
         self.log_path = settings.state_dir() / 'logs' / f'{self.MODE}-devserver.log'
         self.process = None
@@ -71,6 +76,12 @@ class ReplayDevServer:
             env['TESTBED_CASSETTE_DIR'] = str(self.cassette_dir)
         if self.message_dir:
             env['TESTBED_MESSAGE_DIR'] = str(self.message_dir)
+        if self.synthetic_scenarios:
+            from testbed.scenarios import scenarios_to_json
+            path = self.log_path.parent / 'synthetic-scenarios.json'
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(scenarios_to_json(self.synthetic_scenarios)))
+            env['TESTBED_SYNTHETIC_SCENARIOS'] = str(path)
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.log_path, 'wb') as log:
             self.process = subprocess.Popen(

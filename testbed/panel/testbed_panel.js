@@ -137,7 +137,7 @@
     try {
       window.parent = {
         postMessage: function (message, targetOrigin) {
-          record('out', context.server || targetOrigin, message);
+          record('out', targetOrigin, message);      // as given: the page posts to '*'
           realParent.postMessage(message, targetOrigin);
         }
       };

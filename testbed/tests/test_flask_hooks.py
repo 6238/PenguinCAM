@@ -17,7 +17,7 @@ from flask import Flask
 
 from testbed import adapters, flask_hooks, settings
 from testbed.adapters import current_scenario
-from testbed.scenarios import SCENARIOS
+from testbed.scenarios import SCENARIOS, scenarios_to_json, synthetic_copy
 from testbed.scrub import STANDIN_EMAIL, STANDIN_NAME
 
 REPO = Path(__file__).resolve().parents[2]
@@ -70,6 +70,25 @@ class _MinimalAppCase(unittest.TestCase):
 
 
 class ReplayHooksTest(_MinimalAppCase):
+    def test_synthetic_copies_known_only_to_the_server_given_them(self):
+        copy = synthetic_copy('print-configured-part')
+        self.assertNotIn(copy.name, SCENARIOS)
+        self.assertEqual(self.client.post('/testbed/scenario', json={'name': copy.name})
+                         .status_code, 400)
+        path = self.tmp / 'synthetic-scenarios.json'
+        path.write_text(json.dumps(scenarios_to_json([copy])))
+        with mock.patch.object(settings, 'SYNTHETIC_SCENARIOS_FILE', str(path)):
+            names = [s['name'] for s in self.client.get('/testbed/scenarios').get_json()['scenarios']]
+            self.assertEqual(names, list(SCENARIOS) + [copy.name])
+            self.assertEqual(self.client.post('/testbed/scenario', json={'name': copy.name})
+                             .status_code, 200)
+            self.assertEqual(current_scenario(), copy.name)
+        # Only synthetic- names may be registered this way.
+        path.write_text(json.dumps(scenarios_to_json([SCENARIOS['part-select']])))
+        with mock.patch.object(settings, 'SYNTHETIC_SCENARIOS_FILE', str(path)), \
+                self.assertRaises(ValueError):
+            flask_hooks.known_scenarios()
+
     def test_sign_in_sets_flag_and_standin_user(self):
         response = self.client.get('/testbed/sign-in')
         self.assertEqual(response.status_code, 204)
