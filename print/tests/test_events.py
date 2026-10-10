@@ -23,6 +23,16 @@ class QuoteValueTest(unittest.TestCase):
         self.assertEqual(quote_value("Grüße"), '"Gr\\u00fc\\u00dfe"')
         self.assertEqual(quote_value(""), '""')
 
+    def test_trailing_newline_is_never_bare(self):
+        self.assertEqual(quote_value("x\n"), '"x\\n"')
+        self.assertEqual(quote_value(["a", "b\n"]), '"a,b\\n"')
+        self.assertIsNone(valid_page_id("abcdef012345\n"))
+        for job in ("abcdefg\n", "abc\n"):
+            with self.assertRaises(ValueError):
+                format_print_line("deliver", None, None, job, {})
+        with self.assertRaises(ValueError):
+            format_print_line("deliver", None, None, None, {"key\n": 1})
+
     def test_none_bool_list_and_dict(self):
         self.assertEqual(quote_value(None), "-")
         self.assertEqual(quote_value(True), "yes")
