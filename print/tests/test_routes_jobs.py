@@ -140,7 +140,8 @@ class PlacementChecksTest(JobRouteBase):
 
 class QueueTest(JobRouteBase):
     def test_valid_plate_queues_with_delivered_name(self):
-        resp = self.post(self.valid_copies(), filament="ignored", process="ignored", overrides={"x": "1"})
+        resp = self.post(self.valid_copies(), filament="Generic PETG @BBL H2S",
+                         process="0.24mm Balanced Quality @BBL H2S 0.6 nozzle", overrides={})
         self.assertEqual(resp.status_code, 202, resp.get_json())
         self.assertEqual(len(self.recorder.calls), 1)
         job_id, payload = self.recorder.calls[0]

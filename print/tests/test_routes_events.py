@@ -236,7 +236,7 @@ class BrowserEventRoutesTest(EventRouteBase):
         resp = self.post("/print/page", {"source": "onshape", "theme": "dark", "has_onshape_context": True,
                                          "wvm": "w", "server": "https://cad.onshape.com"})
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(set(resp.get_json()), {"plate", "limits"})     # print/tests/test_plate.py
+        self.assertEqual(set(resp.get_json()), {"plate", "limits", "config", "overrides"})   # test_plate, test_print_config
         self.assertEqual(self.lines_for("page"), [
             f"[PRINT] page pid={PID} team=1234 job=- source=onshape theme=dark has_onshape_context=yes "
             "wvm=w server=https://cad.onshape.com configured=yes config=team"])

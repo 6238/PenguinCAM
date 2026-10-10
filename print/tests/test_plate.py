@@ -95,7 +95,9 @@ class PageAnswerTest(unittest.TestCase):
         self.addCleanup(setattr, limiter, 'enabled', True)
         resp = client.post('/print/page', json={'source': 'onshape'}, headers={'X-Print-Page': 'abcdef012345'})
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.get_json(), {'plate': CASES['plate'], 'limits': limits_for_browser()})
+        data = resp.get_json()
+        self.assertEqual({key: data[key] for key in ('plate', 'limits')},
+                         {'plate': CASES['plate'], 'limits': limits_for_browser()})
 
 
 if __name__ == '__main__':

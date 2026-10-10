@@ -2,7 +2,9 @@
 
 Flask-free. Orca lives at the fixed path tools/orca/orca-slicer (installed by
 print/scripts/install-orca.sh); there is no environment variable and no PATH lookup.
-The profiles are the fixed set in print/profiles/. See docs/3D_PRINTING.md.
+slice_stl (the upload mode's sample part) uses the default set in print/profiles/;
+slice_plate takes the SliceProfiles print/print_config.py chose: a team's catalog
+profiles from print/profiles/catalog/, or the default set. See docs/3D_PRINTING.md.
 """
 import json
 import os
@@ -316,7 +318,7 @@ def _load_profile(name):
 
 
 def default_printer_profile():
-    """The printer profile every slice uses today (print/profiles/printer.json)."""
+    """The default printer profile (print/profiles/printer.json), the sample part's printer."""
     return _load_profile("printer.json")
 
 
@@ -332,7 +334,7 @@ def _bed_size(printer):
 
 
 def part_info(stl_path=SAMPLE_STL):
-    """Names and numbers the print wizard shows before slicing."""
+    """Names and numbers the upload mode shows for the sample part before slicing."""
     stl_path = Path(stl_path)
     lo, hi, count = stl_bounds(stl_path.read_bytes())
     printer = _load_profile("printer.json")

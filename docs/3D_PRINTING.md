@@ -399,6 +399,75 @@ filaments and 16 processes, about 1.1 MB, and is committed whole.
 installed Orca and fails if any file, or the set of files, differs from the committed one,
 and checks that the build's skipped list equals `index.json`'s.
 
+### Team printing configuration
+
+`print/print_config.py` reads the team YAML's `printing:` section (through
+`TeamConfig.printing_section()`, which finds it at the root of a v2 file or under the
+default machine of a v1 file, as `pairing_code` does) against the catalog:
+
+```yaml
+printing:
+  pairing_code: ...                 # the printer relay's, unrelated to slicing
+  printer: "Bambu Lab H2S 0.4 nozzle"
+  filaments:                        # first is the default
+    - "Bambu PLA Basic @BBL H2S"
+    - "Bambu PETG HF @BBL H2S"
+  processes:                        # first is the default
+    - "0.20mm Standard @BBL H2S"
+    - "0.16mm High Quality @BBL H2S"
+  allow_overrides: true             # the default; false hides the four overrides
+```
+
+The names are Orca's own profile names, as listed in `index.json`. The rules:
+
+- **No `printer:` key: the default set.** The three files in `print/profiles/` (the
+  0.6 mm nozzle, `Generic PETG @BBL H2S`, `0.24mm Balanced Quality @BBL H2S 0.6 nozzle`),
+  overrides allowed. The upload mode always prints with the default set, whatever the
+  session holds.
+- **An unknown printer fails closed.** Setup shows "The team configuration names printer
+  '<name>', which PenguinCAM does not know. Ask a mentor to fix printing.printer." and
+  slicing is disabled. There is no fallback to the default printer.
+- **An unknown or incompatible filament or process is dropped** with a warning shown on
+  Setup ("printing.processes names '<name>', which PenguinCAM does not know or which does
+  not fit printer '<printer>'; it was left out.") and logged in the `config` event's
+  `skipped`. A list that ends empty, or a `filaments` or `processes` that is not a list,
+  is an error that disables slicing ("The team configuration lists no filament that fits
+  printer '<printer>'. Ask a mentor to fix printing.filaments."), because the default
+  filament and process belong to the 0.6 mm nozzle.
+
+Orca profile names are name-derived: when an Orca upgrade renames a profile, the team's
+key stops resolving, and the message above names the key to fix.
+
+The catalog's `index.json` is read once per process (`load_catalog()`); it changes only
+with a deploy. `POST /print/page` answers the resolved configuration as `config`
+(printer, filaments, processes, allow_overrides, warnings, error, skipped, is_default;
+never a path) and the override choices as `overrides`, and draws the plate from the
+configured printer's `printable_area`. `POST /print-job` with `copies` takes `filament`,
+`process` and `overrides`: a name the team does not offer is refused with "Choose a
+filament and print settings from the list.", a configuration error is refused with its own
+sentence, and the plate check uses the chosen printer's plate. A body without `filament`
+or `process` gets the first of each list.
+
+**Student overrides.** With `allow_overrides` true, Setup offers four settings over the
+chosen process. Each menu starts at "Profile default", which sends nothing. The server
+accepts only these keys and values (numbers as JSON numbers, the rest as strings) and
+maps them to Orca process keys:
+
+| Override | Values | Orca keys written |
+|---|---|---|
+| `infill` | 10, 15, 20, 30, 40, 60, 100 | `sparse_infill_density: "<n>%"` |
+| `walls` | 2, 3, 4, 6 | `wall_loops: "<n>"` |
+| `supports` | `off`, `on` | `enable_support: "0"`; on: `enable_support: "1"`, `support_type: "tree(auto)"` |
+| `brim` | `auto`, `off`, `outer` | `brim_type: "auto_brim"`, `"no_brim"`, `"outer_only"` |
+
+Anything else is a 400 ("These print settings could not be read; choose them from the
+lists."), and so is a non-empty `overrides` when the team set `allow_overrides: false`
+("Your team does not allow changing print settings."). The worker writes the job's
+`process.json` in its scratch directory, the chosen process with the overrides merged
+(`write_process_with_overrides`), and slices with it. `TeamProfileSliceTest` in
+`print/tests/orca_integration_test.py` slices a box with the 0.4 mm set and all four
+overrides and reads them back from the G-code header.
+
 ## 5. Sample part
 
 `print/sample_part.stl` is an L bracket, 40 x 30 x 12 mm, a binary STL in millimetres.
@@ -818,7 +887,7 @@ from that load of the print page carries it.
 | Event | When | Fields |
 |---|---|---|
 | `page` | the print page's first call, `POST /print/page` | source, theme, has_onshape_context, wvm, server, configured (yes/no), config (team or default) |
-| `config` | team config resolved for printing | printer, filaments offered, processes offered, skipped names, error |
+| `config` | team config resolved for printing, `POST /print/page`, right after `page` | printer, filaments offered, processes offered, skipped names, error |
 | `select` | parts arrive from Onshape | via (selection or dialog), count, element type |
 | `export` | one part exported | part id, element id, bytes, triangles, size_mm, calls, ms, outcome |
 | `export_failed` | export failed | part id, status, reason |
@@ -828,7 +897,7 @@ from that load of the print page carries it.
 | `client_error` | an error message shown in the browser | step, message (as shown), code |
 | `request` | every print-blueprint request except static files | method, route rule (for example `/print-job/<job_id>`), status, ms |
 
-Events not yet emitted by this release (`config`) are reserved names; `print/events.py` refuses any name outside the table.
+`print/events.py` refuses any event name outside the table.
 
 **One quoting rule.** A value made only of letters, digits and `._:/@+-` is written bare.
 Any other value (a space, a newline, a quote, an `=`, a comma, anything non-ASCII) is

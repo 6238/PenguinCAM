@@ -9,9 +9,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .plate_3mf import check_plate_names, plate_object_names, write_plate_3mf
+from .print_config import write_process_with_overrides
 from .slicer import SliceProfiles, slice_plate
 
 MODEL_FILE = "plate.3mf"
+PROCESS_FILE = "process.json"
 SLICE_DIR = "slice"
 
 
@@ -25,6 +27,8 @@ class JobPart:
 
 @dataclass
 class PlateJob:
+    """`profiles` are the chosen catalog (or default) files; `overrides` are Orca process
+    keys from print_config.validate_overrides; `filament` and `process` are the names."""
     copies: list[dict]
     parts: dict[str, JobPart]
     profiles: SliceProfiles
@@ -40,16 +44,16 @@ class PlateJob:
 
 
 def run_plate_job(job, scratch):
-    """Write the plate's 3MF, slice it with the job's profiles and check that Orca sliced
-    every copy. Returns the SliceResult; raises SliceError.
-
-    The process file is the profile's own: overrides are not applied yet.
-    """
+    """Write the plate's 3MF and the job's process file (the chosen process with the
+    overrides merged), slice and check that Orca sliced every copy. Returns the
+    SliceResult; raises SliceError."""
     scratch = Path(scratch)
     model = scratch / MODEL_FILE
     parts = {ref: {'name': part.name, 'stl_path': part.stl_path, 'footprints': part.footprints}
              for ref, part in job.parts.items()}
     names = write_plate_3mf(model, job.copies, parts)
-    result = slice_plate(model, job.profiles, scratch / SLICE_DIR)
+    process = write_process_with_overrides(job.profiles.process, job.overrides, scratch / PROCESS_FILE)
+    profiles = SliceProfiles(job.profiles.printer, job.profiles.filament, process)
+    result = slice_plate(model, profiles, scratch / SLICE_DIR)
     check_plate_names(names, plate_object_names(result.output_path))
     return result

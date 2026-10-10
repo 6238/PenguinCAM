@@ -487,23 +487,34 @@ class TeamConfig:
         """FRC team name"""
         return self._get('team', 'name')
 
+    def printing_section(self) -> Optional[Dict[str, Any]]:
+        """The raw `printing:` dict, or None.
+
+        Looked up like `team`: a v2 file keeps `printing` at the root, while a v1 file's
+        top-level keys were moved under the 'default' machine by _normalize_to_v2, so both
+        places are checked. Read by `pairing_code` and by print/print_config.py.
+
+        Not routed through _get(): that helper's root-level special case is hard-coded to
+        the key 'team', and there are no Team 6238 defaults for printing -- the absence of
+        a pairing code means "no printer paired", which must never fall back to somebody's
+        code.
+        """
+        for source in (self._data, self.get_machine_config()):
+            printing = source.get('printing') if isinstance(source, dict) else None
+            if isinstance(printing, dict):
+                return printing
+        return None
+
     @property
     def pairing_code(self) -> Optional[str]:
         """The team's printer pairing code, normalised, or None.
 
-        Looked up like `team`: a v2 file keeps `printing` at the root, while a v1 file's
-        top-level keys were moved under the 'default' machine by _normalize_to_v2, so both
-        places are checked. Normalised on read as well as in config_validation, so a config
-        that reached us without validation (an old session cookie) still works.
-
-        Not routed through _get(): that helper's root-level special case is hard-coded to
-        the key 'team', and there is no Team 6238 default for a pairing code -- the absence
-        of one means "no printer paired", which must never fall back to somebody's code.
+        Normalised on read as well as in config_validation, so a config that reached us
+        without validation (an old session cookie) still works.
         """
-        for source in (self._data, self.get_machine_config()):
-            printing = source.get('printing') if isinstance(source, dict) else None
-            if isinstance(printing, dict) and printing.get('pairing_code') is not None:
-                return _normalize_pairing_code(printing['pairing_code'])
+        printing = self.printing_section()
+        if printing is not None and printing.get('pairing_code') is not None:
+            return _normalize_pairing_code(printing['pairing_code'])
         return None
 
     # ========================================================================

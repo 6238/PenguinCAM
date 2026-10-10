@@ -33,8 +33,8 @@ from .part_store import REF_RE, PartLimit, PartStore
 from .plate import ORIENTATIONS, check_placement, plate_from_printer
 from .plate_3mf import delivered_file_name
 from .plate_job import JobPart, PlateJob, run_plate_job
-from .slicer import (DEFAULT_PROFILES, SAMPLE_STL, SliceError, default_printer_profile, part_info,
-                     slice_stl)
+from .print_config import OVERRIDE_CHOICES, OverrideError, choices_for_request, validate_overrides
+from .slicer import SAMPLE_STL, SliceError, part_info, slice_stl
 
 DELIVERED_NAME = "sample_part.gcode.3mf"
 BUSY_MESSAGE = "The slicer is busy, try again in a minute."
@@ -59,6 +59,7 @@ PART_STORE_FOLDER = "print_parts"
 # The plate job's sentences (spec 4.6). The limits' sentences come from print/limits.py.
 REFRESH_PARTS_MESSAGE = "A part is no longer on the server; press Refresh from Onshape on the Parts step."
 BAD_JOB_MESSAGE = "This request could not be read."
+CHOOSE_PROFILES_MESSAGE = "Choose a filament and print settings from the list."
 
 # The blueprint carries its own templates and static files, so everything the print
 # path needs lives under print/. static_url_path must not be the default "/static":
@@ -251,12 +252,11 @@ def _valid_copy(copy):
             and _is_number(copy.get("x")) and _is_number(copy.get("y")))
 
 
-def _profile_name(path):
-    try:
-        with open(path, encoding="utf-8") as fh:
-            return json.load(fh).get("name")
-    except (OSError, ValueError, AttributeError):
-        return None
+def _print_choices(onshape):
+    """The request's PrintChoices: the team's for the Onshape flow, the defaults for the
+    upload mode (R8) and for a session on the default config."""
+    session_data = None if session.get("using_default_config") else session.get("team_config_data")
+    return choices_for_request(session_data, force_defaults=not onshape)
 
 
 def _plate_job(body, pid, team):
@@ -278,7 +278,19 @@ def _plate_job(body, pid, team):
     triangles = sum(entries[c["ref"]].triangles for c in copies)
     if triangles > limits.MAX_JOB_TRIANGLES:
         return None, (jsonify({"error": limits.JOB_TRIANGLES_MESSAGE}), 400)
-    plate = plate_from_printer(default_printer_profile())
+    choices = _print_choices(onshape=True)
+    if choices.error:
+        return None, (jsonify({"error": choices.error}), 400)
+    filament = body.get("filament", choices.filaments[0])
+    process = body.get("process", choices.processes[0])
+    try:
+        profiles = choices.slice_profiles(filament, process)
+        overrides = validate_overrides(body.get("overrides"), choices.allow_overrides)
+    except ValueError:
+        return None, (jsonify({"error": CHOOSE_PROFILES_MESSAGE}), 400)
+    except OverrideError as exc:
+        return None, (jsonify({"error": exc.message}), 400)
+    plate = plate_from_printer(choices.printer_profile())
     parts = {ref: {"name": e.name, "footprints": e.footprints} for ref, e in entries.items()}
     problems = check_placement(copies, parts, plate)
     if problems:
@@ -287,12 +299,10 @@ def _plate_job(body, pid, team):
     plate_area = (plate["max"][0] - plate["min"][0]) * (plate["max"][1] - plate["min"][1])
     print_event("layout", pid=pid, team=team, copies=len(copies), parts=len(entries),
                 fill=round(100 * hull_area / plate_area), free_angles=sum(1 for c in copies if c["angle"] % 90))
-    profiles = DEFAULT_PROFILES      # the body's filament, process and overrides are not read yet
     job = PlateJob(copies=copies,
                    parts={ref: JobPart(name=e.name, stl_path=Path(e.stl_path), footprints=e.footprints,
                                        triangles=e.triangles) for ref, e in entries.items()},
-                   profiles=profiles, overrides={}, filament=_profile_name(profiles.filament),
-                   process=_profile_name(profiles.process),
+                   profiles=profiles, overrides=overrides, filament=filament, process=process,
                    delivered_name=delivered_file_name([e.name for e in entries.values()], body.get("local_time")),
                    pid=pid, team=team)
     return job, None
@@ -353,9 +363,10 @@ def print_job_events(job_id):
 
 
 def print_page_event():
-    """The print page's first call: one `page` event describing how it was opened. Answers
-    the plate (the default printer's, with the margin and spacing) and the limits the
-    browser checks. 10 per minute, added in init_print_routes."""
+    """The print page's first call: one `page` event describing how it was opened, and one
+    `config` event with the printing configuration it resolved. Answers that configuration,
+    the override choices, the plate (the configured printer's, with the margin and spacing)
+    and the limits the browser checks. 10 per minute, added in init_print_routes."""
     gate = ctx.require_session() or _page_id_gate()
     if gate:
         return gate
@@ -373,8 +384,12 @@ def print_page_event():
     print_event("page", pid=_page_id(), team=team, **fields,
                 configured=isinstance(team_config.get("printing"), dict),
                 config="default" if default_config or not team_config else "team")
-    return jsonify({"plate": plate_from_printer(default_printer_profile()),
-                    "limits": limits.limits_for_browser()}), 200
+    choices = _print_choices(onshape=body.get("source") == "onshape")
+    print_event("config", pid=_page_id(), team=team, printer=choices.printer, filaments=choices.filaments,
+                processes=choices.processes, skipped=choices.skipped, error=choices.error)
+    return jsonify({"plate": plate_from_printer(choices.printer_profile()),
+                    "limits": limits.limits_for_browser(),
+                    "config": choices.to_json(), "overrides": OVERRIDE_CHOICES}), 200
 
 
 def print_client_event():

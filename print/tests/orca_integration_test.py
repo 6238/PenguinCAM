@@ -204,6 +204,46 @@ class PlateSliceTest(unittest.TestCase):
         self.assertEqual(ctx.exception.message, "Parts are too close together; spread them out.")
 
 
+class TeamProfileSliceTest(unittest.TestCase):
+    """A team's catalog profiles, not the defaults, with all four overrides, through run_plate_job."""
+
+    def test_profile_with_overrides_slices(self):
+        from print.plate_job import JobPart, PlateJob, run_plate_job
+        from print.print_config import Catalog, resolve_print_config, validate_overrides
+        from print.tests.test_plate_3mf import make_part
+        tmp = Path(tempfile.mkdtemp(prefix="orca-team-profile-")).resolve()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        (tmp / "stls").mkdir()
+        printing = {"printer": "Bambu Lab H2S 0.4 nozzle",
+                    "filaments": ["Bambu PLA Basic @BBL H2S", "Bambu PETG HF @BBL H2S"],
+                    "processes": ["0.20mm Standard @BBL H2S", "0.16mm High Quality @BBL H2S"]}
+        choices = resolve_print_config(printing, Catalog.load())
+        self.assertIsNone(choices.error)
+        overrides = validate_overrides({"infill": 40, "walls": 4, "supports": "on", "brim": "off"}, True)
+        part = make_part(tmp / "stls", "Box", (20, 20, 10))
+        job = PlateJob(copies=[{"ref": "a", "orientation": "+z", "angle": 0, "x": 100.0, "y": 100.0}],
+                       parts={"a": JobPart(part["name"], part["stl_path"], part["footprints"], 12)},
+                       profiles=choices.slice_profiles("Bambu PETG HF @BBL H2S", "0.16mm High Quality @BBL H2S"),
+                       overrides=overrides, filament="Bambu PETG HF @BBL H2S",
+                       process="0.16mm High Quality @BBL H2S", delivered_name="Box-20261009-1432.gcode.3mf",
+                       pid=None, team=None)
+        scratch = tmp / "scratch"
+        scratch.mkdir()
+        result = run_plate_job(job, scratch)
+        with zipfile.ZipFile(result.output_path) as zf:
+            gcode = zf.read("Metadata/plate_1.gcode").decode("utf-8", "replace")
+        settings = dict(line[2:].split(" = ", 1) for line in gcode.splitlines()
+                        if line.startswith("; ") and " = " in line)
+        self.assertEqual(settings["sparse_infill_density"], "40%")
+        self.assertEqual(settings["wall_loops"], "4")
+        self.assertEqual(settings["enable_support"], "1")
+        self.assertEqual(settings["support_type"], "tree(auto)")
+        self.assertEqual(settings["brim_type"], "no_brim")
+        self.assertEqual(settings["nozzle_diameter"], "0.4")
+        self.assertEqual(settings["layer_height"], "0.16")
+        self.assertEqual(settings["filament_settings_id"], '"Bambu PETG HF @BBL H2S"')
+
+
 class PlateJobTest(unittest.TestCase):
     def test_plate_job_end_to_end(self):
         """Two synthetic parts in a temporary part store, through run_plate_job and real Orca."""

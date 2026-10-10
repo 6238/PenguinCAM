@@ -1,4 +1,5 @@
-"""The 3D printing path: slicer wrapper, job pool, Flask blueprints, assets, and the
+"""The 3D printing path: parts from Onshape, the plate, the profile catalog and the team's
+printing configuration, slicer wrapper, job pool, Flask blueprints, assets, and the
 printer relay with the Raspberry Pi daemon behind it.
 
 Self-contained by design, so another fabrication technology can sit beside it in

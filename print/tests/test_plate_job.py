@@ -1,4 +1,5 @@
 """run_plate_job (print/plate_job.py) with slice_plate replaced: no Orca run."""
+import json
 import shutil
 import sys
 import tempfile
@@ -60,7 +61,10 @@ class RunPlateJobTest(unittest.TestCase):
         model, profiles, output_dir, _args, _kwargs = calls[0]
         self.assertTrue(model.is_file())
         self.assertEqual(model.parent, self.scratch)
-        self.assertEqual(profiles, DEFAULT_PROFILES)
+        # The process file is the job's own, written in scratch with the overrides merged.
+        self.assertEqual((profiles.printer, profiles.filament), (DEFAULT_PROFILES.printer, DEFAULT_PROFILES.filament))
+        self.assertEqual(profiles.process, self.scratch / 'process.json')
+        self.assertEqual(json.loads(profiles.process.read_text()), json.loads(DEFAULT_PROFILES.process.read_text()))
         self.assertTrue(str(output_dir).startswith(str(self.scratch)))
 
     def test_missing_name_fails_left_off(self):
