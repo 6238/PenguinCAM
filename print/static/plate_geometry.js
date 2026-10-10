@@ -179,7 +179,9 @@
   // left to right from min + margin, each box `spacing` after the last, each row `spacing`
   // above the tallest box of the row before. Boxes `spacing` apart keep hulls at least that
   // far apart. Orientation and angle are kept. A copy that fits nowhere is unplaced, set
-  // beside the plate at x = max.x + spacing + w/2 and stacked in y.
+  // beside the plate at x = max.x + spacing + w/2 and stacked in y. Deliberately next-fit
+  // (R5): a copy that fits nowhere leaves the shelf as it was, so a later, smaller copy may
+  // still fill the current row; no row is ever revisited.
   function arrangeCopies(copies, parts, plate) {
     var spacing = plate.spacing, margin = plate.margin;
     var boxes = copies.map(function (c, i) {

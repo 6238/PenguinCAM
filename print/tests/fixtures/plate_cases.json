@@ -195,6 +195,33 @@
      ]
     }
    }
+  },
+  "r-wedge": {
+   "name": "Wedge",
+   "footprints": {
+    "+z": {
+     "hull": [
+      [
+       -15.0,
+       -10.0
+      ],
+      [
+       15.0,
+       -10.0
+      ],
+      [
+       -15.0,
+       10.0
+      ]
+     ],
+     "height": 12.0,
+     "offset": [
+      0.0,
+      0.0,
+      0.0
+     ]
+    }
+   }
   }
  },
  "cases": [
@@ -542,6 +569,42 @@
      "message": "Box #1 is not fully on the plate."
     }
    ]
+  },
+  {
+   "name": "wedge_turned_30_fits",
+   "copies": [
+    {
+     "ref": "r-wedge",
+     "orientation": "+z",
+     "angle": 30,
+     "x": 100.0,
+     "y": 314.839746
+    }
+   ],
+   "problems": [],
+   "note": "1.000000 mm inside the top margin; turned clockwise it would cross by 14.000000 mm"
+  },
+  {
+   "name": "wedge_turned_330_off_plate",
+   "copies": [
+    {
+     "ref": "r-wedge",
+     "orientation": "+z",
+     "angle": 330,
+     "x": 100.0,
+     "y": 314.839746
+    }
+   ],
+   "problems": [
+    {
+     "rule": "off_plate",
+     "copies": [
+      0
+     ],
+     "message": "Wedge #1 is not fully on the plate."
+    }
+   ],
+   "note": "crosses the top margin by 14.000000 mm"
   }
  ],
  "matrices": [

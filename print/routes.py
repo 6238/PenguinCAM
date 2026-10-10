@@ -29,7 +29,7 @@ from .onshape_parts import (ELEMENT_CACHE, LIMIT_REACHED_MESSAGE, NO_CONTEXT_MES
                             rest_address)
 from .part_store import PartLimit, PartStore
 from .plate import plate_from_printer
-from .slicer import SAMPLE_STL, SliceError, _load_profile, part_info, slice_stl
+from .slicer import SAMPLE_STL, SliceError, default_printer_profile, part_info, slice_stl
 
 DELIVERED_NAME = "sample_part.gcode.3mf"
 BUSY_MESSAGE = "The slicer is busy, try again in a minute."
@@ -281,7 +281,7 @@ def print_page_event():
     print_event("page", pid=_page_id(), team=team, **fields,
                 configured=isinstance(team_config.get("printing"), dict),
                 config="default" if default_config or not team_config else "team")
-    return jsonify({"plate": plate_from_printer(_load_profile("printer.json")),
+    return jsonify({"plate": plate_from_printer(default_printer_profile()),
                     "limits": limits.limits_for_browser()}), 200
 
 

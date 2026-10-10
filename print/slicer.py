@@ -234,6 +234,11 @@ def _load_profile(name):
         return json.load(fh)
 
 
+def default_printer_profile():
+    """The printer profile every slice uses today (print/profiles/printer.json)."""
+    return _load_profile("printer.json")
+
+
 def _bed_size(printer):
     corners = []
     for corner in printer.get("printable_area", []):

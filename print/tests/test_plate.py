@@ -9,7 +9,7 @@ REPO = Path(__file__).resolve().parents[2]        # the repository root
 sys.path.insert(0, str(REPO))
 
 from print import plate  # noqa: E402
-from print.slicer import _load_profile  # noqa: E402
+from print.slicer import default_printer_profile  # noqa: E402
 
 CASES = json.loads((REPO / 'print' / 'tests' / 'fixtures' / 'plate_cases.json').read_text())
 
@@ -65,7 +65,7 @@ class PlateTest(unittest.TestCase):
             self.assertAlmostEqual(value, want, delta=1e-9)
 
     def test_plate_from_default_printer(self):
-        result = plate.plate_from_printer(_load_profile('printer.json'))
+        result = plate.plate_from_printer(default_printer_profile())
         self.assertEqual(result['min'], [0, 0])
         self.assertEqual(result['max'], [340, 320])
         self.assertEqual(result['height'], 340)

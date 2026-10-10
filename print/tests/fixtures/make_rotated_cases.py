@@ -3,7 +3,8 @@
     uv run python print/tests/fixtures/make_rotated_cases.py
 
 The axis-aligned cases in plate_cases.json are written by hand and stay exact. The cases
-with a copy turned by 45 degrees, and one matrix at 30 degrees, are computed here with
+with a copy turned by 45 degrees, the wedge cases that pin the rotation direction (an
+asymmetric footprint at 30 and 330 degrees), and one matrix at 30 degrees, are computed here with
 shapely and numpy, independently of print/plate.py, and written back into the file. Each
 rotated case keeps at least 0.1 mm between its distance and the spacing or margin, so the
 1e-6 rounding cannot flip a verdict; the script refuses to write one that does not.
@@ -19,8 +20,12 @@ CASES = Path(__file__).resolve().parent / 'plate_cases.json'
 CLEARANCE_MM = 0.1
 
 
-def placed_hull(footprint, angle, x, y):
-    a = math.radians(angle)
+WEDGE = {'name': 'Wedge', 'footprints': {'+z': {'hull': [[-15.0, -10.0], [15.0, -10.0], [-15.0, 10.0]],
+                                                'height': 12.0, 'offset': [0.0, 0.0, 0.0]}}}
+
+
+def placed_hull(footprint, angle, x, y, clockwise=False):
+    a = math.radians(-angle if clockwise else angle)
     c, s = math.cos(a), math.sin(a)
     return [(c * px - s * py + x, s * px + c * py + y) for px, py in footprint['hull']]
 
@@ -66,9 +71,34 @@ def main():
         'problems': [],
         'note': f'hull distance {distance:.6f} mm, bounding boxes {box_gap:.6f} mm apart'}
 
-    for case in data['cases']:
-        if case['name'] in cases:
-            case.update(cases[case['name']])
+    # The rotation direction: a right triangle turned by 30 degrees counterclockwise sits
+    # 1 mm inside the top margin; turned clockwise (the wrong direction) it would cross it.
+    # Turned by 330 degrees at the same place, it crosses. A twin that turns the wrong way
+    # fails both cases.
+    parts['r-wedge'] = WEDGE
+    wedge = WEDGE['footprints']['+z']
+    top = plate['max'][1] - plate['margin']
+    wx = 100.0
+    wy = round(top - 1.0 - max(p[1] for p in placed_hull(wedge, 30, 0, 0)), 6)
+    inside = top - max(p[1] for p in placed_hull(wedge, 30, wx, wy))
+    wrong_way = max(p[1] for p in placed_hull(wedge, 30, wx, wy, clockwise=True)) - top
+    assert inside >= CLEARANCE_MM and wrong_way >= CLEARANCE_MM, (inside, wrong_way)
+    assert abs(off_plate_by(placed_hull(wedge, 330, wx, wy), plate) - wrong_way) < 1e-9
+    cases['wedge_turned_30_fits'] = {
+        'copies': [{'ref': 'r-wedge', 'orientation': '+z', 'angle': 30, 'x': wx, 'y': wy}],
+        'problems': [],
+        'note': f'{inside:.6f} mm inside the top margin; turned clockwise it would cross by {wrong_way:.6f} mm'}
+    cases['wedge_turned_330_off_plate'] = {
+        'copies': [{'ref': 'r-wedge', 'orientation': '+z', 'angle': 330, 'x': wx, 'y': wy}],
+        'problems': [{'rule': 'off_plate', 'copies': [0], 'message': 'Wedge #1 is not fully on the plate.'}],
+        'note': f'crosses the top margin by {wrong_way:.6f} mm'}
+
+    names = [case['name'] for case in data['cases']]
+    for name, values in cases.items():
+        if name in names:
+            data['cases'][names.index(name)].update(values)
+        else:
+            data['cases'].append(dict({'name': name}, **values))
 
     # One matrix at 30 degrees: M = Rz(30) R_o, t = (x, y, 0) - Rz(30) offset.
     a30 = math.radians(30)
@@ -81,7 +111,7 @@ def main():
              'matrix': matrix}
     data['matrices'] = [m for m in data['matrices'] if m.get('angle') != 30] + [entry]
     CASES.write_text(json.dumps(data, indent=1) + '\n')
-    print(f'wrote {CASES.name}: {", ".join(cases)} and a 30 degree matrix')
+    print(f'wrote {CASES.name}: {", ".join(cases)}, the wedge part and a 30 degree matrix')
 
 
 if __name__ == '__main__':
