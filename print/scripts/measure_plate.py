@@ -5,21 +5,21 @@ Flask-free: standard library and numpy. One plate per invocation, because the pe
 comes from getrusage(RUSAGE_CHILDREN), a maximum over every child this process has
 waited for.
 
-    uv run python print/scripts/measure_plate.py --plate thirty
+    uv run python print/scripts/measure_plate.py --plate max-copies
     uv run python print/scripts/measure_plate.py --plate max-part
     uv run python print/scripts/measure_plate.py --plate max-part --part-triangles 125000
-    uv run python print/scripts/measure_plate.py --plate thirty --triangles 275000
+    uv run python print/scripts/measure_plate.py --plate max-copies --triangles 275000
 
 The part is a hub: a 40 mm x 20 mm ring with a 12 mm bore and 3 mm fillets on all
 four edges, revolved, so the mesh is near-square quads with no fans or slivers, the
-way a finely tessellated Onshape part looks. `thirty` is 30 copies of a
-10,000-triangle hub (MAX_COPIES at MAX_JOB_TRIANGLES); `max-part` is
+way a finely tessellated Onshape part looks. `max-copies` is MAX_COPIES
+copies of one hub sharing MAX_JOB_TRIANGLES; `max-part` is
 ceil(MAX_JOB_TRIANGLES / P) copies of a P-triangle hub, P = MAX_PART_TRIANGLES
 unless --part-triangles says otherwise.
 
 Prints one line, for example
 
-    plate=thirty copies=30 triangles=300000 seconds=41.2 peak_kb=700000 exit=0 names=ok verdict=ok
+    plate=max-copies copies=25 triangles=300000 seconds=41.2 peak_kb=700000 exit=0 names=ok verdict=ok
 
 and exits 1 when the verdict is not ok. The verdict is `over` when the slice passes
 MEASURE_MAX_PEAK_KB or MEASURE_MAX_SECONDS (print/limits.py), `failed` when Orca
@@ -55,7 +55,7 @@ HUB_FILLET_MM = 3.0
 PITCH_MM = 50.0            # grid pitch: a 10 mm gap between 40 mm hubs
 GRID_ORIGIN_MM = 40.0
 GRID_COLUMNS = 6           # 6 x 5 covers MAX_COPIES on the 340 x 320 mm plate
-PLATES = ("thirty", "max-part")
+PLATES = ("max-copies", "max-part")
 
 CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -140,7 +140,7 @@ def grid_centres(count):
 
 def plate_parts(plate, triangles=None, part_triangles=None):
     """(copies, triangles per copy) for a plate."""
-    if plate == "thirty":
+    if plate == "max-copies":
         return MAX_COPIES, (triangles or MAX_JOB_TRIANGLES) // MAX_COPIES
     part = part_triangles or MAX_PART_TRIANGLES
     return math.ceil(MAX_JOB_TRIANGLES / part), part
@@ -235,11 +235,11 @@ def measure(plate, triangles=None, part_triangles=None):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--plate", choices=PLATES, required=True)
-    parser.add_argument("--triangles", type=int, help="thirty: about N triangles in all")
+    parser.add_argument("--triangles", type=int, help="max-copies: about N triangles in all")
     parser.add_argument("--part-triangles", type=int, help="max-part: P triangles per part")
     args = parser.parse_args(argv)
-    if args.triangles and args.plate != "thirty":
-        parser.error("--triangles applies to the thirty plate only")
+    if args.triangles and args.plate != "max-copies":
+        parser.error("--triangles applies to the max-copies plate only")
     if args.part_triangles and args.plate != "max-part":
         parser.error("--part-triangles applies to the max-part plate only")
     line, verdict = measure(args.plate, args.triangles, args.part_triangles)

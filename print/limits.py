@@ -14,8 +14,8 @@ MAX_PARTS_PER_PAGE = 20
 MAX_PAGE_BYTES = 50_000_000
 
 # One plate, one job.
-MAX_COPIES = 30
-MAX_QUANTITY = 30
+MAX_COPIES = 25                                   # 30 peaked 1.5% under the 900 MB rule; 25 leaves headroom
+MAX_QUANTITY = MAX_COPIES
 MAX_JOB_TRIANGLES = 300_000                       # summed over every copy on the plate
 PLATE_SLICE_TIMEOUT_S = 240                       # the sample part keeps slicer.DEFAULT_TIMEOUT_S
 

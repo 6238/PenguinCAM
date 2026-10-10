@@ -14,7 +14,8 @@ facets, as a finely tessellated exported part is; each plate ran twice and the
 worse peak and the worse time of the two runs are given:
 - 30 copies of a 9,882-triangle hub (296,460 triangles): 886 MB peak
   (907,524 KB), 16.2 s. Copies, not triangles, drive this one: it sits just
-  inside the 900 MB stop rule (MEASURE_MAX_PEAK_KB).
+  inside the 900 MB stop rule (MEASURE_MAX_PEAK_KB), 1.5% under it, so
+  MAX_COPIES was lowered to 25 for memory headroom.
 - 2 copies of a 149,760-triangle hub (299,520 triangles): 214 MB peak
   (219,136 KB), 3.2 s.
 - 3 copies of 124,830 (374,490 triangles): 233 MB (238,280 KB), 4.2 s.

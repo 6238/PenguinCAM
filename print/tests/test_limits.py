@@ -21,6 +21,10 @@ class LimitsTest(unittest.TestCase):
         self.assertEqual(limits.MAX_PART_BYTES, 7_500_084)
         self.assertEqual(limits.MAX_PART_BYTES, 84 + 50 * limits.MAX_PART_TRIANGLES)
 
+    def test_copies_cap_and_quantity(self):
+        self.assertEqual(limits.MAX_COPIES, 25)
+        self.assertEqual(limits.MAX_QUANTITY, limits.MAX_COPIES)
+
     def test_one_part_always_fits_a_job(self):
         self.assertGreaterEqual(limits.MAX_JOB_TRIANGLES, limits.MAX_PART_TRIANGLES)
 
@@ -49,7 +53,7 @@ class MeasurePlateTest(unittest.TestCase):
         self.assertTrue(all(n == 1 and edges.get((y, x)) == 1 for (x, y), n in edges.items()))
 
     def test_plates_follow_the_limits(self):
-        self.assertEqual(plate_parts("thirty"), (limits.MAX_COPIES, limits.MAX_JOB_TRIANGLES // limits.MAX_COPIES))
+        self.assertEqual(plate_parts("max-copies"), (limits.MAX_COPIES, limits.MAX_JOB_TRIANGLES // limits.MAX_COPIES))
         copies, part = plate_parts("max-part")
         self.assertEqual(part, limits.MAX_PART_TRIANGLES)
         self.assertEqual(copies, math.ceil(limits.MAX_JOB_TRIANGLES / limits.MAX_PART_TRIANGLES))
