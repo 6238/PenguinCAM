@@ -148,7 +148,7 @@ Designed to feel like 3D printer slicers or laser cutter software. Get the desig
 **For teams using the hosted service:**
 
 Create a `PenguinCAM-config.yaml` file to customize machine settings for your CNC:
-- Download template: [`PenguinCAM-config-template.yaml`](https://github.com/6238/PenguinCAM/blob/main/PenguinCAM-config-template.yaml)
+- Download template: [`PenguinCAM-config-template.yaml`](static/docs/PenguinCAM-config-template.yaml)
 - Edit for your team (machine park position, controller type, feeds/speeds, etc.)
 - Save as `PenguinCAM-config.yaml` and drag into your Onshape documents folder
 - Done! Your settings load automatically when team members use PenguinCAM
@@ -307,7 +307,6 @@ penguincam/
 ├── ROADMAP.md                         # Future plans
 ├── requirements.txt                   # Python dependencies
 ├── Procfile                           # Railway deployment
-├── PenguinCAM-config-template.yaml    # Team configuration template
 │
 ├── docs/                              # Documentation
 │   ├── DEPLOYMENT_GUIDE.md            # Setup & deployment
@@ -318,6 +317,8 @@ penguincam/
 │   └── Z_COORDINATE_SYSTEM.md         # Zeroing guide
 │
 ├── static/                            # Static assets
+│   ├── docs/
+│   │   └── PenguinCAM-config-template.yaml # Team configuration template
 │   └── popcornlogo.png                # Team logo
 │
 ├── templates/                         # HTML templates
@@ -423,7 +424,7 @@ PenguinCAM is designed to support multiple teams using the same hosted instance.
 **Setup steps (5 minutes):**
 
 1. **Download the configuration template:**
-   - Get [`PenguinCAM-config-template.yaml`](https://github.com/6238/PenguinCAM/blob/main/PenguinCAM-config-template.yaml) from this repository
+   - Get [`PenguinCAM-config-template.yaml`](static/docs/PenguinCAM-config-template.yaml) from this repository
 
 2. **Edit for your team:**
    - Update team number and name
