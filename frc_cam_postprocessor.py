@@ -3921,7 +3921,7 @@ class FRCPostProcessor:
 
         Shared logic for both perimeter and pocket contour operations.
         Supports multi-pass cutting for thick materials based on max_slotting_depth.
-        Tabs are only cut on the final pass.
+        Tabs are preserved on every pass below their top and optionally removed afterward.
 
         Args:
             contour_points: List of (x, y) coordinates defining the contour
@@ -4050,7 +4050,6 @@ class FRCPostProcessor:
             ramp_points = []
             current_ramp_dist = 0
             current_z = ramp_start_height
-            ramp_end_segment = 0  # Track which segment the ramp ends on
 
             for i in range(len(offset_points)):
                 p1 = offset_points[i]
@@ -4065,7 +4064,6 @@ class FRCPostProcessor:
                     z_at_end = ramp_start_height - (current_ramp_dist + seg_len) / ramp_distance * ramp_depth
                     ramp_points.append((p2[0], p2[1], z_at_end))
                     current_ramp_dist += seg_len
-                    ramp_end_segment = i + 1  # Ramp ends at the end of this segment
                 else:
                     # Partial segment - ramp ends partway through
                     remaining_ramp = ramp_distance - current_ramp_dist
@@ -4074,7 +4072,6 @@ class FRCPostProcessor:
                     final_y = p1[1] + t * (p2[1] - p1[1])
                     ramp_points.append((final_x, final_y, pass_cut_depth))
                     current_ramp_dist = ramp_distance
-                    ramp_end_segment = i  # Ramp ends partway through this segment
                     break
 
             # Execute ramp moves using ramp feed rate
@@ -4118,9 +4115,8 @@ class FRCPostProcessor:
 
             gcode.append("")
 
-            # Cut around perimeter with tabs (on final pass only), starting from where ramp ended
-            # Use segment-centric approach: check each segment against tab zones
-            current_distance = current_ramp_dist
+            # Cut one full loop from the actual ramp endpoint. Tab distances stay in
+            # the original contour frame, including after wrapping past the start.
             current_z = pass_cut_depth  # Track current Z height to avoid unnecessary moves
 
             # Store tab positions for the tab removal pass (only on final pass).
@@ -4131,11 +4127,6 @@ class FRCPostProcessor:
             # lives entirely on one segment ends up with two waypoints, same as
             # the old straight-line behavior.
             tab_waypoints_by_idx = {}  # tab_idx -> [(x, y), (x, y), ...]
-
-            # Create perimeter points list starting from where ramp ended
-            # Continue from ramp_end_segment to end, then wrap around to start
-            remaining_points = offset_points[ramp_end_segment:] + offset_points[:ramp_end_segment]
-            remaining_lengths = segment_lengths[ramp_end_segment:] + segment_lengths[:ramp_end_segment]
 
             # Helper function to process a segment with tab checking
             def process_segment(p1, p2, seg_start_dist, seg_length):
@@ -4229,25 +4220,29 @@ class FRCPostProcessor:
                         # Normal cutting move (at cut depth)
                         gcode.append(f"G1 X{end_x:.4f} Y{end_y:.4f} F{self.feed_rate}")
 
-            # Process all segments from where ramp ended to closing
-            for i in range(len(remaining_points) - 1):
-                p1 = remaining_points[i]
-                p2 = remaining_points[i + 1]
-                seg_length = remaining_lengths[i]
-
-                process_segment(p1, p2, current_distance, seg_length)
-                current_distance += seg_length
-
-            # Close the perimeter by returning to where ramp ended
-            if ramp_points:
-                ramp_end_x, ramp_end_y, _ = ramp_points[-1]
-                last_point = remaining_points[-1]
-
-                # Calculate closing segment
-                closing_length = self._distance_2d((ramp_end_x, ramp_end_y), last_point)
-
-                # Process closing segment
-                process_segment(last_point, (ramp_end_x, ramp_end_y), current_distance, closing_length)
+            # Trace the tail of the ramp's segment, every following edge, then the
+            # prefix up to the ramp endpoint. Splitting by contour distance keeps
+            # every corner and avoids both reversing to the segment start and
+            # closing with a chord across the part. The prefix must also be cut at
+            # full depth: the entry ramp left it shallower than this pass's floor.
+            for range_start, range_end in ((current_ramp_dist, contour_length),
+                                           (0.0, current_ramp_dist)):
+                segment_start = 0.0
+                for i, seg_length in enumerate(segment_lengths):
+                    segment_end = segment_start + seg_length
+                    cut_start = max(range_start, segment_start)
+                    cut_end = min(range_end, segment_end)
+                    if cut_end > cut_start and seg_length > 0:
+                        p1 = offset_points[i]
+                        p2 = offset_points[(i + 1) % len(offset_points)]
+                        t_start = (cut_start - segment_start) / seg_length
+                        t_end = (cut_end - segment_start) / seg_length
+                        start_xy = (p1[0] + t_start * (p2[0] - p1[0]),
+                                    p1[1] + t_start * (p2[1] - p1[1]))
+                        end_xy = (p1[0] + t_end * (p2[0] - p1[0]),
+                                  p1[1] + t_end * (p2[1] - p1[1]))
+                        process_segment(start_xy, end_xy, cut_start, cut_end - cut_start)
+                    segment_start = segment_end
 
             # Store tab positions from final pass for removal
             if is_final_pass:
