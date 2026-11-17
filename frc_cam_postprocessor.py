@@ -74,7 +74,7 @@ MATERIAL_PRESETS = {
         'ramp_start_clearance': 0.150,  # Clearance above material to start ramping (inches)
         'stepover_percentage': 0.65,    # Radial stepover as fraction of tool diameter (65% for plywood)
         'helix_radius_multiplier': 0.75, # Helix entry radius as fraction of tool radius
-        'max_slotting_depth': 0.4,      # Maximum depth per pass for perimeter slotting (inches)
+        'max_slotting_depth': 0.4,      # Maximum depth per pass for slotting cuts: perimeter + non-round pockets (inches)
         'corner_min_feed_scale': 0.7,   # Corner-slowdown feed floor (softer/heat-limited material)
         'tab_width': 0.25,        # Tab width (inches)
         'tab_height': 0.15,        # Tab height (inches)
@@ -90,7 +90,7 @@ MATERIAL_PRESETS = {
         'ramp_start_clearance': 0.050,  # Clearance above material to start ramping (inches)
         'stepover_percentage': 0.25,    # Radial stepover as fraction of tool diameter (25% conservative for aluminum)
         'helix_radius_multiplier': 0.5,  # Helix entry radius as fraction of tool radius (conservative for aluminum)
-        'max_slotting_depth': 0.2,      # Maximum depth per pass for perimeter slotting (inches)
+        'max_slotting_depth': 0.2,      # Maximum depth per pass for slotting cuts: perimeter + non-round pockets (inches)
         'corner_min_feed_scale': 0.4,   # Corner-slowdown feed floor (aggressive; aluminum is force-limited)
         'tab_width': 0.25,        # Tab width (inches) - same as plywood
         'tab_height': 0.15,       # Tab height (inches) - same as plywood
@@ -106,7 +106,7 @@ MATERIAL_PRESETS = {
         'ramp_start_clearance': 0.100,  # Clearance above material to start ramping (inches)
         'stepover_percentage': 0.55,    # Radial stepover as fraction of tool diameter (55% moderate for polycarbonate)
         'helix_radius_multiplier': 0.75, # Helix entry radius as fraction of tool radius
-        'max_slotting_depth': 0.25,     # Maximum depth per pass for perimeter slotting (inches)
+        'max_slotting_depth': 0.25,     # Maximum depth per pass for slotting cuts: perimeter + non-round pockets (inches)
         'corner_min_feed_scale': 0.7,   # Corner-slowdown feed floor (softer/heat-limited material)
         'tab_width': 0.25,        # Tab width (inches) - same as plywood
         'tab_height': 0.15,        # Tab height (inches) - same as plywood
@@ -2686,7 +2686,20 @@ class FRCPostProcessor:
             }
         )
 
-    def _calculate_helical_passes(self, toolpath_radius: float, target_angle_deg: float = None, ramp_start_height: float = None) -> Tuple[int, float]:
+    def _step_down_levels(self) -> List[float]:
+        """Z floors for cutting from material_top down to cut_depth in equal steps, none deeper
+        than max_slotting_depth. The last floor is exactly cut_depth (no rounding drift).
+
+        Shared by every toolpath that can cut a full-width slot: the contour (perimeter /
+        pocket-contour) pass loop and contour-parallel pocket clearing. Spiral strategies
+        (round pockets, holes, rings) never slot, so they stay single-level."""
+        total_cut_depth = self.material_top - self.cut_depth
+        num_levels = max(1, int(math.ceil(total_cut_depth / self.max_slotting_depth)))
+        step = total_cut_depth / num_levels
+        return [self.material_top - k * step for k in range(1, num_levels)] + [self.cut_depth]
+
+    def _calculate_helical_passes(self, toolpath_radius: float, target_angle_deg: float = None,
+                                  ramp_start_height: float = None, target_z: float = None) -> Tuple[int, float]:
         """
         Calculate number of helical passes needed for a safe plunge angle.
 
@@ -2694,6 +2707,7 @@ class FRCPostProcessor:
             toolpath_radius: Radius of the circular toolpath
             target_angle_deg: Target plunge angle in degrees (default uses self.ramp_angle)
             ramp_start_height: Z height to start ramping from (default uses material_top + ramp_start_clearance)
+            target_z: Z the helix descends to (default self.cut_depth; a step-down level otherwise)
 
         Returns:
             Tuple of (number_of_passes, depth_per_pass)
@@ -2706,8 +2720,11 @@ class FRCPostProcessor:
         if ramp_start_height is None:
             ramp_start_height = self.material_top + self.ramp_start_clearance
 
-        # Total depth to cut (from ramp start height down to cut depth)
-        total_depth = ramp_start_height - self.cut_depth
+        if target_z is None:
+            target_z = self.cut_depth
+
+        # Total depth to cut (from ramp start height down to the target floor)
+        total_depth = ramp_start_height - target_z
 
         # Circumference of one revolution
         circumference = 2 * math.pi * toolpath_radius
@@ -3283,54 +3300,34 @@ class FRCPostProcessor:
         entry_x = entry_point.x
         entry_y = entry_point.y
 
-        # Calculate helical entry parameters
         helix_radius = self.tool_radius * self.helix_radius_multiplier  # Helix radius from material preset
-        ramp_start_height = self.material_top + self.ramp_start_clearance
-        num_helical_passes, depth_per_pass = self._calculate_helical_passes(helix_radius, ramp_start_height=ramp_start_height)
-
-        gcode.append(f"(Pocket with helical entry at center: {num_helical_passes} passes at {self.ramp_angle} deg)")
-
-        # Position at pocket center
-        gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.traverse_rate}  ; Position at pocket center")
-        gcode.extend(self._approach_ramp_start(ramp_start_height))
-
-        # Helical entry at center
-        start_x = entry_x + helix_radius
-        start_y = entry_y
-        gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.traverse_rate}  ; Move to helix start (above material)")
-
-        for pass_num in range(num_helical_passes):
-            target_z = ramp_start_height - (pass_num + 1) * depth_per_pass
-            gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-helix_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_helical_passes} CCW for climb milling")
-
-        # Return to center after helix
-        gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.feed_rate}  ; Return to pocket center")
-
-        # Calculate stepover for pocket clearing
-        stepover = self.tool_diameter * self.stepover_percentage
 
         # A genuinely round pocket clears best with an Archimedean spiral (continuous
         # engagement, no ring-closure reversals or radial link cuts). Only take this path
-        # when the pocket really is circular; everything else falls through to the
-        # general contour-parallel strategy, which handles arbitrary (e.g. slot-shaped)
-        # pockets that a circular spiral would leave uncleared in the corners.
-        circle = self._detect_solid_circle(pocket_poly)
-        if circle is not None:
+        # when the pocket really is circular; everything else uses the general
+        # contour-parallel strategy, which handles arbitrary (e.g. slot-shaped) pockets that a
+        # circular spiral would leave uncleared in the corners.
+        spiral_radius = None
+        if self._detect_solid_circle(pocket_poly) is not None:
             final_radius = math.sqrt(offset_poly.area / math.pi)  # tool-center travel radius
             if final_radius > 0.001:
-                gcode.extend(self._generate_circular_pocket_spiral(entry_x, entry_y, final_radius))
-                gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
-                return gcode
+                spiral_radius = final_radius
 
-        # Always use contour-parallel clearing for reliable material removal
-        # (a circular spiral would leave material in slot-shaped pockets)
-        gcode.append(f"(Pocket clearing - using contour-parallel stepover passes)")
+        if spiral_radius is not None:
+            # The spiral never slots (peak engagement ~60% of tool diameter), so it clears
+            # the whole depth in one level - a step-down would only add cycle time.
+            ramp_start_height = self.material_top + self.ramp_start_clearance
+            gcode.extend(self._pocket_level_entry(entry_x, entry_y, helix_radius, ramp_start_height,
+                                                  self.cut_depth, "Pocket with helical entry at center"))
+            gcode.extend(self._generate_circular_pocket_spiral(entry_x, entry_y, spiral_radius))
+            gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
+            return gcode
 
-        # Depth the helix reached; every contour/perimeter pass cuts at this Z, and a ramped
-        # re-entry (in _link_and_cut_ring) must ramp back down to it.
-        final_cut_z = ramp_start_height - num_helical_passes * depth_per_pass
-
-        # Generate inward offsets from perimeter to center
+        # Contour-parallel clearing. Inner rings collapse to slivers in narrow or concave
+        # regions, so the next ring out runs through uncut stock at full tool width - genuine
+        # slotting. Clear in Z levels no deeper than max_slotting_depth, like the perimeter.
+        # Inward offsets from perimeter to center are depth-independent: compute them once.
+        stepover = self.tool_diameter * self.stepover_percentage
         contours = []
         test_offset = -self.tool_radius   # Start from the tool-compensated perimeter
         while True:
@@ -3340,51 +3337,122 @@ class FRCPostProcessor:
                 break
             contours.append(test_poly)   # may be a MultiPolygon for complex (e.g. concave) shapes
 
-        gcode.append(f"(Contour-parallel clearing: {len(contours)} offset passes)")
-
-        # Cut contours center-outward, then the exact perimeter. Every ring is linked with a
-        # GUARDED move: a straight feed when the link stays inside the pocket (offset_poly),
-        # otherwise a retract + ramped re-entry along the ring - so a concave (L/U) pocket never
-        # slots straight across the notch through keep-material. Rings are also reordered to
-        # start nearest the tool, keeping links to a short one-stepover hop. The tool sits at the
-        # pocket entry (at depth) after the helix.
-        link_tol = 1e-4
-        cur_pos = (entry_x, entry_y)
-        pass_number = 0
+        rings = []   # center-outward, each CCW (climb milling for an interior pocket)
         for contour_geom in reversed(contours):
-            polygons_to_cut = []
-            if hasattr(contour_geom, 'exterior'):
-                polygons_to_cut.append(contour_geom)
-            elif hasattr(contour_geom, 'geoms'):
-                polygons_to_cut.extend(contour_geom.geoms)   # disconnected regions of a concave pocket
-            for poly in polygons_to_cut:
+            polys = list(contour_geom.geoms) if hasattr(contour_geom, 'geoms') else [contour_geom]
+            for poly in polys:   # disconnected regions of a concave pocket
                 if not hasattr(poly, 'exterior'):
                     continue
-                poly = orient(poly, 1.0)   # exterior CCW = climb milling for interior pockets
-                contour_points = list(poly.exterior.coords)[:-1]
-                if len(contour_points) < 3:
-                    continue
-                pass_number += 1
+                contour_points = list(orient(poly, 1.0).exterior.coords)[:-1]
+                if len(contour_points) >= 3:
+                    rings.append(contour_points)
+
+        levels = self._step_down_levels()
+        if len(levels) > 1:
+            gcode.append(self._step_down_summary("pocket", levels))
+
+        link_tol = 1e-4
+        cur_pos = None
+        prev_floor = self.material_top
+        for level_num, level_z in enumerate(levels, 1):
+            # Ramp from just above this level's starting surface (the previous level's floor),
+            # not the material top - the column above it is already cleared.
+            ramp_start_height = prev_floor + self.ramp_start_clearance
+            if len(levels) > 1:
+                gcode.append("")
+                gcode.append(f"(===== POCKET LEVEL {level_num}/{len(levels)} - clearing to Z{level_z:.4f} =====)")
+            if cur_pos is not None:
+                gcode.extend(self._move_to_next_level(cur_pos, (entry_x, entry_y), offset_poly,
+                                                      ramp_start_height, link_tol))
+            gcode.extend(self._pocket_level_entry(entry_x, entry_y, helix_radius, ramp_start_height,
+                                                  level_z, "Pocket with helical entry at center",
+                                                  reposition=cur_pos is None))
+
+            gcode.append(f"(Pocket clearing - using contour-parallel stepover passes)")
+            gcode.append(f"(Contour-parallel clearing: {len(contours)} offset passes)")
+
+            # Cut rings center-outward, then the exact perimeter. Every ring is linked with a
+            # GUARDED move: a straight feed when the link stays inside the pocket (offset_poly),
+            # otherwise a retract + ramped re-entry along the ring - so a concave (L/U) pocket
+            # never slots straight across the notch through keep-material. Rings are reordered
+            # to start nearest the tool, keeping links to a short one-stepover hop. The tool
+            # sits at the pocket entry (at this level's floor) after the helix.
+            cur_pos = (entry_x, entry_y)
+            for pass_number, ring in enumerate(rings, 1):
                 gcode.append(f"(Contour pass {pass_number})")
-                cur_pos = self._link_and_cut_ring(gcode, contour_points, cur_pos, offset_poly,
-                                                  ramp_start_height, final_cut_z, link_tol)
+                cur_pos = self._link_and_cut_ring(gcode, ring, cur_pos, offset_poly,
+                                                  ramp_start_height, level_z, link_tol)
 
-        # Final pass - cut the exact (tool-compensated) perimeter.
-        gcode.append(f"(Final pass: cut exact perimeter)")
-        cur_pos = self._link_and_cut_ring(gcode, offset_points, cur_pos, offset_poly,
-                                          ramp_start_height, final_cut_z, link_tol)
+            # Final pass - cut the exact (tool-compensated) perimeter.
+            gcode.append(f"(Final pass: cut exact perimeter)")
+            cur_pos = self._link_and_cut_ring(gcode, offset_points, cur_pos, offset_poly,
+                                              ramp_start_height, level_z, link_tol)
 
-        # Spring pass: re-trace the perimeter at zero stepover to relieve tool deflection that
-        # left the pocket slightly undersized. The tool is already on the perimeter.
-        gcode.append(f"(Spring pass - compensate for tool deflection)")
-        spring = self._reorder_closed_ring(offset_points, cur_pos)
-        for point in spring[1:]:
-            gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
-        gcode.append(f"G1 X{spring[0][0]:.4f} Y{spring[0][1]:.4f} F{self.feed_rate}  ; Close spring pass")
+            # Spring pass: re-trace the perimeter at zero stepover to relieve tool deflection
+            # that left this level's wall slightly undersized. The tool is already on it.
+            gcode.append(f"(Spring pass - compensate for tool deflection)")
+            spring = self._reorder_closed_ring(offset_points, cur_pos)
+            for point in spring[1:]:
+                gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
+            gcode.append(f"G1 X{spring[0][0]:.4f} Y{spring[0][1]:.4f} F{self.feed_rate}  ; Close spring pass")
+            cur_pos = spring[0]
+            prev_floor = level_z
 
         # Retract
         gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
 
+        return gcode
+
+    def _step_down_summary(self, feature: str, levels: List[float]) -> str:
+        """One-line comment describing a multi-level step-down (see _step_down_levels)."""
+        per_level = (self.material_top - self.cut_depth) / len(levels)
+        return (f"(Multi-pass {feature}: {len(levels)} passes @ {per_level:.3f}\" each, "
+                f"max {self.max_slotting_depth:.3f}\" per pass)")
+
+    def _pocket_level_entry(self, entry_x: float, entry_y: float, helix_radius: float,
+                            ramp_start_height: float, target_z: float, label: str,
+                            reposition: bool = True) -> List[str]:
+        """Helical entry for one pocket clearing level: descend on a helix around the entry
+        point from ramp_start_height to target_z, then return to the entry point at depth.
+
+        reposition=True (the first level) also moves over the entry point and approaches the
+        ramp start from the clearance plane; later levels arrive via _move_to_next_level."""
+        gcode = []
+        num_helical_passes, depth_per_pass = self._calculate_helical_passes(
+            helix_radius, ramp_start_height=ramp_start_height, target_z=target_z)
+        gcode.append(f"({label}: {num_helical_passes} passes at {self.ramp_angle} deg)")
+        if reposition:
+            gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.traverse_rate}  ; Position at pocket entry")
+            gcode.extend(self._approach_ramp_start(ramp_start_height))
+
+        start_x = entry_x + helix_radius
+        start_y = entry_y
+        gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.traverse_rate}  ; Move to helix start")
+        for pass_num in range(num_helical_passes):
+            z = ramp_start_height - (pass_num + 1) * depth_per_pass
+            gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-helix_radius:.4f} J0 Z{z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_helical_passes} CCW for climb milling")
+
+        gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.feed_rate}  ; Return to pocket entry")
+        return gcode
+
+    def _move_to_next_level(self, cur_pos: Tuple[float, float], entry: Tuple[float, float],
+                            safe_region, ramp_start_height: float, link_tol: float) -> List[str]:
+        """Carry the tool from where the previous clearing level ended (on the pocket wall, at
+        that level's floor) to above the entry point at the next level's ramp start.
+
+        Everything inside safe_region (the tool-center region) is cleared down to the previous
+        floor, so when the straight move stays inside it the tool just lifts clear of the floor
+        and feeds across. Otherwise (a concave notch, an island in the way) it retracts to the
+        clearance plane and comes back down, so it never drags through keep-material."""
+        gcode = []
+        ex, ey = entry
+        if safe_region.buffer(link_tol).contains(LineString([cur_pos, entry])):
+            gcode.append(f"G1 Z{ramp_start_height:.4f} F{self.approach_rate}  ; Lift off the floor for the next level")
+            gcode.append(f"G1 X{ex:.4f} Y{ey:.4f} F{self.traverse_rate}  ; Back to pocket entry over the cleared floor")
+        else:
+            gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract - straight move would cross keep-material")
+            gcode.append(f"G1 X{ex:.4f} Y{ey:.4f} F{self.traverse_rate}  ; Back to pocket entry")
+            gcode.append(f"G1 Z{ramp_start_height:.4f} F{self.approach_rate}  ; Approach to next level ramp start")
         return gcode
 
     def _detect_solid_circle(self, polygon: Polygon) -> Optional[Tuple[float, float, float]]:
@@ -3682,35 +3750,10 @@ class FRCPostProcessor:
         if helix_radius > max_helix_radius * 0.9:  # 90% safety factor
             helix_radius = max(max_helix_radius * 0.9, self.tool_radius * 0.25)  # Floor at 25% of tool_radius
 
-        ramp_start_height = self.material_top + self.ramp_start_clearance
-        num_helical_passes, depth_per_pass = self._calculate_helical_passes(helix_radius, ramp_start_height=ramp_start_height)
-
-        gcode.append(f"(Island-aware pocket with helical entry: {num_helical_passes} passes at {self.ramp_angle} deg)")
-
-        # Position at entry point
-        gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.traverse_rate}  ; Position at entry point")
-        gcode.extend(self._approach_ramp_start(ramp_start_height))
-
-        # Helical entry
-        start_x = entry_x + helix_radius
-        start_y = entry_y
-        gcode.append(f"G1 X{start_x:.4f} Y{start_y:.4f} F{self.traverse_rate}  ; Move to helix start")
-
-        for pass_num in range(num_helical_passes):
-            target_z = ramp_start_height - (pass_num + 1) * depth_per_pass
-            gcode.append(f"G3 X{start_x:.4f} Y{start_y:.4f} I{-helix_radius:.4f} J0 Z{target_z:.4f} F{self.ramp_feed_rate}  ; Helical pass {pass_num + 1}/{num_helical_passes}")
-
-        # Return to entry point after helix
-        gcode.append(f"G1 X{entry_x:.4f} Y{entry_y:.4f} F{self.feed_rate}  ; Return to entry point")
-
-        # Calculate stepover for pocket clearing
-        stepover = self.tool_diameter * self.stepover_percentage
-
-        gcode.append(f"(Contour-parallel clearing with island avoidance)")
-
         # For ring polygons (with interior holes), buffer() on the whole ring shrinks
         # from both sides simultaneously, collapsing the ring in ~2 steps.
         # Instead, offset from the EXTERIOR ONLY and stop at the interior boundary.
+        stepover = self.tool_diameter * self.stepover_percentage
         solid_exterior = Polygon(pocket_poly.exterior)
 
         # Build expanded interior (holes + tool_radius) as the no-go zone
@@ -3722,7 +3765,7 @@ class FRCPostProcessor:
                 interior_geoms.append(interior_poly.buffer(self.tool_radius))
             expanded_interiors = unary_union(interior_geoms)
 
-        # Generate offset contours from exterior inward
+        # Generate offset contours from exterior inward (depth-independent: computed once)
         contours = []
         test_offset = -self.tool_radius
         while True:
@@ -3740,73 +3783,79 @@ class FRCPostProcessor:
             else:
                 contours.append(offset_circle)
 
-        gcode.append(f"(Contour-parallel clearing: {len(contours)} offset passes)")
-
-        # Cut contours from outside-in
-        pass_number = 0
+        rings = []   # outside-in order of the reversed offsets, each CCW = climb milling
         for contour_geom in reversed(contours):
-            # Handle both Polygon and MultiPolygon
-            polygons_to_cut = []
             if isinstance(contour_geom, Polygon):
-                polygons_to_cut.append(contour_geom)
+                polys = [contour_geom]
             elif isinstance(contour_geom, MultiPolygon):
-                polygons_to_cut.extend(contour_geom.geoms)
+                polys = list(contour_geom.geoms)
+            else:
+                polys = []
+            for poly_to_cut in polys:
+                contour_coords = list(orient(poly_to_cut, 1.0).exterior.coords)
+                if len(contour_coords) >= 3:
+                    rings.append(contour_coords)
 
-            for poly_to_cut in polygons_to_cut:
-                if not hasattr(poly_to_cut, 'exterior'):
-                    continue
-
-                # Canonical orientation (exterior CCW) = climb milling for interior pockets.
-                poly_to_cut = orient(poly_to_cut, 1.0)
-                contour_coords = list(poly_to_cut.exterior.coords)
-                if len(contour_coords) < 3:
-                    continue
-
-                pass_number += 1
-                gcode.append(f"(Contour pass {pass_number})")
-
-                gcode.append(f"G1 X{contour_coords[0][0]:.4f} Y{contour_coords[0][1]:.4f} F{self.feed_rate}")
-                for point in contour_coords[1:]:
-                    gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
-
-        # Final pass - trace tool-compensated boundary (exterior + interiors). Canonical
-        # orientation makes the exterior CCW (climb around the pocket wall) and interiors CW
-        # (climb around any island), matching the CCW hole/helical toolpaths.
+        # Final pass boundaries - canonical orientation makes the exterior CCW (climb around the
+        # pocket wall) and interiors CW (climb around any island), matching the CCW
+        # hole/helical toolpaths.
         if isinstance(offset_poly, Polygon):
             offset_poly = orient(offset_poly, 1.0)
         exterior_coords = list(offset_poly.exterior.coords)[:-1]
-        if len(exterior_coords) >= 3:
-            pass_number += 1
-            gcode.append(f"(Contour pass {pass_number} - final outer perimeter)")
-            gcode.append(f"G1 X{exterior_coords[0][0]:.4f} Y{exterior_coords[0][1]:.4f} F{self.feed_rate}")
-            for point in exterior_coords[1:]:
-                gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
-            gcode.append(f"G1 X{exterior_coords[0][0]:.4f} Y{exterior_coords[0][1]:.4f} F{self.feed_rate}")
+        interior_rings = [list(interior.coords)[:-1] for interior in offset_poly.interiors] \
+            if hasattr(offset_poly, 'interiors') else []
 
-            # Spring pass: re-trace the exterior at zero stepover to relieve
-            # tool deflection.
-            gcode.append(f"(Spring pass - compensate for tool deflection)")
-            for point in exterior_coords[1:]:
-                gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
-            gcode.append(f"G1 X{exterior_coords[0][0]:.4f} Y{exterior_coords[0][1]:.4f} F{self.feed_rate}")
+        # Contour-parallel clearing can slot full-width where offsets collapse (narrow
+        # grooves, concave corners), so step down in levels no deeper than max_slotting_depth.
+        levels = self._step_down_levels()
+        if len(levels) > 1:
+            gcode.append(self._step_down_summary("island-aware pocket", levels))
 
-        # Also trace interior boundaries of the tool-compensated ring
-        if hasattr(offset_poly, 'interiors'):
-            for interior in offset_poly.interiors:
-                interior_coords = list(interior.coords)[:-1]
-                if len(interior_coords) >= 3:
-                    pass_number += 1
-                    gcode.append(f"(Contour pass {pass_number} - inner boundary)")
-                    gcode.append(f"G1 X{interior_coords[0][0]:.4f} Y{interior_coords[0][1]:.4f} F{self.feed_rate}")
-                    for point in interior_coords[1:]:
-                        gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
-                    gcode.append(f"G1 X{interior_coords[0][0]:.4f} Y{interior_coords[0][1]:.4f} F{self.feed_rate}")
+        cur_pos = None
+        prev_floor = self.material_top
+        for level_num, level_z in enumerate(levels, 1):
+            ramp_start_height = prev_floor + self.ramp_start_clearance
+            if len(levels) > 1:
+                gcode.append("")
+                gcode.append(f"(===== POCKET LEVEL {level_num}/{len(levels)} - clearing to Z{level_z:.4f} =====)")
+            if cur_pos is not None:
+                gcode.extend(self._move_to_next_level(cur_pos, (entry_x, entry_y), offset_poly,
+                                                      ramp_start_height, 1e-4))
+            gcode.extend(self._pocket_level_entry(entry_x, entry_y, helix_radius, ramp_start_height,
+                                                  level_z, "Island-aware pocket with helical entry",
+                                                  reposition=cur_pos is None))
+            cur_pos = (entry_x, entry_y)
 
-                    # Spring pass on this interior boundary.
-                    gcode.append(f"(Spring pass - compensate for tool deflection)")
-                    for point in interior_coords[1:]:
-                        gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
-                    gcode.append(f"G1 X{interior_coords[0][0]:.4f} Y{interior_coords[0][1]:.4f} F{self.feed_rate}")
+            gcode.append(f"(Contour-parallel clearing with island avoidance)")
+            gcode.append(f"(Contour-parallel clearing: {len(contours)} offset passes)")
+
+            pass_number = 0
+            for contour_coords in rings:
+                pass_number += 1
+                gcode.append(f"(Contour pass {pass_number})")
+                for point in contour_coords:
+                    gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
+                cur_pos = contour_coords[-1]
+
+            # Final pass - trace the tool-compensated boundary (exterior + interiors), each
+            # followed by a zero-stepover spring pass to relieve tool deflection.
+            boundaries = []
+            if len(exterior_coords) >= 3:
+                boundaries.append(("final outer perimeter", exterior_coords))
+            boundaries.extend(("inner boundary", ring) for ring in interior_rings if len(ring) >= 3)
+            for label, ring in boundaries:
+                pass_number += 1
+                gcode.append(f"(Contour pass {pass_number} - {label})")
+                gcode.append(f"G1 X{ring[0][0]:.4f} Y{ring[0][1]:.4f} F{self.feed_rate}")
+                for point in ring[1:]:
+                    gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
+                gcode.append(f"G1 X{ring[0][0]:.4f} Y{ring[0][1]:.4f} F{self.feed_rate}")
+                gcode.append(f"(Spring pass - compensate for tool deflection)")
+                for point in ring[1:]:
+                    gcode.append(f"G1 X{point[0]:.4f} Y{point[1]:.4f} F{self.feed_rate}")
+                gcode.append(f"G1 X{ring[0][0]:.4f} Y{ring[0][1]:.4f} F{self.feed_rate}")
+                cur_pos = ring[0]
+            prev_floor = level_z
 
         # Retract
         gcode.append(f"G0 Z{self.retract_height:.4f}  ; Retract")
@@ -3939,11 +3988,11 @@ class FRCPostProcessor:
         # Calculate number of passes needed based on material thickness and max slotting depth
         # Total depth = from material top to cut depth (which is below Z=0)
         total_cut_depth = self.material_top - self.cut_depth  # e.g., 0.25 - (-0.02) = 0.27"
-        num_passes = max(1, int(math.ceil(total_cut_depth / self.max_slotting_depth)))
+        pass_floors = self._step_down_levels()
+        num_passes = len(pass_floors)
 
         if num_passes > 1:
-            actual_depth_per_pass = total_cut_depth / num_passes
-            gcode.append(f"(Multi-pass {contour_type}: {num_passes} passes @ {actual_depth_per_pass:.3f}\" each, max {self.max_slotting_depth:.3f}\" per pass)")
+            gcode.append(self._step_down_summary(contour_type, pass_floors))
 
         # Create offset path
         contour_poly = Polygon(contour_points)
@@ -4002,13 +4051,8 @@ class FRCPostProcessor:
         for pass_num in range(1, num_passes + 1):
             is_final_pass = (pass_num == num_passes)
 
-            # Calculate target depth for this pass (equal increments)
-            if is_final_pass:
-                # Final pass goes exactly to target depth to avoid rounding errors
-                pass_cut_depth = self.cut_depth
-            else:
-                # Intermediate passes cut equal increments from material top
-                pass_cut_depth = self.material_top - (pass_num * depth_per_pass)
+            # Equal increments from material top; the final floor is exactly cut_depth
+            pass_cut_depth = pass_floors[pass_num - 1]
 
             if num_passes > 1:
                 gcode.append(f"")

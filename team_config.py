@@ -1023,7 +1023,7 @@ materials:
     helix_radius_multiplier: 0.75   # Helix entry radius as fraction of tool radius
 
     # Multi-pass parameters
-    max_slotting_depth: 0.4         # Maximum depth per pass for perimeter slotting (inches)
+    max_slotting_depth: 0.4         # Maximum depth per pass for slotting cuts: perimeter + non-round pockets (inches)
 
     # Tab parameters (can override defaults)
     tab_width: 0.25

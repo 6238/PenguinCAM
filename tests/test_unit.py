@@ -503,7 +503,7 @@ class TestPocketEntryPoint(unittest.TestCase):
         pp.apply_material_preset('aluminum')
         text = '\n'.join(pp._generate_pocket_gcode(pocket_points))
         m = TestPocketEntryPoint._re.search(
-            r'X([-\d.]+) Y([-\d.]+) F[\d.]+  ; Position at pocket center', text)
+            r'X([-\d.]+) Y([-\d.]+) F[\d.]+  ; Position at pocket entry', text)
         self.assertIsNotNone(m, "no pocket entry line emitted")
         return float(m.group(1)), float(m.group(2))
 
